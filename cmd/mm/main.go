@@ -336,7 +336,14 @@ func checkSpread(now clocky.Time) {
 	}
 
 	// deviation > threshold: coinbase got MORE expensive relative to normal, sell
-	if deviation.Cmp(sellSpread) > 0 && disposition == Expensive {
+	// when balance is poor (accumulating), be more eager to sell - reduce threshold
+	effectiveSellSpread := sellSpread
+	if balance.Cmp(decimal.Half) < 0 && balance.IsPositive() {
+		// at balance=0.5, sellSpread is halved; at balance=0.25, quartered
+		effectiveSellSpread = sellSpread.Mul(balance.MulInt(2))
+	}
+
+	if deviation.Cmp(effectiveSellSpread) > 0 && disposition == Expensive {
 		if *flagVerbose {
 			log.Printf("[logic] spread signal SELL spread=%sbps baseline=%sbps dev=%sbps coinbase=$%s binance=$%s",
 				spread.BPS().Format(2),
@@ -350,7 +357,21 @@ func checkSpread(now clocky.Time) {
 	}
 
 	// deviation < -threshold: coinbase got CHEAPER relative to normal, buy
-	if deviation.Neg().Cmp(buySpread) > 0 && disposition == Cheap {
+	// but only if balance allows (don't accumulate when we can't sell)
+	oneThird := decimal.One.DivInt(3)
+	balanceOK := balance.Cmp(oneThird) >= 0 || balance.IsZero()
+	inventoryValue := inventoryQty.Mul(gCoinbasePrice)
+	hardCap := (*flagTarget).MulInt(2)
+	underHardCap := inventoryValue.Cmp(hardCap) < 0
+
+	// when balance is poor, require larger deviation to buy
+	effectiveBuySpread := buySpread
+	if balance.Cmp(decimal.Half) < 0 && balance.IsPositive() {
+		// at balance=0.5, buySpread is doubled; at balance=0.25, quadrupled
+		effectiveBuySpread = buySpread.Div(balance.MulInt(2))
+	}
+
+	if deviation.Neg().Cmp(effectiveBuySpread) > 0 && disposition == Cheap && balanceOK && underHardCap {
 		if *flagVerbose {
 			log.Printf("[logic] spread signal BUY spread=%sbps baseline=%sbps dev=%sbps coinbase=$%s binance=$%s",
 				spread.BPS().Format(2),
@@ -364,10 +385,10 @@ func checkSpread(now clocky.Time) {
 	}
 
 	// passive market making: place resting orders when not taking
-	updatePassiveOrders(now, disposition, greed)
+	updatePassiveOrders(now, disposition, greed, balance)
 }
 
-func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed decimal.Decimal) {
+func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed, balance decimal.Decimal) {
 	gPassiveLock.Lock()
 	defer gPassiveLock.Unlock()
 
@@ -388,25 +409,69 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed decimal.D
 		return
 	}
 
+	// base spread from Avellaneda-Stoikov optimal spread (1/κ)
+	// high κ = tight market = tighter spreads = more fills
+	// low κ = dispersed = wider spreads = fewer but safer fills
+	baseSpread := *flagPassive
+	gIntensityLock.Lock()
+	if gIntensity != nil && gIntensity.IsReady() {
+		optimalSpread := gIntensity.OptimalSpread()
+		// blend flagPassive with optimal spread (use optimal as floor)
+		// this ensures we're at least as wide as market conditions suggest
+		baseSpread = baseSpread.Max(optimalSpread)
+	}
+	gIntensityLock.Unlock()
+
 	// calculate passive spread, adjusted by greed
 	// greed > 1: overweight, widen bid spread, tighten ask spread
 	// greed < 1: underweight, tighten bid spread, widen ask spread
-	bidSpread := (*flagPassive).Mul(greed)
-	askSpread := (*flagPassive).Div(greed)
+	bidSpread := baseSpread.Mul(greed)
+	askSpread := baseSpread.Div(greed)
+
+	// inventory imbalance defense: when we're accumulating (balance < 0.5),
+	// exponentially widen bid spread to slow buying
+	// balance = min(buys,sells)/max(buys,sells), so 0.5 means 2:1 ratio
+	if balance.Cmp(decimal.Half) < 0 && balance.IsPositive() {
+		// defenseMultiplier = 1/balance², so at balance=0.5 → 4x, balance=0.25 → 16x
+		defenseMultiplier := decimal.One.Div(balance.Sqr())
+		bidSpread = bidSpread.Mul(defenseMultiplier)
+	}
 
 	// desired passive order prices
 	desiredBidPrice := midPrice.Mul(decimal.One.Sub(bidSpread)).Quantize(quoteIncrement)
 	desiredAskPrice := midPrice.Mul(decimal.One.Add(askSpread)).Quantize(quoteIncrement)
 
 	// quantity for passive orders
-	passiveQty := (*flagSize).Div(midPrice).QuantizeNearest(baseIncrement)
+	// scale down bid size when balance is poor (accumulating)
+	bidSize := *flagSize
+	if balance.Cmp(decimal.Half) < 0 && balance.IsPositive() {
+		// at balance=0.5, bid size is halved; at balance=0.25, quartered
+		bidSize = bidSize.Mul(balance.MulInt(2))
+	}
+	passiveBidQty := bidSize.Div(midPrice).QuantizeNearest(baseIncrement)
+	passiveAskQty := (*flagSize).Div(midPrice).QuantizeNearest(baseIncrement)
 
-	// determine what passive orders we should have based on disposition and inventory
-	// place bids when underweight and not too expensive (cheap or normal)
-	// place asks when overweight and not too cheap (expensive or normal)
-	// avoid placing orders at extremes (TooCheap/TooExpensive) where volatility is likely
-	wantBid := disposition >= Cheap && disposition <= Normal && inventoryValue.Cmp(*flagTarget) < 0
-	wantAsk := disposition >= Normal && disposition <= Expensive && inventoryValue.Cmp(*flagTarget) > 0
+	// determine what passive orders we should have
+	// DEFENSE 1: hard cap at 2x target - never bid above this
+	hardCap := (*flagTarget).MulInt(2)
+	// DEFENSE 2: if balance < 0.33 (3:1 buy/sell ratio), stop bidding entirely
+	oneThird := decimal.One.DivInt(3)
+	balanceOK := balance.Cmp(oneThird) >= 0 || balance.IsZero() // zero balance = no trades yet = OK
+
+	// minimum viable bid quantity (don't place tiny orders)
+	minQty := (*flagSize).DivInt(4).Div(midPrice).QuantizeNearest(baseIncrement)
+
+	// place bids when: underweight AND balance is OK AND not at extremes AND under hard cap AND sufficient size
+	wantBid := disposition >= Cheap && disposition <= Normal &&
+		inventoryValue.Cmp(*flagTarget) < 0 &&
+		inventoryValue.Cmp(hardCap) < 0 &&
+		balanceOK &&
+		passiveBidQty.Cmp(minQty) >= 0
+
+	// place asks when: overweight OR balance is poor (need to sell)
+	// be more aggressive about asking when we're accumulating
+	wantAsk := (disposition >= Normal && disposition <= Expensive && inventoryValue.Cmp(*flagTarget) > 0) ||
+		(balance.Cmp(decimal.Half) < 0 && balance.IsPositive() && inventoryValue.IsPositive())
 
 	// handle passive bid
 	if gPassiveBid != nil {
@@ -442,7 +507,7 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed decimal.D
 
 	// place new bid if needed
 	if wantBid && gPassiveBid == nil {
-		order, err := gCoinbasePair.LimitOrder(ds.SideBuy, passiveQty, desiredBidPrice, ds.LimitOrderStrategyPostOnly)
+		order, err := gCoinbasePair.LimitOrder(ds.SideBuy, passiveBidQty, desiredBidPrice, ds.LimitOrderStrategyPostOnly)
 		if err != nil {
 			if *flagVerbose && err != ds.ErrPostOnly && err != ds.ErrSelfTrade {
 				log.Printf("[passive] bid failed: %v", err)
@@ -450,7 +515,7 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed decimal.D
 		} else {
 			gPassiveBid = order
 			if *flagVerbose {
-				log.Printf("[passive] placed bid %s @ $%s", passiveQty, desiredBidPrice)
+				log.Printf("[passive] placed bid %s @ $%s", passiveBidQty, desiredBidPrice)
 			}
 		}
 	}
@@ -489,7 +554,7 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed decimal.D
 
 	// place new ask if needed
 	if wantAsk && gPassiveAsk == nil {
-		order, err := gCoinbasePair.LimitOrder(ds.SideSell, passiveQty, desiredAskPrice, ds.LimitOrderStrategyPostOnly)
+		order, err := gCoinbasePair.LimitOrder(ds.SideSell, passiveAskQty, desiredAskPrice, ds.LimitOrderStrategyPostOnly)
 		if err != nil {
 			if *flagVerbose && err != ds.ErrPostOnly && err != ds.ErrSelfTrade {
 				log.Printf("[passive] ask failed: %v", err)
@@ -497,7 +562,7 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed decimal.D
 		} else {
 			gPassiveAsk = order
 			if *flagVerbose {
-				log.Printf("[passive] placed ask %s @ $%s", passiveQty, desiredAskPrice)
+				log.Printf("[passive] placed ask %s @ $%s", passiveAskQty, desiredAskPrice)
 			}
 		}
 	}
