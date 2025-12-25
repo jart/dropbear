@@ -1,6 +1,6 @@
 agent system
-events 18
-head 4695b3719cacda06be42e1c7758600181b0ff8e6a01f988b4b7a2faa1702116b
+events 19
+head e812654441dc0139acb9c5bd90ae7037853569e29d8885f285c4af02c2f2ab6c
 
 timestamp 1766651963
 author csg@statewave.com
@@ -180,3 +180,11 @@ type Message
 
 event_type Message
 text Transitioning to merge
+---
+parent 4695b3719cacda06be42e1c7758600181b0ff8e6a01f988b4b7a2faa1702116b
+timestamp 1766659184
+author csg@statewave.com
+type Message
+
+event_type Message
+text READY FOR MERGE: 2 commits on cm-48cba5b5, all tests pass, smoke tested successfully, README included
