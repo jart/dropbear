@@ -15,12 +15,12 @@ import (
 )
 
 var (
-	flagDataset = flag.String("dataset", "chaos", "dataset name")
-	flagSymbol  = flag.String("symbol", "BTC", "coinbase product to analyze")
-	flagWindow  = clocky.DurationFlag("window", "42m", "time window for min/max range")
-	flagComfort = decimal.FlagPercent("comfort", "20", "comfort zone percentage")
-	flagSamples = flag.Int("samples", 7000, "number of samples for baseline ema")
-	flagSpread  = decimal.Flag("spread", "2", "spread threshold in basis points")
+	flagDataset   = flag.String("dataset", "chaos", "dataset name")
+	flagSymbol    = flag.String("symbol", "BTC", "coinbase product to analyze")
+	flagWindow    = clocky.DurationFlag("window", "42m", "time window for min/max range")
+	flagComfort   = decimal.FlagPercent("comfort", "20", "comfort zone percentage")
+	flagSamples   = flag.Int("samples", 7000, "number of samples for baseline ema")
+	flagSpread    = decimal.Flag("spread", "2", "spread threshold in basis points")
 	flagLookahead = clocky.DurationFlag("lookahead", "5m", "time to look ahead for outcome")
 )
 
