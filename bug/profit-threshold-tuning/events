@@ -1,6 +1,6 @@
 agent system
-events 8
-head 9edb9ea1adee1a870cf2ed1fc79fed315e431827a1b4b723a60bde48a652872a
+events 9
+head 086cb02a8c59c9d4118b3932279c8286cb98d4961f9f966f6c9b2f1760655c51
 
 timestamp 1766652078
 author csg@statewave.com
@@ -96,3 +96,11 @@ type Message
 
 event_type Message
 text Architecture: Create cmd/profit/main.go analyzer. Tests multiple profit thresholds (2,3,5,7,10 bps) in one run. For each threshold, runs separate simulation with independent lot tracking. Measures: sell count, avg profit/sell, win rate, avg holding time, total P&L. Output: comparison table showing impact of each threshold.
+---
+parent 9edb9ea1adee1a870cf2ed1fc79fed315e431827a1b4b723a60bde48a652872a
+timestamp 1766657503
+author csg@statewave.com
+type Message
+
+event_type Message
+text Design decisions: (1) Multi-threshold testing in one run for direct comparison (2) Simplified strategy - only spread deviation, no greed/buygap/disposition filters (3) Track 7 metrics per threshold: sell count, avg profit, win rate, median/P95 hold time, total P&L, inventory time (4) Use ds.Lots with LIFO for accurate cost basis tracking
