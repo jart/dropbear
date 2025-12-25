@@ -1,6 +1,6 @@
 agent system
-events 14
-head 0f7d566962024f1d7385b8398a1d3b7042284df986f8a053a902eee1a777e98c
+events 15
+head aa43dd3284013741098f41ed2b07dab4831db9b116ff81b12c11ec1750ce860b
 
 timestamp 1766652084
 author csg@statewave.com
@@ -148,3 +148,11 @@ type Message
 
 event_type Message
 text Transitioning to testing
+---
+parent 0f7d566962024f1d7385b8398a1d3b7042284df986f8a053a902eee1a777e98c
+timestamp 1766658454
+author csg@statewave.com
+type Message
+
+event_type Message
+text smoke test passed: baseline chain executes correctly, results stored in SQLite, querying works
