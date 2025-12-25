@@ -1,6 +1,6 @@
 agent system
-events 7
-head 8e3f32ebdfa0e2c784988201a33c0b2c3ff240addb56c1b76f0218dadfa9bf08
+events 9
+head 725d889f7436e3b6c17fb82277ed71840e841609e8d5aeff66fadf62479c2237
 
 timestamp 1766649464
 author csg@statewave.com
@@ -76,3 +76,21 @@ type Message
 
 event_type Message
 text assumption: actors replace current callback-based tick handling (onCoinbaseTick/onBinanceTick) with message passing
+---
+parent 8e3f32ebdfa0e2c784988201a33c0b2c3ff240addb56c1b76f0218dadfa9bf08
+timestamp 1766649575
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state discussion
+reason Transitioning to architecture
+to_state architecture
+---
+parent 43637a44274f61f2461f9ca01533191e864bc48179f3d72b8f49702dfa3ff238
+timestamp 1766649575
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to architecture
