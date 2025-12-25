@@ -1,6 +1,6 @@
 agent system
-events 6
-head 879ca0d2a21d9d2f7808505b4bdf460ad3e9c09841162b049f0828431340a71e
+events 7
+head 1530b79cac56fe48475e3c97e8e4737e463890fce0f7941b671ba36feb5fa0f4
 
 timestamp 1766651800
 author csg@statewave.com
@@ -79,3 +79,11 @@ type Message
 
 event_type Message
 text Transitioning to architecture
+---
+parent 879ca0d2a21d9d2f7808505b4bdf460ad3e9c09841162b049f0828431340a71e
+timestamp 1766658624
+author csg@statewave.com
+type Message
+
+event_type Message
+text Volume-based parameter scaling design complete. Architecture uses sqrt(ref_vol/coin_vol) scaling with [0.5,3.0] clamp. Expected +50% sharpe on low-volume coins. See VOLUME-SCALING-DESIGN.md for full spec.
