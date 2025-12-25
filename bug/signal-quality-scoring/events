@@ -1,6 +1,6 @@
 agent system
-events 20
-head 630101be72c8011558c92d9afb2ce96dd794cc96fbece5d7e619be8652d1420f
+events 22
+head 7a4b3cb5e86b1d07520bc94bb88f8a0d2b35e030a4275e13bd1dfbc1863ddddb
 
 timestamp 1766652082
 author csg@statewave.com
@@ -197,3 +197,21 @@ type Message
 
 event_type Message
 text Transitioning to merge
+---
+parent 630101be72c8011558c92d9afb2ce96dd794cc96fbece5d7e619be8652d1420f
+timestamp 1766659034
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state merge
+reason Transitioning to closed
+to_state closed
+---
+parent c42365f9015f179e3e3a5d45acf5b77b3af2276555570099c20eeaecce388b4e
+timestamp 1766659034
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to closed
