@@ -1,6 +1,6 @@
 agent system
-events 1
-head 13cf27fa10452c25dd266ab7ae979b40960770064b67eee35c6f2b1632e8fe24
+events 2
+head 2e0d99637c6067f0a5ef6d6d6bb52724961fda96f7900bff1baf6888bf23acb5
 
 timestamp 1766651758
 author csg@statewave.com
@@ -29,3 +29,13 @@ content Optimize the exponential greed/inventory skew parameters.
 event_type CreateBug
 name greed-skew-tuning
 title greed-skew-tuning
+---
+parent 13cf27fa10452c25dd266ab7ae979b40960770064b67eee35c6f2b1632e8fe24
+timestamp 1766656261
+author csg@statewave.com
+type CloseBug
+
+cleanup_branch false
+closed_at 2025-12-25T09:51:01.257246+00:00
+event_type CloseBug
+reason Closed
