@@ -1,6 +1,6 @@
 agent system
-events 10
-head 86e59bcca7ca5387c607d866771efa7e202014044ee9c3d253f5faa1b46f87d8
+events 11
+head 423abf03cb896914e245bf5158e3aec5de71fb22d9377b969dca9c7f18f4eb5b
 
 timestamp 1766652082
 author csg@statewave.com
@@ -111,3 +111,11 @@ type Message
 
 event_type Message
 text Design: Quality score = weighted sum of normalized features. Features: (1) deviation_magnitude (2) kappa (3) disposition_strength (4) time_since_last_trade. Start with equal weights, measure correlation with profitability
+---
+parent 86e59bcca7ca5387c607d866771efa7e202014044ee9c3d253f5faa1b46f87d8
+timestamp 1766657633
+author csg@statewave.com
+type Message
+
+event_type Message
+text Output: Signal-by-signal analysis showing quality score vs outcome. Bin signals by quality quartiles, show avg profit and win rate per quartile. Goal: high-quality signals should have better avg profit
