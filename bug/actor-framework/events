@@ -1,6 +1,6 @@
 agent system
-events 3
-head e79f2d94e8ec4be3b72a8b28e04d41baec51319075485e7de0fce9b4bc49e803
+events 4
+head e5e46d477f0dafe513523dad76b280ab20fd58751b3520e6882f2b1fce393b3a
 
 timestamp 1766649464
 author csg@statewave.com
@@ -44,3 +44,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent e79f2d94e8ec4be3b72a8b28e04d41baec51319075485e7de0fce9b4bc49e803
+timestamp 1766649555
+author csg@statewave.com
+type Message
+
+event_type Message
+text understanding: port actor framework from havequick (zig) to Go for concurrent message-passing architecture
