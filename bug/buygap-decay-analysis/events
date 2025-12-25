@@ -1,6 +1,6 @@
 agent system
-events 16
-head 0b8c4c39163b704f2769cfdeb07cf74293db6fe9bb5b884e76116a7fb8f38361
+events 18
+head c327a6575260252e5a214c4c1cf7c1af89a2299446a204633beb16e63927709a
 
 timestamp 1766651798
 author csg@statewave.com
@@ -163,3 +163,21 @@ type Message
 
 event_type Message
 text Testing complete: All unit tests pass, analyzer works, new flag available in spread. Ready for review.
+---
+parent 0b8c4c39163b704f2769cfdeb07cf74293db6fe9bb5b884e76116a7fb8f38361
+timestamp 1766658795
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state testing
+reason Transitioning to merge
+to_state merge
+---
+parent 6ebaa63e7da4c36152c633ac9a69075be1c3cd5191d3737b761fd47c3c3ba6c3
+timestamp 1766658795
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to merge
