@@ -1,6 +1,6 @@
 agent system
-events 1
-head 24ddc8fde612d3b896725dda6a37d8a59d8ad0321dc1576b68be33b7a6b9bb35
+events 2
+head cfc9c451367111dd6a3a38329ee8384c92dada12976d75e4649af59b1f145e1e
 
 timestamp 1766652050
 author csg@statewave.com
@@ -32,3 +32,16 @@ content Analyze panic sell threshold effectiveness.
 event_type CreateBug
 name panic-threshold-analysis
 title panic-threshold-analysis
+---
+parent 24ddc8fde612d3b896725dda6a37d8a59d8ad0321dc1576b68be33b7a6b9bb35
+timestamp 1766657167
+author csg@statewave.com
+type Checkout
+
+branch_name bug/panic-threshold-analysis
+bug_name panic-threshold-analysis
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
