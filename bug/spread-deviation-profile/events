@@ -1,6 +1,6 @@
 agent system
-events 3
-head c646edc503e5e7c8ba11de686067da856630950d03553eab840cf852b4e39708
+events 4
+head d35ca61b3813da672eab79e7e0719bf44d79c70290e28c689ba09de2f7fcfbc6
 
 timestamp 1766651719
 author csg@statewave.com
@@ -48,3 +48,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent c646edc503e5e7c8ba11de686067da856630950d03553eab840cf852b4e39708
+timestamp 1766654365
+author csg@statewave.com
+type Message
+
+event_type Message
+text Understanding: spread=CB-Binance price diff, baseline=WWMA(7000), deviation=spread-baseline. Need to profile deviation stats across datasets.
