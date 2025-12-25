@@ -1,6 +1,6 @@
 agent system
-events 14
-head df5e4683918898069cf04943a4b9abdeccb81b44f25643f1e31e14fcf912786a
+events 15
+head 49474cef34d41802c6966e7cbd95b39ae4361f63e18caf608cf660b062ba34a8
 
 timestamp 1766649464
 author csg@statewave.com
@@ -136,3 +136,11 @@ type Message
 
 event_type Message
 text Transitioning to implementation
+---
+parent df5e4683918898069cf04943a4b9abdeccb81b44f25643f1e31e14fcf912786a
+timestamp 1766651192
+author csg@statewave.com
+type Message
+
+event_type Message
+text IMPLEMENTED: actor/mailbox.go - Ring buffer with overflow tracking (5.7ns/op, 0 allocs). Tests pass.
