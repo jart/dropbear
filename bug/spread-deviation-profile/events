@@ -1,0 +1,27 @@
+agent system
+events 1
+head f82a0eb6e5ecbc60572269da585eb6d9bf55a33d8e2ddebecc9f358cc1adf915
+
+timestamp 1766651719
+author csg@statewave.com
+type CreateBug
+
+content Profile the spread deviation distribution across datasets.
+	
+	## Goal
+	Understand the statistical properties of spread deviation (spread - EMA baseline) to optimize entry thresholds.
+	
+	## Analysis
+	- Histogram of deviations per dataset/coin
+	- Measure autocorrelation of spread signals
+	- Find optimal thresholds by analyzing hit rates
+	- Compare deviation distributions across market conditions
+	
+	## Metrics to Collect
+	- Mean, stddev, skewness, kurtosis of deviations
+	- Time-series autocorrelation at various lags
+	- Threshold crossing frequency at 1, 2, 3, 4, 5 bps
+	- Conditional probability: P(profit | deviation > X)
+event_type CreateBug
+name spread-deviation-profile
+title spread-deviation-profile
