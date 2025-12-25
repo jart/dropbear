@@ -1,6 +1,6 @@
 agent system
-events 8
-head bd5b561fba061b5b7ff23952079f6793706294ef82fea65a693567369cee802c
+events 9
+head 0371d1d3bb6ed893361b46a24fa8607b7ff03cd781d6bcb56f10250b125aedb9
 
 timestamp 1766651940
 author csg@statewave.com
@@ -94,3 +94,11 @@ type Message
 
 event_type Message
 text Transitioning to architecture
+---
+parent bd5b561fba061b5b7ff23952079f6793706294ef82fea65a693567369cee802c
+timestamp 1766657479
+author csg@statewave.com
+type Message
+
+event_type Message
+text Architecture complete: 4 event types (tick/signal/trade/skip), diagnostic package for JSON output, cmd/analyze for post-processing, see ARCHITECTURE_DIAGNOSTIC.md
