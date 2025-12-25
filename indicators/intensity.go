@@ -29,10 +29,11 @@ type Intensity struct {
 }
 
 const (
-	numBins       = 5000
-	maxDelta      = 0.01
-	minVolume     = 10
-	minVolumeBin  = 1e-8
+	numBins       = 5000  // support five bins per basis point
+	maxDelta      = 0.01  // recognize trades within 1% of mid-price
+	minVolume     = 10000 // minimum USD volume for reliable estimate
+	minBins       = 5     // minimum filled bins for reliable regression
+	minVolumeBin  = 1e-8  // minimum quantity per trade (filters dust)
 	decayInterval = clocky.Second
 	binWidth      = maxDelta / numBins
 	ln2           = 0.6931471805599453
@@ -156,6 +157,9 @@ func (ti *Intensity) IsReady() bool {
 		return false
 	}
 	if ti.totalVolume() < minVolume {
+		return false
+	}
+	if ti.filledBins() < minBins {
 		return false
 	}
 	return true

@@ -8,7 +8,7 @@ import (
 	"dropbear/indicators"
 	_ "embed"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 )
 
@@ -57,7 +57,7 @@ func UpsertMinuteCandle(symbol string, c *indicators.Candle) error {
 }
 
 // UpsertMinuteCandles inserts or updates multiple minute candles in a transaction.
-func UpsertMinuteCandles(symbol string, candles []indicators.Candle) error {
+func UpsertMinuteCandles(symbol string, candles []*indicators.Candle) error {
 	if err := initMinuteCandles(); err != nil {
 		return err
 	}
@@ -203,7 +203,7 @@ func groupIntoRanges(timestamps []clocky.Time) []timeRange {
 	if len(timestamps) == 0 {
 		return nil
 	}
-	sort.Slice(timestamps, func(i, j int) bool { return timestamps[i] < timestamps[j] })
+	slices.Sort(timestamps)
 	var ranges []timeRange
 	start := timestamps[0]
 	end := timestamps[0]

@@ -22,17 +22,17 @@ import (
 
 var (
 	flagVerbose   = flag.Bool("verbose", false, "enable verbosity")
-	flagSize      = decimal.Flag("size", "200", "order size in usd")
+	flagSize      = decimal.Flag("size", "500", "order size in usd")
 	flagUSD       = decimal.Flag("usd", "20000", "coinbase usd balance")
 	flagSymbol    = flag.String("symbol", "BTC", "coinbase product to trade")
-	flagTarget    = decimal.Flag("target", "5000", "target inventory in usd")
+	flagTarget    = decimal.Flag("target", "7000", "target inventory in usd")
 	flagSpread    = decimal.FlagBPS("spread", "2", "spread threshold in basis points")
 	flagSpreadMin = decimal.FlagBPS("spread-min", "0.5", "minimum spread threshold in basis points")
 	flagSpreadMax = decimal.FlagBPS("spread-max", "10", "maximum spread threshold in basis points")
 	flagProfit    = decimal.FlagBPS("profit", "5", "profit threshold in basis points")
 	flagPanic     = decimal.FlagBPS("panic", "15", "panic threshold to sell at a loss")
-	flagBuyGap    = decimal.FlagBPS("buygap", "5", "only buy if price is this many basis points below last buy")
-	flagBuyDecay  = clocky.DurationFlag("decay", "30s", "base decay period for buygap after sells")
+	flagBuyGap    = decimal.FlagBPS("buygap", "7", "only buy if price is this many basis points below last buy")
+	flagBuyDecay  = clocky.DurationFlag("decay", "1m", "base decay period for buygap after sells")
 	flagSkew      = decimal.Flag("skew", "1", "spread adjustment per 100% inventory imbalance")
 	flagWindow    = clocky.DurationFlag("window", "42m", "time window for min/max range protection (0 disables)")
 	flagComfort   = decimal.FlagPercent("comfort", "20", "percent of min/max window we're comfortable buying or selling")
@@ -40,7 +40,7 @@ var (
 	flagSamples   = flag.Int("samples", 7000, "number of samples for baseline ema")
 	flagCooldown  = clocky.DurationFlag("cooldown", "5s", "duration to wait between activities")
 	flagFreshness = clocky.DurationFlag("freshness", "1500ms", "suspend trading after this long an outage")
-	flagIntensity = clocky.DurationFlag("intensity", "5m", "trading intensity window (e.g. 5m, 0 for disabled)")
+	flagIntensity = clocky.DurationFlag("intensity", "2h", "trading intensity window (e.g. 5m, 0 for disabled)")
 	flagPassive   = decimal.FlagBPS("passive", "3", "passive order spread from mid in basis points")
 	flagRelist    = decimal.FlagBPS("relist", "1", "relist passive order if price moves this many bps")
 )
@@ -195,7 +195,13 @@ func onCoinbaseTickImpl(tick *ds.Tick) {
 	}
 }
 
+// now is the time when the tick was read by our websocket
 func checkSpread(now clocky.Time) {
+
+	// fail if warmup takes too long
+	if !gWarmedUp && now.Sub(gFirstEvent) > clocky.Hour {
+		panic("warmup took longer than an hour")
+	}
 
 	// don't trade if firehose is compromised
 	if now.Sub(gLastTrade) < *flagCooldown ||
@@ -215,7 +221,7 @@ func checkSpread(now clocky.Time) {
 	gSpreadEMA.Add(spread)
 	baseline := gSpreadEMA.Value
 	deviation := spread.Sub(baseline)
-	isReady := gSpreadEMA.IsReady()
+	isReady := gSpreadEMA.IsReady() || gPriceMin != nil
 	gSpreadLock.Unlock()
 	if !isReady {
 		return

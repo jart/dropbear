@@ -5,7 +5,6 @@ import (
 	"dropbear/ds"
 	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
-	"log"
 	"sync"
 )
 
@@ -26,7 +25,6 @@ func newHoldings(exchange *Exchange) *Holdings {
 		switch exchange.Exchange {
 		case ds.ExchangeCoinbase:
 			hs.fetchCoinbaseHoldings()
-			go hs.fetchCoinbaseHoldingsDaemon()
 		}
 	}
 	return hs
@@ -122,13 +120,6 @@ func captureInitialHoldings() {
 	}
 }
 
-func (hs *Holdings) fetchCoinbaseHoldingsDaemon() {
-	for {
-		Slumber()
-		hs.fetchCoinbaseHoldings()
-	}
-}
-
 func (hs *Holdings) fetchCoinbaseHoldings() {
 	portfolioUUID := coinbase.GetPortfolioUUID(CoinbaseClient)
 	breakdown, err := CoinbaseClient.GetPortfolioBreakdown(portfolioUUID)
@@ -143,10 +134,6 @@ func (hs *Holdings) fetchCoinbaseHoldings() {
 		if holding == nil {
 			continue
 		}
-		var newLots *ds.Lots
-		if !pos.IsCash {
-			newLots = fetchCoinbaseLots(holding.Symbol)
-		}
 		holding.Lock.Lock()
 		holding.IsCash = pos.IsCash
 		if pos.IsCash {
@@ -155,25 +142,16 @@ func (hs *Holdings) fetchCoinbaseHoldings() {
 		} else {
 			holding.Quantity = decimal.Parse(pos.TotalBalanceCrypto.String())
 			holding.Available = decimal.Parse(pos.AvailableToTradeCrypto.String())
+			err := CoinbaseClient.SyncTransactions(pos.Asset)
+			if err != nil {
+				loggy.Fatalf("coinbase: error syncing transactions for asset %s: %v", pos.Asset, err)
+			}
+			holding.Lots, err = CoinbaseClient.GetLots(pos.Asset, GetCostBasisMethod())
+			if err != nil {
+				loggy.Fatalf("coinbase: error fetching lots for asset %s: %v", pos.Asset, err)
+			}
 		}
-		if newLots != nil {
-			holding.Lots = newLots
-		}
+		holding.Check()
 		holding.Lock.Unlock()
 	}
-}
-
-func fetchCoinbaseLots(symbol string) *ds.Lots {
-	Stagger()
-	err := CoinbaseClient.SyncTransactions(symbol)
-	if err != nil {
-		log.Printf("coinbase: error syncing transactions for asset %s: %v", symbol, err)
-		return nil
-	}
-	lots, err := CoinbaseClient.GetLots(symbol, GetCostBasisMethod())
-	if err != nil {
-		log.Printf("coinbase: error fetching lots for asset %s: %v", symbol, err)
-		return nil
-	}
-	return lots
 }

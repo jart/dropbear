@@ -52,7 +52,7 @@ func UpsertDayCandle(symbol string, c *indicators.Candle) error {
 }
 
 // UpsertDayCandles inserts or updates multiple day candles in a transaction.
-func UpsertDayCandles(symbol string, candles []indicators.Candle) error {
+func UpsertDayCandles(symbol string, candles []*indicators.Candle) error {
 	if err := initDayCandles(); err != nil {
 		return err
 	}
@@ -62,7 +62,6 @@ func UpsertDayCandles(symbol string, candles []indicators.Candle) error {
 		return err
 	}
 	defer tx.Rollback()
-
 	stmt := tx.Stmt(dayCandlesUpsert)
 	for _, c := range candles {
 		_, err := stmt.Exec(
@@ -108,7 +107,6 @@ func GetDayCandles(symbol string) ([]DayCandle, error) {
 		return nil, err
 	}
 	defer rows.Close()
-
 	var candles []DayCandle
 	for rows.Next() {
 		var c DayCandle

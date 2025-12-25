@@ -39,7 +39,7 @@ const (
 //     is 350. Its maximum value is 350.
 //
 // Returns candles in chronological order (oldest first).
-func (c *Client) GetCandles(productID string, granularity CandleGranularity, start, end clocky.Time, limit int) ([]indicators.Candle, error) {
+func (c *Client) GetCandles(productID string, granularity CandleGranularity, start, end clocky.Time, limit int) ([]*indicators.Candle, error) {
 	url := "/api/v3/brokerage/products/" + productID + "/candles?granularity=" + granularity.String()
 	if start > 0 {
 		url = fmt.Sprintf("%s&start=%d", url, start.Unix())
@@ -75,10 +75,11 @@ func (c *Client) GetCandles(productID string, granularity CandleGranularity, sta
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("parsing response: %w", err)
 	}
-	candles := make([]indicators.Candle, len(result.Candles))
+	n := len(result.Candles)
+	candles := make([]*indicators.Candle, n)
 	for i, rc := range result.Candles {
 		start, _ := strconv.ParseInt(rc.Start, 10, 64)
-		candles[i] = indicators.Candle{
+		candles[n-1-i] = &indicators.Candle{
 			Start:  clocky.Time(start * 1_000_000),
 			Low:    decimal.Parse(rc.Low),
 			High:   decimal.Parse(rc.High),
@@ -86,10 +87,6 @@ func (c *Client) GetCandles(productID string, granularity CandleGranularity, sta
 			Close:  decimal.Parse(rc.Close),
 			Volume: decimal.Parse(rc.Volume),
 		}
-	}
-	// API returns newest first, reverse to chronological order
-	for i, j := 0, len(candles)-1; i < j; i, j = i+1, j-1 {
-		candles[i], candles[j] = candles[j], candles[i]
 	}
 	return candles, nil
 }
