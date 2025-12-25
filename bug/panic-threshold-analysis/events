@@ -1,6 +1,6 @@
 agent system
-events 13
-head 87b739e936d3eb3c3154186d475378b54986fae786f0f85ee90e734a3bcf0cc4
+events 15
+head e684485a2084c722fe3a58f9133de44f375e1db5c282ceac94c509a7b7ed9f5a
 
 timestamp 1766652050
 author csg@statewave.com
@@ -139,3 +139,21 @@ type Message
 
 event_type Message
 text Additional finding on dogdays/BCH: Panic much more frequent (8.1% of sells at 10bps vs 0.2% for chaos/BTC). Surprisingly, 10bps panic shows better P&L than no panic, but overall strategy is losing money on this dataset, suggesting market conditions matter significantly for panic effectiveness.
+---
+parent 87b739e936d3eb3c3154186d475378b54986fae786f0f85ee90e734a3bcf0cc4
+timestamp 1766658186
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state implementation
+reason Transitioning to testing
+to_state testing
+---
+parent 017cdf0650ad1d1898c40fee83ac653cb2973222aa88c05d60b6f45579f6ef8e
+timestamp 1766658186
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to testing
