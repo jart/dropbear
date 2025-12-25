@@ -1,6 +1,8 @@
-# dropbear coding guidelines
+# Dropbear Development Guide
 
-this project does high frequency trading of crypto.
+## The Core Thesis
+
+This project does high frequency trading of crypto. We believe **Binance BTCFDUSD trades predict Coinbase BTC-USD by ~600ms**. We exploit this latency arbitrage using superior market intelligence and telecommunications.
 
 we have an aws z1d instance 1ms away from coinbase in us-east-1 named penny.
 
@@ -195,3 +197,29 @@ spread weekend    ETH  vol= 0.35 profit=   -6.35 sharpe=  -4.91 buys= 40 sells= 
 spread weekend    SOL  vol= 0.19 profit=    0.74 sharpe=  -4.78 buys= 23 sells=  0 invested=  978 bad
 total n=44 volume=0.75 profit=-26.67 (vs. -403.03) sharpe=+3.95 (vs. -10.48) invested=1489 | GREAT=18 good=14 loco=3 bad=9
 ```
+
+## Current Investigation: Categorical Decomposition
+
+We're applying havequick's categorical cross-validation framework to formally model and improve the spread strategy:
+
+- **Actor decomposition**: Message-passing with explicit mailboxes (no shared mutable state)
+- **Categorical law verification**: Monoid/groupoid properties for trading operations
+- **Shadow mode**: Run new implementation alongside Go, compare signals without executing
+
+Reference patterns at `~/src/havequick/`:
+- `platform/runtime/actor.zig` - Actor with compile-time handler discovery
+- `platform/mailbox/mailbox.zig` - Ring buffer with overflow tracking
+- `lib/uberparser/iso/groupoid.zig` - Projections and morphisms
+
+Plan file: `~/.claude/plans/noble-plotting-biscuit.md`
+
+## Git Codemap Workflow
+
+```bash
+git-codemap list bugs              # List open bugs
+git-codemap work <oid>             # Open worktree + Claude session
+git-codemap wtf                    # Quick context: bug, station, git status
+git-codemap transition implement   # Move to next stage
+```
+
+Stages: **plan** → **implement** → **review** → **closed**

@@ -33,6 +33,7 @@ var (
 	flagPanic     = decimal.FlagBPS("panic", "15", "panic threshold to sell at a loss")
 	flagBuyGap    = decimal.FlagBPS("buygap", "5", "only buy if price is this many basis points below last buy")
 	flagBuyDecay  = clocky.DurationFlag("decay", "30s", "base decay period for buygap after sells")
+	flagDecayMode = flag.String("decay-mode", "exponential", "decay mode: exponential, linear, none")
 	flagSkew      = decimal.Flag("skew", "1", "spread adjustment per 100% inventory imbalance")
 	flagWindow    = clocky.DurationFlag("window", "42m", "time window for min/max range protection (0 disables)")
 	flagComfort   = decimal.FlagPercent("comfort", "20", "percent of min/max window we're comfortable buying or selling")
@@ -68,6 +69,8 @@ var (
 	gPriceMax      *indicators.Max
 	gFirstEvent    clocky.Time
 	gWarmedUp      bool
+	gBuyGapMetrics BuyGapMetrics
+	gDecayMode     DecayMode
 )
 
 func main() {
@@ -75,8 +78,11 @@ func main() {
 	loggy.Init()
 	teddy.Init()
 
-	log.Printf("spread=%sbps, panic=%sbps, samples=%d, cooldown=%s, size=$%s, window=%s comfort=%s danger=%s intensity=%s",
-		(*flagSpread).BPS(), (*flagPanic).BPS(), *flagSamples, *flagCooldown, *flagSize, *flagWindow, *flagComfort, *flagDanger, *flagIntensity)
+	gDecayMode = ParseDecayMode(*flagDecayMode)
+
+	log.Printf("spread=%sbps, panic=%sbps, samples=%d, cooldown=%s, size=$%s, window=%s comfort=%s danger=%s intensity=%s buygap=%sbps decay=%s decay-mode=%s",
+		(*flagSpread).BPS(), (*flagPanic).BPS(), *flagSamples, *flagCooldown, *flagSize, *flagWindow, *flagComfort, *flagDanger, *flagIntensity,
+		(*flagBuyGap).BPS(), *flagBuyDecay, gDecayMode)
 
 	gSpreadEMA = indicators.NewWWMA(*flagSamples)
 	if *flagWindow != 0 {
@@ -397,24 +403,20 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 			}
 
 			// calculate decay factor based on time since last sell
-			// decay period = basePeriod * e^(inventoryRatio * 2)
 			decayFactor := decimal.One
 			if (*flagTarget).IsPositive() && gLastSellTime > 0 {
 				invRatio := invested.Div(*flagTarget)
-				timeSinceSell := now - gLastSellTime
-				if timeSinceSell > 0 {
-					timeRatio := decimal.FromInt(int(timeSinceSell)).Div(decimal.FromInt(int(*flagBuyDecay)))
-					periodScale := invRatio.MulInt(2).Neg().Exp()                // e^(-invRatio*2)
-					decayFactor = timeRatio.Mul(periodScale).Neg().Exp()         // e^(-timeRatio*periodScale)
-					decayFactor = decayFactor.Max(decimal.Zero).Min(decimal.One) // clamp [0,1]
-				}
+				timeSinceSell := clocky.Duration(now - gLastSellTime)
+				decayFactor = CalculateDecayFactor(gDecayMode, timeSinceSell, *flagBuyDecay, invRatio)
 			}
 
 			// effective buygap = base * inventoryScale * decayFactor
 			effectiveBuygap := (*flagBuyGap).Mul(inventoryScale).Mul(decayFactor)
 			if effectiveBuygap.BPS().Cmp(decimal.Tenth) > 0 {
+				gBuyGapMetrics.SignalsTotal++
 				maxBuyPrice := topCost.Mul(decimal.One.Sub(effectiveBuygap))
 				if buyPrice.Cmp(maxBuyPrice) > 0 {
+					gBuyGapMetrics.SignalsBlocked++
 					if *flagVerbose {
 						gap := topCost.Sub(buyPrice).Div(topCost)
 						log.Printf("[logic] skip buy: price $%s not %sbps below last buy $%s (gap=%sbps scale=%s decay=%s%% inv=$%s)",
@@ -429,6 +431,7 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 					}
 					return
 				}
+				gBuyGapMetrics.SignalsExecuted++
 			}
 		}
 	}
