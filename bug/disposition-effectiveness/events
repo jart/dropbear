@@ -1,0 +1,31 @@
+agent system
+events 1
+head d2cdf8a673e4faa8b7c534523998a8d0aa3949da658453d8cd8636cd6cdabef7
+
+timestamp 1766651756
+author csg@statewave.com
+type CreateBug
+
+content Analyze effectiveness of the price-range disposition filter.
+	
+	## Goal
+	Determine if the Cheap/Expensive disposition gating actually improves profitability.
+	
+	## Current Logic (main.go:313-331)
+	- Classifies price position in recent min/max range
+	- Only buys when disposition=Cheap, sells when disposition=Expensive
+	- Comfort zone is 20% from edges
+	
+	## Analysis
+	- Hit rate by disposition (do 'Cheap' buys profit?)
+	- Range breakout frequency (how often does price escape window?)
+	- Optimal comfort zone percentage
+	- Compare with/without disposition filter
+	
+	## Questions
+	- Is 42m window optimal?
+	- Is 20% comfort zone optimal?
+	- Should danger zone (0%) be non-zero?
+event_type CreateBug
+name disposition-effectiveness
+title disposition-effectiveness
