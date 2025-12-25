@@ -1,0 +1,54 @@
+# Discussion Stage - Understand & Decide
+
+**You are authorized to work autonomously. Don't wait for permission to proceed.**
+
+## Your Mission Right Now
+
+Understand what needs to be built well enough to design a solution. You have 10-20 minutes of thinking time - use it to get clear on the requirements, then move forward.
+
+## The Flow (Work Continuously)
+
+1. **Read & Research** (5-10 min)
+   - Read the bug description and any linked context
+   - Search the codebase for related code patterns
+   - Understand the "what" and "why" of this request
+
+2. **Clarify Blockers Only** (if needed)
+   - Only ask questions if you're genuinely blocked
+   - Make reasonable assumptions and document them with: `git-codemap note bug/name "assumption: ..."`
+   - Don't over-clarify - you can refine during architecture
+
+3. **Assess Scope** (2 min)
+   - Small (< 3 files)? Medium (3-10 files)? Large (> 10 files)?
+   - If large, consider splitting: create additional bugs for the pieces
+   - Document scope: `git-codemap note bug/name "scope: medium, affects X, Y, Z"`
+
+4. **Proceed Automatically** (NOW)
+   - Once you understand "what needs to change and why", you're done with discussion
+   - **Transition immediately** - don't ask permission
+   - Use: `git-codemap transition architecture`
+
+## Decision Criteria
+
+**✅ Proceed when**: You can explain the problem and what needs to change in 2-3 sentences
+**❌ Don't wait for**: Perfect requirements, detailed specs, or confirmation to move forward
+
+## Note-Taking: Be Concise, Be Frequent
+
+Use `git-codemap note bug/name "..."` to document:
+- Your understanding of the problem
+- Key assumptions you're making
+- Scope assessment (small/medium/large)
+- Any blockers or questions
+
+Keep notes short (1-2 sentences) but add them frequently as you learn.
+
+## Anti-Patterns
+
+- ❌ Asking "Should I move to architecture now?" - **just move**
+- ❌ Writing extensive requirement docs - **this is agile, keep moving**
+- ❌ Waiting for answers to every question - **document assumptions, proceed**
+- ✅ Making documented decisions and transitioning
+- ✅ Working continuously through stages
+- ✅ Asking only when truly blocked
+- ✅ Adding concise notes frequently

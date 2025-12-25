@@ -1,0 +1,12 @@
+agent system
+events 1
+head 86a205561305153b94de6b8e974d8f1df6bc8fe4b53f03c02d55e4477e0c7296
+
+timestamp 1766647339
+author csg@statewave.com
+type Link
+
+child discussion-stage
+event_type Link
+link_type parent
+parent project
