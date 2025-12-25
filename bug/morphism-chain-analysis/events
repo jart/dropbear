@@ -1,6 +1,6 @@
 agent system
-events 20
-head 0db8909ef3a5b824e9c601003a164f02189827f3bdc06e32404d8ba5f42604d6
+events 21
+head 039106e8fe243fa41c1ee35d9d17c0883493b3b869192f3088bd03c790ffb723
 
 timestamp 1766651824
 author csg@statewave.com
@@ -230,3 +230,13 @@ event_type MergeBranch
 merge_strategy merge-commit
 source_branch cm-aee2f05e
 target_branch main
+---
+parent 0db8909ef3a5b824e9c601003a164f02189827f3bdc06e32404d8ba5f42604d6
+timestamp 1766659069
+author csg@statewave.com
+type CloseBug
+
+cleanup_branch false
+closed_at 2025-12-25T10:37:49.343612+00:00
+event_type CloseBug
+reason Closed
