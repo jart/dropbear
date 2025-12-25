@@ -1,6 +1,6 @@
 agent system
-events 1
-head f82a0eb6e5ecbc60572269da585eb6d9bf55a33d8e2ddebecc9f358cc1adf915
+events 2
+head 359c3f1d33f16315d6e4ea4ac4b7573498ced5c47e7511a6cc511f886d2709bd
 
 timestamp 1766651719
 author csg@statewave.com
@@ -25,3 +25,16 @@ content Profile the spread deviation distribution across datasets.
 event_type CreateBug
 name spread-deviation-profile
 title spread-deviation-profile
+---
+parent f82a0eb6e5ecbc60572269da585eb6d9bf55a33d8e2ddebecc9f358cc1adf915
+timestamp 1766654326
+author csg@statewave.com
+type Checkout
+
+branch_name bug/spread-deviation-profile
+bug_name spread-deviation-profile
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
