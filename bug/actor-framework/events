@@ -1,0 +1,23 @@
+agent system
+events 1
+head f608da60b6bc7837c4a37b7aee017ce604730af99264a8c76604c9e8cef99398
+
+timestamp 1766649464
+author csg@statewave.com
+type CreateBug
+
+content Create actor framework foundation in Go, porting patterns from havequick.
+	
+	## Goals
+	- actor/ package with Mailbox ring buffer and overflow tracking
+	- msg/ package with core message types (BinanceTick, CoinbaseTick, SpreadSignal, TradeIntent)
+	- actors/ package with strategy actors (ingest, indicator, spread, risk, execution)
+	- iso/ package for categorical infrastructure (projections, law verification)
+	
+	## Reference
+	- ~/src/havequick/platform/runtime/actor.zig
+	- ~/src/havequick/platform/mailbox/mailbox.zig
+	- ~/src/havequick/lib/uberparser/iso/groupoid.zig
+event_type CreateBug
+name actor-framework
+title actor-framework
