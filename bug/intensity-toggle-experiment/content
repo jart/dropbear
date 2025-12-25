@@ -1,0 +1,19 @@
+Compare strategy performance with/without intensity scaling.
+
+## Goal
+Measure the contribution of Avellaneda-Stoikov kappa to profitability.
+
+## Experiment Design
+- Run all datasets with -intensity 5m (default)
+- Run all datasets with -intensity 0 (disabled)
+- Compare Sharpe, profit, win rate, trade count
+
+## Expected Outcome
+- If intensity helps: better Sharpe with intensity enabled
+- If intensity hurts: overhead of complexity not worth it
+- If neutral: remove for simplicity
+
+## Analysis
+- Per-coin intensity impact
+- Per-dataset intensity impact
+- Interaction with other parameters (spread, skew)

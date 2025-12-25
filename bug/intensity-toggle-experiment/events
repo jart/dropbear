@@ -1,0 +1,30 @@
+agent system
+events 1
+head f62dbd229c9363bba0c6e9a89103ecd9f43eb690c07c767b548c9dacd907d052
+
+timestamp 1766651981
+author csg@statewave.com
+type CreateBug
+
+content Compare strategy performance with/without intensity scaling.
+	
+	## Goal
+	Measure the contribution of Avellaneda-Stoikov kappa to profitability.
+	
+	## Experiment Design
+	- Run all datasets with -intensity 5m (default)
+	- Run all datasets with -intensity 0 (disabled)
+	- Compare Sharpe, profit, win rate, trade count
+	
+	## Expected Outcome
+	- If intensity helps: better Sharpe with intensity enabled
+	- If intensity hurts: overhead of complexity not worth it
+	- If neutral: remove for simplicity
+	
+	## Analysis
+	- Per-coin intensity impact
+	- Per-dataset intensity impact
+	- Interaction with other parameters (spread, skew)
+event_type CreateBug
+name intensity-toggle-experiment
+title intensity-toggle-experiment
