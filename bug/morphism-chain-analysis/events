@@ -1,6 +1,6 @@
 agent system
-events 1
-head b9b2b6b464a963ad5535f9dc00efe7abe36fa38a286a9df0a2ff093571789dd1
+events 2
+head aee2f05ebe1cab9d0fb1af874576d48db9a0ad384516d0a4abc878d7025840d6
 
 timestamp 1766651824
 author csg@statewave.com
@@ -33,3 +33,16 @@ content Analyze the Signal → Intent → Result morphism chain.
 event_type CreateBug
 name morphism-chain-analysis
 title morphism-chain-analysis
+---
+parent b9b2b6b464a963ad5535f9dc00efe7abe36fa38a286a9df0a2ff093571789dd1
+timestamp 1766657167
+author csg@statewave.com
+type Checkout
+
+branch_name bug/morphism-chain-analysis
+bug_name morphism-chain-analysis
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
