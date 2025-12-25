@@ -1,6 +1,6 @@
 agent system
-events 5
-head 615eb80d03270355291fe02a5dacc415b17de83b398029dc5f10c1f4092ee8bb
+events 6
+head 90618e76e4942eaee9a2c691e38c484741882937ff85dcabdbe4a5d06c695a59
 
 timestamp 1766652084
 author csg@statewave.com
@@ -70,3 +70,11 @@ type Message
 
 event_type Message
 text scope: medium - create experiment chain runner, results storage (SQLite), parameter selection logic
+---
+parent 615eb80d03270355291fe02a5dacc415b17de83b398029dc5f10c1f4092ee8bb
+timestamp 1766657393
+author csg@statewave.com
+type Message
+
+event_type Message
+text assumptions: use Go for chain runner (fits project style), SQLite for experiment log, JSON for chain definitions (simpler than YAML), reuse existing backtest infrastructure
