@@ -1,6 +1,6 @@
 agent system
-events 2
-head 24e8912d1162e0a45366878b631591b973dfd5c82d0abef326e7d518fab3a27f
+events 3
+head d499576f38c3f2d529ea69c17bcf18d9586a1470ceb0ffefabd80d4664dcc24c
 
 timestamp 1766652030
 author csg@statewave.com
@@ -44,3 +44,13 @@ machine_id unknown
 origin_url git@github.com:jart/dropbear.git
 redundant_work false
 target_branch main
+---
+parent 24e8912d1162e0a45366878b631591b973dfd5c82d0abef326e7d518fab3a27f
+timestamp 1766657158
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state new
+reason Starting work on bug
+to_state discussion
