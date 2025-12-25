@@ -66,8 +66,8 @@ func main() {
 	warmedUp := false
 
 	// Simulation state
-	inventoryQty := decimal.Zero    // quantity held
-	inventoryValue := decimal.Zero  // value of inventory
+	inventoryQty := decimal.Zero   // quantity held
+	inventoryValue := decimal.Zero // value of inventory
 	target := *flagTarget
 
 	// Track trades and metrics

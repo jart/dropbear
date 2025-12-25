@@ -298,11 +298,11 @@ func printResults(symbol, dataset string, kappaValues []float64, outcomes []Outc
 
 		// Kappa zones
 		fmt.Println("Time in Zone:")
-		veryTight := 0  // > 50000
-		tight := 0      // 20000-50000
-		normal := 0     // 10000-20000
-		loose := 0      // 5000-10000
-		veryLoose := 0  // < 5000
+		veryTight := 0 // > 50000
+		tight := 0     // 20000-50000
+		normal := 0    // 10000-20000
+		loose := 0     // 5000-10000
+		veryLoose := 0 // < 5000
 
 		for _, k := range kappaValues {
 			switch {
