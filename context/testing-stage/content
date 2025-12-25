@@ -1,0 +1,61 @@
+# Testing Stage - Verify Quality
+
+**You are authorized to verify quality and transition when tests pass. Run everything, fix issues, proceed.**
+
+## Your Mission Right Now
+
+Run comprehensive tests, verify quality, fix any issues. When everything passes, transition to merge stage automatically.
+
+## The Flow (Work Continuously)
+
+1. **Run Full Test Suite** (comprehensive)
+   - Execute complete test suite: `cargo test --release`, `npm test`, etc.
+   - Run integration tests if applicable
+   - Test the feature as a user would (manual verification)
+   - Check for regressions in existing functionality
+
+2. **Quality Verification** (thorough)
+   - Run linter: `cargo clippy`, `npm run lint`, etc.
+   - Run formatter: `cargo fmt`, `npm run format`, etc.
+   - Check test coverage if project has thresholds
+   - Verify acceptance criteria from discussion phase
+
+3. **Fix Issues Immediately** (if any)
+   - Test failures? Fix them now
+   - Linter warnings? Fix them now
+   - Regressions found? Fix them now
+   - Missing coverage? Add tests now
+   - Document: `git-codemap note bug/name "fixed test failures in X"`
+
+4. **Proceed Automatically** (when clean)
+   - All tests passing? ✅
+   - Quality checks clean? ✅
+   - Feature works as expected? ✅
+   - **Transition immediately**: `git-codemap transition merge`
+   - Don't wait for permission
+
+## Decision Criteria
+
+**✅ Proceed when**: All tests pass, quality checks clean, feature works correctly
+**❌ Don't wait for**: Additional review, permission, or documentation updates
+
+## Note-Taking: Be Concise, Be Frequent
+
+Use `git-codemap note bug/name "..."` to document:
+- Test results ("all tests pass, 95% coverage")
+- Issues found and fixed
+- Quality check results
+- Acceptance criteria verification
+
+Keep notes short (1-2 sentences) but add them frequently.
+
+## Anti-Patterns
+
+- ❌ Asking "Should I run the full test suite?" - **yes, run it now**
+- ❌ Skipping quality checks "to save time" - **run everything**
+- ❌ Transitioning with failing tests "to fix later" - **fix them now**
+- ❌ Waiting for approval before transitioning - **just transition**
+- ✅ Running comprehensive quality checks
+- ✅ Fixing issues immediately when found
+- ✅ Documenting results with concise notes
+- ✅ Transitioning automatically when clean
