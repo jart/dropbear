@@ -1,6 +1,6 @@
 agent system
-events 15
-head 49474cef34d41802c6966e7cbd95b39ae4361f63e18caf608cf660b062ba34a8
+events 16
+head 9600abdaf58b19c97be265e36182de5b4abaa936ad239834ccb91e59923ce52f
 
 timestamp 1766649464
 author csg@statewave.com
@@ -144,3 +144,11 @@ type Message
 
 event_type Message
 text IMPLEMENTED: actor/mailbox.go - Ring buffer with overflow tracking (5.7ns/op, 0 allocs). Tests pass.
+---
+parent 49474cef34d41802c6966e7cbd95b39ae4361f63e18caf608cf660b062ba34a8
+timestamp 1766651218
+author csg@statewave.com
+type Message
+
+event_type Message
+text IMPLEMENTED: actor/actor.go - Generic Actor[In,Out] with Handler interface, Step(), Drain(), Run(). Tests pass.
