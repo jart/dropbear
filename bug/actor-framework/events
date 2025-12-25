@@ -1,6 +1,6 @@
 agent system
-events 5
-head d83e3e53ce085e82d471425f572fe0e978e6154d1b128fa2e5f6e5a890e39fe7
+events 6
+head ae92fed97c8ecc760e4d600435f7f9de006ee60fdadb48e209409b4f2c964797
 
 timestamp 1766649464
 author csg@statewave.com
@@ -60,3 +60,11 @@ type Message
 
 event_type Message
 text scope: medium - create 4 new packages (actor/, msg/, actors/, iso/) with ~8-10 files total
+---
+parent d83e3e53ce085e82d471425f572fe0e978e6154d1b128fa2e5f6e5a890e39fe7
+timestamp 1766649563
+author csg@statewave.com
+type Message
+
+event_type Message
+text assumption: mailbox will use channels/ring buffer hybrid since Go has native channel support unlike zig
