@@ -1,0 +1,17 @@
+# Review & Merge Stage
+
+**Verify, rebase, merge.**
+
+## Pre-Merge Checklist
+- [ ] All tests pass: go test ./...
+- [ ] Backtests pass: ./scripts/test.sh spread
+- [ ] Code formatted: go fmt ./...
+- [ ] Law verification passes (if applicable)
+- [ ] Rebased on main
+
+## Commands
+git-codemap rebase      # Rebase onto main
+git-codemap merge       # Merge to main
+
+## When Complete
+git-codemap close
