@@ -1,6 +1,6 @@
 agent system
-events 6
-head ae92fed97c8ecc760e4d600435f7f9de006ee60fdadb48e209409b4f2c964797
+events 7
+head 8e3f32ebdfa0e2c784988201a33c0b2c3ff240addb56c1b76f0218dadfa9bf08
 
 timestamp 1766649464
 author csg@statewave.com
@@ -68,3 +68,11 @@ type Message
 
 event_type Message
 text assumption: mailbox will use channels/ring buffer hybrid since Go has native channel support unlike zig
+---
+parent ae92fed97c8ecc760e4d600435f7f9de006ee60fdadb48e209409b4f2c964797
+timestamp 1766649567
+author csg@statewave.com
+type Message
+
+event_type Message
+text assumption: actors replace current callback-based tick handling (onCoinbaseTick/onBinanceTick) with message passing
