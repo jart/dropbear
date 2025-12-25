@@ -1,0 +1,6 @@
+Clarify requirements and understand the problem space.
+
+## Problem Definition Phase
+**Current:** Starting point. **Discussion** → Architecture → Implementation → Testing → Merge.
+**Focus:** Understanding the problem, not solving it.
+**Next:** Architecture for solution design, or skip to Implementation for trivial fixes.
