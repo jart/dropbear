@@ -1,0 +1,31 @@
+agent system
+events 1
+head 67b1ca0cf52c0fa81806a4f10fa7b3ac4373a41f183fcf473ad07ba52f75ba38
+
+timestamp 1766651963
+author csg@statewave.com
+type CreateBug
+
+content Build systematic coin comparison across datasets.
+	
+	## Goal
+	Create a matrix view of coin performance to identify patterns.
+	
+	## Matrix Dimensions
+	- Rows: Coins (BTC, ETH, SOL, DOGE, ZEC, BCH, LTC, etc.)
+	- Columns: Datasets (chaos, dogdays, dreary, weekend, etc.)
+	- Cells: Sharpe ratio (color-coded)
+	
+	## Additional Views
+	- Volatility vs Sharpe scatter plot per coin
+	- Win rate heatmap
+	- Trade count heatmap
+	- Best/worst coin per dataset
+	
+	## Questions to Answer
+	- Which coins are consistently profitable?
+	- Which datasets are hardest?
+	- Are there coin clusters with similar behavior?
+event_type CreateBug
+name coin-comparison-matrix
+title coin-comparison-matrix
