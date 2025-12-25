@@ -1,6 +1,6 @@
 agent system
-events 1
-head f608da60b6bc7837c4a37b7aee017ce604730af99264a8c76604c9e8cef99398
+events 2
+head 4c26d36f669b45ccf708d7ebc4ac46303155b1c8bbb1e11878413a35e3627454
 
 timestamp 1766649464
 author csg@statewave.com
@@ -21,3 +21,16 @@ content Create actor framework foundation in Go, porting patterns from havequick
 event_type CreateBug
 name actor-framework
 title actor-framework
+---
+parent f608da60b6bc7837c4a37b7aee017ce604730af99264a8c76604c9e8cef99398
+timestamp 1766649502
+author csg@statewave.com
+type Checkout
+
+branch_name bug/actor-framework
+bug_name actor-framework
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
