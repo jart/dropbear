@@ -5,8 +5,13 @@ CMD=${1:-spread}
 shift 1
 ARGS="$*"
 
-RESULTS=$(mktemp /tmp/results.XXXXXX) || exit 1
-trap "rm -f $RESULTS" EXIT
+REPORT=$(mktemp /tmp/dropbear.XXXXXX) || exit 1
+RESULTS=$(mktemp /tmp/dropbear.XXXXXX) || exit 1
+trap onexit EXIT
+
+onexit() {
+    rm -f "$RESULTS" "$REPORT"
+}
 
 run() {
     COIN=$1
@@ -35,8 +40,8 @@ run() {
                 JUDGEMENT="bad"
             fi
             printf "%s %-10s %-4s vol=%5s profit=%8s sharpe=%7s buys=%3d sells=%3d invested=%5s %s\n" \
-                "$CMD" "$DATASET" "$COIN" "$VOLUME" "$PROFIT" "$SHARPE" "$BUYS" "$SELLS" "$INVESTED" "$JUDGEMENT"
-            echo "$VOLUME $PROFIT $PROFIT_BENCH $SHARPE $SHARPE_BENCH $INVESTED $JUDGEMENT" >> $RESULTS
+                "$CMD" "$DATASET" "$COIN" "$VOLUME" "$PROFIT" "$SHARPE" "$BUYS" "$SELLS" "$INVESTED" "$JUDGEMENT" >>"$REPORT"
+            echo "$VOLUME $PROFIT $PROFIT_BENCH $SHARPE $SHARPE_BENCH $INVESTED $JUDGEMENT" >>"$RESULTS"
             rm -f $OUTPATH
         else
             printf "%s %-10s %-4s failed\n" "$CMD" "$DATASET" "$COIN"
@@ -55,6 +60,7 @@ done
 wait
 
 # print summary
+sort <"$REPORT"
 awk '
 BEGIN { great=0; good=0; bad=0; n=0; volume=0; profit=0; profit_bench=0; sharpe=0; sharpe_bench=0; invested=0 }
 {

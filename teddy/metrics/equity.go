@@ -84,12 +84,8 @@ func (m *Equity) Sharpe(riskFreeRate float64) float64 {
 	stdDevPerPeriod := math.Sqrt(variance)
 
 	// handle zero volatility edge case
+	// when there's no volatility, sharpe is undefined; return 0 as neutral sentinel
 	if stdDevPerPeriod < 1e-10 {
-		if meanExcessReturn > 0 {
-			return +100
-		} else if meanExcessReturn < 0 {
-			return -100
-		}
 		return 0
 	}
 
