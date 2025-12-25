@@ -1,6 +1,6 @@
 agent system
-events 12
-head 8db2a45e6c8b9b78bdedf2ce1b7ed1aed12fc7908a80835386abeff0064c2f63
+events 13
+head d3b525dea5b8025caa3050aad6569f47817a72ded6eb0eaabf9e36d35dced69e
 
 timestamp 1766651798
 author csg@statewave.com
@@ -129,3 +129,11 @@ type Message
 
 event_type Message
 text Transitioning to implementation
+---
+parent 8db2a45e6c8b9b78bdedf2ce1b7ed1aed12fc7908a80835386abeff0064c2f63
+timestamp 1766658639
+author csg@statewave.com
+type Message
+
+event_type Message
+text Implementation complete: Added decay modes (exponential/linear/none), metrics tracking, comprehensive tests. Commit dd41f07. All tests pass.
