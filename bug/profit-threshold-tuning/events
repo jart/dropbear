@@ -1,6 +1,6 @@
 agent system
-events 3
-head da7e5d3e929e6450d89b5a74a5653a472ecd5ee2298e9787522a8b1555abbedf
+events 4
+head 2852573e0d387d306a0b6a92f0008992d2b73eca13361b3503b460423b57d947
 
 timestamp 1766652078
 author csg@statewave.com
@@ -54,3 +54,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent da7e5d3e929e6450d89b5a74a5653a472ecd5ee2298e9787522a8b1555abbedf
+timestamp 1766657211
+author csg@statewave.com
+type Message
+
+event_type Message
+text Current profit threshold is 5 bps (flagProfit at main.go:32, applied at main.go:450). Cost basis adjusted up by profit margin before comparing to sell quote. Only sells below cost+profit allowed if panic threshold exceeded (>15 bps deviation). Need to measure impact of different profit values on sell frequency, profitability, inventory time.
