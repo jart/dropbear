@@ -1,6 +1,6 @@
 agent system
-events 9
-head 725d889f7436e3b6c17fb82277ed71840e841609e8d5aeff66fadf62479c2237
+events 10
+head e882886f1de7a23fde1aab2e65ef3eb1b873b693a2783c1f4614d7f48c50ebf4
 
 timestamp 1766649464
 author csg@statewave.com
@@ -94,3 +94,11 @@ type Message
 
 event_type Message
 text Transitioning to architecture
+---
+parent 725d889f7436e3b6c17fb82277ed71840e841609e8d5aeff66fadf62479c2237
+timestamp 1766649826
+author csg@statewave.com
+type Message
+
+event_type Message
+text ARCHITECTURE: Message Types - BinanceTick{Price,Time,Trades[]}, CoinbaseTick{Bid,Ask,Time}, SpreadSignal{Spread,Baseline,Deviation,Disposition}, TradeIntent{Side,Quantity,Spread}
