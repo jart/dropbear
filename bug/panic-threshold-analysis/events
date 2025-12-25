@@ -1,6 +1,6 @@
 agent system
-events 5
-head 8d7038ee18923c9080ccdf4ed8a1a9d2076b3672dfd2aa8f9d2857188003a313
+events 6
+head 7f1c887d00e1c70626f603f0bbed070223b346895e7cd3b56988b5837aee51fe
 
 timestamp 1766652050
 author csg@statewave.com
@@ -71,3 +71,11 @@ type Message
 
 event_type Message
 text Scope: medium - need new analyzer tool (cmd/panic), similar to disposition/greed/intensity analyzers. Will test thresholds: 10, 15, 20, 30, 50 bps across multiple datasets.
+---
+parent 8d7038ee18923c9080ccdf4ed8a1a9d2076b3672dfd2aa8f9d2857188003a313
+timestamp 1766657215
+author csg@statewave.com
+type Message
+
+event_type Message
+text Key questions: (1) How often is panic triggered in practice? (2) Does price continue down after panic sell (i.e., was it smart)? (3) What's optimal threshold? (4) Should it be adaptive based on volatility/inventory?
