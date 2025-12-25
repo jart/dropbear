@@ -1,6 +1,6 @@
 agent system
-events 12
-head cf6a101dcf28dbcfe9f8b87f36ea4b26ec54ece5ec5e0a4f39a3922da5ed096b
+events 13
+head 87b739e936d3eb3c3154186d475378b54986fae786f0f85ee90e734a3bcf0cc4
 
 timestamp 1766652050
 author csg@statewave.com
@@ -131,3 +131,11 @@ type Message
 
 event_type Message
 text Key findings: (1) Panic is rarely triggered in practice (<0.3% of sells for chaos dataset). (2) For BTC: panic mostly counterproductive - best P&L with 20+ bps (no panic). (3) For DOGE: 95.8% of 10bps panics were 'smart' but still worse P&L than no panic. (4) Suggests holding through volatility beats cutting losses.
+---
+parent cf6a101dcf28dbcfe9f8b87f36ea4b26ec54ece5ec5e0a4f39a3922da5ed096b
+timestamp 1766658182
+author csg@statewave.com
+type Message
+
+event_type Message
+text Additional finding on dogdays/BCH: Panic much more frequent (8.1% of sells at 10bps vs 0.2% for chaos/BTC). Surprisingly, 10bps panic shows better P&L than no panic, but overall strategy is losing money on this dataset, suggesting market conditions matter significantly for panic effectiveness.
