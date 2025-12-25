@@ -1,6 +1,6 @@
 agent system
-events 19
-head b02d849a473c8d697d1c6e543583a61319aa5c4dc7683a345783363aa0557fa4
+events 21
+head af4b72bedfad22c376e2810f583ba02c17678a5243b661f193d30e2488ed551c
 
 timestamp 1766652050
 author csg@statewave.com
@@ -191,3 +191,21 @@ type Message
 
 event_type Message
 text Committed panic analyzer implementation (e4df0a9). Ready for merge to main.
+---
+parent b02d849a473c8d697d1c6e543583a61319aa5c4dc7683a345783363aa0557fa4
+timestamp 1766658384
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state merge
+reason Transitioning to closed
+to_state closed
+---
+parent 3ea5d7721a76525e23f089a59256412931054e615baf0bf59ce1ae97e0b0893c
+timestamp 1766658384
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to closed
