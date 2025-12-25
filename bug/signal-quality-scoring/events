@@ -1,6 +1,6 @@
 agent system
-events 4
-head d9bee6508f51258f8b302bee0104e7debca9bf0b1385d99e20ed5c6e1410fd3d
+events 5
+head 9168fe5880fc3c33139abd178c8dbb92f4b006cbe6d36e3b6eeea45db71f8c48
 
 timestamp 1766652082
 author csg@statewave.com
@@ -61,3 +61,11 @@ type Message
 
 event_type Message
 text Understanding: Spread strategy trades Coinbase based on deviation from Binance baseline. Signal = |deviation| > threshold && disposition filter (Cheap for buy, Expensive for sell)
+---
+parent d9bee6508f51258f8b302bee0104e7debca9bf0b1385d99e20ed5c6e1410fd3d
+timestamp 1766657400
+author csg@statewave.com
+type Message
+
+event_type Message
+text Metrics available at signal time: (1) deviation magnitude/velocity (2) kappa/intensity (3) disposition/range position (4) time since last trade (5) inventory level/imbalance (6) greed factor (7) health score
