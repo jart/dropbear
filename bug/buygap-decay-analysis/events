@@ -1,0 +1,32 @@
+agent system
+events 1
+head e3047ae3c908c8b9a00423bf14161a885e7f759e009f33b62f7412a5df53322c
+
+timestamp 1766651798
+author csg@statewave.com
+type CreateBug
+
+content Analyze buy gap protection and decay function effectiveness.
+	
+	## Goal
+	Optimize the buy gap protection that prevents accumulating lots at similar prices.
+	
+	## Current Logic (main.go:381-434)
+	- Only buy if price dropped enough from last buy (ratchet prevention)
+	- Gap scales up with inventory (doubles at 100% target)
+	- Decay over time after sells: decay = exp(-timeRatio * periodScale)
+	- Base decay period is 30s, scaled by inventory ratio
+	
+	## Analysis
+	- Effectiveness of gap protection (prevented bad buys?)
+	- Decay function comparison (exponential vs linear)
+	- Optimal decay period (currently 30s)
+	- Inventory scaling factor optimization
+	
+	## Experiments
+	- Test buygap = {3, 5, 7, 10} bps
+	- Test decay = {15s, 30s, 60s, 120s}
+	- Measure gap hit rate (how often does gap prevent buys?)
+event_type CreateBug
+name buygap-decay-analysis
+title buygap-decay-analysis

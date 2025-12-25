@@ -1,0 +1,21 @@
+Analyze buy gap protection and decay function effectiveness.
+
+## Goal
+Optimize the buy gap protection that prevents accumulating lots at similar prices.
+
+## Current Logic (main.go:381-434)
+- Only buy if price dropped enough from last buy (ratchet prevention)
+- Gap scales up with inventory (doubles at 100% target)
+- Decay over time after sells: decay = exp(-timeRatio * periodScale)
+- Base decay period is 30s, scaled by inventory ratio
+
+## Analysis
+- Effectiveness of gap protection (prevented bad buys?)
+- Decay function comparison (exponential vs linear)
+- Optimal decay period (currently 30s)
+- Inventory scaling factor optimization
+
+## Experiments
+- Test buygap = {3, 5, 7, 10} bps
+- Test decay = {15s, 30s, 60s, 120s}
+- Measure gap hit rate (how often does gap prevent buys?)
