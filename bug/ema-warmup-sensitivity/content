@@ -1,0 +1,18 @@
+Analyze sensitivity to EMA warmup period (samples parameter).
+
+## Goal
+Find optimal warmup period for spread baseline EMA.
+
+## Current Behavior
+- samples=7000 means ~7000 ticks before trading starts
+- Too short: noisy baseline, bad signals
+- Too long: miss early opportunities, slow adaptation
+
+## Experiment
+- Test samples = {1000, 3000, 5000, 7000, 10000, 15000}
+- Measure: time to first trade, Sharpe, profit
+
+## Questions
+- Is 7000 optimal across all coins?
+- Does optimal samples depend on volatility?
+- Should samples be time-based instead of count-based?
