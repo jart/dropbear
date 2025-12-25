@@ -1,0 +1,22 @@
+Build infrastructure for systematic parameter sweeps.
+
+## Goal
+Create tooling to run grid searches over strategy parameters.
+
+## Parameters to Sweep
+- spread: {1, 2, 3, 4, 5} bps
+- skew: {0.5, 1.0, 1.5, 2.0}
+- samples: {3000, 5000, 7000, 10000}
+- buygap: {3, 5, 7, 10} bps
+- comfort: {10, 20, 30, 40} %
+- window: {20m, 42m, 60m, 120m}
+
+## Output Format
+- CSV with all parameters + metrics
+- Heatmaps for 2D parameter interactions
+- Best parameter set per dataset/coin
+
+## Implementation
+- Parallel execution (current test.sh pattern)
+- Results aggregation and storage
+- Visualization scripts
