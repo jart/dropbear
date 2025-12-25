@@ -1,6 +1,6 @@
 agent system
-events 1
-head 038c1959b15a243621fc126e3ec247252c611fbe9764b94fedba8feb9643e7c6
+events 2
+head abc64824015488c09c3d3dda28f02e90320bbdc972dd3050e3d0c6df4fdbd5a4
 
 timestamp 1766651937
 author csg@statewave.com
@@ -31,3 +31,16 @@ content Build infrastructure for systematic parameter sweeps.
 event_type CreateBug
 name parameter-sweep-infra
 title parameter-sweep-infra
+---
+parent 038c1959b15a243621fc126e3ec247252c611fbe9764b94fedba8feb9643e7c6
+timestamp 1766657176
+author csg@statewave.com
+type Checkout
+
+branch_name bug/parameter-sweep-infra
+bug_name parameter-sweep-infra
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
