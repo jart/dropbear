@@ -1,6 +1,6 @@
 agent system
-events 5
-head 9168fe5880fc3c33139abd178c8dbb92f4b006cbe6d36e3b6eeea45db71f8c48
+events 6
+head 8834814c4a5fde9bfe5744b190e54d2f0e956790fb293e959014e5fc2fb7e529
 
 timestamp 1766652082
 author csg@statewave.com
@@ -69,3 +69,11 @@ type Message
 
 event_type Message
 text Metrics available at signal time: (1) deviation magnitude/velocity (2) kappa/intensity (3) disposition/range position (4) time since last trade (5) inventory level/imbalance (6) greed factor (7) health score
+---
+parent 9168fe5880fc3c33139abd178c8dbb92f4b006cbe6d36e3b6eeea45db71f8c48
+timestamp 1766657400
+author csg@statewave.com
+type Message
+
+event_type Message
+text Architecture: Create analyzer tool (cmd/quality) following existing pattern from disposition/greed/intensity. Will capture signals, compute quality score, measure outcomes, validate predictive power
