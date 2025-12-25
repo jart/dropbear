@@ -1,6 +1,6 @@
 agent system
-events 3
-head 8ceb5e5cf018f15860d88969f055eac87d1e908386a18d7497ddc540e9ea1a9b
+events 4
+head f79e6d9d47146af75fde3e8198b26ee26166c641d0e5153b8516923d39c3d7e7
 
 timestamp 1766651824
 author csg@statewave.com
@@ -56,3 +56,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent 8ceb5e5cf018f15860d88969f055eac87d1e908386a18d7497ddc540e9ea1a9b
+timestamp 1766657214
+author csg@statewave.com
+type Message
+
+event_type Message
+text Morphism Chain: MarketState → SpreadSignal (deviation>threshold & disposition) → TradeIntent (passes buygap, cost basis, cooldown) → TradeResult (order fills). Three existing analyzers cover individual filters.
