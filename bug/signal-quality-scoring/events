@@ -1,6 +1,6 @@
 agent system
-events 1
-head 3f329daaa75c72a03f0c204515eb879445e2b96b27b570ca1993fbf5234f0130
+events 2
+head 14023990e591c195114c1f3cdac3895895aa57c9737eb58387e9fdd287dda245
 
 timestamp 1766652082
 author csg@statewave.com
@@ -30,3 +30,16 @@ content Develop a signal quality scoring system.
 event_type CreateBug
 name signal-quality-scoring
 title signal-quality-scoring
+---
+parent 3f329daaa75c72a03f0c204515eb879445e2b96b27b570ca1993fbf5234f0130
+timestamp 1766657178
+author csg@statewave.com
+type Checkout
+
+branch_name bug/signal-quality-scoring
+bug_name signal-quality-scoring
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
