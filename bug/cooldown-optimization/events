@@ -1,6 +1,6 @@
 agent system
-events 4
-head e1e117e33bf5487ab83ca5a746e9a953905ee93584c3fc4ee414c21e96e5548d
+events 5
+head 0ce43f7e754f8658fa75a0f10b71d9e389f89f7973fb97783a0dc0a446046861
 
 timestamp 1766652030
 author csg@statewave.com
@@ -62,3 +62,11 @@ type Message
 
 event_type Message
 text cooldown enforced at 3 locations: main.go:196-197 (before checkSpread) and main.go:473 (before placing order). Default 5s. Controls both gLastTrade and gLastActivity
+---
+parent e1e117e33bf5487ab83ca5a746e9a953905ee93584c3fc4ee414c21e96e5548d
+timestamp 1766657952
+author csg@statewave.com
+type Message
+
+event_type Message
+text RESULT: cooldown=2s is optimal. Profit=.60 (+10% vs 5s), Sharpe=19.35 (vs 19.78), capital efficiency=1.18% (best). Recommendation: change default from 5s to 2s
