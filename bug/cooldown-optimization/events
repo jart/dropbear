@@ -1,6 +1,6 @@
 agent system
-events 6
-head 8bbe7bda4e52695536800787b15224d4fac7770bf9005ae685209ca2e3ad9963
+events 7
+head 351c55490caa94ae9d884078299a62169cacc558cb4a455a8003bf2658c30de5
 
 timestamp 1766652030
 author csg@statewave.com
@@ -78,3 +78,11 @@ type Message
 
 event_type Message
 text Full results: 1s=.26/19.01, 2s=.60/19.35, 5s=.85/19.78, 10s=.01/19.50, 30s=.62/17.39. Trade quality consistent across 1s-10s (6 GREAT, 7 good, 2 bad)
+---
+parent 8bbe7bda4e52695536800787b15224d4fac7770bf9005ae685209ca2e3ad9963
+timestamp 1766657953
+author csg@statewave.com
+type Message
+
+event_type Message
+text Follow-up questions unanswered: per-coin optimal (would need individual coin tests), adaptive volatility-based cooldown (interesting but untested), separate buy/sell cooldowns (would need code changes)
