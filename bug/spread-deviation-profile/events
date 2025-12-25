@@ -1,6 +1,6 @@
 agent system
-events 4
-head d35ca61b3813da672eab79e7e0719bf44d79c70290e28c689ba09de2f7fcfbc6
+events 5
+head 7403daa5f754780b0567c81b3880f69b32626716da1179a7057d3b6067fce62a
 
 timestamp 1766651719
 author csg@statewave.com
@@ -56,3 +56,11 @@ type Message
 
 event_type Message
 text Understanding: spread=CB-Binance price diff, baseline=WWMA(7000), deviation=spread-baseline. Need to profile deviation stats across datasets.
+---
+parent d35ca61b3813da672eab79e7e0719bf44d79c70290e28c689ba09de2f7fcfbc6
+timestamp 1766654371
+author csg@statewave.com
+type Message
+
+event_type Message
+text Scope: medium. Create cmd/profile tool that replays market data, computes deviation stats (mean/std/skew/kurtosis, autocorr, threshold crossings, P(profit|deviation>X)).
