@@ -1,6 +1,6 @@
 agent system
-events 1
-head 8a3a4432e1ab4a37909246dbdcd17a3e81745190771578ff3e15ed73299a15cc
+events 2
+head 24e8912d1162e0a45366878b631591b973dfd5c82d0abef326e7d518fab3a27f
 
 timestamp 1766652030
 author csg@statewave.com
@@ -31,3 +31,16 @@ content Optimize trade cooldown period.
 event_type CreateBug
 name cooldown-optimization
 title cooldown-optimization
+---
+parent 8a3a4432e1ab4a37909246dbdcd17a3e81745190771578ff3e15ed73299a15cc
+timestamp 1766657158
+author csg@statewave.com
+type Checkout
+
+branch_name bug/cooldown-optimization
+bug_name cooldown-optimization
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
