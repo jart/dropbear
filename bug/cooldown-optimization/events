@@ -1,6 +1,6 @@
 agent system
-events 16
-head 9d70e25ef1cfaa7a5c88b25efb0920e5dffdeb0aa6bbbed31321f1ffb051244d
+events 18
+head 472635db46cfdcedaafd45607baa1efa744dd1c45b9132cb56eb61fde56ea9bd
 
 timestamp 1766652030
 author csg@statewave.com
@@ -164,3 +164,21 @@ type Message
 
 event_type Message
 text Tests passing with new 2s default. Results match expectations: profit=.60, sharpe=19.35
+---
+parent 9d70e25ef1cfaa7a5c88b25efb0920e5dffdeb0aa6bbbed31321f1ffb051244d
+timestamp 1766658493
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state testing
+reason Transitioning to merge
+to_state merge
+---
+parent dd418e177adec294862328172fa2530f5206c67d5bc694456dc9f65973f79acf
+timestamp 1766658493
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to merge
