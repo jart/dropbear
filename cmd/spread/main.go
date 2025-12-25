@@ -21,6 +21,7 @@ import (
 )
 
 var (
+	flagVerbose   = flag.Bool("verbose", false, "enable verbosity")
 	flagSize      = decimal.Flag("size", "200", "order size in usd")
 	flagUSD       = decimal.Flag("usd", "20000", "coinbase usd balance")
 	flagSymbol    = flag.String("symbol", "BTC", "coinbase product to trade")
@@ -39,7 +40,7 @@ var (
 	flagSamples   = flag.Int("samples", 7000, "number of samples for baseline ema")
 	flagCooldown  = clocky.DurationFlag("cooldown", "5s", "duration to wait between activities")
 	flagFreshness = clocky.DurationFlag("freshness", "1500ms", "suspend trading after this long an outage")
-	flagIntensity = clocky.DurationFlag("intensity", "0m", "trading intensity window (e.g. 5m, 0 for disabled)")
+	flagIntensity = clocky.DurationFlag("intensity", "5m", "trading intensity window (e.g. 5m, 0 for disabled)")
 )
 
 var (
@@ -331,18 +332,22 @@ func checkSpread(now clocky.Time) {
 
 	// deviation > threshold: coinbase got MORE expensive relative to normal, sell
 	if deviation.Cmp(sellSpread) > 0 && disposition == Expensive {
-		log.Printf("[logic] spread signal SELL spread=%sbps baseline=%sbps dev=%sbps coinbase=$%s binance=$%s",
-			spread.BPS().Format(2), baseline.BPS().Format(2), deviation.BPS().Format(2),
-			gCoinbasePrice.Format(2), gBinancePrice.Format(2))
+		if *flagVerbose {
+			log.Printf("[logic] spread signal SELL spread=%sbps baseline=%sbps dev=%sbps coinbase=$%s binance=$%s",
+				spread.BPS().Format(2), baseline.BPS().Format(2), deviation.BPS().Format(2),
+				gCoinbasePrice.Format(2), gBinancePrice.Format(2))
+		}
 		executeTrade(now, ds.SideSell, deviation)
 		return
 	}
 
 	// deviation < -threshold: coinbase got CHEAPER relative to normal, buy
 	if deviation.Neg().Cmp(buySpread) > 0 && disposition == Cheap {
-		log.Printf("[logic] spread signal BUY spread=%sbps baseline=%sbps dev=%sbps coinbase=$%s binance=$%s",
-			spread.BPS().Format(2), baseline.BPS().Format(2), deviation.BPS().Format(2),
-			gCoinbasePrice.Format(2), gBinancePrice.Format(2))
+		if *flagVerbose {
+			log.Printf("[logic] spread signal BUY spread=%sbps baseline=%sbps dev=%sbps coinbase=$%s binance=$%s",
+				spread.BPS().Format(2), baseline.BPS().Format(2), deviation.BPS().Format(2),
+				gCoinbasePrice.Format(2), gBinancePrice.Format(2))
+		}
 		executeTrade(now, ds.SideBuy, deviation)
 		return
 	}
@@ -404,11 +409,13 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 			if effectiveBuygap.BPS().Cmp(decimal.Tenth) > 0 {
 				maxBuyPrice := topCost.Mul(decimal.One.Sub(effectiveBuygap))
 				if buyPrice.Cmp(maxBuyPrice) > 0 {
-					gap := topCost.Sub(buyPrice).Div(topCost)
-					log.Printf("[logic] skip buy: price $%s not %sbps below last buy $%s (gap=%sbps scale=%s decay=%s%% inv=$%s)",
-						buyPrice.Format(2), effectiveBuygap.BPS().Format(1), topCost.Format(2), gap.BPS().Format(2),
-						inventoryScale.Format(2), decayFactor.MulInt(100).Format(0), invested.Format(0))
-					gLastActivity = now
+					if *flagVerbose {
+						gap := topCost.Sub(buyPrice).Div(topCost)
+						log.Printf("[logic] skip buy: price $%s not %sbps below last buy $%s (gap=%sbps scale=%s decay=%s%% inv=$%s)",
+							buyPrice.Format(2), effectiveBuygap.BPS().Format(1), topCost.Format(2), gap.BPS().Format(2),
+							inventoryScale.Format(2), decayFactor.MulInt(100).Format(0), invested.Format(0))
+						gLastActivity = now
+					}
 					return
 				}
 			}
@@ -422,8 +429,10 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 		costBasis, err := gHolding.Lots.GetCostBasis(quantity, now, decimal.Zero)
 		gHolding.Lock.RUnlock()
 		if err != nil {
-			log.Printf("[logic] skip sell: insufficient lots")
-			gLastActivity = now
+			if *flagVerbose {
+				log.Printf("[logic] skip sell: insufficient lots")
+				gLastActivity = now
+			}
 			return
 		}
 		rawCostBasis = costBasis // save before adding profit margin
@@ -432,11 +441,13 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 		if quote.Cmp(costBasis) < 0 {
 			// selling at a loss - only allow if panic threshold exceeded
 			if spread.Abs().Cmp(*flagPanic) < 0 {
-				loss := costBasis.Sub(quote)
-				log.Printf("[logic] skip sell: would lose $%s (cost=$%s quote=$%s spread=%sbps < panic=%sbps)",
-					loss.Format(2), costBasis.Format(2), quote.Format(2),
-					spread.Abs().BPS().Format(2), (*flagPanic).BPS())
-				gLastActivity = now
+				if *flagVerbose {
+					loss := costBasis.Sub(quote)
+					log.Printf("[logic] skip sell: would lose $%s (cost=$%s quote=$%s spread=%sbps < panic=%sbps)",
+						loss.Format(2), costBasis.Format(2), quote.Format(2),
+						spread.Abs().BPS().Format(2), (*flagPanic).BPS())
+					gLastActivity = now
+				}
 				return
 			}
 			log.Printf("[logic] panic sell: spread=%sbps >= panic=%sbps",
@@ -470,8 +481,10 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 		log.Printf("[error] order not filled: state=%s", order.State)
 		return
 	}
-	log.Printf("[perf] decided in %s ordered in %s acknowledged in %s (total %s)",
-		t1.Sub(t0), t2.Sub(t1), t3.Sub(t2), t3.Sub(t0))
+	if teddy.Live {
+		log.Printf("[perf] decided in %s ordered in %s acknowledged in %s (total %s)",
+			t1.Sub(t0), t2.Sub(t1), t3.Sub(t2), t3.Sub(t0))
+	}
 
 	// report trade
 	value := quantity.Mul(order.FillPrice)

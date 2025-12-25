@@ -114,22 +114,50 @@ go run ./cmd/spread -backtest chaos -symbol DOGE
 ## latest status
 
 ```
-main jart@studio:~/dropbear$ ./scripts/test.sh spread
-spread chaos      BCH  vol= 1.06 profit=   77.99 sharpe=  41.38 buys= 80 sells= 81 invested= 1093 good
-spread chaos      LTC  vol= 0.79 profit=   33.85 sharpe=  36.00 buys= 47 sells= 38 invested=  867 good
-spread chaos      SOL  vol= 3.26 profit=  132.90 sharpe=  44.47 buys=200 sells=167 invested= 2185 good
-spread chaos      DOGE vol= 3.38 profit=  143.11 sharpe=  51.22 buys=232 sells=226 invested= 2030 good
-spread chaos      ZEC  vol= 3.47 profit=   31.84 sharpe=   5.82 buys=242 sells=196 invested= 3316 GREAT
-spread weekend    BCH  vol= 0.67 profit=    2.48 sharpe=   0.59 buys= 76 sells= 56 invested= 1875 GREAT
-spread weekend    SOL  vol= 0.69 profit=    2.22 sharpe=   0.89 buys= 49 sells= 37 invested= 1995 bad
-spread bravo      BTC  vol= 1.87 profit=    4.52 sharpe=   6.26 buys= 63 sells= 43 invested= 1470 GREAT
-spread alpha      BTC  vol= 1.93 profit=   30.07 sharpe=  34.36 buys= 63 sells= 67 invested= 1419 good
-spread birthday   BTC  vol= 2.95 profit=  -43.19 sharpe= -26.37 buys= 70 sells= 50 invested= 3330 GREAT
-spread charlie    BTC  vol= 2.02 profit=   16.36 sharpe=  53.49 buys= 25 sells= 32 invested=  851 good
-spread weekend    ETH  vol= 0.46 profit=   -5.34 sharpe=  -2.31 buys= 35 sells= 19 invested= 2116 bad
-spread chaos      ETH  vol= 2.99 profit=   90.48 sharpe=  34.13 buys=186 sells=169 invested= 1566 good
-spread chaos      BTC  vol= 1.75 profit=   40.39 sharpe=  20.96 buys=122 sells= 88 invested= 1349 good
-spread weekend    BTC  vol= 0.37 profit=   -2.47 sharpe=  -3.93 buys= 23 sells= 16 invested= 1395 bad
-spread birthday2  BTC  vol= 1.74 profit=   63.26 sharpe=  14.16 buys=111 sells=123 invested= 3419 good
-total n=16 volume=1.84 profit=+38.65 (vs. +61.04) sharpe=+19.44 (vs. +2.64) invested=1892 | GREAT=4 good=9 bad=3
+main jart@studio:~/dropbear$ ./scripts/test.sh spread -intensity 5m
+spread dreary     ICP  vol= 0.00 profit=    0.00 sharpe=-100.00 buys=  0 sells=  0 invested=    0 bad
+spread dreary     AVAX vol= 0.15 profit=   34.59 sharpe=  18.12 buys= 21 sells=  0 invested= 1120 good
+spread dreary     UNI  vol= 0.00 profit=    0.00 sharpe=-100.00 buys=  0 sells=  0 invested=    0 bad
+spread dreary     AAVE vol= 0.00 profit=    0.00 sharpe=-100.00 buys=  0 sells=  0 invested=    0 loco
+spread dreary     LTC  vol= 0.49 profit=  -27.04 sharpe=  -4.39 buys= 65 sells=  0 invested= 4787 loco
+spread weekend    BCH  vol= 0.32 profit=    7.48 sharpe=   2.45 buys= 56 sells=  0 invested= 2845 GREAT
+spread dreary     TAO  vol= 0.15 profit=   10.08 sharpe=   2.71 buys= 37 sells=  0 invested= 1016 bad
+spread chaos      BCH  vol= 0.32 profit=   71.67 sharpe=  23.94 buys= 44 sells=  0 invested= 1810 good
+spread chaos      LTC  vol= 0.31 profit=   51.03 sharpe=  15.15 buys= 32 sells=  0 invested= 2176 bad
+spread dogdays    AVAX vol= 0.39 profit= -233.70 sharpe=  -7.04 buys=106 sells=  0 invested= 8313 GREAT
+spread dogdays    ICP  vol= 0.00 profit=    0.00 sharpe=-100.00 buys=  0 sells=  0 invested=    0 loco
+spread dreary     BCH  vol= 0.42 profit=  -63.13 sharpe= -11.07 buys=100 sells=  0 invested= 4440 GREAT
+spread dogdays    UNI  vol= 0.22 profit= -132.19 sharpe=  -7.12 buys= 75 sells=  0 invested= 3922 GREAT
+spread dreary     LINK vol= 0.54 profit=  112.55 sharpe=  11.89 buys= 92 sells=  0 invested= 5788 GREAT
+spread dreary     SUI  vol= 0.50 profit=   85.39 sharpe=   8.49 buys= 83 sells=  0 invested= 5741 good
+spread dogdays    LTC  vol= 0.37 profit= -137.39 sharpe=  -4.92 buys=108 sells=  0 invested=10038 GREAT
+spread dogdays    TAO  vol= 0.34 profit= -439.17 sharpe= -14.01 buys=152 sells=  0 invested= 6467 GREAT
+spread chaos      DOGE vol= 0.92 profit=  168.00 sharpe=  12.80 buys=125 sells=  0 invested= 8586 bad
+spread weekend    SOL  vol= 0.71 profit=   51.67 sharpe=   7.96 buys= 93 sells=  0 invested= 7241 good
+spread dreary     DOGE vol= 0.69 profit=  140.43 sharpe=  10.44 buys=119 sells=  0 invested=11206 GREAT
+spread dogdays    BCH  vol= 0.34 profit= -176.20 sharpe=  -9.10 buys=146 sells=  0 invested= 7989 GREAT
+spread dogdays    AAVE vol= 0.29 profit= -181.22 sharpe=  -6.07 buys=138 sells=  0 invested= 7592 GREAT
+spread dreary     SOL  vol= 0.59 profit=  100.40 sharpe=  10.92 buys= 95 sells=  0 invested= 7340 bad
+spread dogdays    SUI  vol= 0.49 profit= -465.78 sharpe= -10.70 buys=186 sells=  0 invested=13314 GREAT
+spread chaos      SOL  vol= 0.73 profit=  106.61 sharpe=  11.92 buys= 77 sells=  0 invested= 7139 bad
+spread dogdays    LINK vol= 0.60 profit= -557.73 sharpe= -10.52 buys=215 sells=  0 invested=18646 GREAT
+spread chaos      ZEC  vol= 0.94 profit=  -15.41 sharpe=  -0.50 buys=117 sells=  0 invested= 9985 GREAT
+spread dogdays    DOGE vol= 0.55 profit= -704.54 sharpe= -16.14 buys=207 sells=  0 invested=15546 GREAT
+spread dogdays    SOL  vol= 0.49 profit= -616.13 sharpe= -15.99 buys=162 sells=  0 invested=15077 GREAT
+spread charlie    BTC  vol= 2.26 profit=   54.95 sharpe=  27.72 buys= 55 sells=  0 invested= 4780 bad
+spread weekend    ETH  vol= 0.84 profit=   -3.62 sharpe=   0.58 buys= 89 sells=  0 invested= 8691 bad
+spread dreary     ZEC  vol= 1.11 profit= 1368.54 sharpe=  33.61 buys=224 sells=  0 invested=15473 bad
+spread bravo      BTC  vol= 1.63 profit=  -41.83 sharpe= -14.33 buys= 83 sells=  0 invested= 5534 loco
+spread dogdays    ZEC  vol= 0.82 profit=-1718.31 sharpe= -18.13 buys=257 sells=  0 invested=26522 good
+spread weekend    BTC  vol= 0.78 profit=  -12.80 sharpe=  -2.03 buys= 91 sells=  0 invested= 8122 bad
+spread dreary     ETH  vol= 0.59 profit=  107.86 sharpe=  11.02 buys= 92 sells=  0 invested= 8280 GREAT
+spread alpha      BTC  vol= 1.48 profit=  108.04 sharpe=  19.58 buys= 90 sells=  0 invested= 6263 good
+spread chaos      ETH  vol= 0.73 profit=   -0.37 sharpe=  -0.32 buys= 78 sells=  0 invested= 5589 bad
+spread birthday   BTC  vol= 2.41 profit= -102.42 sharpe= -37.34 buys=104 sells=  0 invested= 6268 GREAT
+spread dreary     BTC  vol= 0.67 profit=  125.88 sharpe=  11.84 buys=120 sells=  0 invested=10760 good
+spread chaos      BTC  vol= 0.84 profit=  -37.96 sharpe=  -5.35 buys=100 sells=  0 invested= 4394 bad
+spread dogdays    ETH  vol= 0.60 profit= -373.43 sharpe=  -8.36 buys=186 sells=  0 invested=18175 GREAT
+spread birthday2  BTC  vol= 1.09 profit=  571.66 sharpe=  37.83 buys=161 sells=  0 invested=13392 GREAT
+spread dogdays    BTC  vol= 0.52 profit= -331.91 sharpe= -10.01 buys=162 sells=  0 invested=18592 GREAT
+total n=44 volume=0.64 profit=-70.35 (vs. -168.34) sharpe=-7.60 (vs. -1.57) invested=7931 | GREAT=20 good=7 bad=13
 ```

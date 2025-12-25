@@ -10,6 +10,7 @@ import (
 // LimitOrder places a limit order on the exchange or simulates one in backtest mode.
 func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, strategy ds.LimitOrderStrategy) (*Order, error) {
 	exchange := p.Exchange
+	orders := exchange.Orders
 	exchange.Lock.RLock()
 	feeRate := exchange.TakerFee
 	rebateRate := exchange.Rebate
@@ -69,7 +70,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	}
 
 	// create order object
-	order := p.Exchange.Orders.create(p, ds.OrderTypeLimit, side, quantity, limitPrice, hold)
+	order := orders.create(p, ds.OrderTypeLimit, side, quantity, limitPrice, hold)
 
 	// handle live trading
 	if Live {
@@ -80,10 +81,10 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 				order.kill(ds.OrderStateInvalid)
 				return nil, err
 			}
-			p.Exchange.Orders.lock.Lock()
+			orders.lock.Lock()
 			order.OrderID = orderID
-			p.Exchange.Orders.ordersMap[orderID] = order
-			p.Exchange.Orders.lock.Unlock()
+			orders.ordersMap[orderID] = order
+			orders.lock.Unlock()
 			return order, nil
 		default:
 			loggy.Fatalf("limit orders not supported on %v", p.Exchange)
@@ -124,22 +125,28 @@ func (p *Pair) precheckLimitOrder(quantity, limitPrice, notional, feeRate, rebat
 	p.Lock.RLock()
 	defer p.Lock.RUnlock()
 	if quantity.Cmp(p.BaseMinSize) < 0 {
-		return fmt.Errorf("quantity %s %s is below minimum size of %s %s", quantity, p.BaseCurrency, p.BaseMinSize, p.BaseCurrency)
+		return fmt.Errorf("quantity %s %s is below minimum size of %s %s",
+			quantity, p.BaseCurrency, p.BaseMinSize, p.BaseCurrency)
 	}
 	if quantity.Cmp(p.BaseMaxSize) > 0 {
-		return fmt.Errorf("quantity %s %s is above maximum size of %s %s", quantity, p.BaseCurrency, p.BaseMaxSize, p.BaseCurrency)
+		return fmt.Errorf("quantity %s %s is above maximum size of %s %s",
+			quantity, p.BaseCurrency, p.BaseMaxSize, p.BaseCurrency)
 	}
 	if quantity.Quantize(p.BaseIncrement).Cmp(quantity) != 0 {
-		return fmt.Errorf("quantity %s %s is not a multiple of increment %s %s", quantity, p.BaseCurrency, p.BaseIncrement, p.BaseCurrency)
+		return fmt.Errorf("quantity %s %s is not a multiple of increment %s %s",
+			quantity, p.BaseCurrency, p.BaseIncrement, p.BaseCurrency)
 	}
 	if limitPrice.Quantize(p.QuoteIncrement).Cmp(limitPrice) != 0 {
-		return fmt.Errorf("limitPrice %s %s is not a multiple of increment %s %s", limitPrice, p.QuoteCurrency, p.QuoteIncrement, p.QuoteCurrency)
+		return fmt.Errorf("limitPrice %s %s is not a multiple of increment %s %s",
+			limitPrice, p.QuoteCurrency, p.QuoteIncrement, p.QuoteCurrency)
 	}
 	if notional.Cmp(p.QuoteMinSize) < 0 {
-		return fmt.Errorf("notional %s %s is below minimum size of %s %s", notional, p.QuoteCurrency, p.QuoteMinSize, p.QuoteCurrency)
+		return fmt.Errorf("notional %s %s is below minimum size of %s %s",
+			notional, p.QuoteCurrency, p.QuoteMinSize, p.QuoteCurrency)
 	}
 	if notional.Cmp(p.QuoteMaxSize) > 0 {
-		return fmt.Errorf("notional %s %s is above maximum size of %s %s", notional, p.QuoteCurrency, p.QuoteMaxSize, p.QuoteCurrency)
+		return fmt.Errorf("notional %s %s is above maximum size of %s %s",
+			notional, p.QuoteCurrency, p.QuoteMaxSize, p.QuoteCurrency)
 	}
 	return nil
 }

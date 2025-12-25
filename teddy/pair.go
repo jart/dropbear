@@ -54,7 +54,7 @@ func newPair(exchange *Exchange, symbol string) *Pair {
 		QuoteCurrency:  parts[1],
 		BaseIncrement:  decimal.Satoshi,
 		QuoteIncrement: decimal.Satoshi,
-		QuoteMinSize:   decimal.FromInt(1),
+		QuoteMinSize:   decimal.One,
 		QuoteMaxSize:   decimal.Max,
 		BaseMinSize:    decimal.Satoshi,
 		BaseMaxSize:    decimal.Max,
