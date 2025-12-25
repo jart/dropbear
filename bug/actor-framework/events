@@ -1,6 +1,6 @@
 agent system
-events 21
-head d33f98cc7305073a0f5ba63a4fd1891392d1176a75ad7f24a325fff8f910ba7c
+events 23
+head fcee6ac89be91a9ffee4fe96c7d205da91070388aaa126d44145e6ccf6cf1309
 
 timestamp 1766649464
 author csg@statewave.com
@@ -194,3 +194,21 @@ type Message
 
 event_type Message
 text TESTING: All tests pass. Benchmarks: mailbox 5.7ns/op (0 allocs), actor 37ns/op. go vet clean.
+---
+parent d33f98cc7305073a0f5ba63a4fd1891392d1176a75ad7f24a325fff8f910ba7c
+timestamp 1766651355
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state testing
+reason Transitioning to merge
+to_state merge
+---
+parent 9b74b0f6b1cd02c685b3a4a6d32c80b9f3fe30fd7572b4e9008eaff1c67da784
+timestamp 1766651355
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to merge
