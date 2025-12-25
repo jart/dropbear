@@ -1,6 +1,6 @@
 agent system
-events 3
-head eebf181bbf852dec884ff047404da36ac5197c88b46e11d48dca510419e3c8f7
+events 4
+head b6a485b63471ee9b3b86743f1aef018a0fe55f8533b79bd223039e70bdc40477
 
 timestamp 1766651987
 author csg@statewave.com
@@ -50,3 +50,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent eebf181bbf852dec884ff047404da36ac5197c88b46e11d48dca510419e3c8f7
+timestamp 1766657220
+author csg@statewave.com
+type Message
+
+event_type Message
+text Understanding: WWMA uses SMA during warmup (first N samples), then switches to Wilder smoothing. Currently samples=7000 ticks before trading starts. Key metrics: time to warmup, Sharpe after warmup, profit, first trade time.
