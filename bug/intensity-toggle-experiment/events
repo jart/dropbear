@@ -1,6 +1,6 @@
 agent system
-events 3
-head f2d0bbcb912acb25936b60c01d6d131e370b4dd3de160765a896ec1358641faf
+events 4
+head f7ce5d40bfde2740e17dcf2a49d6a14d907582fa3789c5c3c52bbaad34fed74d
 
 timestamp 1766651981
 author csg@statewave.com
@@ -51,3 +51,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent f2d0bbcb912acb25936b60c01d6d131e370b4dd3de160765a896ec1358641faf
+timestamp 1766657383
+author csg@statewave.com
+type Message
+
+event_type Message
+text Understanding: Intensity uses Avellaneda-Stoikov κ (kappa) to scale spreads based on market liquidity tightness. High κ = tight liquidity = tighter spreads allowed. Lines 294-306 in cmd/spread/main.go
