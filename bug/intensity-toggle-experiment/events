@@ -1,6 +1,6 @@
 agent system
-events 9
-head c2c9adc971a2996ced8f3a70b89110f02e16918d59a29aea84d11845145d3f9a
+events 11
+head aaf0fa54ac4391f925857aa192aa6f1084a34b4de1c1f421f59f52df12885ce9
 
 timestamp 1766651981
 author csg@statewave.com
@@ -101,3 +101,21 @@ type Message
 
 event_type Message
 text Results: Intensity hurts profit (-$12.14 avg) despite improving Sharpe (+1.78). Recommendation: REMOVE for simplicity. See EXPERIMENT_RESULTS.md
+---
+parent c2c9adc971a2996ced8f3a70b89110f02e16918d59a29aea84d11845145d3f9a
+timestamp 1766658028
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state architecture
+reason Transitioning to implementation
+to_state implementation
+---
+parent 3eb2753d3819506a05d318787938443a650e4bc834b8a510f4f793c5ea5573a9
+timestamp 1766658028
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to implementation
