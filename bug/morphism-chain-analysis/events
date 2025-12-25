@@ -1,6 +1,6 @@
 agent system
-events 16
-head e1986919527fa03ec4868bcfe6c5e0e36835862e1f64c623100405d4804c2a4d
+events 18
+head 3f4eb0dd0390361968f22bdcfdfb5ee4b9aca37c2e3da19deb8a6fd4762f7a9f
 
 timestamp 1766651824
 author csg@statewave.com
@@ -166,3 +166,21 @@ type Message
 
 event_type Message
 text Testing complete. Verified on chaos/BTC, chaos/DOGE, alpha/BTC. All metrics accurate: disposition filter rejects 81.8% of signals, buygap rejects 97.6% of what's left. Only 0.0074% of raw signals execute.
+---
+parent e1986919527fa03ec4868bcfe6c5e0e36835862e1f64c623100405d4804c2a4d
+timestamp 1766657881
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state testing
+reason Transitioning to merge
+to_state merge
+---
+parent ad3ed3220547069ad33670bfcc924db7b379812ee0b2b7a0be3c844ea205b2a8
+timestamp 1766657881
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to merge
