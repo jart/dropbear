@@ -1,6 +1,6 @@
 agent system
-events 16
-head 8885d18c58cf04177edbbe68e94c5c73dbb09ed9ce56f939cbc8d9e73bed6753
+events 18
+head 4695b3719cacda06be42e1c7758600181b0ff8e6a01f988b4b7a2faa1702116b
 
 timestamp 1766651963
 author csg@statewave.com
@@ -162,3 +162,21 @@ type Message
 
 event_type Message
 text Smoke tests passed: tested 2-9 coin combinations, parallel execution verified, all visualizations working, failure handling confirmed
+---
+parent 8885d18c58cf04177edbbe68e94c5c73dbb09ed9ce56f939cbc8d9e73bed6753
+timestamp 1766659177
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state testing
+reason Transitioning to merge
+to_state merge
+---
+parent 8bc0e1e40d866f881be31cc0ea5d67f9ff68f631470e2103ad4dc6358d0f493f
+timestamp 1766659177
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to merge
