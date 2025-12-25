@@ -1,0 +1,22 @@
+Tune the profit threshold for sell decisions.
+
+## Goal
+Find optimal profit target for selling positions.
+
+## Current Logic (main.go:449-451)
+- costBasis = costBasis * (1 + profit)
+- Only sell if quote > adjusted cost basis
+- Current profit = 5 bps
+
+## Trade-offs
+- High profit threshold: fewer sells, larger gains per trade, more inventory risk
+- Low profit threshold: more sells, smaller gains, less inventory risk
+
+## Experiment
+- Test profit = {2, 3, 5, 7, 10} bps
+- Measure: sell count, avg profit per sell, inventory time
+
+## Questions
+- Should profit threshold be adaptive?
+- Should it scale with inventory size?
+- Interaction with panic threshold?

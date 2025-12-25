@@ -1,0 +1,33 @@
+agent system
+events 1
+head 09e9f04dedc5abeec1f7d38549b75ac5af0b81fec0596a56d74a4afa272f44d0
+
+timestamp 1766652078
+author csg@statewave.com
+type CreateBug
+
+content Tune the profit threshold for sell decisions.
+	
+	## Goal
+	Find optimal profit target for selling positions.
+	
+	## Current Logic (main.go:449-451)
+	- costBasis = costBasis * (1 + profit)
+	- Only sell if quote > adjusted cost basis
+	- Current profit = 5 bps
+	
+	## Trade-offs
+	- High profit threshold: fewer sells, larger gains per trade, more inventory risk
+	- Low profit threshold: more sells, smaller gains, less inventory risk
+	
+	## Experiment
+	- Test profit = {2, 3, 5, 7, 10} bps
+	- Measure: sell count, avg profit per sell, inventory time
+	
+	## Questions
+	- Should profit threshold be adaptive?
+	- Should it scale with inventory size?
+	- Interaction with panic threshold?
+event_type CreateBug
+name profit-threshold-tuning
+title profit-threshold-tuning
