@@ -1,6 +1,6 @@
 agent system
-events 1
-head 9c04897aea2fd72304aeeacbdd8c5e5ad68f561896cff5083b11a50d9be2e85f
+events 2
+head 775b5ea25e5021368d402bcccd11c4522cc914ae57d1c894dfa222d0284fbc79
 
 timestamp 1766652084
 author csg@statewave.com
@@ -31,3 +31,16 @@ content Build framework for chained experiments.
 event_type CreateBug
 name chain-experiment-framework
 title chain-experiment-framework
+---
+parent 9c04897aea2fd72304aeeacbdd8c5e5ad68f561896cff5083b11a50d9be2e85f
+timestamp 1766657158
+author csg@statewave.com
+type Checkout
+
+branch_name bug/chain-experiment-framework
+bug_name chain-experiment-framework
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
