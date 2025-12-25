@@ -1,0 +1,21 @@
+Study cross-coin performance correlation and regime detection.
+
+## Goal
+Understand why some coins perform better than others and identify market regimes.
+
+## Observations from test.sh
+- ZEC outperforms on several datasets (high vol, tight spread)
+- DOGE volatile - both big wins and big losses
+- BTC lower sharpe - too efficient for spread arbitrage?
+- Some coins have zero trades on certain datasets
+
+## Analysis
+- Performance correlation matrix across coins
+- Volatility vs sharpe relationship
+- Spread distribution differences by coin
+- Market regime clustering (which datasets are similar?)
+
+## Questions
+- Should parameters be coin-specific?
+- Can we predict which coins will perform well?
+- Are there coin pairs that hedge each other?
