@@ -1,6 +1,6 @@
 agent system
-events 21
-head fa259756a9269a11fb6771f4719658fc7706a44084b09b0c0a8ba1cd9fc97be7
+events 22
+head 66ad4efc59dc3542fc474bf2a6d89ac449e1f6f6f4634044b00d34bd6b26804c
 
 timestamp 1766651798
 author csg@statewave.com
@@ -210,3 +210,11 @@ cleanup_branch false
 closed_at 2025-12-25T10:42:15.790427+00:00
 event_type CloseBug
 reason Closed
+---
+parent fa259756a9269a11fb6771f4719658fc7706a44084b09b0c0a8ba1cd9fc97be7
+timestamp 1766659434
+author csg@statewave.com
+type Message
+
+event_type Message
+text Pull request created: https://github.com/jart/dropbear/pull/2
