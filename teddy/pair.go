@@ -142,7 +142,7 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 		}
 		p.Lock.RUnlock()
 		for _, f := range phils {
-			f.o.fill(f.q, f.v)
+			f.o.fill(f.q, f.v, p.Exchange.MakerFee)
 		}
 	}
 }

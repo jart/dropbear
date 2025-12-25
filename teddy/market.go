@@ -11,55 +11,42 @@ import (
 func (p *Pair) MarketOrder(side ds.Side, quantity decimal.Decimal) (*Order, error) {
 	exchange := p.Exchange
 	orders := exchange.Orders
-	holdings := exchange.Holdings
-	exchange.Lock.RLock()
 	feeRate := exchange.TakerFee
-	exchange.Lock.RUnlock()
+	holdings := exchange.Holdings
 
 	// check order parameters
-	p.Lock.RLock()
-	quoteMinSize := p.QuoteMinSize
-	quoteMaxSize := p.QuoteMaxSize
 	if quantity.Cmp(p.BaseMinSize) < 0 {
-		err := fmt.Errorf("quantity %s %s is below minimum size of %s %s", quantity, p.BaseCurrency, p.BaseMinSize, p.BaseCurrency)
-		p.Lock.RUnlock()
-		return nil, err
+		return nil, fmt.Errorf("quantity %s %s is below minimum size of %s %s",
+			quantity, p.BaseCurrency, p.BaseMinSize, p.BaseCurrency)
 	}
 	if quantity.Cmp(p.BaseMaxSize) > 0 {
-		err := fmt.Errorf("quantity %s %s is above maximum size of %s %s", quantity, p.BaseCurrency, p.BaseMaxSize, p.BaseCurrency)
-		p.Lock.RUnlock()
-		return nil, err
+		return nil, fmt.Errorf("quantity %s %s is above maximum size of %s %s",
+			quantity, p.BaseCurrency, p.BaseMaxSize, p.BaseCurrency)
 	}
 	if quantity.Quantize(p.BaseIncrement).Cmp(quantity) != 0 {
-		err := fmt.Errorf("quantity %s %s is not a multiple of increment %s %s", quantity, p.BaseCurrency, p.BaseIncrement, p.BaseCurrency)
-		p.Lock.RUnlock()
-		return nil, err
+		return nil, fmt.Errorf("quantity %s %s is not a multiple of increment %s %s",
+			quantity, p.BaseCurrency, p.BaseIncrement, p.BaseCurrency)
 	}
-	p.Lock.RUnlock()
 
 	// get national best asking price
+	bestNotional := decimal.Zero
 	bestBid, bestAsk := p.OrderBook.BestBidAsk()
 	switch side {
 	case ds.SideBuy:
-		if bestAsk.Mul(quantity).Cmp(quoteMinSize) < 0 {
-			err := fmt.Errorf("order quantity %s %s too small", quantity, p.BaseCurrency)
-			return nil, err
-		}
-		if bestAsk.Mul(quantity).Cmp(quoteMaxSize) > 0 {
-			err := fmt.Errorf("order quantity %s %s too large", quantity, p.BaseCurrency)
-			return nil, err
-		}
+		bestNotional = bestAsk.Mul(quantity)
 	case ds.SideSell:
-		if bestBid.Mul(quantity).Cmp(quoteMinSize) < 0 {
-			err := fmt.Errorf("order quantity %s %s too small", quantity, p.BaseCurrency)
-			return nil, err
-		}
-		if bestBid.Mul(quantity).Cmp(quoteMaxSize) > 0 {
-			err := fmt.Errorf("order quantity %s %s too large", quantity, p.BaseCurrency)
-			return nil, err
-		}
+		bestNotional = bestBid.Mul(quantity)
+	}
+	if bestNotional.Cmp(p.QuoteMinSize) < 0 {
+		err := fmt.Errorf("order quantity %s %s too small", quantity, p.BaseCurrency)
+		return nil, err
+	}
+	if bestNotional.Cmp(p.QuoteMaxSize) > 0 {
+		err := fmt.Errorf("order quantity %s %s too large", quantity, p.BaseCurrency)
+		return nil, err
 	}
 
+	// prepare to place hold
 	holdAmount := decimal.Zero
 	buyingPower := decimal.Zero
 	baseHolding := holdings.Get(p.BaseCurrency)
@@ -72,23 +59,23 @@ func (p *Pair) MarketOrder(side ds.Side, quantity decimal.Decimal) (*Order, erro
 		quoteHolding.Lock.Lock()
 		maxCash := quoteHolding.Available.Mul(decimal.One.Sub(feeRate))
 		maxValue := quantity.Mul(bestAsk).Mul(decimal.Parse("1.10"))
-		buyingPower = maxValue.Min(maxCash).Min(quoteMaxSize)
+		buyingPower = maxValue.Min(maxCash).Min(p.QuoteMaxSize)
 		holdAmount = buyingPower.Add(buyingPower.Mul(feeRate))
 		if holdAmount.Cmp(quoteHolding.Available) > 0 {
 			loggy.Fatalf("buying power computation broken: holdAmount %s > available %s", holdAmount, quoteHolding.Available)
 		}
-		if buyingPower.Cmp(quoteMinSize) < 0 {
+		if buyingPower.Cmp(p.QuoteMinSize) < 0 {
 			quoteHolding.Lock.Unlock()
 			return nil, ds.ErrInsufficientFunds
 		}
 		quoteHolding.Available = quoteHolding.Available.Sub(holdAmount)
 		quoteHolding.Lock.Unlock()
-
 	case ds.SideSell:
 		// put on hold the full intended amount of asset
 		baseHolding.Lock.Lock()
 		if quantity.Cmp(baseHolding.Available) > 0 {
-			err := fmt.Errorf("tried to sell %s %s but only have %s %s available", quantity, p.BaseCurrency, baseHolding.Available, p.BaseCurrency)
+			err := fmt.Errorf("tried to sell %s %s but only have %s %s available",
+				quantity, p.BaseCurrency, baseHolding.Available, p.BaseCurrency)
 			baseHolding.Lock.Unlock()
 			return nil, err
 		}
@@ -101,16 +88,17 @@ func (p *Pair) MarketOrder(side ds.Side, quantity decimal.Decimal) (*Order, erro
 	if Live {
 		switch p.Exchange.Exchange {
 		case ds.ExchangeCoinbase:
-			order := p.Exchange.Orders.create(p, ds.OrderTypeMarket, side, quantity, decimal.Zero, decimal.Zero)
+			// pass our holdAmount so order.fill() can release it properly
+			order := orders.create(p, ds.OrderTypeMarket, side, quantity, decimal.Zero, holdAmount)
 			orderID, err := CoinbaseClient.MarketOrder(p.Symbol(), side, quantity, order.ClientOrderID, GetCostBasisMethod())
 			if err != nil {
 				order.kill(ds.OrderStateInvalid)
 				return nil, err
 			}
-			p.Exchange.Orders.lock.Lock()
+			orders.lock.Lock()
 			order.OrderID = orderID
-			p.Exchange.Orders.ordersMap[orderID] = order
-			p.Exchange.Orders.lock.Unlock()
+			orders.ordersMap[orderID] = order
+			orders.lock.Unlock()
 			return order, nil
 		default:
 			loggy.Fatalf("market orders not supported on %v", p.Exchange)
@@ -129,15 +117,16 @@ func (p *Pair) MarketOrder(side ds.Side, quantity decimal.Decimal) (*Order, erro
 	if fills == nil {
 		quoteHolding.Lock.Lock()
 		quoteHolding.Available = quoteHolding.Available.Add(holdAmount)
+		quoteHolding.Check()
 		quoteHolding.Lock.Unlock()
 		return nil, fmt.Errorf("insufficient liquidity for market buy of %s %s", quantity, p.BaseCurrency)
 	}
 
 	// create order and generate fills
-	order := orders.create(p, ds.OrderTypeMarket, ds.SideBuy, filledQuantity, decimal.Zero, holdAmount)
+	order := orders.create(p, ds.OrderTypeMarket, side, filledQuantity, decimal.Zero, holdAmount)
 	for _, fill := range fills {
 		fillValue := fill.Price.Mul(fill.Size)
-		order.fill(fill.Size, fillValue)
+		order.fill(fill.Size, fillValue, feeRate)
 	}
 	return order, nil
 }

@@ -11,18 +11,44 @@ import (
 func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, strategy ds.LimitOrderStrategy) (*Order, error) {
 	exchange := p.Exchange
 	orders := exchange.Orders
-	exchange.Lock.RLock()
 	feeRate := exchange.TakerFee
-	rebateRate := exchange.Rebate
-	exchange.Lock.RUnlock()
 	notional := quantity.Mul(limitPrice)
 
-	// perform sanity checks
-	if err := p.checkSelfTrade(side, limitPrice); err != nil {
-		return nil, err
+	// sanity check order parameters
+	if quantity.Cmp(p.BaseMinSize) < 0 {
+		return nil, fmt.Errorf("quantity %s %s is below minimum size of %s %s",
+			quantity, p.BaseCurrency, p.BaseMinSize, p.BaseCurrency)
 	}
-	if err := p.precheckLimitOrder(quantity, limitPrice, notional, feeRate, rebateRate); err != nil {
-		return nil, err
+	if quantity.Cmp(p.BaseMaxSize) > 0 {
+		return nil, fmt.Errorf("quantity %s %s is above maximum size of %s %s",
+			quantity, p.BaseCurrency, p.BaseMaxSize, p.BaseCurrency)
+	}
+	if quantity.Quantize(p.BaseIncrement).Cmp(quantity) != 0 {
+		return nil, fmt.Errorf("quantity %s %s is not a multiple of increment %s %s",
+			quantity, p.BaseCurrency, p.BaseIncrement, p.BaseCurrency)
+	}
+	if limitPrice.Quantize(p.QuoteIncrement).Cmp(limitPrice) != 0 {
+		return nil, fmt.Errorf("limitPrice %s %s is not a multiple of increment %s %s",
+			limitPrice, p.QuoteCurrency, p.QuoteIncrement, p.QuoteCurrency)
+	}
+	if notional.Cmp(p.QuoteMinSize) < 0 {
+		return nil, fmt.Errorf("notional %s %s is below minimum size of %s %s",
+			notional, p.QuoteCurrency, p.QuoteMinSize, p.QuoteCurrency)
+	}
+	if notional.Cmp(p.QuoteMaxSize) > 0 {
+		return nil, fmt.Errorf("notional %s %s is above maximum size of %s %s",
+			notional, p.QuoteCurrency, p.QuoteMaxSize, p.QuoteCurrency)
+	}
+
+	// self-trading is insane because it appears ot be one of the most legitimately dangerous
+	// practices with the potential to gigafry your brokerage account but is exclusively done
+	// by literal turbonormies who unironically want to "improve user engagement metrics" and
+	// basically get oneshotted by regulators.
+	for it := p.openOrders.Iterator(); it.Next(); {
+		order := it.Value()
+		if order.Side == side.Flip() && limitPrice.Mul(decimal.Decimal(side)).Cmp(order.LimitPrice) >= 0 {
+			return nil, ds.ErrSelfTrade
+		}
 	}
 
 	// post-only orders aren't allowed to cross the spread
@@ -54,6 +80,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 			return nil, ds.ErrInsufficientFunds
 		}
 		quoteHolding.Available = quoteHolding.Available.Sub(maxCost)
+		quoteHolding.Check()
 		quoteHolding.Lock.Unlock()
 		hold = maxCost
 	case ds.SideSell:
@@ -65,6 +92,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 			return nil, ds.ErrInsufficientFunds
 		}
 		baseHolding.Available = baseHolding.Available.Sub(quantity)
+		baseHolding.Check()
 		baseHolding.Lock.Unlock()
 		hold = quantity
 	}
@@ -104,7 +132,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 		if fills != nil {
 			for _, fill := range fills {
 				fillValue := fill.Price.Mul(fill.Size)
-				order.fill(fill.Size, fillValue)
+				order.fill(fill.Size, fillValue, exchange.TakerFee)
 			}
 			if takenQuantity.Cmp(quantity) == 0 {
 				if order.State != ds.OrderStateFilled {
@@ -119,34 +147,4 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	// order goes on book for remaining quantity
 	p.OrderBook.Add(ds.SideBuy, limitPrice, quantity)
 	return order, nil
-}
-
-func (p *Pair) precheckLimitOrder(quantity, limitPrice, notional, feeRate, rebateRate decimal.Decimal) error {
-	p.Lock.RLock()
-	defer p.Lock.RUnlock()
-	if quantity.Cmp(p.BaseMinSize) < 0 {
-		return fmt.Errorf("quantity %s %s is below minimum size of %s %s",
-			quantity, p.BaseCurrency, p.BaseMinSize, p.BaseCurrency)
-	}
-	if quantity.Cmp(p.BaseMaxSize) > 0 {
-		return fmt.Errorf("quantity %s %s is above maximum size of %s %s",
-			quantity, p.BaseCurrency, p.BaseMaxSize, p.BaseCurrency)
-	}
-	if quantity.Quantize(p.BaseIncrement).Cmp(quantity) != 0 {
-		return fmt.Errorf("quantity %s %s is not a multiple of increment %s %s",
-			quantity, p.BaseCurrency, p.BaseIncrement, p.BaseCurrency)
-	}
-	if limitPrice.Quantize(p.QuoteIncrement).Cmp(limitPrice) != 0 {
-		return fmt.Errorf("limitPrice %s %s is not a multiple of increment %s %s",
-			limitPrice, p.QuoteCurrency, p.QuoteIncrement, p.QuoteCurrency)
-	}
-	if notional.Cmp(p.QuoteMinSize) < 0 {
-		return fmt.Errorf("notional %s %s is below minimum size of %s %s",
-			notional, p.QuoteCurrency, p.QuoteMinSize, p.QuoteCurrency)
-	}
-	if notional.Cmp(p.QuoteMaxSize) > 0 {
-		return fmt.Errorf("notional %s %s is above maximum size of %s %s",
-			notional, p.QuoteCurrency, p.QuoteMaxSize, p.QuoteCurrency)
-	}
-	return nil
 }

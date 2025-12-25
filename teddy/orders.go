@@ -99,140 +99,66 @@ func (os *Orders) coinbaseOrderUpdateDaemon() {
 }
 
 func (os *Orders) onCoinbaseOrderUpdate(orderUpdate *coinbase.OrderUpdate) {
-	now := clocky.Now()
-	pair := os.Exchange.Pairs.Get(orderUpdate.ProductID)
+	// find the order in our map
 	os.lock.Lock()
 	order, exists := os.ordersMap[orderUpdate.OrderID]
-	mustAddToPair := false
 	if !exists {
 		order, exists = os.ordersMap[orderUpdate.ClientOrderID]
 		if !exists {
-			order = &Order{
-				CreatedTime:   now,
-				Pair:          pair,
-				OrderID:       orderUpdate.OrderID,
-				ClientOrderID: orderUpdate.ClientOrderID,
-				Type:          ds.MustParseOrderType(orderUpdate.OrderType),
-				Side:          ds.MustParseSide(orderUpdate.OrderSide),
-				onClose:       make(chan struct{}),
-			}
-			mustAddToPair = true
-			os.ordersMap[orderUpdate.OrderID] = order
-			os.ordersArray = append(os.ordersArray, order)
-			os.openOrders.Add(order)
-			if orderUpdate.ClientOrderID != "" {
-				os.ordersMap[orderUpdate.ClientOrderID] = order
-			}
-		} else {
-			order.OrderID = orderUpdate.OrderID
-			os.ordersMap[orderUpdate.OrderID] = order
+			// order not in our map - ignore (could be from another session)
+			os.lock.Unlock()
+			return
 		}
+		order.OrderID = orderUpdate.OrderID
+		os.ordersMap[orderUpdate.OrderID] = order
 	}
 	os.lock.Unlock()
-	createdTime := clocky.MustParseTime(orderUpdate.CreationTime)
-	baseHolding := os.Exchange.Holdings.Get(order.Pair.BaseCurrency)
-	quoteHolding := os.Exchange.Holdings.Get(order.Pair.QuoteCurrency)
+
+	// parse coinbase values
+	cbFilled := decimal.Parse(orderUpdate.CumulativeQuantity)
+	cbValue := decimal.Parse(orderUpdate.FilledValue)
+	cbFee := decimal.Parse(orderUpdate.TotalFees)
+	cbQuantity := decimal.Parse(orderUpdate.LeavesQuantity).Add(cbFilled)
+	cbState := ds.NewOrderStateForCoinbase(orderUpdate.Status, cbFilled)
+
+	// compute deltas from our tracked state
 	order.Lock.Lock()
-	oldFee := order.Fee
-	oldHold := order.Hold
-	oldFill := order.Filled
-	oldState := order.State
+	oldFilled := order.Filled
 	oldValue := order.FillValue
-	order.CreatedTime = createdTime
-	order.Filled = decimal.Parse(orderUpdate.CumulativeQuantity)
-	order.Quantity = decimal.Parse(orderUpdate.LeavesQuantity).Add(order.Filled)
-	order.LimitPrice = decimal.Parse(orderUpdate.LimitPrice)
-	order.FillPrice = decimal.Parse(orderUpdate.AvgPrice)
-	order.FillValue = decimal.Parse(orderUpdate.FilledValue)
-	order.Hold = decimal.Parse(orderUpdate.OutstandingHoldAmount)
-	order.Fee = decimal.Parse(orderUpdate.TotalFees)
-	order.Side = ds.MustParseSide(orderUpdate.OrderSide)
-	newState := ds.NewOrderStateForCoinbase(orderUpdate.Status, order.Filled)
-	valueDelta := order.FillValue.Sub(oldValue)
-	holdDelta := order.Hold.Sub(oldHold)
-	fillDelta := order.Filled.Sub(oldFill)
-	feeDelta := order.Fee.Sub(oldFee)
-	order.State = newState
-	if fillDelta.IsPositive() {
-		order.LastFillTime = now
+	oldState := order.State
+	oldFees := order.lastFees
+	feeDelta := cbFee.Sub(oldFees)
+	fillDelta := cbFilled.Sub(oldFilled)
+	valueDelta := cbValue.Sub(oldValue)
+	feeRate := decimal.Zero
+	if valueDelta.IsPositive() {
+		feeRate = feeDelta.Div(valueDelta)
 	}
+	order.lastFees = cbFee
 	order.Lock.Unlock()
-	if feeDelta.IsNegative() {
-		loggy.Fatalf("fee delta went negative: %s -> %s", oldFee, order.Fee)
-	}
+
+	// sanity check deltas
 	if fillDelta.IsNegative() {
-		loggy.Fatalf("fill delta went negative: %s -> %s", oldFill, order.Filled)
+		loggy.Fatalf("fill delta went negative: %s -> %s", oldFilled, cbFilled)
 	}
 	if valueDelta.IsNegative() {
-		loggy.Fatalf("value delta went negative: %s -> %s", oldValue, order.FillValue)
+		loggy.Fatalf("value delta went negative: %s -> %s", oldValue, cbValue)
 	}
-	switch order.Side {
-	case ds.SideBuy:
-		if fillDelta.IsPositive() {
-			baseHolding.Lock.Lock()
-			baseHolding.Quantity = baseHolding.Quantity.Add(fillDelta)
-			baseHolding.Available = baseHolding.Available.Add(fillDelta)
-			baseHolding.Volume = baseHolding.Volume.Add(fillDelta)
-			baseHolding.BuyVolume = baseHolding.BuyVolume.Add(fillDelta)
-			baseHolding.Lots.Add(now, fillDelta, valueDelta)
-			baseHolding.Lock.Unlock()
-		}
-		if feeDelta.IsPositive() || valueDelta.IsPositive() || !holdDelta.IsZero() {
-			quoteHolding.Lock.Lock()
-			quoteHolding.Quantity = quoteHolding.Quantity.Sub(feeDelta)
-			quoteHolding.Available = quoteHolding.Available.Sub(feeDelta)
-			quoteHolding.Quantity = quoteHolding.Quantity.Sub(valueDelta)
-			quoteHolding.Available = quoteHolding.Available.Sub(holdDelta)
-			quoteHolding.Volume = quoteHolding.Volume.Add(valueDelta)
-			quoteHolding.SellVolume = quoteHolding.SellVolume.Add(valueDelta)
-			quoteHolding.Lock.Unlock()
-		}
-	case ds.SideSell:
-		if fillDelta.IsPositive() || !holdDelta.IsZero() {
-			baseHolding.Lock.Lock()
-			baseHolding.Quantity = baseHolding.Quantity.Sub(fillDelta)
-			baseHolding.Available = baseHolding.Available.Sub(holdDelta)
-			baseHolding.Volume = baseHolding.Volume.Add(fillDelta)
-			baseHolding.SellVolume = baseHolding.SellVolume.Add(fillDelta)
-			baseHolding.Lots.Consume(fillDelta, now, decimal.Zero)
-			baseHolding.Lock.Unlock()
-		}
-		if fillDelta.IsPositive() {
-			quoteHolding.Lock.Lock()
-			quoteHolding.Quantity = quoteHolding.Quantity.Sub(feeDelta)
-			quoteHolding.Quantity = quoteHolding.Quantity.Add(valueDelta)
-			quoteHolding.Available = quoteHolding.Available.Add(valueDelta)
-			quoteHolding.Volume = quoteHolding.Volume.Add(valueDelta)
-			quoteHolding.BuyVolume = quoteHolding.BuyVolume.Add(valueDelta)
-			quoteHolding.Lock.Unlock()
-		}
+
+	// update order metadata that coinbase controls
+	order.Lock.Lock()
+	order.CreatedTime = clocky.MustParseTime(orderUpdate.CreationTime)
+	order.Quantity = cbQuantity // coinbase may adjust quantity for market orders
+	order.LimitPrice = decimal.Parse(orderUpdate.LimitPrice)
+	order.Lock.Unlock()
+
+	// process fill
+	if fillDelta.IsPositive() && valueDelta.IsPositive() {
+		order.fill(fillDelta, valueDelta, feeRate)
+	} else if cbState.IsFinal() && !oldState.IsFinal() {
+		// order ended without new fills (cancelled, expired, etc.)
+		order.kill(cbState)
 	}
-	if feeDelta.IsPositive() {
-		os.Exchange.Lock.Lock()
-		os.Exchange.Fees = os.Exchange.Fees.Add(feeDelta)
-		os.Exchange.Lock.Unlock()
-	}
-	if mustAddToPair && !newState.IsFinal() {
-		order.Pair.Lock.Lock()
-		order.Pair.openOrders.Add(order)
-		order.Pair.Lock.Unlock()
-	}
-	if !mustAddToPair && newState.IsFinal() && !oldState.IsFinal() {
-		order.Pair.Lock.Lock()
-		if order.Pair.openOrders.Contains(order) {
-			order.Pair.openOrders.Remove(order)
-		}
-		order.Pair.Lock.Unlock()
-	}
-	if !oldState.IsFinal() && newState.IsFinal() {
-		close(order.onClose)
-		os.lock.Lock()
-		if !os.openOrders.Contains(order) {
-			os.openOrders.Remove(order)
-		}
-		os.lock.Unlock()
-	}
-	os.OnOrderEvent(order)
 }
 
 func compareOrdersByClientOrderID(a, b *Order) int {

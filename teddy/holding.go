@@ -3,6 +3,7 @@ package teddy
 import (
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/loggy"
 	"sync"
 )
 
@@ -15,19 +16,34 @@ type Holding struct {
 	Volume     decimal.Decimal
 	BuyVolume  decimal.Decimal
 	SellVolume decimal.Decimal
-	WinCount   int // number of profitable sells
-	LossCount  int // number of unprofitable sells
+	WinCount   int
+	LossCount  int
 	Lots       *ds.Lots
 	IsCash     bool
 }
 
 func newHolding(exchange *Exchange, symbol string) *Holding {
-	isCash := looksLikeCashSymbol(symbol)
 	return &Holding{
 		Exchange: exchange,
 		Symbol:   symbol,
-		IsCash:   isCash,
+		IsCash:   looksLikeCashSymbol(symbol),
 		Lots:     ds.NewLots(GetCostBasisMethod()),
+	}
+}
+
+// check verifies critical accounting invariants.
+func (h *Holding) Check() {
+	if h.Quantity.IsNegative() {
+		loggy.Fatalf("accounting invariant violated: %s Quantity is negative: %s",
+			h.Symbol, h.Quantity)
+	}
+	if h.Available.IsNegative() {
+		loggy.Fatalf("accounting invariant violated: %s Available is negative: %s",
+			h.Symbol, h.Available)
+	}
+	if h.Available.Cmp(h.Quantity) > 0 {
+		loggy.Fatalf("accounting invariant violated: %s Available (%s) > Quantity (%s)",
+			h.Symbol, h.Available, h.Quantity)
 	}
 }
 
