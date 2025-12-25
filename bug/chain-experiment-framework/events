@@ -1,6 +1,6 @@
 agent system
-events 6
-head 90618e76e4942eaee9a2c691e38c484741882937ff85dcabdbe4a5d06c695a59
+events 8
+head c1c4377260e04f6fca97a24af6030c561e87025b47195b3f57b37886fadb1d0b
 
 timestamp 1766652084
 author csg@statewave.com
@@ -78,3 +78,21 @@ type Message
 
 event_type Message
 text assumptions: use Go for chain runner (fits project style), SQLite for experiment log, JSON for chain definitions (simpler than YAML), reuse existing backtest infrastructure
+---
+parent 90618e76e4942eaee9a2c691e38c484741882937ff85dcabdbe4a5d06c695a59
+timestamp 1766657393
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state discussion
+reason Transitioning to architecture
+to_state architecture
+---
+parent 750ab791c5ff78d558bc1654cc987e71fdeca4b4427365f719e1e6544b92d0bc
+timestamp 1766657393
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to architecture
