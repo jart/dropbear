@@ -1,6 +1,6 @@
 agent system
-events 9
-head 50211e45b9f8d51be44323945f457827dbfeb0b6f489cb166005245df3a19057
+events 10
+head 4e3d810b1771bd53999b938936b370dfcc2d7eaa14b5c737686b15602efacac2
 
 timestamp 1766652030
 author csg@statewave.com
@@ -104,3 +104,11 @@ type Message
 
 event_type Message
 text Transitioning to architecture
+---
+parent 50211e45b9f8d51be44323945f457827dbfeb0b6f489cb166005245df3a19057
+timestamp 1766658174
+author csg@statewave.com
+type Message
+
+event_type Message
+text IMPLEMENTED: Changed default cooldown from 5s to 2s in cmd/spread/main.go:41. Based on empirical testing showing 2s delivers +10% profit with minimal Sharpe degradation.
