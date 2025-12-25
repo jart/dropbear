@@ -1,0 +1,32 @@
+agent system
+events 1
+head 3f329daaa75c72a03f0c204515eb879445e2b96b27b570ca1993fbf5234f0130
+
+timestamp 1766652082
+author csg@statewave.com
+type CreateBug
+
+content Develop a signal quality scoring system.
+	
+	## Goal
+	Predict which spread signals will lead to profitable trades.
+	
+	## Features to Consider
+	- Deviation magnitude (larger = stronger signal?)
+	- Deviation velocity (how fast is spread moving?)
+	- Kappa/intensity at signal time
+	- Position in price range (disposition)
+	- Time since last trade
+	- Current inventory level
+	
+	## Model Options
+	- Simple weighted score
+	- Logistic regression
+	- Decision tree
+	
+	## Validation
+	- Backtest with quality filter
+	- Compare high-quality vs low-quality signal outcomes
+event_type CreateBug
+name signal-quality-scoring
+title signal-quality-scoring

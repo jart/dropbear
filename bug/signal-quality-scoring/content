@@ -1,0 +1,21 @@
+Develop a signal quality scoring system.
+
+## Goal
+Predict which spread signals will lead to profitable trades.
+
+## Features to Consider
+- Deviation magnitude (larger = stronger signal?)
+- Deviation velocity (how fast is spread moving?)
+- Kappa/intensity at signal time
+- Position in price range (disposition)
+- Time since last trade
+- Current inventory level
+
+## Model Options
+- Simple weighted score
+- Logistic regression
+- Decision tree
+
+## Validation
+- Backtest with quality filter
+- Compare high-quality vs low-quality signal outcomes
