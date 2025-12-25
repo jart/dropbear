@@ -20,7 +20,7 @@ var (
 	flagBacktest   = flag.String("backtest", "", "name of backtest dataset")
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flagRFR        = decimal.FlagBPS("rfr", "487", "annualized risk-free rate in basis points")
-	flagQuantum    = clocky.DurationFlag("quantum", "1m", "metric sampling interval while backtesting")
+	flagQuantum    = clocky.DurationFlag("quantum", "1h30m", "metric sampling interval while backtesting")
 )
 
 var (
