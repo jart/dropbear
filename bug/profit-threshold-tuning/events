@@ -1,6 +1,6 @@
 agent system
-events 1
-head 09e9f04dedc5abeec1f7d38549b75ac5af0b81fec0596a56d74a4afa272f44d0
+events 2
+head 102e1fece474876576b5f6ad6bc8aec5213f3f94777f619180d3f97f062955fe
 
 timestamp 1766652078
 author csg@statewave.com
@@ -31,3 +31,16 @@ content Tune the profit threshold for sell decisions.
 event_type CreateBug
 name profit-threshold-tuning
 title profit-threshold-tuning
+---
+parent 09e9f04dedc5abeec1f7d38549b75ac5af0b81fec0596a56d74a4afa272f44d0
+timestamp 1766657177
+author csg@statewave.com
+type Checkout
+
+branch_name bug/profit-threshold-tuning
+bug_name profit-threshold-tuning
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
