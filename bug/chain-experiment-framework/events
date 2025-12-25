@@ -1,6 +1,6 @@
 agent system
-events 8
-head c1c4377260e04f6fca97a24af6030c561e87025b47195b3f57b37886fadb1d0b
+events 9
+head f12204dde9d3ba7c2737d5e00234a8222c0c7ba30394e617ae2ae76562dfd204
 
 timestamp 1766652084
 author csg@statewave.com
@@ -96,3 +96,11 @@ type Message
 
 event_type Message
 text Transitioning to architecture
+---
+parent c1c4377260e04f6fca97a24af6030c561e87025b47195b3f57b37886fadb1d0b
+timestamp 1766657797
+author csg@statewave.com
+type Message
+
+event_type Message
+text architecture: experiment/chain.go (runner), experiment/result.go (storage), experiment/strategy.go (param selection), cmd/experiment/ (CLI)
