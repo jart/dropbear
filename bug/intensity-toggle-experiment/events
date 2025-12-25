@@ -1,6 +1,6 @@
 agent system
-events 1
-head f62dbd229c9363bba0c6e9a89103ecd9f43eb690c07c767b548c9dacd907d052
+events 2
+head 7ba959ea3dd4119a0bd55624d8ff23e231259b56e3c44ff1224d9c22462009da
 
 timestamp 1766651981
 author csg@statewave.com
@@ -28,3 +28,16 @@ content Compare strategy performance with/without intensity scaling.
 event_type CreateBug
 name intensity-toggle-experiment
 title intensity-toggle-experiment
+---
+parent f62dbd229c9363bba0c6e9a89103ecd9f43eb690c07c767b548c9dacd907d052
+timestamp 1766657166
+author csg@statewave.com
+type Checkout
+
+branch_name bug/intensity-toggle-experiment
+bug_name intensity-toggle-experiment
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
