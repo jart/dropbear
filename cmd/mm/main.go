@@ -56,6 +56,7 @@ var (
 	gLastTrade     clocky.Time
 	gLastActivity  clocky.Time
 	gLastSellTime  clocky.Time
+	gLastStatus    clocky.Time
 	gBinancePrice  decimal.Decimal
 	gCoinbaseMin   decimal.Decimal
 	gCoinbaseMax   decimal.Decimal
@@ -73,6 +74,15 @@ var (
 	gPriceMax      *indicators.Max
 	gFirstEvent    clocky.Time
 	gWarmedUp      bool
+
+	// status indicators (raw values for logging)
+	gDeviation decimal.Decimal // current spread deviation from baseline
+	gGreed     decimal.Decimal // inventory-based greed factor
+	gBalance   decimal.Decimal // buy/sell volume balance ratio
+	gBidDelta  decimal.Decimal // passive bid spread from mid
+	gAskDelta  decimal.Decimal // passive ask spread from mid
+	gInvRatio  decimal.Decimal // inventory / target ratio
+	gRangePos  decimal.Decimal // price position in min/max range (0=min, 1=max)
 )
 
 func main() {
@@ -138,6 +148,9 @@ func onBinanceTickImpl(tick *ds.Tick) {
 	if gFirstEvent.IsZero() {
 		gFirstEvent = tick.Time
 	}
+
+	// log status every minute
+	logStatus(tick.Time)
 
 	// track intensity of binance trading
 	if gIntensity != nil && len(tick.Trades) > 0 {
@@ -221,6 +234,7 @@ func checkSpread(now clocky.Time) {
 	gSpreadEMA.Add(spread)
 	baseline := gSpreadEMA.Value
 	deviation := spread.Sub(baseline)
+	gDeviation = deviation
 	isReady := gSpreadEMA.IsReady() || gPriceMin != nil
 	gSpreadLock.Unlock()
 	if !isReady {
@@ -259,6 +273,7 @@ func checkSpread(now clocky.Time) {
 		minVolume := buyVolume.Min(sellVolume)
 		balance = minVolume.Div(maxVolume)
 	}
+	gBalance = balance
 
 	// winRate: 1.0 = all wins, 0 = all losses, default 1.0 if no trades
 	winRate := decimal.One
@@ -282,8 +297,11 @@ func checkSpread(now clocky.Time) {
 	greed := decimal.One
 	buySpread := *flagSpread
 	sellSpread := *flagSpread
+	inventoryValue := inventoryQty.Mul(gCoinbasePrice)
+	if (*flagTarget).IsPositive() {
+		gInvRatio = inventoryValue.Div(*flagTarget)
+	}
 	if effectiveTarget.IsPositive() {
-		inventoryValue := inventoryQty.Mul(gCoinbasePrice)
 		imbalance := inventoryValue.Sub(effectiveTarget).Div(effectiveTarget)
 		// exponential greed: exp(imbalance * skew)
 		// when overweight: greed > 1, harder to buy, easier to sell
@@ -297,6 +315,7 @@ func checkSpread(now clocky.Time) {
 		buySpread = (*flagSpread).Mul(greed)
 		sellSpread = (*flagSpread).Div(greed)
 	}
+	gGreed = greed
 
 	// trading intensity adjustment (Avellaneda-Stoikov κ parameter)
 	// high κ = tight liquidity (trades near mid) = can use tighter spreads
@@ -325,6 +344,7 @@ func checkSpread(now clocky.Time) {
 	rangeSize := coinbaseMax.Sub(coinbaseMin)
 	if rangeSize.IsPositive() {
 		rangePosition := gCoinbasePrice.Sub(coinbaseMin).Div(rangeSize)
+		gRangePos = rangePosition
 		if rangePosition.Cmp(*flagComfort) < 0 {
 			if rangePosition.Cmp(*flagDanger) < 0 {
 				disposition = TooCheap
@@ -366,7 +386,6 @@ func checkSpread(now clocky.Time) {
 	// but only if balance allows (don't accumulate when we can't sell)
 	oneThird := decimal.One.DivInt(3)
 	balanceOK := balance.Cmp(oneThird) >= 0 || balance.IsZero()
-	inventoryValue := inventoryQty.Mul(gCoinbasePrice)
 	hardCap := (*flagTarget).MulInt(2)
 	underHardCap := inventoryValue.Cmp(hardCap) < 0
 
@@ -433,6 +452,7 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed, balance 
 	// greed < 1: underweight, tighten bid spread, widen ask spread
 	bidSpread := baseSpread.Mul(greed)
 	askSpread := baseSpread.Div(greed)
+	gAskDelta = askSpread
 
 	// inventory imbalance defense: when we're accumulating (balance < 0.5),
 	// exponentially widen bid spread to slow buying
@@ -444,6 +464,7 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed, balance 
 		defenseMultiplier := decimal.One.Div(safeBalance.Sqr())
 		bidSpread = bidSpread.Mul(defenseMultiplier)
 	}
+	gBidDelta = bidSpread
 
 	// desired passive order prices
 	desiredBidPrice := midPrice.Mul(decimal.One.Sub(bidSpread)).Quantize(quoteIncrement)
@@ -764,4 +785,61 @@ func getQuote(side ds.Side, size decimal.Decimal) (decimal.Decimal, bool) {
 	default:
 		return decimal.Zero, false
 	}
+}
+
+// logStatus prints indicator status every minute
+// Shows raw values with '?' suffix if indicator not ready
+func logStatus(now clocky.Time) {
+	// only log every minute
+	if now.Sub(gLastStatus) < clocky.Minute {
+		return
+	}
+	// in backtest mode, only log if verbose
+	if !teddy.Live && !*flagVerbose {
+		return
+	}
+	gLastStatus = now
+
+	// intensity ready?
+	var alpha, kappa decimal.Decimal
+	var intensityReady bool
+	gIntensityLock.Lock()
+	if gIntensity != nil {
+		intensityReady = gIntensity.IsReady()
+		alpha = gIntensity.Alpha
+		kappa = gIntensity.Kappa
+	}
+	gIntensityLock.Unlock()
+
+	// spread ready?
+	gSpreadLock.Lock()
+	spreadReady := gSpreadEMA.IsReady()
+	beta := gSpreadEMA.Value
+	gSpreadLock.Unlock()
+
+	// range ready?
+	gPriceLock.Lock()
+	rangeReady := gCoinbaseMin.IsPositive() && gCoinbaseMax.IsPositive()
+	gPriceLock.Unlock()
+
+	// format with '?' suffix if not ready
+	q := func(ready bool) string {
+		if ready {
+			return ""
+		}
+		return "?"
+	}
+
+	log.Printf("[status] α=%s%s κ=%s%s β=%s%sbps δ=%sbps μ=%s ρ=%s%% q=%s%% r=%s%s%% bδ=%sbps sδ=%sbps $%s",
+		alpha.Format(0), q(intensityReady),
+		kappa.Format(0), q(intensityReady),
+		beta.BPS().Format(2), q(spreadReady),
+		gDeviation.BPS().Format(2),
+		gGreed.Format(2),
+		gBalance.MulInt(100).Format(0),
+		gInvRatio.MulInt(100).Format(0),
+		gRangePos.MulInt(100).Format(0), q(rangeReady),
+		gBidDelta.BPS().Format(2),
+		gAskDelta.BPS().Format(2),
+		gCoinbasePrice.Format(2))
 }

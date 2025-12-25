@@ -151,7 +151,7 @@ the spread program (`./scripts/test.sh mm`) has this output:
 ```
 mm dogdays    AAVE vol= 0.8 profit=   12.17 sharpe=   0.40 buys= 417 sells= 146 invested= 4391 GREAT
 mm dreary     AAVE vol= 0.2 profit=  -22.67 sharpe= -21.82 buys= 137 sells=   8 invested= 2082 brave
-mm dogdays    AVAX vol= 1.1 profit=   40.46 sharpe=   3.56 buys= 175 sells= 103 invested= 3358 GREAT
+mm dogdays    AVAX vol= 1.0 profit=   26.98 sharpe=   2.12 buys= 166 sells= 101 invested= 3113 GREAT
 mm dreary     AVAX vol= 0.9 profit=   13.48 sharpe=   5.61 buys=  84 sells=  34 invested= 1626 bad
 mm chaos      BCH  vol= 0.5 profit=   56.33 sharpe=  22.53 buys=  49 sells=  11 invested= 1553 good
 mm dogdays    BCH  vol= 1.1 profit=   13.70 sharpe=   1.78 buys= 249 sells=  98 invested= 2128 GREAT
@@ -168,28 +168,28 @@ mm dreary     BTC  vol= 1.6 profit=   45.19 sharpe=  22.94 buys= 122 sells=  84 
 mm weekend    BTC  vol= 1.0 profit=   46.56 sharpe=  23.90 buys= 123 sells=  24 invested= 4310 good
 mm chaos      DOGE vol= 1.5 profit=   95.27 sharpe=  29.95 buys= 156 sells=  63 invested= 5197 good
 mm dogdays    DOGE vol= 2.3 profit=  -92.43 sharpe=  -8.06 buys= 368 sells= 286 invested= 5658 GREAT
-mm dreary     DOGE vol= 1.0 profit=  142.57 sharpe=  31.72 buys= 151 sells=  43 invested= 6888 GREAT
-mm chaos      ETH  vol= 1.7 profit=   15.56 sharpe=   8.02 buys= 102 sells=  72 invested= 3990 bad
+mm dreary     DOGE vol= 1.0 profit=  142.59 sharpe=  32.01 buys= 151 sells=  43 invested= 6851 GREAT
+mm chaos      ETH  vol= 2.7 profit=   18.14 sharpe=  12.98 buys= 137 sells=  77 invested= 3687 bad
 mm dogdays    ETH  vol= 3.0 profit=   11.59 sharpe=   1.09 buys=1176 sells= 316 invested= 6011 GREAT
 mm dreary     ETH  vol= 0.9 profit=   59.22 sharpe=  20.01 buys= 297 sells=  26 invested= 4936 good
 mm weekend    ETH  vol= 0.7 profit=   32.00 sharpe=  26.40 buys=  54 sells=  41 invested= 3119 good
 mm dogdays    LINK vol= 1.9 profit=  -87.79 sharpe=  -8.12 buys= 519 sells= 201 invested= 4783 GREAT
-mm dreary     LINK vol= 1.0 profit=   60.88 sharpe=  38.84 buys= 160 sells=  45 invested= 2597 good
+mm dreary     LINK vol= 1.0 profit=   61.75 sharpe=  39.30 buys= 160 sells=  45 invested= 2597 good
 mm chaos      LTC  vol= 1.1 profit=   89.90 sharpe=  28.83 buys= 179 sells=  59 invested= 4212 bad
-mm dogdays    LTC  vol= 1.3 profit=   41.99 sharpe=   5.72 buys= 396 sells= 109 invested= 4427 GREAT
-mm dreary     LTC  vol= 1.5 profit=   62.75 sharpe=   8.97 buys= 250 sells=  29 invested= 4034 GREAT
+mm dogdays    LTC  vol= 1.3 profit=   56.30 sharpe=   7.65 buys= 387 sells=  85 invested= 4439 GREAT
+mm dreary     LTC  vol= 1.5 profit=   63.46 sharpe=   9.35 buys= 256 sells=  29 invested= 4045 GREAT
 mm chaos      SOL  vol= 1.8 profit=  103.37 sharpe=  29.48 buys=  86 sells= 161 invested= 5175 good
 mm dogdays    SOL  vol= 2.1 profit=   73.57 sharpe=   7.95 buys= 473 sells= 241 invested= 4163 GREAT
 mm dreary     SOL  vol= 0.6 profit=   68.52 sharpe=  24.43 buys=  53 sells=  33 invested= 3758 good
 mm weekend    SOL  vol= 1.2 profit=   37.21 sharpe=   9.12 buys=  96 sells=  65 invested= 2740 good
-mm dogdays    SUI  vol= 2.2 profit= -132.23 sharpe= -13.40 buys= 374 sells= 285 invested= 6403 GREAT
+mm dogdays    SUI  vol= 1.7 profit= -136.70 sharpe= -13.16 buys= 367 sells= 156 invested= 4859 GREAT
 mm dreary     SUI  vol= 0.7 profit=   77.93 sharpe=  17.97 buys=  92 sells=  53 invested= 4484 good
 mm dogdays    TAO  vol= 0.7 profit= -268.55 sharpe= -28.39 buys= 230 sells= 126 invested= 3864 GREAT
-mm dreary     TAO  vol= 0.8 profit=  157.56 sharpe=  35.48 buys= 115 sells=  58 invested= 1240 good
-mm dogdays    UNI  vol= 0.8 profit=  -37.03 sharpe=  -2.23 buys= 228 sells= 123 invested= 5045 GREAT
-mm dreary     UNI  vol= 0.5 profit=   41.96 sharpe=  25.25 buys= 420 sells=  26 invested= 1619 good
+mm dreary     TAO  vol= 0.8 profit=  159.60 sharpe=  29.99 buys= 116 sells=  57 invested= 1025 good
+mm dogdays    UNI  vol= 0.8 profit=  -42.79 sharpe=  -2.61 buys= 227 sells= 128 invested= 5035 GREAT
+mm dreary     UNI  vol= 0.4 profit=   30.80 sharpe=  21.39 buys= 275 sells=  25 invested= 1588 good
 mm chaos      ZEC  vol= 0.7 profit=    5.73 sharpe=   1.80 buys=  36 sells=  21 invested= 1683 GREAT
 mm dogdays    ZEC  vol= 2.3 profit=  -42.89 sharpe=  -3.86 buys= 322 sells= 260 invested= 3702 GREAT
 mm dreary     ZEC  vol= 1.6 profit=  759.53 sharpe=  40.44 buys= 132 sells=  52 invested= 7963 bad
-total n=42 volume=1.46 profit=+53.89 (vs. -172.85) sharpe=+10.53 (vs. -0.39) invested=3924 | GREAT=20 good=15 brave=2 bad=5
+total n=42 volume=1.45 profit=+55.41 (vs. -167.85) sharpe=+10.82 (vs. -0.29) invested=3868 | GREAT=20 good=15 brave=2 bad=5
 ```
