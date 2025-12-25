@@ -1,6 +1,6 @@
 agent system
-events 12
-head 41df4102b221b5f0b12587e100156e9c2830372255ca9e86dda898a1f2b1033e
+events 14
+head 0f7d566962024f1d7385b8398a1d3b7042284df986f8a053a902eee1a777e98c
 
 timestamp 1766652084
 author csg@statewave.com
@@ -130,3 +130,21 @@ type Message
 
 event_type Message
 text Transitioning to implementation
+---
+parent 41df4102b221b5f0b12587e100156e9c2830372255ca9e86dda898a1f2b1033e
+timestamp 1766658424
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state implementation
+reason Transitioning to testing
+to_state testing
+---
+parent beecb7d621bc2362dfa1557face933ab964d2e5538035db5bdff4658d483212b
+timestamp 1766658424
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to testing
