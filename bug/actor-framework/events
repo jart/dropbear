@@ -1,6 +1,6 @@
 agent system
-events 16
-head 9600abdaf58b19c97be265e36182de5b4abaa936ad239834ccb91e59923ce52f
+events 17
+head 59b68775658c70ae90e5de76640a649437a247cd52940642421dc29f5d1e320b
 
 timestamp 1766649464
 author csg@statewave.com
@@ -152,3 +152,11 @@ type Message
 
 event_type Message
 text IMPLEMENTED: actor/actor.go - Generic Actor[In,Out] with Handler interface, Step(), Drain(), Run(). Tests pass.
+---
+parent 9600abdaf58b19c97be265e36182de5b4abaa936ad239834ccb91e59923ce52f
+timestamp 1766651220
+author csg@statewave.com
+type Message
+
+event_type Message
+text IMPLEMENTED: msg/market.go - BinanceTick, CoinbaseTick, PriceRange, IntensityUpdate, SpreadUpdate, MarketState types.
