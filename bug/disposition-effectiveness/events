@@ -1,6 +1,6 @@
 agent system
-events 1
-head d2cdf8a673e4faa8b7c534523998a8d0aa3949da658453d8cd8636cd6cdabef7
+events 2
+head b28363faf9e2d11e87faf27c555372525dcd2155b302aef36f30cb879170f6c6
 
 timestamp 1766651756
 author csg@statewave.com
@@ -29,3 +29,13 @@ content Analyze effectiveness of the price-range disposition filter.
 event_type CreateBug
 name disposition-effectiveness
 title disposition-effectiveness
+---
+parent d2cdf8a673e4faa8b7c534523998a8d0aa3949da658453d8cd8636cd6cdabef7
+timestamp 1766656061
+author csg@statewave.com
+type CloseBug
+
+cleanup_branch false
+closed_at 2025-12-25T09:47:41.350510+00:00
+event_type CloseBug
+reason Closed
