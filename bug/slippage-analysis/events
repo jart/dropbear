@@ -1,6 +1,6 @@
 agent system
-events 1
-head c706d57f1194cbe4a33fc769eb4f3cbcbe68dd799e137dedcdd6db717acc734e
+events 2
+head 77aa74b03279d6f6f69df1374be4c90bdfccafe248a83522751195a7cbba816e
 
 timestamp 1766652009
 author csg@statewave.com
@@ -28,3 +28,16 @@ content Analyze execution slippage and order book dynamics.
 event_type CreateBug
 name slippage-analysis
 title slippage-analysis
+---
+parent c706d57f1194cbe4a33fc769eb4f3cbcbe68dd799e137dedcdd6db717acc734e
+timestamp 1766657179
+author csg@statewave.com
+type Checkout
+
+branch_name bug/slippage-analysis
+bug_name slippage-analysis
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
