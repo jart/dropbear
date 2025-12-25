@@ -1,6 +1,6 @@
 agent system
-events 5
-head cfca6c1a1e87d5924c0af0ede6198cd732186eafc1129bbe6efec074a0a8d0eb
+events 6
+head 0fef2bb826e3db6f426c92c3b008ed13356e7286846175625e71203f74f6c3bf
 
 timestamp 1766651981
 author csg@statewave.com
@@ -67,3 +67,11 @@ type Message
 
 event_type Message
 text Scope: medium - Need to run existing test.sh script twice (with/without intensity), parse output, compare metrics across 7 datasets × multiple coins
+---
+parent cfca6c1a1e87d5924c0af0ede6198cd732186eafc1129bbe6efec074a0a8d0eb
+timestamp 1766657701
+author csg@statewave.com
+type Message
+
+event_type Message
+text Experiment design complete. Created scripts/intensity-experiment.sh (orchestrator) and scripts/intensity-analysis.py (detailed analyzer)
