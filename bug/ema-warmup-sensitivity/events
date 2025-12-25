@@ -1,6 +1,6 @@
 agent system
-events 8
-head 8a304da63b2eac960da7e1c0c49eb1773ead974c7b9a8a25533ba1914677be1b
+events 9
+head 346e6d6145f32bc643dea5811aba09102a86b1e2443ce26acae5f2c6e31e99cf
 
 timestamp 1766651987
 author csg@statewave.com
@@ -92,3 +92,11 @@ type Message
 
 event_type Message
 text Transitioning to architecture
+---
+parent 8a304da63b2eac960da7e1c0c49eb1773ead974c7b9a8a25533ba1914677be1b
+timestamp 1766657466
+author csg@statewave.com
+type Message
+
+event_type Message
+text Architecture decision: Two-phase approach. Phase 1: Add warmup metrics to spread (warmup.duration, warmup.ticks, trade.first_delay). Phase 2: Create scripts/warmup.sh to run spread with multiple -samples values and compare results. Simpler than Go orchestrator, reuses test.sh pattern.
