@@ -1,6 +1,6 @@
 agent system
-events 19
-head 46bd3edb0ee9309d30dc2091a47d0d2869c76b8e7fef64f1ac62c523594a39bd
+events 20
+head 6f56fc295a3ddf935a5dddfffd5a551dc27495f53a40b8c0bdd744253cf30d0c
 
 timestamp 1766651798
 author csg@statewave.com
@@ -189,3 +189,14 @@ type Message
 
 event_type Message
 text Branch cm-169cc16e pushed to origin. Ready for PR or merge to main.
+---
+parent 46bd3edb0ee9309d30dc2091a47d0d2869c76b8e7fef64f1ac62c523594a39bd
+timestamp 1766659329
+author csg@statewave.com
+type MergeBranch
+
+bug_name buygap-decay-analysis
+event_type MergeBranch
+merge_strategy merge-commit
+source_branch cm-169cc16e
+target_branch main
