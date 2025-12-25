@@ -1,0 +1,34 @@
+agent system
+events 1
+head 24ddc8fde612d3b896725dda6a37d8a59d8ad0321dc1576b68be33b7a6b9bb35
+
+timestamp 1766652050
+author csg@statewave.com
+type CreateBug
+
+content Analyze panic sell threshold effectiveness.
+	
+	## Goal
+	Determine if panic selling at large deviations is profitable.
+	
+	## Current Logic (main.go:452-468)
+	- If sell would be unprofitable, check if spread > panic threshold
+	- If spread > panic (15 bps), sell anyway to cut losses
+	- Prevents holding losing positions too long
+	
+	## Analysis
+	- How often is panic triggered?
+	- Are panic sells actually smart? (did price continue down?)
+	- What's the optimal panic threshold?
+	
+	## Experiment
+	- Test panic = {10, 15, 20, 30, 50} bps
+	- Measure: loss recovery rate, total P&L
+	
+	## Questions
+	- Should panic be adaptive based on volatility?
+	- Should panic consider inventory size?
+	- Is panic ever triggered in practice?
+event_type CreateBug
+name panic-threshold-analysis
+title panic-threshold-analysis
