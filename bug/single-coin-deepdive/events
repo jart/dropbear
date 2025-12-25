@@ -1,6 +1,6 @@
 agent system
-events 3
-head 1a1c87dcbc42adbbae32fc3e7c02f06731a61dcd7f1922bf9687dbf8689e36ac
+events 4
+head fb6e8efc542c2b2fb6cba88a351de9f10172566e8e9c3b4af282f3f34afffeee
 
 timestamp 1766651940
 author csg@statewave.com
@@ -52,3 +52,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent 1a1c87dcbc42adbbae32fc3e7c02f06731a61dcd7f1922bf9687dbf8689e36ac
+timestamp 1766657207
+author csg@statewave.com
+type Message
+
+event_type Message
+text Understanding: spread strategy uses teddy framework, checkSpread() is core decision point, need to capture all intermediate values for diagnostics
