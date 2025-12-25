@@ -1,6 +1,6 @@
 agent system
-events 9
-head 086cb02a8c59c9d4118b3932279c8286cb98d4961f9f966f6c9b2f1760655c51
+events 10
+head a383d564c24539eb0bb856b304e730246fd8f3cc7350644f2e68a39fc6189721
 
 timestamp 1766652078
 author csg@statewave.com
@@ -104,3 +104,11 @@ type Message
 
 event_type Message
 text Design decisions: (1) Multi-threshold testing in one run for direct comparison (2) Simplified strategy - only spread deviation, no greed/buygap/disposition filters (3) Track 7 metrics per threshold: sell count, avg profit, win rate, median/P95 hold time, total P&L, inventory time (4) Use ds.Lots with LIFO for accurate cost basis tracking
+---
+parent 086cb02a8c59c9d4118b3932279c8286cb98d4961f9f966f6c9b2f1760655c51
+timestamp 1766657504
+author csg@statewave.com
+type Message
+
+event_type Message
+text Implementation: 8-step plan: (1) skeleton from cmd/greed (2) data structures for SellRecord and ThresholdSim (3) market data replay (4) buy signals add to all sims (5) sell signals check each threshold independently (6) statistics calculation (7) testing on chaos/BTC (8) run across all datasets
