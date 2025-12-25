@@ -157,7 +157,7 @@ func (os *Orders) onCoinbaseOrderUpdate(orderUpdate *coinbase.OrderUpdate) {
 
 	// process fill
 	if fillDelta.IsPositive() && valueDelta.IsPositive() {
-		order.fill(fillDelta, valueDelta, feeRate)
+		_, _ = order.fill(fillDelta, valueDelta, feeRate)
 	} else if cbState.IsFinal() && !oldState.IsFinal() {
 		// order ended without new fills (cancelled, expired, etc.)
 		order.kill(cbState)

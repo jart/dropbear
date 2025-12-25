@@ -6,6 +6,7 @@ import (
 	"dropbear/exchange/binance"
 	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
+	"log"
 	"strings"
 	"sync"
 
@@ -118,31 +119,38 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 
 	// simulate people trading with our algorithm
 	if !Live {
-		type phil struct {
-			o *Order
-			q decimal.Decimal
-			v decimal.Decimal
-		}
 		p.Lock.RLock()
-		var phils []phil
+		var orders []*Order
+		for i := p.openOrders.Iterator(); i.Next(); {
+			orders = append(orders, i.Value())
+		}
+		p.Lock.RUnlock()
 		for _, trade := range tick.Trades {
-			for i := p.openOrders.Iterator(); i.Next(); {
-				order := i.Value()
+			remaining := trade.Quantity
+			for _, order := range orders {
+				if !remaining.IsPositive() {
+					break
+				}
 				if order.Type == ds.OrderTypeLimit {
 					if trade.Side == order.Side.Flip() {
-						if trade.Price.Mul(decimal.Decimal(trade.Side)).Cmp(order.LimitPrice) >= 0 {
-							unfilledQuantity := order.Quantity.Sub(order.Filled)
-							fillQuantity := unfilledQuantity.Min(trade.Quantity)
-							fillValue := order.LimitPrice.Mul(fillQuantity)
-							phils = append(phils, phil{order, fillQuantity, fillValue})
+						// buy fills when trade.Price <= limitPrice
+						// sell fills when trade.Price >= limitPrice
+						// using side multiplier: limitPrice*side >= tradePrice*side
+						if order.LimitPrice.Mul(decimal.Decimal(order.Side)).Cmp(trade.Price.Mul(decimal.Decimal(order.Side))) >= 0 {
+							fillValue := order.LimitPrice.Mul(remaining)
+							filled, err := order.fill(remaining, fillValue, p.Exchange.MakerFee)
+							if err == nil && filled.IsPositive() {
+								if gVerbose {
+									log.Printf("[sim] %s limit filled %s @ $%s (trade: %s %s @ $%s)",
+										order.Side, filled, order.LimitPrice,
+										trade.Side, trade.Quantity, trade.Price)
+								}
+								remaining = remaining.Sub(filled)
+							}
 						}
 					}
 				}
 			}
-		}
-		p.Lock.RUnlock()
-		for _, f := range phils {
-			f.o.fill(f.q, f.v, p.Exchange.MakerFee)
 		}
 	}
 }

@@ -1,6 +1,7 @@
 #!/bin/sh
 # ./scripts/test.sh spread -spread 4 -samples 7000
 
+SCRIPTS=${0%/*}
 CMD=${1:-spread}
 shift 1
 ARGS="$*"
@@ -35,11 +36,11 @@ run() {
                     JUDGEMENT="good"
                 fi
             elif [ "$(echo "$PROFIT > $PROFIT_BENCH" | bc)" -eq 1 ]; then
-                JUDGEMENT="loco"
+                JUDGEMENT="brave"
             else
                 JUDGEMENT="bad"
             fi
-            printf "%s %-10s %-4s vol=%4.1f profit=%8.2f sharpe=%7s buys=%3d sells=%3d invested=%5s %s\n" \
+            printf "%s %-10s %-4s vol=%4.1f profit=%8.2f sharpe=%7s buys=%4d sells=%4d invested=%5s %s\n" \
                 "$CMD" "$DATASET" "$COIN" "$VOLUME" "$PROFIT" "$SHARPE" "$BUYS" "$SELLS" "$INVESTED" "$JUDGEMENT" >>"$REPORT"
             echo "$VOLUME $PROFIT $PROFIT_BENCH $SHARPE $SHARPE_BENCH $INVESTED $JUDGEMENT" >>"$RESULTS"
             rm -f $OUTPATH
@@ -61,33 +62,4 @@ wait
 
 # print summary
 sort <"$REPORT"
-awk '
-BEGIN {
-    great=0
-    good=0
-    bad=0
-    loco=0
-    n=0
-}{
-    n++
-    w = $6  # invested amount as weight
-    total_weight += w
-    volume += $1 * w
-    profit += $2 * w
-    profit_bench += $3 * w
-    sharpe += $4 * w
-    sharpe_bench += $5 * w
-    invested += w
-    if ($7 == "GREAT") great++
-    else if ($7 == "good") good++
-    else if ($7 == "loco") loco++
-    else if ($7 == "bad") bad++
-}
-END {
-    if (total_weight > 0) {
-        printf "total n=%d volume=%.2f profit=%+.2f (vs. %+.2f) sharpe=%+.2f (vs. %+.2f) invested=%.0f | GREAT=%d good=%d loco=%d bad=%d\n",
-            n, volume/total_weight, profit/total_weight, profit_bench/total_weight,
-            sharpe/total_weight, sharpe_bench/total_weight, invested/n, great, good, loco, bad
-    }
-}
-' $RESULTS
+awk -f "$SCRIPTS/test.awk" "$RESULTS"

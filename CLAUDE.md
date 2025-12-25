@@ -146,8 +146,9 @@ go run ./cmd/spread -backtest chaos -symbol DOGE
 
 # the march of progress
 
+the spread program (`./scripts/test.sh spread`) has this output:
+
 ```
-./scripts/test.sh spread
 spread alpha      BTC  vol= 1.8 profit=   34.46 sharpe=  58.30 buys= 62 sells= 49 invested= 1246 good
 spread birthday   BTC  vol= 1.5 profit=  -24.20 sharpe= -14.59 buys= 38 sells= 29 invested= 2003 GREAT
 spread birthday2  BTC  vol= 1.3 profit=   40.11 sharpe=  13.64 buys= 83 sells= 89 invested= 2244 good
@@ -193,4 +194,10 @@ spread weekend    BTC  vol= 0.2 profit=   -3.99 sharpe= -16.36 buys= 17 sells=  
 spread weekend    ETH  vol= 0.3 profit=   -6.35 sharpe=  -4.91 buys= 29 sells= 11 invested= 1832 bad
 spread weekend    SOL  vol= 0.2 profit=    0.74 sharpe=  -4.78 buys= 16 sells=  7 invested=  978 bad
 total n=44 volume=0.75 profit=-26.62 (vs. -403.02) sharpe=+3.99 (vs. -10.48) invested=1489 | GREAT=18 good=14 loco=3 bad=9
+```
+
+the new mm (maket maker) program (`./scripts/test.sh mm | tail -n1`) has this output:
+
+```
+total n=44 volume=0.89 profit=-7.79 (vs. -227.45) sharpe=+6.81 (vs. -1.14) invested=2627 | GREAT=22 good=12 loco=0 bad=10
 ```

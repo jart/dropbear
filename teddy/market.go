@@ -126,7 +126,7 @@ func (p *Pair) MarketOrder(side ds.Side, quantity decimal.Decimal) (*Order, erro
 	order := orders.create(p, ds.OrderTypeMarket, side, filledQuantity, decimal.Zero, holdAmount)
 	for _, fill := range fills {
 		fillValue := fill.Price.Mul(fill.Size)
-		order.fill(fill.Size, fillValue, feeRate)
+		_, _ = order.fill(fill.Size, fillValue, feeRate)
 	}
 	return order, nil
 }

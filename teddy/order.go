@@ -4,7 +4,6 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/loggy"
 	"sync"
 )
 
@@ -59,21 +58,34 @@ func (order *Order) kill(state ds.OrderState) {
 	order.Lock.Lock()
 	order.State = state
 	hold := order.Hold
+	spent := order.FillValue.Add(order.Fee) // amount of hold consumed by fills
 	order.Hold = decimal.Zero
 	order.Lock.Unlock()
 	switch order.Side {
 	case ds.SideBuy:
-		qh := pair.Exchange.Holdings.Get(pair.QuoteCurrency)
-		qh.Lock.Lock()
-		qh.Available = qh.Available.Add(hold)
-		qh.Check()
-		qh.Lock.Unlock()
+		// only release unused portion of hold (hold minus what was spent on fills)
+		releaseAmount := hold.Sub(spent)
+		if releaseAmount.IsPositive() {
+			qh := pair.Exchange.Holdings.Get(pair.QuoteCurrency)
+			qh.Lock.Lock()
+			qh.Available = qh.Available.Add(releaseAmount)
+			qh.Check()
+			qh.Lock.Unlock()
+		}
 	case ds.SideSell:
-		bh := pair.Exchange.Holdings.Get(pair.BaseCurrency)
-		bh.Lock.Lock()
-		bh.Available = bh.Available.Add(hold)
-		bh.Check()
-		bh.Lock.Unlock()
+		// for sell orders, hold is in base currency
+		// only release unfilled portion (fills already deducted from Quantity)
+		order.Lock.RLock()
+		filled := order.Filled
+		order.Lock.RUnlock()
+		releaseAmount := hold.Sub(filled)
+		if releaseAmount.IsPositive() {
+			bh := pair.Exchange.Holdings.Get(pair.BaseCurrency)
+			bh.Lock.Lock()
+			bh.Available = bh.Available.Add(releaseAmount)
+			bh.Check()
+			bh.Lock.Unlock()
+		}
 	}
 	orders.lock.Lock()
 	if orders.openOrders.Contains(order) {
@@ -90,17 +102,14 @@ func (order *Order) kill(state ds.OrderState) {
 }
 
 // fill accounts for a fill on an order, computing fee from exchange taker rate.
-// This is the backtest entry point.
-func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
+// Returns the actual filled quantity (may be less than requested if order nearly full)
+// and an error if the order cannot accept any more fills.
+func (order *Order) fill(filled, value, feeRate decimal.Decimal) (decimal.Decimal, error) {
 	pair := order.Pair
 	exchange := pair.Exchange
 	orders := exchange.Orders
 	holdings := exchange.Holdings
-	fee := value.Mul(feeRate)
 	now := clocky.Now()
-	dir := decimal.Decimal(order.Side)
-	total := value.Add(fee.Mul(dir))
-	rebate := fee.Mul(exchange.Rebate)
 
 	// perform sanity checks
 	if !value.IsPositive() {
@@ -110,30 +119,39 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
 		panic("fill quantity must be positive")
 	}
 
-	// update order
+	// update order atomically, clamping fill to available quantity
 	order.Lock.Lock()
-	releaseHold := decimal.Zero
-	totalFilled := order.Filled.Add(filled)
-	if totalFilled.Cmp(order.Quantity) > 0 {
-		loggy.Fatalf("overfill detected on order %s: total filled %s %s exceeds quantity %s %s",
-			order.ClientOrderID, totalFilled, pair.BaseCurrency, order.Quantity, pair.BaseCurrency)
+	if order.State.IsFinal() {
+		order.Lock.Unlock()
+		return decimal.Zero, ds.ErrOrderNotFound
 	}
+	remaining := order.Quantity.Sub(order.Filled)
+	if !remaining.IsPositive() {
+		order.Lock.Unlock()
+		return decimal.Zero, ds.ErrOrderNotFound
+	}
+	// clamp fill to remaining quantity
+	actualFilled := filled.Min(remaining)
+	actualValue := value.Mul(actualFilled).Div(filled) // proportional value
+	fee := actualValue.Mul(feeRate)
+	dir := decimal.Decimal(order.Side)
+	total := actualValue.Add(fee.Mul(dir))
+	rebate := fee.Mul(exchange.Rebate)
+
+	releaseHold := decimal.Zero
+	totalFilled := order.Filled.Add(actualFilled)
 	isFullyFilled := totalFilled.Cmp(order.Quantity) == 0
 	order.LastFillTime = now
 	order.Filled = totalFilled
-	order.FillValue = order.FillValue.Add(value)
+	order.FillValue = order.FillValue.Add(actualValue)
 	order.FillPrice = order.FillValue.Div(order.Filled)
 	order.Fee = order.Fee.Add(fee)
 	if isFullyFilled {
 		releaseHold = order.Hold
-		if !order.State.IsFinal() {
-			order.State = ds.OrderStateFilled
-		}
+		order.State = ds.OrderStateFilled
 		order.Hold = decimal.Zero
 	} else {
-		if !order.State.IsFinal() {
-			order.State = ds.OrderStatePartiallyFilled
-		}
+		order.State = ds.OrderStatePartiallyFilled
 	}
 	order.Lock.Unlock()
 
@@ -145,8 +163,8 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
 		quoteHolding := holdings.Get(pair.QuoteCurrency)
 		quoteHolding.Lock.Lock()
 		quoteHolding.Quantity = quoteHolding.Quantity.Sub(total)
-		quoteHolding.Volume = quoteHolding.Volume.Add(value)
-		quoteHolding.SellVolume = quoteHolding.SellVolume.Add(value)
+		quoteHolding.Volume = quoteHolding.Volume.Add(actualValue)
+		quoteHolding.SellVolume = quoteHolding.SellVolume.Add(actualValue)
 		// on full fill, release unused portion of hold (hold was for slippage buffer)
 		// use cumulative totals since fills may span multiple order book levels
 		if releaseHold.IsPositive() {
@@ -164,11 +182,11 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
 		// credit asset holding with filled quantity
 		baseHolding := holdings.Get(pair.BaseCurrency)
 		baseHolding.Lock.Lock()
-		baseHolding.Available = baseHolding.Available.Add(filled)
-		baseHolding.Quantity = baseHolding.Quantity.Add(filled)
-		baseHolding.Volume = baseHolding.Volume.Add(filled)
-		baseHolding.BuyVolume = baseHolding.BuyVolume.Add(filled)
-		baseHolding.Lots.Add(now, filled, total)
+		baseHolding.Available = baseHolding.Available.Add(actualFilled)
+		baseHolding.Quantity = baseHolding.Quantity.Add(actualFilled)
+		baseHolding.Volume = baseHolding.Volume.Add(actualFilled)
+		baseHolding.BuyVolume = baseHolding.BuyVolume.Add(actualFilled)
+		baseHolding.Lots.Add(now, actualFilled, total)
 		baseHolding.Check()
 		baseHolding.Lock.Unlock()
 
@@ -179,8 +197,8 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
 		quoteHolding.Lock.Lock()
 		quoteHolding.Quantity = quoteHolding.Quantity.Add(total)
 		quoteHolding.Available = quoteHolding.Available.Add(total)
-		quoteHolding.Volume = quoteHolding.Volume.Add(value)
-		quoteHolding.SellVolume = quoteHolding.SellVolume.Add(value)
+		quoteHolding.Volume = quoteHolding.Volume.Add(actualValue)
+		quoteHolding.SellVolume = quoteHolding.SellVolume.Add(actualValue)
 		quoteHolding.Check()
 		quoteHolding.Lock.Unlock()
 
@@ -189,10 +207,10 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
 		// the fill consumes from the hold, so we only debit Quantity here
 		baseHolding := holdings.Get(pair.BaseCurrency)
 		baseHolding.Lock.Lock()
-		baseHolding.Quantity = baseHolding.Quantity.Sub(filled)
-		baseHolding.Volume = baseHolding.Volume.Add(filled)
-		baseHolding.SellVolume = baseHolding.SellVolume.Add(filled)
-		baseHolding.Lots.Consume(filled, decimal.Zero)
+		baseHolding.Quantity = baseHolding.Quantity.Sub(actualFilled)
+		baseHolding.Volume = baseHolding.Volume.Add(actualFilled)
+		baseHolding.SellVolume = baseHolding.SellVolume.Add(actualFilled)
+		baseHolding.Lots.Consume(actualFilled, decimal.Zero)
 		baseHolding.Check()
 		baseHolding.Lock.Unlock()
 	}
@@ -234,4 +252,6 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
 	if isFullyFilled {
 		close(order.onClose)
 	}
+
+	return actualFilled, nil
 }

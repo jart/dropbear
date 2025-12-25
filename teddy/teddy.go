@@ -21,7 +21,10 @@ var (
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flagRFR        = decimal.FlagBPS("rfr", "487", "annualized risk-free rate in basis points")
 	flagQuantum    = clocky.DurationFlag("quantum", "1h30m", "metric sampling interval while backtesting")
+	flagVerboseSim = flag.Bool("verbose-sim", false, "log order simulation decisions")
 )
+
+var gVerbose bool
 
 var (
 	Live              bool
@@ -40,6 +43,7 @@ var (
 
 func Init() {
 	Live = *flagBacktest == ""
+	gVerbose = *flagVerboseSim
 	BinanceClient = binance.NewClient()
 	CoinbaseClient = coinbase.NewClient()
 	if Live {

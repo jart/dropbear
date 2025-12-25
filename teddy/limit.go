@@ -128,23 +128,30 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	// marketable limit orders may take liquidity by crossing the spread
 	switch strategy {
 	case ds.LimitOrderStrategyMarketable, ds.LimitOrderStrategyIOC:
-		takenQuantity, fills := p.OrderBook.BuyLimit(quantity, limitPrice)
-		if fills != nil {
-			for _, fill := range fills {
-				fillValue := fill.Price.Mul(fill.Size)
-				order.fill(fill.Size, fillValue, exchange.TakerFee)
-			}
-			if takenQuantity.Cmp(quantity) == 0 {
-				if order.State != ds.OrderStateFilled {
-					loggy.Fatalf("limit order should be filled but was %s", order.State)
-				}
-				return order, nil
-			}
-			quantity = quantity.Sub(takenQuantity)
+		var takenQuantity decimal.Decimal
+		var fills []ds.Level
+		switch side {
+		case ds.SideBuy:
+			takenQuantity, fills = p.OrderBook.BuyLimit(quantity, limitPrice)
+		case ds.SideSell:
+			takenQuantity, fills = p.OrderBook.SellLimit(quantity, limitPrice)
 		}
+		for _, fill := range fills {
+			fillValue := fill.Price.Mul(fill.Size)
+			_, _ = order.fill(fill.Size, fillValue, exchange.TakerFee)
+		}
+		if takenQuantity.Cmp(quantity) == 0 {
+			return order, nil
+		}
+		// IOC cancels unfilled portion immediately
+		if strategy == ds.LimitOrderStrategyIOC {
+			order.kill(ds.OrderStateCanceled)
+			return order, nil
+		}
+		quantity = quantity.Sub(takenQuantity)
 	}
 
-	// order goes on book for remaining quantity
-	p.OrderBook.Add(ds.SideBuy, limitPrice, quantity)
+	// order goes on book for remaining quantity (post-only and marketable only)
+	p.OrderBook.Add(side, limitPrice, quantity)
 	return order, nil
 }
