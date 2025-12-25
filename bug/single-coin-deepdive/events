@@ -1,6 +1,6 @@
 agent system
-events 5
-head 7fdb2d314b1e85151c5206d271dd86602c74facdf2a66ea5719bc759487897e4
+events 6
+head 97fcdea33beaca8e851e642aaae91ca5451972f6cb82af00f0b5d56672ff1239
 
 timestamp 1766651940
 author csg@statewave.com
@@ -68,3 +68,11 @@ type Message
 
 event_type Message
 text Scope: medium - affects cmd/spread (add -diagnostic flag), new diagnostic package for event logging, chart renderer (reuse cmd/chart patterns)
+---
+parent 7fdb2d314b1e85151c5206d271dd86602c74facdf2a66ea5719bc759487897e4
+timestamp 1766657220
+author csg@statewave.com
+type Message
+
+event_type Message
+text Design: JSON event stream to stdout with tick-level detail (spread/deviation/greed/disposition), post-processing tool for charts/stats, integrate with existing teddy report
