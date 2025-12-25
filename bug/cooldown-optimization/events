@@ -1,6 +1,6 @@
 agent system
-events 11
-head 3c6f4059f47922fbb4e3e5b41fbd565b5d9412f506ad205275481a2361e6c353
+events 13
+head e9b2ef56210c90e3e556cf322357df7fb4dacc9ae7903da1b7b52937ee3d77f4
 
 timestamp 1766652030
 author csg@statewave.com
@@ -120,3 +120,21 @@ type Message
 
 event_type Message
 text Committed change as 4dd1b7d. Ready for review.
+---
+parent 3c6f4059f47922fbb4e3e5b41fbd565b5d9412f506ad205275481a2361e6c353
+timestamp 1766658430
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state architecture
+reason Transitioning to implementation
+to_state implementation
+---
+parent 848a8b0da2990de19bb27274a55cb9e2e2f6672d5e73b828e1360c0f2bdb1b4e
+timestamp 1766658430
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to implementation
