@@ -1,6 +1,6 @@
 agent system
-events 6
-head 0fef2bb826e3db6f426c92c3b008ed13356e7286846175625e71203f74f6c3bf
+events 8
+head 08b211d03cd6f8bde51a8ca7ba7dd72482b1af3443a08a09da33d9b52a62d8e6
 
 timestamp 1766651981
 author csg@statewave.com
@@ -75,3 +75,21 @@ type Message
 
 event_type Message
 text Experiment design complete. Created scripts/intensity-experiment.sh (orchestrator) and scripts/intensity-analysis.py (detailed analyzer)
+---
+parent 0fef2bb826e3db6f426c92c3b008ed13356e7286846175625e71203f74f6c3bf
+timestamp 1766657702
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state discussion
+reason Transitioning to architecture
+to_state architecture
+---
+parent 1abf735daec6bc3e778a5ca63196eb3cdcaa97ad85018c92fc32f2a489df58c1
+timestamp 1766657702
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to architecture
