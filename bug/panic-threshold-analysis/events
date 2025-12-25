@@ -1,6 +1,6 @@
 agent system
-events 11
-head 4f510972505f00be7e78b8b1a257d91dea974f76bb9ef96817f9f7d6a2bc4159
+events 12
+head cf6a101dcf28dbcfe9f8b87f36ea4b26ec54ece5ec5e0a4f39a3922da5ed096b
 
 timestamp 1766652050
 author csg@statewave.com
@@ -123,3 +123,11 @@ type Message
 
 event_type Message
 text Transitioning to implementation
+---
+parent 4f510972505f00be7e78b8b1a257d91dea974f76bb9ef96817f9f7d6a2bc4159
+timestamp 1766657766
+author csg@statewave.com
+type Message
+
+event_type Message
+text Key findings: (1) Panic is rarely triggered in practice (<0.3% of sells for chaos dataset). (2) For BTC: panic mostly counterproductive - best P&L with 20+ bps (no panic). (3) For DOGE: 95.8% of 10bps panics were 'smart' but still worse P&L than no panic. (4) Suggests holding through volatility beats cutting losses.
