@@ -1,6 +1,6 @@
 agent system
-events 20
-head 0084f38af6a1b8babbe02613bde31772c10c27967b87feb2f1ba0ae8446f84ff
+events 21
+head deb2d843b8510c2582518bd8011e5cef1aaab2c096eea6527c90f5c5c38d42cb
 
 timestamp 1766651963
 author csg@statewave.com
@@ -196,3 +196,14 @@ type Message
 
 event_type Message
 text Rebased on latest main (6 commits ahead), all tests still pass
+---
+parent 0084f38af6a1b8babbe02613bde31772c10c27967b87feb2f1ba0ae8446f84ff
+timestamp 1766659330
+author csg@statewave.com
+type MergeBranch
+
+bug_name coin-comparison-matrix
+event_type MergeBranch
+merge_strategy merge-commit
+source_branch cm-48cba5b5
+target_branch main
