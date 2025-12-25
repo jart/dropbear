@@ -38,7 +38,7 @@ var (
 	flagComfort   = decimal.FlagPercent("comfort", "20", "percent of min/max window we're comfortable buying or selling")
 	flagDanger    = decimal.FlagPercent("danger", "0", "percent of min/max window at which it's probably volatility expansion")
 	flagSamples   = flag.Int("samples", 7000, "number of samples for baseline ema")
-	flagCooldown  = clocky.DurationFlag("cooldown", "5s", "duration to wait between activities")
+	flagCooldown  = clocky.DurationFlag("cooldown", "2s", "duration to wait between activities")
 	flagFreshness = clocky.DurationFlag("freshness", "1500ms", "suspend trading after this long an outage")
 	flagIntensity = clocky.DurationFlag("intensity", "5m", "trading intensity window (e.g. 5m, 0 for disabled)")
 )
