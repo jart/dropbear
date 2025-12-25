@@ -1,0 +1,30 @@
+agent system
+events 1
+head c706d57f1194cbe4a33fc769eb4f3cbcbe68dd799e137dedcdd6db717acc734e
+
+timestamp 1766652009
+author csg@statewave.com
+type CreateBug
+
+content Analyze execution slippage and order book dynamics.
+	
+	## Goal
+	Understand how much value is lost to slippage and market impact.
+	
+	## Current Tracking (main.go:503-518)
+	- Slippage: (fillPrice - lastPrice) / lastPrice
+	- Theft: deviation from expected quote
+	
+	## Analysis
+	- Slippage distribution by side (buy vs sell)
+	- Slippage vs order size
+	- Slippage vs spread deviation (do strong signals have more slippage?)
+	- Time-of-day patterns
+	
+	## Questions
+	- Is slippage predictable?
+	- Should we adjust size based on expected slippage?
+	- Are there market microstructure patterns to exploit?
+event_type CreateBug
+name slippage-analysis
+title slippage-analysis
