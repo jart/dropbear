@@ -1,6 +1,6 @@
 agent system
-events 17
-head 59b68775658c70ae90e5de76640a649437a247cd52940642421dc29f5d1e320b
+events 18
+head 6dc770c5676c25bc7b88487a8478ac1d7c0258d35da0da48c04264bc1f1e2ce8
 
 timestamp 1766649464
 author csg@statewave.com
@@ -160,3 +160,11 @@ type Message
 
 event_type Message
 text IMPLEMENTED: msg/market.go - BinanceTick, CoinbaseTick, PriceRange, IntensityUpdate, SpreadUpdate, MarketState types.
+---
+parent 59b68775658c70ae90e5de76640a649437a247cd52940642421dc29f5d1e320b
+timestamp 1766651222
+author csg@statewave.com
+type Message
+
+event_type Message
+text IMPLEMENTED: msg/signal.go - SpreadSignal, TradeIntent, TradeResult, InventoryState, HealthScore, GreedFactor types.
