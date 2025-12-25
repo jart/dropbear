@@ -1,3 +1,0 @@
-START_STATION=discussion
-FLOW_TYPE=bug-workflow
-END_STATION=merge
