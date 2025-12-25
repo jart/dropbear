@@ -1,6 +1,6 @@
 agent system
-events 13
-head 6c645a976bb557a8a759d7a596889918ac13931de8a0ef73030e4cf8b694d449
+events 15
+head 7bf78a7a1653cce4b16f33ece9dc80de436bc370827317839dba39c2c8822a16
 
 timestamp 1766651963
 author csg@statewave.com
@@ -136,3 +136,21 @@ type Message
 
 event_type Message
 text All tests passing, code committed to cm-48cba5b5, ready for testing/review
+---
+parent 6c645a976bb557a8a759d7a596889918ac13931de8a0ef73030e4cf8b694d449
+timestamp 1766658193
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state implementation
+reason Transitioning to testing
+to_state testing
+---
+parent 700ad74ebd6fe3d3dc3411560b5f11579b00c189927e083863a8286c897136fa
+timestamp 1766658193
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to testing
