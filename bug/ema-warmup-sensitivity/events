@@ -1,6 +1,6 @@
 agent system
-events 4
-head b6a485b63471ee9b3b86743f1aef018a0fe55f8533b79bd223039e70bdc40477
+events 5
+head 943f556fd4ed7e6776e0e4c47fc5a037a2d19c16d38f07c27e3b0a8b8bc9aa2d
 
 timestamp 1766651987
 author csg@statewave.com
@@ -58,3 +58,11 @@ type Message
 
 event_type Message
 text Understanding: WWMA uses SMA during warmup (first N samples), then switches to Wilder smoothing. Currently samples=7000 ticks before trading starts. Key metrics: time to warmup, Sharpe after warmup, profit, first trade time.
+---
+parent b6a485b63471ee9b3b86743f1aef018a0fe55f8533b79bd223039e70bdc40477
+timestamp 1766657225
+author csg@statewave.com
+type Message
+
+event_type Message
+text Experiment design: Test samples={1000,3000,5000,7000,10000,15000} across all datasets/coins. Measure: (1) time to warmup (2) time to first trade (3) total profit (4) Sharpe ratio (5) trade count. Hypothesis: optimal samples varies by coin volatility - high vol coins may need more samples.
