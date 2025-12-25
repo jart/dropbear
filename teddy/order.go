@@ -34,6 +34,24 @@ func (o *Order) Wait() {
 	<-o.onClose
 }
 
+func (o *Order) Cancel() error {
+	if o.OrderID == "" || o.State.IsFinal() {
+		return ds.ErrOrderNotFound
+	}
+	if Live {
+		switch o.Pair.Exchange.Exchange {
+		case ds.ExchangeCoinbase:
+			if err := CoinbaseClient.CancelOrder(o.OrderID); err != nil {
+				return err
+			}
+		default:
+			panic("unsupported exchange")
+		}
+	}
+	o.kill(ds.OrderStateCanceled)
+	return nil
+}
+
 // kill transitions order to final state.
 func (order *Order) kill(state ds.OrderState) {
 	pair := order.Pair
@@ -86,13 +104,10 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
 
 	// perform sanity checks
 	if !value.IsPositive() {
-		loggy.Fatalf("fill value must be positive")
+		panic("fill value must be positive")
 	}
 	if !filled.IsPositive() {
-		loggy.Fatalf("fill quantity must be positive")
-	}
-	if order.State.IsFinal() {
-		loggy.Fatalf("cannot fill order %s in final state %s", order.ClientOrderID, order.State)
+		panic("fill quantity must be positive")
 	}
 
 	// update order
@@ -111,10 +126,14 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
 	order.Fee = order.Fee.Add(fee)
 	if isFullyFilled {
 		releaseHold = order.Hold
-		order.State = ds.OrderStateFilled
+		if !order.State.IsFinal() {
+			order.State = ds.OrderStateFilled
+		}
 		order.Hold = decimal.Zero
 	} else {
-		order.State = ds.OrderStatePartiallyFilled
+		if !order.State.IsFinal() {
+			order.State = ds.OrderStatePartiallyFilled
+		}
 	}
 	order.Lock.Unlock()
 
@@ -173,11 +192,7 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
 		baseHolding.Quantity = baseHolding.Quantity.Sub(filled)
 		baseHolding.Volume = baseHolding.Volume.Add(filled)
 		baseHolding.SellVolume = baseHolding.SellVolume.Add(filled)
-		totalConsumed, err := baseHolding.Lots.Consume(filled, now, decimal.Zero)
-		if err != nil {
-			loggy.Fatalf("could only consume lots for %s %s out of %s %s: %v",
-				filled, pair.BaseCurrency, totalConsumed, pair.BaseCurrency, err)
-		}
+		baseHolding.Lots.Consume(filled, decimal.Zero)
 		baseHolding.Check()
 		baseHolding.Lock.Unlock()
 	}
@@ -210,8 +225,7 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) {
 	exchange.Lock.Unlock()
 	if gReport != nil {
 		gReport.lock.Lock()
-		gReport.trades++
-		gReport.buys++
+		gReport.trades[order.Side]++
 		gReport.lock.Unlock()
 	}
 

@@ -61,11 +61,14 @@ func Init() {
 func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
 	if !Live {
 		ex := Exchanges.Get(exchange)
-		holding := ex.Holdings.Get(symbol)
-		holding.Lock.Lock()
-		defer holding.Lock.Unlock()
-		holding.Quantity = quantity
-		holding.Available = quantity
+		h := ex.Holdings.Get(symbol)
+		h.Lock.Lock()
+		defer h.Lock.Unlock()
+		h.Quantity = quantity
+		h.Available = quantity
+		if !h.IsCash {
+			h.Lots.Add(clocky.Now(), quantity, decimal.Zero)
+		}
 	}
 }
 
@@ -80,10 +83,14 @@ func SetBenchmark(pair *Pair) {
 // This should be called at the end of your main() function.
 func Run() {
 	if Live {
+		defer func() {
+			for _, exchange := range Exchanges.All() {
+				for _, order := range exchange.Orders.Open() {
+					order.Cancel()
+				}
+			}
+		}()
 		<-gSigChan
-		if err := CoinbaseClient.CancelAllOrders(); err != nil {
-			log.Printf("error canceling orders: %v", err)
-		}
 		log.Printf("goodbye")
 	} else {
 		if gBenchmark == nil {

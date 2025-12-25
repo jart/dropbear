@@ -96,8 +96,8 @@ func TestSmoke(t *testing.T) {
 			continue
 		}
 
-		aDec := fromFloat64(a)
-		bDec := fromFloat64(b)
+		aDec := FromFloat64(a)
+		bDec := FromFloat64(b)
 
 		// Test Mul (skip if result would overflow)
 		expectedMul := exactMul(aDec, bDec)
@@ -166,7 +166,7 @@ func randomCryptoValue(rng *rand.Rand) float64 {
 	return res
 }
 
-// TestSmokeFloat64Conversion tests that fromFloat64 and Float64 are consistent
+// TestSmokeFloat64Conversion tests that FromFloat64 and Float64 are consistent
 func TestSmokeFloat64Conversion(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
 
@@ -177,7 +177,7 @@ func TestSmokeFloat64Conversion(t *testing.T) {
 		f := randomCryptoValue(rng)
 
 		// Convert to Decimal and back
-		dec := fromFloat64(f)
+		dec := FromFloat64(f)
 		back := dec.Float64()
 
 		// The round-trip should match within float64's precision (~15-16 digits).
@@ -242,8 +242,8 @@ func TestSmokeEdgeCases(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			aDec := fromFloat64(tc.a)
-			bDec := fromFloat64(tc.b)
+			aDec := FromFloat64(tc.a)
+			bDec := FromFloat64(tc.b)
 
 			// Test mul against exact big.Int result
 			decMul := aDec.Mul(bDec)

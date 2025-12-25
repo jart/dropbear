@@ -45,6 +45,12 @@ func (h *Holding) Check() {
 		loggy.Fatalf("accounting invariant violated: %s Available (%s) > Quantity (%s)",
 			h.Symbol, h.Available, h.Quantity)
 	}
+	if !h.IsCash {
+		if h.Quantity.Cmp(h.Lots.Size) != 0 {
+			loggy.Fatalf("accounting invariant violated: %s Quantity (%s) != Lots.Size (%s)",
+				h.Symbol, h.Quantity, h.Lots.Size)
+		}
+	}
 }
 
 func looksLikeCashSymbol(symbol string) bool {

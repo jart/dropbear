@@ -3,6 +3,7 @@ package decimal
 import (
 	"encoding/binary"
 	"io"
+	"math"
 )
 
 // Decimal represents a fixed-point decimal number with 9 decimal places.
@@ -29,7 +30,7 @@ func FromInt(n int) Decimal {
 
 // FromFloat64 converts float64 to Decimal.
 func FromFloat64(n float64) Decimal {
-	return Decimal(int64(n * float64(Scale)))
+	return Decimal(math.Round(n * Scale))
 }
 
 // FromBPS converts basis points to a Decimal fraction. FromBPS(100) returns 0.01.

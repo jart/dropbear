@@ -39,7 +39,7 @@ run() {
             else
                 JUDGEMENT="bad"
             fi
-            printf "%s %-10s %-4s vol=%5s profit=%8s sharpe=%7s buys=%3d sells=%3d invested=%5s %s\n" \
+            printf "%s %-10s %-4s vol=%4.1f profit=%8.2f sharpe=%7s buys=%3d sells=%3d invested=%5s %s\n" \
                 "$CMD" "$DATASET" "$COIN" "$VOLUME" "$PROFIT" "$SHARPE" "$BUYS" "$SELLS" "$INVESTED" "$JUDGEMENT" >>"$REPORT"
             echo "$VOLUME $PROFIT $PROFIT_BENCH $SHARPE $SHARPE_BENCH $INVESTED $JUDGEMENT" >>"$RESULTS"
             rm -f $OUTPATH
@@ -62,8 +62,13 @@ wait
 # print summary
 sort <"$REPORT"
 awk '
-BEGIN { great=0; good=0; bad=0; loco=0; n=0 }
-{
+BEGIN {
+    great=0
+    good=0
+    bad=0
+    loco=0
+    n=0
+}{
     n++
     w = $6  # invested amount as weight
     total_weight += w

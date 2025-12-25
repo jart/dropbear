@@ -281,7 +281,7 @@ func checkSpread(now clocky.Time) {
 		// apply health penalty to greed - when health is poor, be more protective
 		// this prevents accumulating garbage even when underweight
 		// healthPenalty ranges from 1 (healthy) to 2 (unhealthy)
-		healthPenalty := decimal.FromInt(2).Sub(healthScore)
+		healthPenalty := decimal.Two.Sub(healthScore)
 		greed = greed.Mul(healthPenalty)
 		buySpread = (*flagSpread).Mul(greed)
 		sellSpread = (*flagSpread).Div(greed)
@@ -437,15 +437,8 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 	rawCostBasis := decimal.Zero // saved for win/loss tracking after fill
 	if side == ds.SideSell {
 		gHolding.Lock.RLock()
-		costBasis, err := gHolding.Lots.GetCostBasis(quantity, now, decimal.Zero)
+		costBasis := gHolding.Lots.GetCostBasis(quantity, gBinancePrice)
 		gHolding.Lock.RUnlock()
-		if err != nil {
-			if *flagVerbose {
-				log.Printf("[logic] skip sell: insufficient lots")
-				gLastActivity = now
-			}
-			return
-		}
 		rawCostBasis = costBasis // save before adding profit margin
 		costBasis = costBasis.Mul(decimal.One.Add(*flagProfit))
 		// would this sell be profitable?

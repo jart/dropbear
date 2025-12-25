@@ -190,26 +190,14 @@ func (p *Pair) refreshBinance() {
 	for _, filter := range json.Filters {
 		switch filter.FilterType {
 		case "PRICE_FILTER":
-			if filter.TickSize != "" {
-				p.QuoteIncrement = decimal.Parse(filter.TickSize)
-			}
+			p.QuoteIncrement = decimal.Parse(filter.TickSize)
 		case "LOT_SIZE":
-			if filter.StepSize != "" {
-				p.BaseIncrement = decimal.Parse(filter.StepSize)
-			}
-			if filter.MinQty != "" {
-				p.BaseMinSize = decimal.Parse(filter.MinQty)
-			}
-			if filter.MaxQty != "" {
-				p.BaseMaxSize = decimal.Parse(filter.MaxQty)
-			}
+			p.BaseIncrement = decimal.Parse(filter.StepSize)
+			p.BaseMinSize = decimal.Parse(filter.MinQty)
+			p.BaseMaxSize = decimal.Parse(filter.MaxQty)
 		case "NOTIONAL":
-			if filter.MinNotional != "" {
-				p.QuoteMinSize = decimal.Parse(filter.MinNotional)
-			}
-			if filter.MaxNotional != "" {
-				p.QuoteMaxSize = decimal.Parse(filter.MaxNotional)
-			}
+			p.QuoteMinSize = decimal.Parse(filter.MinNotional)
+			p.QuoteMaxSize = decimal.Parse(filter.MaxNotional)
 		}
 	}
 }

@@ -3,11 +3,10 @@ package loggy
 import (
 	"dropbear/clocky"
 	"flag"
+	"fmt"
 	"log"
 	"os"
-	"runtime/debug"
 	"strings"
-	"syscall"
 )
 
 var (
@@ -26,9 +25,7 @@ func Init() {
 // This is important to use for fatal errors so active orders can be cancelled.
 func Fatalf(format string, args ...any) {
 	log.Printf("FATAL: "+format, args...)
-	debug.PrintStack()
-	syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-	select {} // block forever; signal handler will exit
+	panic(fmt.Sprintf(format, args...))
 }
 
 // AlsoLogToFile enables logging to -log FILE in addition to stderr.

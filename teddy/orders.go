@@ -150,6 +150,9 @@ func (os *Orders) onCoinbaseOrderUpdate(orderUpdate *coinbase.OrderUpdate) {
 	order.CreatedTime = clocky.MustParseTime(orderUpdate.CreationTime)
 	order.Quantity = cbQuantity // coinbase may adjust quantity for market orders
 	order.LimitPrice = decimal.Parse(orderUpdate.LimitPrice)
+	if !oldState.IsFinal() && !cbState.IsFinal() {
+		order.State = cbState
+	}
 	order.Lock.Unlock()
 
 	// process fill

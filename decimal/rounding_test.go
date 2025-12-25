@@ -12,7 +12,7 @@ const (
 	satoshiDivisor = 100_000_000
 )
 
-// TestfromFloat64Precision tests that fromFloat64 correctly converts
+// TestFromFloat64Precision tests that FromFloat64 correctly converts
 // satoshi-precision values without losing the least significant digit.
 func TestFromFloat64Precision(t *testing.T) {
 	var errors int
@@ -21,7 +21,7 @@ func TestFromFloat64Precision(t *testing.T) {
 	for i := int64(1); i <= maxSatoshis; i++ {
 		// Simulate: parse "0.00000017" as float64, convert to Decimal
 		f := float64(i) / satoshiDivisor
-		d := fromFloat64(f)
+		d := FromFloat64(f)
 
 		// Expected: i satoshis * (scale / satoshiDivisor) = i * 100
 		expected := Decimal(i * (Scale / satoshiDivisor))
@@ -35,23 +35,23 @@ func TestFromFloat64Precision(t *testing.T) {
 	}
 
 	if errors > 0 {
-		t.Errorf("fromFloat64 precision errors: %d out of %d values (%.2f%%)",
+		t.Errorf("FromFloat64 precision errors: %d out of %d values (%.2f%%)",
 			errors, maxSatoshis, float64(errors)/float64(maxSatoshis)*100)
 		t.Errorf("First failing satoshi values: %v", firstErrors)
 
 		// Show details for first error
 		i := firstErrors[0]
 		f := float64(i) / satoshiDivisor
-		d := fromFloat64(f)
+		d := FromFloat64(f)
 		expected := Decimal(i * (Scale / satoshiDivisor))
 		t.Errorf("Example: %d satoshis = %.8f BTC", i, f)
-		t.Errorf("  fromFloat64 returned: %d", d)
+		t.Errorf("  FromFloat64 returned: %d", d)
 		t.Errorf("  Expected:             %d", expected)
 		t.Errorf("  Difference:           %d", d-expected)
 	}
 }
 
-// TestfromFloat64RoundTrip tests that values survive float64 -> Decimal -> float64.
+// TestFromFloat64RoundTrip tests that values survive float64 -> Decimal -> float64.
 func TestFromFloat64RoundTrip(t *testing.T) {
 	testCases := []float64{
 		0.00000001, // 1 satoshi
@@ -63,7 +63,7 @@ func TestFromFloat64RoundTrip(t *testing.T) {
 	}
 
 	for _, f := range testCases {
-		d := fromFloat64(f)
+		d := FromFloat64(f)
 		back := d.Float64()
 
 		// Allow for precision loss beyond 9 decimal places

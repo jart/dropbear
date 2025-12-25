@@ -1,23 +1,17 @@
 package decimal
 
 import (
-	"math"
 	"math/rand"
 	"testing"
 )
 
 var randomNumbers []Decimal
 
-// fromFloat64 converts a float64 to Decimal.
-func fromFloat64(f float64) Decimal {
-	return Decimal(math.Round(f * Scale))
-}
-
 func init() {
-	rng := rand.New(rand.NewSource(42)) // deterministic
+	rng := rand.New(rand.NewSource(42))
 	randomNumbers = make([]Decimal, 32)
 	for i := range 32 {
-		randomNumbers[i] = fromFloat64(randomCryptoValue(rng))
+		randomNumbers[i] = FromFloat64(randomCryptoValue(rng))
 	}
 }
 
@@ -341,7 +335,7 @@ func TestFromFloat64(t *testing.T) {
 		{0.00000001, "0.00000001"}, // 1 satoshi
 	}
 	for _, tt := range tests {
-		d := fromFloat64(tt.input)
+		d := FromFloat64(tt.input)
 		if got := d.String(); got != tt.want {
 			t.Errorf("fromFloat64(%v) = %s, want %s", tt.input, got, tt.want)
 		}
@@ -388,20 +382,20 @@ func TestPrecision(t *testing.T) {
 }
 
 func BenchmarkParse(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		Parse("12345.678901234")
 	}
 }
 
 func BenchmarkString(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		a := randomNumbers[i&31]
 		_ = a.String()
 	}
 }
 
 func BenchmarkAdd(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		a := randomNumbers[(i+0)&31]
 		c := randomNumbers[(i+1)&31]
 		_ = a.Add(c)
@@ -409,7 +403,7 @@ func BenchmarkAdd(b *testing.B) {
 }
 
 func BenchmarkMul(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		a := randomNumbers[(i+0)&31]
 		c := randomNumbers[(i+1)&31]
 		_ = a.Mul(c)
@@ -417,7 +411,7 @@ func BenchmarkMul(b *testing.B) {
 }
 
 func BenchmarkDiv(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		a := randomNumbers[(i+0)&31]
 		c := randomNumbers[(i+1)&31]
 		_ = a.Div(c)

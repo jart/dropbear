@@ -48,7 +48,7 @@ func (c *Client) GetLots(currency string, method ds.CostBasisMethod) (*ds.Lots, 
 				cost := decimal.Parse(nativeAmountStr).Abs()
 				lots.Add(createdAt, absAmount, cost)
 			} else {
-				lots.Consume(absAmount, createdAt, decimal.Zero)
+				lots.Consume(absAmount, decimal.Zero)
 			}
 		case "advanced_trade_fill":
 			if amount.IsPositive() {
@@ -62,10 +62,10 @@ func (c *Client) GetLots(currency string, method ds.CostBasisMethod) (*ds.Lots, 
 				}
 				lots.Add(createdAt, absAmount, cost)
 			} else {
-				lots.Consume(absAmount, createdAt, decimal.Zero)
+				lots.Consume(absAmount, decimal.Zero)
 			}
 		case "sell":
-			lots.Consume(absAmount, createdAt, decimal.Zero)
+			lots.Consume(absAmount, decimal.Zero)
 		case "interest", "subscription_rebate", "credit_card_reward":
 			cost := decimal.Parse(nativeAmountStr).Abs()
 			lots.Add(createdAt, absAmount, cost)
