@@ -1,6 +1,6 @@
 agent system
-events 13
-head 3bd31de0dfa2c59665be76f5689e9df0493364751ba42b5b18cc188dd07f0f9f
+events 14
+head bc7a697338b5f3f87abf06dede19887aae3a86118284b635c9d4b38514787bd2
 
 timestamp 1766652009
 author csg@statewave.com
@@ -137,3 +137,11 @@ type Message
 
 event_type Message
 text Transitioning to testing
+---
+parent 3bd31de0dfa2c59665be76f5689e9df0493364751ba42b5b18cc188dd07f0f9f
+timestamp 1766658506
+author csg@statewave.com
+type Message
+
+event_type Message
+text Testing complete. Validated on BTC (+0.35bps), SOL (+0.19bps), DOGE (+0.12bps). All show small average slippage with clear patterns: strong signals have higher slippage (adverse selection), slippage correlates with deviation strength but not strongly with bid-ask spread. Ready for merge.
