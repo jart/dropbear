@@ -1,6 +1,6 @@
 agent system
-events 3
-head d499576f38c3f2d529ea69c17bcf18d9586a1470ceb0ffefabd80d4664dcc24c
+events 4
+head e1e117e33bf5487ab83ca5a746e9a953905ee93584c3fc4ee414c21e96e5548d
 
 timestamp 1766652030
 author csg@statewave.com
@@ -54,3 +54,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent d499576f38c3f2d529ea69c17bcf18d9586a1470ceb0ffefabd80d4664dcc24c
+timestamp 1766657209
+author csg@statewave.com
+type Message
+
+event_type Message
+text cooldown enforced at 3 locations: main.go:196-197 (before checkSpread) and main.go:473 (before placing order). Default 5s. Controls both gLastTrade and gLastActivity
