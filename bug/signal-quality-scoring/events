@@ -1,6 +1,6 @@
 agent system
-events 3
-head a66e040f265b4ccad2b8e17f72fb06847a22b80803ab5b00b04cd9481e5c24c5
+events 4
+head d9bee6508f51258f8b302bee0104e7debca9bf0b1385d99e20ed5c6e1410fd3d
 
 timestamp 1766652082
 author csg@statewave.com
@@ -53,3 +53,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent a66e040f265b4ccad2b8e17f72fb06847a22b80803ab5b00b04cd9481e5c24c5
+timestamp 1766657399
+author csg@statewave.com
+type Message
+
+event_type Message
+text Understanding: Spread strategy trades Coinbase based on deviation from Binance baseline. Signal = |deviation| > threshold && disposition filter (Cheap for buy, Expensive for sell)
