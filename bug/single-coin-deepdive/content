@@ -1,0 +1,20 @@
+Build tooling for deep single-coin analysis.
+
+## Goal
+Create detailed diagnostic output for analyzing a single coin's behavior.
+
+## Diagnostic Output
+- Tick-by-tick signal log with all intermediate values
+- Spread/deviation time series plot
+- Trade entry/exit markers on price chart
+- Inventory over time
+- P&L attribution (which trades made/lost money?)
+
+## Implementation
+- Add -diagnostic flag to cmd/spread
+- Output JSON event stream for post-processing
+- Build ASCII chart renderer (like cmd/chart)
+- Create summary statistics
+
+## Usage
+go run ./cmd/spread -backtest chaos -symbol ZEC -diagnostic > zec.json

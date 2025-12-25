@@ -1,0 +1,31 @@
+agent system
+events 1
+head d6e49c54c67c73bce682416715d93e513b33c2cf488c5b17c68c49e6b113ec87
+
+timestamp 1766651940
+author csg@statewave.com
+type CreateBug
+
+content Build tooling for deep single-coin analysis.
+	
+	## Goal
+	Create detailed diagnostic output for analyzing a single coin's behavior.
+	
+	## Diagnostic Output
+	- Tick-by-tick signal log with all intermediate values
+	- Spread/deviation time series plot
+	- Trade entry/exit markers on price chart
+	- Inventory over time
+	- P&L attribution (which trades made/lost money?)
+	
+	## Implementation
+	- Add -diagnostic flag to cmd/spread
+	- Output JSON event stream for post-processing
+	- Build ASCII chart renderer (like cmd/chart)
+	- Create summary statistics
+	
+	## Usage
+	go run ./cmd/spread -backtest chaos -symbol ZEC -diagnostic > zec.json
+event_type CreateBug
+name single-coin-deepdive
+title single-coin-deepdive
