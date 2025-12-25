@@ -1,6 +1,6 @@
 agent system
-events 1
-head 5403f41423820822cee6c8b311b81838aeaf815291d31eb7d4860ec628e31539
+events 2
+head dbb122ea1e56d8ed827449523aaeccafe035177965793231b7726e28c9a74319
 
 timestamp 1766651800
 author csg@statewave.com
@@ -30,3 +30,16 @@ content Study cross-coin performance correlation and regime detection.
 event_type CreateBug
 name cross-coin-correlation
 title cross-coin-correlation
+---
+parent 5403f41423820822cee6c8b311b81838aeaf815291d31eb7d4860ec628e31539
+timestamp 1766657159
+author csg@statewave.com
+type Checkout
+
+branch_name bug/cross-coin-correlation
+bug_name cross-coin-correlation
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
