@@ -1,6 +1,6 @@
 agent system
-events 3
-head a0f9ed05bde3f4965a3d383b09103f01df18af483f90461286a1aa198af6e485
+events 4
+head 1b749f8b5bc416e2059ef2bfbdefcdbca87e84b9a1052f0cac9842084601c471
 
 timestamp 1766651798
 author csg@statewave.com
@@ -53,3 +53,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent a0f9ed05bde3f4965a3d383b09103f01df18af483f90461286a1aa198af6e485
+timestamp 1766657534
+author csg@statewave.com
+type Message
+
+event_type Message
+text Created cmd/buygap analyzer. Key finding: gap blocks 90% of signals in BTC, 98% in DOGE. Very aggressive filtering.
