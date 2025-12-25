@@ -1,6 +1,6 @@
 agent system
-events 6
-head 78f2980d17f39aa2fe661724177bc11fd90ab5cd14e116fc9351f4cf7f2bc121
+events 8
+head 2040406144ec314e2c107455ebb923d0346b7830368df1de559dfabde4aa98ae
 
 timestamp 1766651963
 author csg@statewave.com
@@ -76,3 +76,21 @@ type Message
 
 event_type Message
 text Data source: parse test.sh output format OR run backtests programmatically
+---
+parent 78f2980d17f39aa2fe661724177bc11fd90ab5cd14e116fc9351f4cf7f2bc121
+timestamp 1766657369
+author csg@statewave.com
+type Transition
+
+event_type Transition
+from_state discussion
+reason Transitioning to architecture
+to_state architecture
+---
+parent 0b53716031f177b83d1d8039f71493652f2814c97df827e75222da1376f09adc
+timestamp 1766657369
+author csg@statewave.com
+type Message
+
+event_type Message
+text Transitioning to architecture
