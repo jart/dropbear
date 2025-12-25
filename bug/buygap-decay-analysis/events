@@ -1,6 +1,6 @@
 agent system
-events 1
-head e3047ae3c908c8b9a00423bf14161a885e7f759e009f33b62f7412a5df53322c
+events 2
+head 169cc16e170077a3ea7ec63360609e0fa351c31cdd133899c5681a3901b9ced8
 
 timestamp 1766651798
 author csg@statewave.com
@@ -30,3 +30,16 @@ content Analyze buy gap protection and decay function effectiveness.
 event_type CreateBug
 name buygap-decay-analysis
 title buygap-decay-analysis
+---
+parent e3047ae3c908c8b9a00423bf14161a885e7f759e009f33b62f7412a5df53322c
+timestamp 1766657151
+author csg@statewave.com
+type Checkout
+
+branch_name bug/buygap-decay-analysis
+bug_name buygap-decay-analysis
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
