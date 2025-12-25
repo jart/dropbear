@@ -1,0 +1,59 @@
+package loggy
+
+import (
+	"dropbear/clocky"
+	"flag"
+	"log"
+	"os"
+	"runtime/debug"
+	"strings"
+	"syscall"
+)
+
+var (
+	flagLog = flag.String("log", "log", "path to log file (used in live trading mode)")
+)
+
+// Init initializes logging.
+// This should be called from main() after flag.Parse().
+func Init() {
+	log.SetFlags(0)
+	log.SetOutput(gLogWriter)
+	log.Printf("argv: %s", strings.Join(os.Args, " "))
+}
+
+// Fatalf logs an error, raises SIGINT to trigger cleanup, and blocks.
+// This is important to use for fatal errors so active orders can be cancelled.
+func Fatalf(format string, args ...any) {
+	log.Printf("FATAL: "+format, args...)
+	debug.PrintStack()
+	syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+	select {} // block forever; signal handler will exit
+}
+
+// AlsoLogToFile enables logging to -log FILE in addition to stderr.
+// The teddy framework calls this when initialized in live trading mode.
+func AlsoLogToFile() {
+	if *flagLog != "" {
+		var err error
+		gLogWriter.file, err = os.OpenFile(*flagLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			log.Fatalf("opening log file: %v", err)
+		}
+	}
+}
+
+type logWriter struct {
+	file *os.File
+}
+
+var gLogWriter = logWriter{}
+
+func (w logWriter) Write(p []byte) (n int, err error) {
+	line := clocky.Now().String() + " " + string(p)
+	os.Stderr.WriteString(line)
+	if w.file != nil {
+		w.file.WriteString(line)
+	}
+	return len(p), nil
+}
