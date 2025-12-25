@@ -1,0 +1,19 @@
+# Project Context System
+
+This project uses Codemap for workflow coordination. All guidance is automatically composed from context files and injected into your AI assistant's prompt based on your current work.
+
+## How This Works
+- You're working in an ephemeral branch specific to this bug
+- Context is assembled from: ROOT → PROJECT → STAGE → BUG
+- The current stage guides what to do next
+
+## Getting Help
+- `git-codemap wtf` - See current context, bug, and quick commands
+- `git-codemap bug show` - See current bug status and stage (auto-detected)
+- `git-codemap transition <stage>` - Move to a workflow stage
+- Bug content contains specific requirements and progress notes
+
+## Workflow Overview
+Bugs progress through stages: DISCUSSION → ARCHITECTURE → IMPLEMENTATION → TESTING → MERGE
+
+Each stage provides specific guidance on what to do and when you're ready to move forward.
