@@ -1,6 +1,6 @@
 agent system
-events 1
-head 67b1ca0cf52c0fa81806a4f10fa7b3ac4373a41f183fcf473ad07ba52f75ba38
+events 2
+head 48cba5b57d9996719783dd20e836b62e0fec4ec9e84f6c353a40c1ee5b17dc20
 
 timestamp 1766651963
 author csg@statewave.com
@@ -29,3 +29,16 @@ content Build systematic coin comparison across datasets.
 event_type CreateBug
 name coin-comparison-matrix
 title coin-comparison-matrix
+---
+parent 67b1ca0cf52c0fa81806a4f10fa7b3ac4373a41f183fcf473ad07ba52f75ba38
+timestamp 1766657158
+author csg@statewave.com
+type Checkout
+
+branch_name bug/coin-comparison-matrix
+bug_name coin-comparison-matrix
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
