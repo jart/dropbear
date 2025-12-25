@@ -1,6 +1,6 @@
 agent system
-events 19
-head c9affac07a620c46005e250ee1db7c067f37a5d22f40f426643eeff696bb62af
+events 20
+head ec67323d15852de809fd33af36e482dc2fb3875efb400e349e27487a6fb9bf15
 
 timestamp 1766652030
 author csg@statewave.com
@@ -190,3 +190,14 @@ type Message
 
 event_type Message
 text PR created: https://github.com/jart/dropbear/pull/1
+---
+parent c9affac07a620c46005e250ee1db7c067f37a5d22f40f426643eeff696bb62af
+timestamp 1766659330
+author csg@statewave.com
+type MergeBranch
+
+bug_name cooldown-optimization
+event_type MergeBranch
+merge_strategy merge-commit
+source_branch cm-24e8912d
+target_branch main
