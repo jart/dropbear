@@ -1,0 +1,17 @@
+# Implement Stage
+
+**Build it, test it, commit it.**
+
+## Commands
+go fmt ./...           # Format
+go test ./...          # Test
+go test -bench=. ./... # Benchmark
+
+## Quality Checklist
+- [ ] Use decimal/, not floats for financial math
+- [ ] Use clocky.Now() for mockable time
+- [ ] Table-driven tests
+- [ ] Incremental commits
+
+## When Ready
+Transition to review: git-codemap transition review
