@@ -1,6 +1,6 @@
 agent system
-events 17
-head 433ca445836dadc97fddc74bf87331f6481bb6f46c0c47ac01bd314c73d62816
+events 18
+head 036da30909c61392d8eecb02848210e28a4451f0fdf3f2b9236a55e60e098704
 
 timestamp 1766652084
 author csg@statewave.com
@@ -174,3 +174,11 @@ type Message
 
 event_type Message
 text Transitioning to merge
+---
+parent 433ca445836dadc97fddc74bf87331f6481bb6f46c0c47ac01bd314c73d62816
+timestamp 1766659066
+author csg@statewave.com
+type Message
+
+event_type Message
+text sequential optimization demo successful: 33% sharpe improvement (40.25→53.75) by optimizing spread, skew, samples parameters
