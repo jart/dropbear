@@ -1,6 +1,6 @@
 agent system
-events 5
-head 4a7bd81d2d7c0b7fc53d7f727ac7fd39bb7c52a3408a4968329252120fb6689e
+events 6
+head 8bab7f9c6708fa02d34e1a6475c8841b3452be33424fca5def9be9131acf3bae
 
 timestamp 1766651798
 author csg@statewave.com
@@ -69,3 +69,11 @@ type Message
 
 event_type Message
 text Analysis shows: (1) Decay has minimal effect (median time since sell is 0s), (2) Inventory scaling works but rarely hits high values, (3) Gap is primary blocker preventing ratchet buys
+---
+parent 4a7bd81d2d7c0b7fc53d7f727ac7fd39bb7c52a3408a4968329252120fb6689e
+timestamp 1766657541
+author csg@statewave.com
+type Message
+
+event_type Message
+text Recommendation: Consider reducing buygap to 3bps for less restrictive filtering, or investigate why time-since-sell is so low (signals might cluster too tightly)
