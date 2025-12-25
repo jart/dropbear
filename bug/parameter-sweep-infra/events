@@ -1,6 +1,6 @@
 agent system
-events 16
-head 000fc15329bf45975f1db104e0dfd46a71ffb1e85df1167364cdd99784254b19
+events 17
+head 91406b711b1b752ac283116546742f4b043fbb6d71eb678e49bd35f1d312c614
 
 timestamp 1766651937
 author csg@statewave.com
@@ -166,3 +166,14 @@ type Message
 
 event_type Message
 text Transitioning to merge
+---
+parent 000fc15329bf45975f1db104e0dfd46a71ffb1e85df1167364cdd99784254b19
+timestamp 1766659062
+author csg@statewave.com
+type MergeBranch
+
+bug_name parameter-sweep-infra
+event_type MergeBranch
+merge_strategy merge-commit
+source_branch cm-abc64824
+target_branch main
