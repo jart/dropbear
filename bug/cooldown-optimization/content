@@ -1,0 +1,22 @@
+Optimize trade cooldown period.
+
+## Goal
+Find optimal cooldown between trades.
+
+## Current Behavior
+- cooldown=5s between trades
+- Prevents overtrading on noisy signals
+- But may miss valid opportunities
+
+## Experiment
+- Test cooldown = {1s, 2s, 5s, 10s, 30s}
+- Measure: trade count, Sharpe, win rate
+
+## Trade-offs
+- Short cooldown: more trades, potentially lower quality
+- Long cooldown: fewer trades, potentially miss good signals
+
+## Questions
+- Should cooldown be adaptive based on volatility?
+- Should cooldown differ for buys vs sells?
+- Is there optimal cooldown per coin?
