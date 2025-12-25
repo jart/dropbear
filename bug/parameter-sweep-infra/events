@@ -1,6 +1,6 @@
 agent system
-events 3
-head 201b735dec01f09caf63f34c53d164c3049db62ccb56d498752318e34cf26810
+events 4
+head 78624007db11f5ffdb762128ac99de45802c6b51eb2a5a1ecebd23ebc0d07d60
 
 timestamp 1766651937
 author csg@statewave.com
@@ -54,3 +54,11 @@ event_type Transition
 from_state new
 reason Starting work on bug
 to_state discussion
+---
+parent 201b735dec01f09caf63f34c53d164c3049db62ccb56d498752318e34cf26810
+timestamp 1766657406
+author csg@statewave.com
+type Message
+
+event_type Message
+text Current state: test.sh runs parallel backtests, outputs formatted results. Need: grid search over 6 params (spread, skew, samples, buygap, comfort, window), CSV output, aggregation, visualization
