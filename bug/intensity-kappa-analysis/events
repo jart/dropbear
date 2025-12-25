@@ -1,6 +1,6 @@
 agent system
-events 1
-head 9852038ffe7b26aa92c47c17b8abc44550eeeafd8eb57635cd09b6dbb38d6e35
+events 2
+head 8c287d9981c5cf3c883d7a21fcbeade8aeadea6863cf85d8efff6ead1f572837
 
 timestamp 1766651796
 author csg@statewave.com
@@ -30,3 +30,13 @@ content Analyze Avellaneda-Stoikov intensity (kappa) parameter effectiveness.
 event_type CreateBug
 name intensity-kappa-analysis
 title intensity-kappa-analysis
+---
+parent 9852038ffe7b26aa92c47c17b8abc44550eeeafd8eb57635cd09b6dbb38d6e35
+timestamp 1766656475
+author csg@statewave.com
+type CloseBug
+
+cleanup_branch false
+closed_at 2025-12-25T09:54:35.840603+00:00
+event_type CloseBug
+reason Closed
