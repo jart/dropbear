@@ -1,6 +1,6 @@
 agent system
-events 11
-head f990d7336ee0636e27a4ca74b16ffaaf868381dd3efb5e2aea8c5f42d38601eb
+events 12
+head 60f6dcf206139cd38d3485fbf512731b3c4f3fd3412f5bff37df47f858719210
 
 timestamp 1766649464
 author csg@statewave.com
@@ -110,3 +110,11 @@ type Message
 
 event_type Message
 text ARCHITECTURE: Actor Boundaries - BinanceIngest(websocket→tick), CoinbaseIngest(websocket→tick), Indicator(ticks→spread+range), Spread(market→signal), Risk(signal→intent), Execution(intent→result)
+---
+parent f990d7336ee0636e27a4ca74b16ffaaf868381dd3efb5e2aea8c5f42d38601eb
+timestamp 1766649967
+author csg@statewave.com
+type Message
+
+event_type Message
+text ARCHITECTURE: Mailbox pattern - Go channels with ring buffer wrapper, overflow counter reports dropped messages, capacity ~1000 for market data actors
