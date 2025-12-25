@@ -1,6 +1,6 @@
 agent system
-events 7
-head 47d88be92cedd878a5b9a81aceb279ef5ecfd365ad48b6df4fbe683d6fc80ce9
+events 8
+head 534e84b129ab379513bc8a9afc6c4a67e1027451ab1fe79ba5ad7f88c967fa54
 
 timestamp 1766651824
 author csg@statewave.com
@@ -90,3 +90,11 @@ type Message
 
 event_type Message
 text Transitioning to architecture
+---
+parent 47d88be92cedd878a5b9a81aceb279ef5ecfd365ad48b6df4fbe683d6fc80ce9
+timestamp 1766657253
+author csg@statewave.com
+type Message
+
+event_type Message
+text Architecture: Build cmd/morphism that replays market data and counts (1) raw signals, (2) disposition-filtered, (3) buygap-filtered, (4) cost-basis-filtered, (5) executed. Measure profitability at each stage to find value leakage.
