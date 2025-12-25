@@ -1,6 +1,6 @@
 agent system
-events 18
-head 472635db46cfdcedaafd45607baa1efa744dd1c45b9132cb56eb61fde56ea9bd
+events 19
+head c9affac07a620c46005e250ee1db7c067f37a5d22f40f426643eeff696bb62af
 
 timestamp 1766652030
 author csg@statewave.com
@@ -182,3 +182,11 @@ type Message
 
 event_type Message
 text Transitioning to merge
+---
+parent 472635db46cfdcedaafd45607baa1efa744dd1c45b9132cb56eb61fde56ea9bd
+timestamp 1766659078
+author csg@statewave.com
+type Message
+
+event_type Message
+text PR created: https://github.com/jart/dropbear/pull/1
