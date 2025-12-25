@@ -1,0 +1,22 @@
+Build framework for chained experiments.
+
+## Goal
+Run experiments in sequence where each informs the next.
+
+## Experiment Chain Example
+1. **Baseline**: Run current parameters, establish benchmark
+2. **Spread sweep**: Find optimal spread threshold
+3. **Skew sweep**: With optimal spread, find optimal skew
+4. **Intensity test**: With optimal spread+skew, test intensity on/off
+5. **Final validation**: Run optimal params on held-out dataset
+
+## Framework Features
+- Chain definition (YAML or Go)
+- Results persistence (SQLite?)
+- Automatic next-step parameter selection
+- Rollback if performance degrades
+
+## Output
+- Experiment log with all parameters and results
+- Optimal parameter trajectory visualization
+- Statistical significance tests

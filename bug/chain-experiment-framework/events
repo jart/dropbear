@@ -1,0 +1,33 @@
+agent system
+events 1
+head 9c04897aea2fd72304aeeacbdd8c5e5ad68f561896cff5083b11a50d9be2e85f
+
+timestamp 1766652084
+author csg@statewave.com
+type CreateBug
+
+content Build framework for chained experiments.
+	
+	## Goal
+	Run experiments in sequence where each informs the next.
+	
+	## Experiment Chain Example
+	1. **Baseline**: Run current parameters, establish benchmark
+	2. **Spread sweep**: Find optimal spread threshold
+	3. **Skew sweep**: With optimal spread, find optimal skew
+	4. **Intensity test**: With optimal spread+skew, test intensity on/off
+	5. **Final validation**: Run optimal params on held-out dataset
+	
+	## Framework Features
+	- Chain definition (YAML or Go)
+	- Results persistence (SQLite?)
+	- Automatic next-step parameter selection
+	- Rollback if performance degrades
+	
+	## Output
+	- Experiment log with all parameters and results
+	- Optimal parameter trajectory visualization
+	- Statistical significance tests
+event_type CreateBug
+name chain-experiment-framework
+title chain-experiment-framework
