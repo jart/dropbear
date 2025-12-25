@@ -1,0 +1,14 @@
+# Project-Specific Development
+
+[Customize this file with your project's patterns and standards]
+
+## Code Quality
+- Run tests: `cargo test --release`
+- Format code: `cargo fmt`
+- Check linting: `cargo clippy`
+
+## Project Conventions
+[Add your naming conventions, architectural patterns, etc.]
+
+## Testing Strategy
+[Describe your testing approach]
