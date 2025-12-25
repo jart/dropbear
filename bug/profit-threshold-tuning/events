@@ -1,6 +1,6 @@
 agent system
-events 16
-head 0c4a8219c61ba732338fa9bea635268c8b42e4fb18994a0f103cc62467e0274e
+events 17
+head 465005a898d26cda36eb6787dd156d975c5114b7fbfd08775c59cf1afe235550
 
 timestamp 1766652078
 author csg@statewave.com
@@ -164,3 +164,11 @@ type Message
 
 event_type Message
 text Transitioning to testing
+---
+parent 0c4a8219c61ba732338fa9bea635268c8b42e4fb18994a0f103cc62467e0274e
+timestamp 1766659035
+author csg@statewave.com
+type Message
+
+event_type Message
+text Testing complete. Verified analyzer works correctly on chaos/BTC and chaos/ETH. Results show 2 bps threshold generates ~10x more profit than current 5 bps default across both assets. Win rate stays 100%, holding times reasonable. Tool ready for production use. See commit 07c2369.
