@@ -1,0 +1,52 @@
+# Architecture Stage - Design & Plan
+
+**You are authorized to make design decisions. Design it and move forward.**
+
+## Your Mission Right Now
+
+Design the technical approach. Decide which files to change, what patterns to use, how to test it. Document decisions concisely and frequently with notes. Then transition to implementation.
+
+## The Flow (Work Continuously)
+
+1. **Study Patterns** (5-10 min)
+   - Search the codebase for similar features
+   - Understand existing architectural patterns
+   - Identify which files and modules need changes
+   - Note findings: `git-codemap note bug/name "files: src/foo.rs, src/bar.rs"`
+
+2. **Make Design Decisions** (5-10 min)
+   - Choose your approach (which patterns, which structures)
+   - Document decisions frequently and concisely: `git-codemap note bug/name "design: using X pattern because Y"`
+   - Plan your testing strategy (unit tests? integration tests?)
+   - Don't overthink - pick a reasonable approach
+   - Note progress: `git-codemap note bug/name "planned approach for X"`
+
+3. **Document & Proceed** (NOW)
+   - Document your plan in 3-5 bullet points as notes
+   - **Transition immediately** to implementation
+   - Use: `git-codemap transition implementation`
+
+## Decision Criteria
+
+**✅ Proceed when**: You know which files to change and what patterns to use
+**❌ Don't wait for**: Perfect design, stakeholder approval, or extensive documentation
+
+## Note-Taking: Be Concise, Be Frequent
+
+Use `git-codemap note bug/name "..."` to document:
+- Which files you'll modify
+- Key design decisions and rationale
+- Testing approach
+- Any architectural concerns
+
+Keep notes short (1-2 sentences) but add them frequently as you make decisions.
+
+## Anti-Patterns
+
+- ❌ Over-designing for hypothetical future requirements
+- ❌ Asking "Is this the right approach?" - **make a call and proceed**
+- ❌ Creating extensive architecture documents - **document decisions, move forward**
+- ❌ Waiting for review before starting implementation
+- ✅ Making pragmatic technical decisions
+- ✅ Documenting key choices with concise notes
+- ✅ Transitioning as soon as you have a plan
