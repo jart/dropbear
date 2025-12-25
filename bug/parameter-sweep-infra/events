@@ -1,6 +1,6 @@
 agent system
-events 7
-head ace173963e7284d2c853a2ce4f06a1391213de22e65e0b3f968dbe321cc7c0f8
+events 8
+head 728398c9116b152f2ae7ff923ddd0e004326aa800fa4c544b32c3c696030adf6
 
 timestamp 1766651937
 author csg@statewave.com
@@ -88,3 +88,11 @@ type Message
 
 event_type Message
 text Transitioning to architecture
+---
+parent ace173963e7284d2c853a2ce4f06a1391213de22e65e0b3f968dbe321cc7c0f8
+timestamp 1766657711
+author csg@statewave.com
+type Message
+
+event_type Message
+text Architecture: 1) cmd/sweep - grid search orchestrator, 2) sweep/ package - param combinations & result parsing, 3) cmd/heatmap - visualization tool. Leverages existing parallel execution pattern from test.sh
