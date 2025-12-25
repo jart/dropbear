@@ -50,7 +50,6 @@ coinbase has a 50ms heartbeat on l2/trade data.
 ## programs
 
 - `cmd/spread/` is the main trading strategy (live and backtest)
-- `cmd/chart/` generates ASCII price charts from market data
 - `cmd/dumptick ~/marketdata/weekend/binance/FDUSDUSDT` dumps raw recorded data
 - `cmd/record.{binance,coinbase}/` records live websocket data to binary format
 
@@ -99,7 +98,44 @@ coinbase has a 50ms heartbeat on l2/trade data.
 
 spread is the main trading strategy in `cmd/spread/`. it uses binance-coinbase spread mean reversion.
 
-### running backtests
+## viewing charts
+
+You can see an ASCII chart of what's in any particular dataset, like follows:
+
+```
+go run ./cmd/chart -symbol BTC weekend
+# weekend BTC-USD
+# 2025-12-20T21:50:57.236458 to 2025-12-21T11:58:41.755981 (14h7m44s519ms523us)
+# 88067.03 to 88465.93 (0.45%)
+# range: 87601.87 - 89005.99
+
+   89006 |
+         |
+         |                        **             *
+         |                       ****            **
+         |                       ***** *        ***
+         |                   * * *******    *   ****
+         |                   *************************
+         |                  **************************
+         |                  **************************                         *         *
+   88304 |                  ***************************                       **         *
+         |                 *****************************                     ******     **
+         |                ******************************                  * ********   ***
+         |   **        *********************************                 ***********   ***
+         |****** ***************************************              *  ***********  ****
+         |***********************************************     * **    ********************
+         |***********************************************   ******* **********************
+         |************************************************  ******************************
+         |************************************************  ******************************
+         |********************************************************************************
+   87602 |********************************************************************************
+         +
+```
+
+The dataset above is stored in `~/marketdata/weekend/coinbase/BTC-USD` and it contains
+a zstd-compressed binary-encoded array of `ds/tick.go` structures.
+
+## running backtests
 
 ```bash
 # single backtest
@@ -110,8 +146,6 @@ go run ./cmd/spread -backtest chaos -symbol DOGE
 ```
 
 # the march of progress
-
-## latest status
 
 ```
 main jart@studio:~/dropbear$ ./scripts/test.sh spread -intensity 5m
