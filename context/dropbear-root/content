@@ -1,0 +1,20 @@
+# Dropbear: High-Frequency Crypto Trading System
+
+## The Core Thesis
+Binance BTCFDUSD trades predict Coinbase BTC-USD by ~600ms. We exploit this latency arbitrage using:
+- **penny** - AWS z1d 1ms from Coinbase in us-east-1
+- **nickel** - AWS z1d in Tokyo for 21ms faster Binance data
+
+## Current Investigation
+Applying havequick categorical cross-validation framework to formally model and improve the spread strategy:
+- Actor decomposition (message-passing with explicit mailboxes)
+- Categorical law verification (monoid/groupoid properties)
+- Shadow mode (run new implementation alongside Go, compare signals)
+
+## Reference
+- havequick patterns: ~/src/havequick/
+- Plan file: ~/.claude/plans/noble-plotting-biscuit.md
+
+## Commands
+- go fmt ./... && go test ./...
+- git-codemap wtf (see current context)
