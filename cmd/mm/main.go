@@ -431,9 +431,11 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed, balance 
 	// inventory imbalance defense: when we're accumulating (balance < 0.5),
 	// exponentially widen bid spread to slow buying
 	// balance = min(buys,sells)/max(buys,sells), so 0.5 means 2:1 ratio
+	minBalance := decimal.Parse("0.1") // floor to prevent division by tiny numbers
 	if balance.Cmp(decimal.Half) < 0 && balance.IsPositive() {
-		// defenseMultiplier = 1/balance², so at balance=0.5 → 4x, balance=0.25 → 16x
-		defenseMultiplier := decimal.One.Div(balance.Sqr())
+		// defenseMultiplier = 1/balance², so at balance=0.5 → 4x, balance=0.1 → 100x
+		safeBalance := balance.Max(minBalance)
+		defenseMultiplier := decimal.One.Div(safeBalance.Sqr())
 		bidSpread = bidSpread.Mul(defenseMultiplier)
 	}
 
@@ -445,8 +447,9 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed, balance 
 	// scale down bid size when balance is poor (accumulating)
 	bidSize := *flagSize
 	if balance.Cmp(decimal.Half) < 0 && balance.IsPositive() {
-		// at balance=0.5, bid size is halved; at balance=0.25, quartered
-		bidSize = bidSize.Mul(balance.MulInt(2))
+		// at balance=0.5, bid size is halved; at balance=0.1, 1/5th
+		safeBalance := balance.Max(minBalance)
+		bidSize = bidSize.Mul(safeBalance.MulInt(2))
 	}
 	passiveBidQty := bidSize.Div(midPrice).QuantizeNearest(baseIncrement)
 	passiveAskQty := (*flagSize).Div(midPrice).QuantizeNearest(baseIncrement)

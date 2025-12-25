@@ -1,6 +1,8 @@
 #!/bin/sh
 # ./scripts/test.sh spread -spread 4 -samples 7000
 
+export LC_ALL=C
+
 SCRIPTS=${0%/*}
 CMD=${1:-spread}
 shift 1
@@ -61,5 +63,5 @@ done
 wait
 
 # print summary
-sort <"$REPORT"
+sort -bk3,3 <"$REPORT"
 awk -f "$SCRIPTS/test.awk" "$RESULTS"

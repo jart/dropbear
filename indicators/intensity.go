@@ -93,9 +93,10 @@ func (ti *Intensity) AddTrade(time clocky.Time, price, quantity decimal.Decimal)
 		return
 	}
 
-	// add volume to appropriate bin
+	// add volume to appropriate bin (in USD value, not raw quantity)
 	bin := int(delta / binWidth)
-	ti.binVolume[bin] += newVolume
+	usdValue := newVolume * price.Float64()
+	ti.binVolume[bin] += usdValue
 
 	// compute regression stats from bins
 	var sumX, sumY, sumXY, sumXX, count float64
