@@ -1,6 +1,6 @@
 agent system
-events 1
-head d6e49c54c67c73bce682416715d93e513b33c2cf488c5b17c68c49e6b113ec87
+events 2
+head 417009ed1361c90c196ce3344905e88ab9d15308235d70e8ee8926602f6267b3
 
 timestamp 1766651940
 author csg@statewave.com
@@ -29,3 +29,16 @@ content Build tooling for deep single-coin analysis.
 event_type CreateBug
 name single-coin-deepdive
 title single-coin-deepdive
+---
+parent d6e49c54c67c73bce682416715d93e513b33c2cf488c5b17c68c49e6b113ec87
+timestamp 1766657178
+author csg@statewave.com
+type Checkout
+
+branch_name bug/single-coin-deepdive
+bug_name single-coin-deepdive
+event_type Checkout
+machine_id unknown
+origin_url git@github.com:jart/dropbear.git
+redundant_work false
+target_branch main
