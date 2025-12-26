@@ -6,6 +6,7 @@ type Exchange int
 const (
 	ExchangeAlpaca Exchange = iota
 	ExchangeBinance
+	ExchangeBinanceUSD
 	ExchangeCoinbase
 )
 
@@ -15,6 +16,8 @@ func (e Exchange) String() string {
 		return "alpaca"
 	case ExchangeBinance:
 		return "binance"
+	case ExchangeBinanceUSD:
+		return "binanceusd"
 	case ExchangeCoinbase:
 		return "coinbase"
 	default:

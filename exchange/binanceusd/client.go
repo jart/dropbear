@@ -1,7 +1,8 @@
-package binance
+package binanceusd
 
 import (
 	"dropbear/ds"
+	"dropbear/exchange/binance"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,7 +41,7 @@ func (c *Client) GetJSON(url string, data any) error {
 		if err := json.NewDecoder(resp.Body).Decode(&apiErr); err != nil {
 			return fmt.Errorf("failed to decode error response from %s: %w", url, err)
 		}
-		canonicalError := LookupError(apiErr.Code)
+		canonicalError := binance.LookupError(apiErr.Code)
 		if canonicalError == nil {
 			return fmt.Errorf("binance api %d error from %s: %d %s", resp.StatusCode, url, apiErr.Code, apiErr.Msg)
 		}

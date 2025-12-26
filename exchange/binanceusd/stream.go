@@ -1,4 +1,4 @@
-package binance
+package binanceusd
 
 import (
 	"dropbear/clocky"
@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-const StreamURL = "wss://nickel.justine.lol/ws"
-const PublicStreamURL = "wss://nickel.justine.lol/pub/ws"
+const StreamURL = "wss://nickel.justine.lol/fut/ws"
 
 type marketData struct {
 	Symbol       string
@@ -31,11 +30,11 @@ type marketTrade struct {
 }
 
 type depthUpdate struct {
-	Symbol        string      `json:"s"`
-	Bids          [][2]string `json:"b"`
-	Asks          [][2]string `json:"a"`
-	FirstUpdateID int64       `json:"U"`
-	FinalUpdateID int64       `json:"u"`
+	Symbol        string     `json:"s"`
+	Bids          [][]string `json:"b"`
+	Asks          [][]string `json:"a"`
+	FirstUpdateID int64      `json:"U"`
+	FinalUpdateID int64      `json:"u"`
 }
 
 func MarketData(symbol string, client *Client) <-chan *ds.Tick {
@@ -120,24 +119,20 @@ func (m *marketData) snapshot() error {
 		Snap: true,
 	}
 	for _, bid := range depthSnapshot.Bids {
-		if len(bid) >= 2 {
-			price := decimal.Parse(bid[0])
-			size := decimal.Parse(bid[1])
-			tick.Bids = append(tick.Bids, ds.Level{
-				Price: price,
-				Size:  size,
-			})
-		}
+		price := decimal.Parse(bid[0])
+		size := decimal.Parse(bid[1])
+		tick.Bids = append(tick.Bids, ds.Level{
+			Price: price,
+			Size:  size,
+		})
 	}
 	for _, ask := range depthSnapshot.Asks {
-		if len(ask) >= 2 {
-			price := decimal.Parse(ask[0])
-			size := decimal.Parse(ask[1])
-			tick.Asks = append(tick.Asks, ds.Level{
-				Price: price,
-				Size:  size,
-			})
-		}
+		price := decimal.Parse(ask[0])
+		size := decimal.Parse(ask[1])
+		tick.Asks = append(tick.Asks, ds.Level{
+			Price: price,
+			Size:  size,
+		})
 	}
 	m.LastUpdateID = depthSnapshot.LastUpdateID
 	m.channel <- tick
@@ -191,8 +186,12 @@ func (m *marketData) handleTrade(data []byte, now clocky.Time) error {
 	if raw.IsSell {
 		side = ds.SideSell
 	}
+	price := decimal.Parse(raw.Price)
+	if price.IsZero() {
+		return nil // this can happen with the futures stream
+	}
 	tick.Trades = append(tick.Trades, ds.Trade{
-		Price:    decimal.Parse(raw.Price),
+		Price:    price,
 		Quantity: decimal.Parse(raw.Quantity),
 		Time:     clocky.Time(raw.Time * 1000),
 		Side:     side,

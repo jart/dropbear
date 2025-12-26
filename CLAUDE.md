@@ -8,7 +8,7 @@ we have an aws z1d instance in tokyo named nickel that lets us access binance da
 
 our goal is to use superior market intelligence and telecommunications to beat the market and pick off market makers.
 
-we believe Binance BTCFDUSD trades predict Coinbase BTC-USD by 600ms.
+we believe Binance BTCUSDT futures predict Coinbase BTC-USD by 600ms.
 
 binance trade data comes in the instant it happens.
 

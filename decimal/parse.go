@@ -1,20 +1,30 @@
 package decimal
 
 // Parse parses a decimal string like "123.45" or "3.6372083e-07".
+// Panics on invalid input.
 func Parse(str string) Decimal {
+	if len(str) == 0 {
+		panic("decimal.Parse: empty string")
+	}
+
 	// parse sign
 	i := 0
 	s := int64(1)
-	if len(str) > 0 && str[0] == '-' {
+	switch str[0] {
+	case '-':
 		s = -1
+		i++
+	case '+':
 		i++
 	}
 
 	// parse integer part
+	digits := 0
 	x := int64(0)
 	for i < len(str) && str[i] >= '0' && str[i] <= '9' {
 		x *= 10
 		x += int64(str[i]-'0') * s
+		digits++
 		i++
 	}
 
@@ -29,6 +39,7 @@ func Parse(str string) Decimal {
 				f += int64(str[i] - '0')
 				k++
 			}
+			digits++
 			i++
 		}
 		if k < Places {
@@ -37,6 +48,10 @@ func Parse(str string) Decimal {
 		x = x*Scale + f*s
 	} else {
 		x *= Scale
+	}
+
+	if digits == 0 {
+		panic("decimal.Parse: no digits in " + str)
 	}
 
 	// parse exponent
@@ -75,6 +90,10 @@ func Parse(str string) Decimal {
 				exp -= shift
 			}
 		}
+	}
+
+	if i != len(str) {
+		panic("decimal.Parse: trailing garbage in " + str)
 	}
 
 	return Decimal(x)

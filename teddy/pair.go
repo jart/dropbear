@@ -72,7 +72,7 @@ func (p *Pair) init() {
 		go p.refreshDaemon()
 		switch p.Exchange.Exchange {
 		case ds.ExchangeBinance:
-			go p.liveDataDaemon(binance.MarketData(p.Symbol(), BinanceClient))
+			go p.liveDataDaemon(binance.MarketData(binance.SpotStreamURL, p.Symbol(), BinanceClient))
 		case ds.ExchangeCoinbase:
 			go p.liveDataDaemon(coinbase.MarketData(p.Symbol(), CoinbaseClient))
 		default:
