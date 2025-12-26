@@ -5,6 +5,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/exchange/binanceusd"
+	"dropbear/indicators"
 	"dropbear/loggy"
 	"dropbear/teddy"
 	"flag"
@@ -18,10 +19,12 @@ var (
 	flagSymbol    = flag.String("symbol", "BTC-USD", "coinbase product to trade")
 	flagPredictor = flag.String("predictor", "BTCUSDT@binanceusd", "predictor symbol@exchange (e.g. BTCUSDT@binanceusd, BTCFDUSD@binance)")
 	flagSize      = decimal.Flag("size", "200", "order size in usd")
-	flagUSD       = decimal.Flag("usd", "20000", "coinbase usd balance")
+	flagUSD       = decimal.Flag("usd", "10000", "coinbase usd balance")
+	flagCoin      = decimal.Flag("coin", "0.1", "coinbase coin balance (e.g. BTC)")
 	flagThreshold = decimal.FlagBPS("threshold", "3", "minimum spread deviation to trade (basis points)")
 	flagCooldown  = clocky.DurationFlag("cooldown", "1s", "minimum time between trades")
 	flagFreshness = clocky.DurationFlag("freshness", "500ms", "max age of market data before suspending")
+	flagSamples   = flag.Int("samples", 5000, "number of samples for baseline spread ema")
 )
 
 var (
@@ -33,6 +36,8 @@ var (
 	gLastCoinbase   clocky.Time
 	gLastTrade      clocky.Time
 	gTradeLock      sync.Mutex
+	gSpreadEMA      *indicators.WWMA
+	gSpreadLock     sync.Mutex
 )
 
 func main() {
@@ -43,8 +48,11 @@ func main() {
 	// parse predictor flag
 	predictorExchange, predictorSymbol := parsePredictor(*flagPredictor)
 
-	log.Printf("arb: symbol=%s predictor=%s threshold=%sbps cooldown=%s",
-		*flagSymbol, *flagPredictor, (*flagThreshold).BPS(), *flagCooldown)
+	log.Printf("arb: symbol=%s predictor=%s threshold=%sbps cooldown=%s samples=%d",
+		*flagSymbol, *flagPredictor, (*flagThreshold).BPS(), *flagCooldown, *flagSamples)
+
+	// initialize spread baseline tracker
+	gSpreadEMA = indicators.NewWWMA(*flagSamples)
 
 	// setup coinbase (where we trade)
 	gCoinbase = teddy.Exchanges.Get(ds.ExchangeCoinbase)
@@ -62,7 +70,11 @@ func main() {
 		go startBinanceUSDStream(predictorSymbol)
 	}
 
+	// parse base currency from symbol (e.g. BTC from BTC-USD)
+	baseCurrency := strings.Split(*flagSymbol, "-")[0]
+
 	teddy.SetBalance(ds.ExchangeCoinbase, "USD", *flagUSD)
+	teddy.SetBalance(ds.ExchangeCoinbase, baseCurrency, *flagCoin)
 	teddy.SetBenchmark(gCoinbasePair)
 	teddy.Run()
 }
@@ -144,31 +156,47 @@ func checkArb(now clocky.Time, predictorSide ds.Side, prevPrice, newPrice decima
 	}
 	coinbaseMid := coinbaseBid.Add(coinbaseAsk).DivInt(2)
 
-	// calculate how stale coinbase is relative to predictor
-	// staleness = (coinbase_mid - predictor_price) / predictor_price
-	staleness := coinbaseMid.Sub(newPrice).Div(newPrice)
+	// calculate spread between coinbase and predictor
+	// spread = (coinbase_mid - predictor_price) / predictor_price
+	spread := coinbaseMid.Sub(newPrice).Div(newPrice)
+
+	// update baseline and get deviation
+	gSpreadLock.Lock()
+	gSpreadEMA.Add(spread)
+	baseline := gSpreadEMA.Value
+	isReady := gSpreadEMA.IsReady()
+	gSpreadLock.Unlock()
+
+	// don't trade until we have enough samples to know what's "normal"
+	if !isReady {
+		return
+	}
+
+	// deviation from baseline is what matters, not absolute spread
+	deviation := spread.Sub(baseline)
 
 	// trading logic:
-	// if predictor sold (price dropped) and Coinbase is still high -> SELL on Coinbase
-	// if predictor bought (price rose) and Coinbase is still low -> BUY on Coinbase
+	// deviation > threshold: coinbase got MORE expensive relative to normal -> SELL
+	// deviation < -threshold: coinbase got CHEAPER relative to normal -> BUY
 	var side ds.Side
 	var edgeBPS decimal.Decimal
 
-	if predictorSide == ds.SideSell && staleness.Cmp(*flagThreshold) > 0 {
-		// predictor dumped, coinbase bid is stale high - sell into it
+	if predictorSide == ds.SideSell && deviation.Cmp(*flagThreshold) > 0 {
+		// predictor dumped, coinbase is high relative to baseline - sell into it
 		side = ds.SideSell
-		edgeBPS = staleness.BPS()
-	} else if predictorSide == ds.SideBuy && staleness.Neg().Cmp(*flagThreshold) > 0 {
-		// predictor pumped, coinbase ask is stale low - buy it
+		edgeBPS = deviation.BPS()
+	} else if predictorSide == ds.SideBuy && deviation.Neg().Cmp(*flagThreshold) > 0 {
+		// predictor pumped, coinbase is low relative to baseline - buy it
 		side = ds.SideBuy
-		edgeBPS = staleness.Neg().BPS()
+		edgeBPS = deviation.Neg().BPS()
 	} else {
 		return
 	}
 
 	if *flagVerbose {
-		log.Printf("[signal] predictor %s, coinbase stale by %sbps, action=%s",
-			predictorSide, staleness.BPS().Format(2), side)
+		log.Printf("[signal] predictor %s, spread=%sbps baseline=%sbps dev=%sbps action=%s",
+			predictorSide, spread.BPS().Format(2), baseline.BPS().Format(2),
+			deviation.BPS().Format(2), side)
 	}
 
 	executeTrade(now, side, edgeBPS)

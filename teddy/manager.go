@@ -90,11 +90,15 @@ func (m *manager) Run() {
 				if m.unready.Empty() {
 					for _, exchange := range Exchanges.All() {
 						for _, holding := range exchange.Holdings.All() {
+							holding.Lock.RLock()
+							quantity := holding.Quantity
+							holding.Lock.RUnlock()
 							if holding.IsCash {
-								holding.Lock.RLock()
-								quantity := holding.Quantity
-								holding.Lock.RUnlock()
+								// convert cash to benchmark asset
 								gBenchmarkQty = gBenchmarkQty.Add(quantity.Div(gBenchmark.LastPrice))
+							} else if holding.Symbol == gBenchmark.BaseCurrency {
+								// include existing holdings of benchmark asset
+								gBenchmarkQty = gBenchmarkQty.Add(quantity)
 							}
 						}
 					}
