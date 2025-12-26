@@ -4,7 +4,6 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/exchange/binanceusd"
 	"dropbear/indicators"
 	"dropbear/loggy"
 	"dropbear/teddy"
@@ -16,28 +15,28 @@ import (
 
 var (
 	flagVerbose   = flag.Bool("verbose", false, "enable verbose logging")
-	flagSymbol    = flag.String("symbol", "BTC-USD", "coinbase product to trade")
+	flagSymbol    = flag.String("symbol", "BTC", "coinbase product to trade")
 	flagPredictor = flag.String("predictor", "BTCUSDT@binanceusd", "predictor symbol@exchange (e.g. BTCUSDT@binanceusd, BTCFDUSD@binance)")
-	flagSize      = decimal.Flag("size", "200", "order size in usd")
 	flagUSD       = decimal.Flag("usd", "10000", "coinbase usd balance")
-	flagCoin      = decimal.Flag("coin", "0.1", "coinbase coin balance (e.g. BTC)")
+	flagCoin      = decimal.Flag("coin", "0.4", "symbol balance in base currency")
+	flagBuffer    = decimal.FlagPercent("buffer", "0.5", "percent of balance buffer to keep free")
 	flagThreshold = decimal.FlagBPS("threshold", "3", "minimum spread deviation to trade (basis points)")
-	flagCooldown  = clocky.DurationFlag("cooldown", "1s", "minimum time between trades")
-	flagFreshness = clocky.DurationFlag("freshness", "500ms", "max age of market data before suspending")
-	flagSamples   = flag.Int("samples", 5000, "number of samples for baseline spread ema")
+	flagCooldown  = clocky.DurationFlag("cooldown", "150ms", "minimum time between trades")
+	flagFreshness = clocky.DurationFlag("freshness", "1s", "max age of market data before suspending")
+	flagSamples   = flag.Int("samples", 5000, "number of sample trades used to determine baseline spread")
 )
 
 var (
-	gCoinbase       *teddy.Exchange
-	gCoinbasePair   *teddy.Pair
-	gPredictorPair  *teddy.Pair
-	gPredictorPrice decimal.Decimal
-	gLastPredictor  clocky.Time
-	gLastCoinbase   clocky.Time
-	gLastTrade      clocky.Time
-	gTradeLock      sync.Mutex
-	gSpreadEMA      *indicators.WWMA
-	gSpreadLock     sync.Mutex
+	gCash          *teddy.Holding
+	gHolding       *teddy.Holding
+	gCoinbase      *teddy.Exchange
+	gCoinbasePair  *teddy.Pair
+	gPredictorPair *teddy.Pair
+	gLastCoinbase  clocky.Time
+	gLastOrder     clocky.Time
+	gOrderLock     sync.Mutex
+	gSpreadEMA     *indicators.WWMA
+	gSpreadLock    sync.Mutex
 )
 
 func main() {
@@ -56,7 +55,9 @@ func main() {
 
 	// setup coinbase (where we trade)
 	gCoinbase = teddy.Exchanges.Get(ds.ExchangeCoinbase)
-	gCoinbasePair = gCoinbase.Pairs.Get(*flagSymbol)
+	gCoinbasePair = gCoinbase.Pairs.Get(*flagSymbol + "-USD")
+	gHolding = gCoinbase.Holdings.Get(*flagSymbol)
+	gCash = gCoinbase.Holdings.Get("USD")
 	gCoinbasePair.OnTick = onCoinbaseTick
 
 	// setup predictor (where we watch)
@@ -64,43 +65,10 @@ func main() {
 	gPredictorPair = predictor.Pairs.Get(predictorSymbol)
 	gPredictorPair.OnTick = onPredictorTick
 
-	// for live mode, we need to start the binanceusd stream ourselves
-	// since teddy doesn't have built-in support for it yet
-	if teddy.Live && predictorExchange == ds.ExchangeBinanceUSD {
-		go startBinanceUSDStream(predictorSymbol)
-	}
-
-	// parse base currency from symbol (e.g. BTC from BTC-USD)
-	baseCurrency := strings.Split(*flagSymbol, "-")[0]
-
+	teddy.SetBalance(ds.ExchangeCoinbase, *flagSymbol, *flagCoin)
 	teddy.SetBalance(ds.ExchangeCoinbase, "USD", *flagUSD)
-	teddy.SetBalance(ds.ExchangeCoinbase, baseCurrency, *flagCoin)
 	teddy.SetBenchmark(gCoinbasePair)
 	teddy.Run()
-}
-
-func startBinanceUSDStream(symbol string) {
-	// convert BTC-USDT back to BTCUSDT for the api
-	apiSymbol := strings.ReplaceAll(symbol, "-", "")
-	client := binanceusd.NewClient()
-	channel := binanceusd.MarketData(apiSymbol, client)
-	for tick := range channel {
-		gPredictorPair.OrderBook.Lock.Lock()
-		if tick.Snap {
-			gPredictorPair.OrderBook.Clear()
-		}
-		for _, bid := range tick.Bids {
-			gPredictorPair.OrderBook.UpdateBid(bid.Price, bid.Size)
-		}
-		for _, ask := range tick.Asks {
-			gPredictorPair.OrderBook.UpdateAsk(ask.Price, ask.Size)
-		}
-		gPredictorPair.OrderBook.Lock.Unlock()
-		for _, trade := range tick.Trades {
-			gPredictorPair.LastPrice = trade.Price
-		}
-		teddy.Spawn(func() { onPredictorTickImpl(tick) })
-	}
 }
 
 func onCoinbaseTick(tick *ds.Tick) {
@@ -115,139 +83,128 @@ func onCoinbaseTick(tick *ds.Tick) {
 
 func onPredictorTick(tick *ds.Tick) {
 	teddy.Spawn(func() {
-		onPredictorTickImpl(tick)
+		for _, trade := range tick.Trades {
+			arbitrage(tick.Time, trade.Price)
+		}
 	})
 }
 
-func onPredictorTickImpl(tick *ds.Tick) {
-	// react to predictor trades
-	for _, trade := range tick.Trades {
-		if trade.Price.IsPositive() {
-			prevPrice := gPredictorPrice
-			gPredictorPrice = trade.Price
-			if trade.Time > gLastPredictor {
-				gLastPredictor = trade.Time
-			}
-			// only check for arb opportunity if we have a previous price
-			if prevPrice.IsPositive() {
-				checkArb(tick.Time, trade.Side, prevPrice, trade.Price)
-			}
-		}
-	}
-}
+func arbitrage(now clocky.Time, predictorPrice decimal.Decimal) {
 
-func checkArb(now clocky.Time, predictorSide ds.Side, prevPrice, newPrice decimal.Decimal) {
 	// don't trade too frequently
-	if now.Sub(gLastTrade) < *flagCooldown {
+	if now.Sub(gLastOrder) < *flagCooldown {
 		return
 	}
-
-	// don't trade if data is stale
-	if now.Sub(gLastPredictor) > *flagFreshness || now.Sub(gLastCoinbase) > *flagFreshness {
-		return
-	}
-
-	// get coinbase book
-	depth := (*flagSize).Div(newPrice)
-	coinbaseBid := gCoinbasePair.OrderBook.PickBid(depth)
-	coinbaseAsk := gCoinbasePair.OrderBook.PickAsk(depth)
-	if coinbaseBid.IsZero() || coinbaseAsk.IsZero() {
-		return
-	}
-	coinbaseMid := coinbaseBid.Add(coinbaseAsk).DivInt(2)
 
 	// calculate spread between coinbase and predictor
-	// spread = (coinbase_mid - predictor_price) / predictor_price
-	spread := coinbaseMid.Sub(newPrice).Div(newPrice)
+	// spread = (midpoint - prediction) / prediction
+	bid, ask := gCoinbasePair.OrderBook.BestBidAsk()
+	mid := bid.Add(ask).DivInt(2)
+	spread := mid.Sub(predictorPrice).Div(predictorPrice)
 
-	// update baseline and get deviation
+	// determine how much spread differs from what it normally is
 	gSpreadLock.Lock()
 	gSpreadEMA.Add(spread)
 	baseline := gSpreadEMA.Value
 	isReady := gSpreadEMA.IsReady()
 	gSpreadLock.Unlock()
-
-	// don't trade until we have enough samples to know what's "normal"
 	if !isReady {
 		return
 	}
-
-	// deviation from baseline is what matters, not absolute spread
 	deviation := spread.Sub(baseline)
 
-	// trading logic:
-	// deviation > threshold: coinbase got MORE expensive relative to normal -> SELL
-	// deviation < -threshold: coinbase got CHEAPER relative to normal -> BUY
-	var side ds.Side
-	var edgeBPS decimal.Decimal
+	// let's say btc on coinbase usually costs 99, and on binance it's usually 100.
+	// in that case, m=99, P=100, and b=-0.01. suddenly the price on binance shoots
+	// up to 102 but market makers on coinbase are still offering to buy / sell btc
+	// for 99. this is an abnormal price difference between the two exchanges, plus
+	// we know from statistical analysis that where binance goes, coinbase follows.
+	//
+	// so right now
+	//
+	//     s = (m-P)/P = -0.03
+	//
+	// and
+	//
+	//     d = s-b = -0.02
+	//
+	// that deviation is our opportunity. to become normal again, coinbase's price
+	// must rise to 101 so it's only 1% below binance. that's the price we predict
+	// coinbase will reach soon
+	//
+	//     p = P*(1+b) = 102*(1-0.01) = 100.98
+	//
+	// since p > m, we want to buy on coinbase, because we're predicting the price
+	// will rise to p. all the market makers on coinbase with ask orders, offering
+	// to sell btc to use between m (99) and p (100.98) are offering an attractive
+	// deal. but how much of that liquidity is safe for us to take?
+	//
+	// if we're vip4 on coinbase, we pay a 0.04875% taker fee, which is 0.0004875,
+	// also known as f which is about five basis points. so what is the highest we
+	// can pay (q) for btc, before we're underwater? consider how order fees work:
+	//
+	//     p = q*(1+f)
+	//
+	// you have your order value and they add their fee. therefore to round trip:
+	//
+	//     q = p/(1+f)
+	//
+	// we should use q as our limit price. which is
+	//
+	//     q = 100.98 / (1 + 0.0004875) = 100.93079623683455
+	//
+	// because
+	//
+	//     100.93079623683455 * (1 + 0.0004875) = 100.98
+	//
+	// however the exchange will reject that limit price because it's not rounded
+	// to the nearest penny. so which direction do we round? for buys, we want to
+	// round down, because buying low is good. whereas sells we want to round up.
 
-	if predictorSide == ds.SideSell && deviation.Cmp(*flagThreshold) > 0 {
-		// predictor dumped, coinbase is high relative to baseline - sell into it
-		side = ds.SideSell
-		edgeBPS = deviation.BPS()
-	} else if predictorSide == ds.SideBuy && deviation.Neg().Cmp(*flagThreshold) > 0 {
-		// predictor pumped, coinbase is low relative to baseline - buy it
+	var side ds.Side
+	var size decimal.Decimal
+	var limi decimal.Decimal
+	predictedPrice := predictorPrice.Mul(decimal.One.Add(baseline))
+	if predictedPrice.Cmp(mid) > 0 {
 		side = ds.SideBuy
-		edgeBPS = deviation.Neg().BPS()
+		size = gCash.Available.Mul(decimal.One.Sub(*flagBuffer)).Div(predictedPrice)
+		limi = predictedPrice.Div(decimal.One.Add(*flagThreshold))
+		limi = limi.QuantizeDown(gCoinbasePair.QuoteIncrement)
+		if limi.Cmp(ask) < 0 {
+			return
+		}
 	} else {
-		return
+		side = ds.SideSell
+		size = gHolding.Available.Mul(decimal.One.Sub(*flagBuffer))
+		limi = predictedPrice.Mul(decimal.One.Add(*flagThreshold))
+		limi = limi.QuantizeUp(gCoinbasePair.QuoteIncrement)
+		if limi.Cmp(bid) > 0 {
+			return
+		}
 	}
 
 	if *flagVerbose {
-		log.Printf("[signal] predictor %s, spread=%sbps baseline=%sbps dev=%sbps action=%s",
-			predictorSide, spread.BPS().Format(2), baseline.BPS().Format(2),
-			deviation.BPS().Format(2), side)
+		log.Printf("[signal] spread=%sbps baseline=%sbps dev=%sbps predicted=$%s limit=$%s action=%s",
+			spread.BPS().Format(2), baseline.BPS().Format(2),
+			deviation.BPS().Format(2), predictedPrice.Format(2), limi.Format(2), side)
 	}
-
-	executeTrade(now, side, edgeBPS)
-}
-
-func executeTrade(now clocky.Time, side ds.Side, edgeBPS decimal.Decimal) {
-	// get pair info
-	gCoinbasePair.Lock.RLock()
-	lastPrice := gCoinbasePair.LastPrice
-	baseIncrement := gCoinbasePair.BaseIncrement
-	quoteIncrement := gCoinbasePair.QuoteIncrement
-	gCoinbasePair.Lock.RUnlock()
-
-	if !lastPrice.IsPositive() {
-		return
-	}
-
-	// calculate quantity
-	quantity := (*flagSize).Div(lastPrice).QuantizeNearest(baseIncrement)
-
-	// calculate limit price with some slippage allowance
-	// for buys: willing to pay up to 5bps above mid
-	// for sells: willing to sell down to 5bps below mid
-	slippageBPS := decimal.Parse("0.0005") // 5 bps
-	var limitPrice decimal.Decimal
-	switch side {
-	case ds.SideBuy:
-		limitPrice = lastPrice.Mul(decimal.One.Add(slippageBPS))
-	case ds.SideSell:
-		limitPrice = lastPrice.Mul(decimal.One.Sub(slippageBPS))
-	}
-	limitPrice = limitPrice.Quantize(quoteIncrement)
 
 	// acquire trade lock
-	gTradeLock.Lock()
-	if now.Sub(gLastTrade) < *flagCooldown {
-		gTradeLock.Unlock()
+	gOrderLock.Lock()
+	if now.Sub(gLastOrder) < *flagCooldown {
+		gOrderLock.Unlock()
 		return
 	}
-	gLastTrade = now
-	gTradeLock.Unlock()
+	gLastOrder = now
+	gOrderLock.Unlock()
 
-	// place ioc limit order
+	// place immediate-or-cancel limit order
 	t0 := now
 	t1 := clocky.Now()
-	order, err := gCoinbasePair.LimitOrder(side, quantity, limitPrice, ds.OrderStrategyIOC)
+	size = size.QuantizeDown(gCoinbasePair.BaseIncrement)
+	order, err := gCoinbasePair.LimitOrder(side, size, limi, ds.OrderStrategyIOC)
 	t2 := clocky.Now()
 	if err != nil {
-		if *flagVerbose {
-			log.Printf("[error] failed to place order: %v", err)
-		}
+		log.Printf("[error] failed to place order: %v", err)
 		return
 	}
 
@@ -258,19 +215,16 @@ func executeTrade(now clocky.Time, side ds.Side, edgeBPS decimal.Decimal) {
 	// report result
 	if order.State == ds.OrderStateFilled {
 		value := order.Filled.Mul(order.FillPrice)
-		log.Printf("[trade] %s $%s @ $%s edge=%sbps latency=%s",
-			side,
-			value.Quantize(quoteIncrement),
-			order.FillPrice.Quantize(quoteIncrement),
-			edgeBPS.Format(1),
+		log.Printf("[trade] %s $%s @ $%s latency=%s",
+			side, value.Quantize(gCoinbasePair.QuoteIncrement),
+			order.FillPrice.Quantize(gCoinbasePair.QuoteIncrement),
 			t3.Sub(t0))
 	} else if order.Filled.IsPositive() {
 		value := order.Filled.Mul(order.FillPrice)
 		log.Printf("[partial] %s $%s @ $%s (wanted $%s)",
-			side,
-			value.Quantize(quoteIncrement),
-			order.FillPrice.Quantize(quoteIncrement),
-			(*flagSize).Format(0))
+			side, value.Quantize(gCoinbasePair.QuoteIncrement),
+			order.FillPrice.Quantize(gCoinbasePair.QuoteIncrement),
+			size.Format(0))
 	} else if *flagVerbose {
 		log.Printf("[miss] %s order not filled (state=%s)", side, order.State)
 	}

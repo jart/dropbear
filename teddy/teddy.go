@@ -65,6 +65,12 @@ func Init() {
 
 // SetBalance sets the simulated balance for the given exchange and symbol in backtest mode.
 func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
+	if quantity.IsNegative() {
+		panic("cannot set negative balance")
+	}
+	if quantity.IsZero() {
+		return
+	}
 	if !Live {
 		ex := Exchanges.Get(exchange)
 		h := ex.Holdings.Get(symbol)
