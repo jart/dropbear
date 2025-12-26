@@ -42,29 +42,29 @@ type Filter struct {
 }
 
 type Symbol struct {
-	Symbol                          string   `json:"symbol"`                                    // e.g. BTCFDUSD
-	Status                          string   `json:"status"`                                    // e.g. TRADING
-	BaseAsset                       string   `json:"baseAsset"`                                 // e.g. BTC
-	BaseAssetPrecision              int      `json:"baseAssetPrecision"`                        // e.g. 8
-	QuoteAsset                      string   `json:"quoteAsset"`                                // e.g. FDUSD
-	QuoteAssetPrecision             int      `json:"quoteAssetPrecision"`                       // e.g. 8
-	BaseCommissionPrecision         int      `json:"baseCommissionPrecision"`                   // e.g. 8
-	QuoteCommissionPrecision        int      `json:"quoteCommissionPrecision"`                  // e.g. 8
-	IcebergAllowed                  bool     `json:"icebergAllowed"`                            // e.g. true
-	OrderTypes                      []string `json:"orderTypes"`                                // e.g. ["LIMIT", "LIMIT_MAKER", "MARKET"]
-	OCOAllowed                      bool     `json:"ocoAllowed"`                                // e.g. true
-	OTOAllowed                      bool     `json:"otoAllowed"`                                // e.g. true
-	OPOAllowed                      bool     `json:"opoAllowed"`                                // e.g. true
-	QuoteOrderQtyMarketAllowed      bool     `json:"quoteOrderQtyMarketAllowed"`                // e.g. true
-	AllowTrailingStop               bool     `json:"allowTrailingStop"`                         // e.g. true
-	CancelReplaceAllowed            bool     `json:"cancelReplaceAllowed"`                      // e.g. true
-	AmendAllowed                    bool     `json:"amendAllowed"`                              // e.g. true
-	PegInstructionsAllowed          bool     `json:"pegInstructionsAllowed"`                    // e.g. true
-	IsSpotTradingAllowed            bool     `json:"isSpotTradingAllowed"`                      // e.g. true
-	IsMarginTradingAllowed          bool     `json:"isMarginTradingAllowed"`                    // e.g. true
-	Filters                         []Filter `json:"filters"`                                   // e.g. [...]
-	DefaultSelfTradePreventionMode  string   `json:"defaultSelfTradePreventionMode,omitempty"`  // e.g. "EXPIRE_MAKER"
-	AllowedSelfTradePreventionModes []string `json:"allowedSelfTradePreventionModes,omitempty"` // e.g. ["EXPIRE_TAKER", "EXPIRE_MAKER", "EXPIRE_BOTH", "DECREMENT"]
+	Symbol                          string    `json:"symbol"`                                    // e.g. BTCFDUSD
+	Status                          string    `json:"status"`                                    // e.g. TRADING
+	BaseAsset                       string    `json:"baseAsset"`                                 // e.g. BTC
+	BaseAssetPrecision              int       `json:"baseAssetPrecision"`                        // e.g. 8
+	QuoteAsset                      string    `json:"quoteAsset"`                                // e.g. FDUSD
+	QuoteAssetPrecision             int       `json:"quoteAssetPrecision"`                       // e.g. 8
+	BaseCommissionPrecision         int       `json:"baseCommissionPrecision"`                   // e.g. 8
+	QuoteCommissionPrecision        int       `json:"quoteCommissionPrecision"`                  // e.g. 8
+	IcebergAllowed                  bool      `json:"icebergAllowed"`                            // e.g. true
+	OrderTypes                      []string  `json:"orderTypes"`                                // e.g. ["LIMIT", "LIMIT_MAKER", "MARKET"]
+	OCOAllowed                      bool      `json:"ocoAllowed"`                                // e.g. true
+	OTOAllowed                      bool      `json:"otoAllowed"`                                // e.g. true
+	OPOAllowed                      bool      `json:"opoAllowed"`                                // e.g. true
+	QuoteOrderQtyMarketAllowed      bool      `json:"quoteOrderQtyMarketAllowed"`                // e.g. true
+	AllowTrailingStop               bool      `json:"allowTrailingStop"`                         // e.g. true
+	CancelReplaceAllowed            bool      `json:"cancelReplaceAllowed"`                      // e.g. true
+	AmendAllowed                    bool      `json:"amendAllowed"`                              // e.g. true
+	PegInstructionsAllowed          bool      `json:"pegInstructionsAllowed"`                    // e.g. true
+	IsSpotTradingAllowed            bool      `json:"isSpotTradingAllowed"`                      // e.g. true
+	IsMarginTradingAllowed          bool      `json:"isMarginTradingAllowed"`                    // e.g. true
+	Filters                         []*Filter `json:"filters"`                                   // e.g. [...]
+	DefaultSelfTradePreventionMode  string    `json:"defaultSelfTradePreventionMode,omitempty"`  // e.g. "EXPIRE_MAKER"
+	AllowedSelfTradePreventionModes []string  `json:"allowedSelfTradePreventionModes,omitempty"` // e.g. ["EXPIRE_TAKER", "EXPIRE_MAKER", "EXPIRE_BOTH", "DECREMENT"]
 }
 
 type ExchangeInfo struct {

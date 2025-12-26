@@ -5,6 +5,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/exchange/binance"
+	"dropbear/exchange/binanceusd"
 	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
 	"dropbear/teddy/metrics"
@@ -27,6 +28,7 @@ var (
 var (
 	Live              bool
 	BinanceClient     *binance.Client
+	BinanceUSDClient  *binanceusd.Client
 	CoinbaseClient    *coinbase.Client
 	gManager          *manager
 	gSigChan          chan os.Signal
@@ -44,6 +46,7 @@ func Init() {
 	Live = *flagBacktest == ""
 	gVerbose = *flagVerboseSim
 	BinanceClient = binance.NewClient()
+	BinanceUSDClient = binanceusd.NewClient()
 	CoinbaseClient = coinbase.NewClient()
 	if Live {
 		gSigChan = make(chan os.Signal, 1)

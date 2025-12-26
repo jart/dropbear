@@ -4,6 +4,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/exchange/binance"
+	"dropbear/exchange/binanceusd"
 	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
 	"log"
@@ -37,7 +38,7 @@ func (p *Pair) String() string {
 
 func (p *Pair) Symbol() string {
 	switch p.Exchange.Exchange {
-	case ds.ExchangeBinance:
+	case ds.ExchangeBinance, ds.ExchangeBinanceUSD:
 		return p.BaseCurrency + p.QuoteCurrency
 	default:
 		return p.BaseCurrency + "-" + p.QuoteCurrency
@@ -72,7 +73,9 @@ func (p *Pair) init() {
 		go p.refreshDaemon()
 		switch p.Exchange.Exchange {
 		case ds.ExchangeBinance:
-			go p.liveDataDaemon(binance.MarketData(binance.SpotStreamURL, p.Symbol(), BinanceClient))
+			go p.liveDataDaemon(binance.MarketData(p.Symbol(), BinanceClient))
+		case ds.ExchangeBinanceUSD:
+			go p.liveDataDaemon(binanceusd.MarketData(p.Symbol(), BinanceUSDClient))
 		case ds.ExchangeCoinbase:
 			go p.liveDataDaemon(coinbase.MarketData(p.Symbol(), CoinbaseClient))
 		default:
@@ -194,6 +197,8 @@ func (p *Pair) refresh() {
 		p.refreshCoinbase()
 	case ds.ExchangeBinance:
 		p.refreshBinance()
+	case ds.ExchangeBinanceUSD:
+		p.refreshBinanceUSD()
 	default:
 		panic("not implemented")
 	}
@@ -222,16 +227,55 @@ func (p *Pair) refreshBinance() {
 	p.Lock.Lock()
 	defer p.Lock.Unlock()
 	for _, filter := range json.Filters {
-		switch filter.FilterType {
-		case "PRICE_FILTER":
-			p.QuoteIncrement = decimal.Parse(filter.TickSize)
-		case "LOT_SIZE":
-			p.BaseIncrement = decimal.Parse(filter.StepSize)
-			p.BaseMinSize = decimal.Parse(filter.MinQty)
-			p.BaseMaxSize = decimal.Parse(filter.MaxQty)
-		case "NOTIONAL":
-			p.QuoteMinSize = decimal.Parse(filter.MinNotional)
-			p.QuoteMaxSize = decimal.Parse(filter.MaxNotional)
+		p.refreshBinanceFilter(filter)
+	}
+}
+
+func (p *Pair) refreshBinanceUSD() {
+	json := getBinanceUSDSymbol(p.Symbol())
+	p.Lock.Lock()
+	defer p.Lock.Unlock()
+	for _, filter := range json.Filters {
+		p.refreshBinanceFilter(filter)
+	}
+}
+
+func (p *Pair) refreshBinanceFilter(filter *binance.Filter) {
+	switch filter.FilterType {
+	case "PRICE_FILTER":
+		p.QuoteIncrement = decimal.Parse(filter.TickSize)
+	case "LOT_SIZE":
+		p.BaseIncrement = decimal.Parse(filter.StepSize)
+		p.BaseMinSize = decimal.Parse(filter.MinQty)
+		p.BaseMaxSize = decimal.Parse(filter.MaxQty)
+	case "NOTIONAL":
+		p.QuoteMinSize = decimal.Parse(filter.MinNotional)
+		p.QuoteMaxSize = decimal.Parse(filter.MaxNotional)
+	}
+}
+
+var (
+	binanceUSDExchangeInfoOnce sync.Once
+	binanceUSDExchangeInfoSave *binanceusd.ExchangeInfo
+)
+
+func getBinanceUSDExchangeInfo() *binanceusd.ExchangeInfo {
+	binanceUSDExchangeInfoOnce.Do(func() {
+		info, err := BinanceUSDClient.GetExchangeInfo()
+		if err != nil {
+			loggy.Fatalf("failed to get binanceusd exchange info: %v", err)
+		}
+		binanceUSDExchangeInfoSave = info
+	})
+	return binanceUSDExchangeInfoSave
+}
+
+func getBinanceUSDSymbol(symbol string) *binanceusd.Symbol {
+	info := getBinanceUSDExchangeInfo()
+	for _, s := range info.Symbols {
+		if s.Symbol == symbol {
+			return s
 		}
 	}
+	return nil
 }
