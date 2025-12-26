@@ -27,6 +27,7 @@ type Order struct {
 	LastFillTime  clocky.Time     // when last fill occurred
 	lastFees      decimal.Decimal // used for coinbase fee tracking
 	onClose       chan struct{}
+	closeOnce     sync.Once // ensures onClose is only closed once
 }
 
 func (o *Order) Wait() {
@@ -97,14 +98,16 @@ func (order *Order) kill(state ds.OrderState) {
 		pair.openOrders.Remove(order)
 	}
 	pair.Lock.Unlock()
-	close(order.onClose)
+	order.closeOnce.Do(func() {
+		close(order.onClose)
+	})
 	orders.OnOrderEvent(order)
 }
 
 // fill accounts for a fill on an order, computing fee from exchange taker rate.
 // Returns the actual filled quantity (may be less than requested if order nearly full)
 // and an error if the order cannot accept any more fills.
-func (order *Order) fill(filled, value, feeRate decimal.Decimal) (decimal.Decimal, error) {
+func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (decimal.Decimal, error) {
 	pair := order.Pair
 	exchange := pair.Exchange
 	orders := exchange.Orders
@@ -121,7 +124,7 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) (decimal.Decima
 
 	// update order atomically, clamping fill to available quantity
 	order.Lock.Lock()
-	if order.State.IsFinal() {
+	if !force && order.State.IsFinal() {
 		order.Lock.Unlock()
 		return decimal.Zero, ds.ErrOrderNotFound
 	}
@@ -138,6 +141,11 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) (decimal.Decima
 	total := actualValue.Add(fee.Mul(dir))
 	rebate := fee.Mul(exchange.Rebate)
 
+	// detect if kill() already ran and released the hold
+	// this happens when a fill update arrives after we locally cancelled
+	// in this case, we need to also adjust Available since kill() released it
+	holdAlreadyReleased := force && order.Hold.IsZero() && order.State.IsFinal()
+
 	releaseHold := decimal.Zero
 	totalFilled := order.Filled.Add(actualFilled)
 	isFullyFilled := totalFilled.Cmp(order.Quantity) == 0
@@ -151,7 +159,9 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) (decimal.Decima
 		order.State = ds.OrderStateFilled
 		order.Hold = decimal.Zero
 	} else {
-		order.State = ds.OrderStatePartiallyFilled
+		if !force {
+			order.State = ds.OrderStatePartiallyFilled
+		}
 	}
 	order.Lock.Unlock()
 
@@ -165,16 +175,18 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) (decimal.Decima
 		quoteHolding.Quantity = quoteHolding.Quantity.Sub(total)
 		quoteHolding.Volume = quoteHolding.Volume.Add(actualValue)
 		quoteHolding.SellVolume = quoteHolding.SellVolume.Add(actualValue)
-		// on full fill, release unused portion of hold (hold was for slippage buffer)
-		// use cumulative totals since fills may span multiple order book levels
+		// on full fill, adjust Available for difference between hold and actual cost
+		// unusedHold can be negative if Coinbase charged more than we estimated
 		if releaseHold.IsPositive() {
 			order.Lock.RLock()
 			cumulativeSpent := order.FillValue.Add(order.Fee)
 			order.Lock.RUnlock()
 			unusedHold := releaseHold.Sub(cumulativeSpent)
-			if unusedHold.IsPositive() {
-				quoteHolding.Available = quoteHolding.Available.Add(unusedHold)
-			}
+			quoteHolding.Available = quoteHolding.Available.Add(unusedHold)
+		} else if holdAlreadyReleased {
+			// kill() already released the hold back to Available, but this fill
+			// actually happened so we need to debit Available by the fill cost
+			quoteHolding.Available = quoteHolding.Available.Sub(total)
 		}
 		quoteHolding.Check()
 		quoteHolding.Lock.Unlock()
@@ -208,6 +220,11 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) (decimal.Decima
 		baseHolding := holdings.Get(pair.BaseCurrency)
 		baseHolding.Lock.Lock()
 		baseHolding.Quantity = baseHolding.Quantity.Sub(actualFilled)
+		if holdAlreadyReleased {
+			// kill() already released the hold back to Available, but this fill
+			// actually happened so we need to debit Available by the filled amount
+			baseHolding.Available = baseHolding.Available.Sub(actualFilled)
+		}
 		baseHolding.Volume = baseHolding.Volume.Add(actualFilled)
 		baseHolding.SellVolume = baseHolding.SellVolume.Add(actualFilled)
 		baseHolding.Lots.Consume(actualFilled, decimal.Zero)
@@ -250,7 +267,9 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal) (decimal.Decima
 	// notify subscribers that order changed
 	orders.OnOrderEvent(order)
 	if isFullyFilled {
-		close(order.onClose)
+		order.closeOnce.Do(func() {
+			close(order.onClose)
+		})
 	}
 
 	return actualFilled, nil

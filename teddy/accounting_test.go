@@ -5,6 +5,8 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"testing"
+
+	"github.com/emirpasic/gods/v2/sets/treeset"
 )
 
 func init() {
@@ -373,12 +375,10 @@ func TestFillWithFee(t *testing.T) {
 	// Debit cash
 	usdHolding.Quantity = usdHolding.Quantity.Sub(total)
 
-	// Release unused hold (as fillWithFee does)
+	// Release unused hold (always add, even if negative)
 	cumulativeSpent := fillValue.Add(actualFee)
 	unusedHold := holdAmount.Sub(cumulativeSpent)
-	if unusedHold.IsPositive() {
-		usdHolding.Available = usdHolding.Available.Add(unusedHold)
-	}
+	usdHolding.Available = usdHolding.Available.Add(unusedHold)
 
 	// Credit BTC
 	btcHolding.Quantity = btcHolding.Quantity.Add(quantity)
@@ -434,11 +434,9 @@ func TestMultipleFillsWithDifferentFees(t *testing.T) {
 		totalSpent = totalSpent.Add(total)
 	}
 
-	// Release unused hold on full fill
+	// Release unused hold on full fill (always add, even if negative)
 	unusedHold := holdAmount.Sub(totalSpent)
-	if unusedHold.IsPositive() {
-		usdHolding.Available = usdHolding.Available.Add(unusedHold)
-	}
+	usdHolding.Available = usdHolding.Available.Add(unusedHold)
 
 	t.Logf("MultipleFills: USD Quantity=%s Available=%s, totalSpent=%s",
 		usdHolding.Quantity, usdHolding.Available, totalSpent)
@@ -450,5 +448,270 @@ func TestMultipleFillsWithDifferentFees(t *testing.T) {
 
 	if btcHolding.Quantity.Cmp(totalQuantity) != 0 {
 		t.Errorf("BTC = %s, expected %s", btcHolding.Quantity, totalQuantity)
+	}
+}
+
+// TestFeeHigherThanEstimated tests when Coinbase charges more fees than we estimated.
+// This can happen if fee tier changes or we under-estimated the hold.
+func TestFeeHigherThanEstimated(t *testing.T) {
+	_, pair, usdHolding, btcHolding := setupTestExchange(t)
+
+	initialUSD := decimal.FromInt(1000)
+	usdHolding.Quantity = initialUSD
+	usdHolding.Available = initialUSD
+
+	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
+
+	// Place order with underestimated hold (5% fee estimate = $5, but actual is $8)
+	quantity := decimal.One
+	holdAmount := decimal.FromInt(105) // $100 + $5 estimated fee
+
+	usdHolding.Available = usdHolding.Available.Sub(holdAmount)
+
+	// But Coinbase actually charges 8% fee
+	fillValue := decimal.FromInt(100)
+	actualFee := decimal.FromInt(8)
+	total := fillValue.Add(actualFee) // $108
+
+	// Debit USD for the fill
+	usdHolding.Quantity = usdHolding.Quantity.Sub(total)
+
+	// Release unused hold (will be negative: 105 - 108 = -3)
+	unusedHold := holdAmount.Sub(total)
+	t.Logf("unusedHold = %s (expected negative)", unusedHold)
+
+	// The fix: always add unusedHold, even when negative
+	usdHolding.Available = usdHolding.Available.Add(unusedHold)
+
+	// Credit BTC
+	btcHolding.Quantity = btcHolding.Quantity.Add(quantity)
+	btcHolding.Available = btcHolding.Available.Add(quantity)
+
+	t.Logf("FeeHigherThanEstimated: USD Quantity=%s Available=%s", usdHolding.Quantity, usdHolding.Available)
+
+	// Verify invariants - Available must equal Quantity
+	if usdHolding.Available.Cmp(usdHolding.Quantity) != 0 {
+		t.Errorf("USD Available (%s) != Quantity (%s)", usdHolding.Available, usdHolding.Quantity)
+	}
+
+	// Verify correct final balance (initial - value - actual fee)
+	expectedUSD := initialUSD.Sub(fillValue).Sub(actualFee)
+	if usdHolding.Quantity.Cmp(expectedUSD) != 0 {
+		t.Errorf("USD = %s, expected %s", usdHolding.Quantity, expectedUSD)
+	}
+}
+
+// TestKillThenFillRaceCondition tests the race condition where:
+// 1. Buy order is placed (hold taken from Available)
+// 2. kill() is called (e.g., local cancel), releases hold back to Available
+// 3. fill() is called with force=true (delayed Coinbase update), must also debit Available
+// Without the fix, Available would exceed Quantity after step 3.
+func TestKillThenFillRaceCondition(t *testing.T) {
+	ex, pair, usdHolding, btcHolding := setupTestExchange(t)
+
+	// Create open orders tree for the test
+	pair.openOrders = treeset.NewWith(compareOrdersByClientOrderID)
+	ex.Orders.openOrders = treeset.NewWith(compareOrdersByClientOrderID)
+
+	initialUSD := decimal.FromInt(1000)
+	usdHolding.Quantity = initialUSD
+	usdHolding.Available = initialUSD
+	usdHolding.IsCash = true // mark as cash so lots aren't tracked
+
+	// Create USDC holding for rebate
+	usdcHolding := newHolding(ex, "USDC")
+	usdcHolding.IsCash = true
+	ex.Holdings.holdingsMap["USDC"] = usdcHolding
+
+	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
+
+	// Create a buy order with hold
+	quantity := decimal.One
+	price := decimal.FromInt(100)
+	hold := decimal.FromInt(100) // simplified: no fee for this test
+
+	order := &Order{
+		Pair:          pair,
+		Side:          ds.SideBuy,
+		Type:          ds.OrderTypeLimit,
+		State:         ds.OrderStateNew,
+		Quantity:      quantity,
+		LimitPrice:    price,
+		Hold:          hold,
+		ClientOrderID: "test-order-1",
+		onClose:       make(chan struct{}),
+	}
+
+	// Step 1: Take hold from Available (simulates LimitOrder)
+	usdHolding.Available = usdHolding.Available.Sub(hold)
+	t.Logf("After placing order: USD Quantity=%s Available=%s Hold=%s",
+		usdHolding.Quantity, usdHolding.Available, hold)
+
+	// Step 2: kill() is called (simulates Cancel before fill update arrives)
+	// This releases the hold because FillValue is still 0
+	order.Lock.Lock()
+	order.State = ds.OrderStateCanceled
+	spent := order.FillValue.Add(order.Fee) // = 0 since no fills yet
+	releaseAmount := order.Hold.Sub(spent)  // = 100 - 0 = 100
+	order.Hold = decimal.Zero
+	order.Lock.Unlock()
+
+	if releaseAmount.IsPositive() {
+		usdHolding.Available = usdHolding.Available.Add(releaseAmount)
+	}
+	t.Logf("After kill(): USD Quantity=%s Available=%s (released %s)",
+		usdHolding.Quantity, usdHolding.Available, releaseAmount)
+
+	// At this point, Available = Quantity = 1000 (hold was released)
+	if usdHolding.Available.Cmp(usdHolding.Quantity) != 0 {
+		t.Fatalf("After kill(): Available (%s) != Quantity (%s)",
+			usdHolding.Available, usdHolding.Quantity)
+	}
+
+	// Step 3: fill() arrives with force=true (delayed Coinbase update)
+	// The order was filled on Coinbase before our cancel arrived
+	fillValue := decimal.FromInt(100)
+	feeRate := decimal.Zero
+	filled, err := order.fill(quantity, fillValue, feeRate, true)
+	if err != nil {
+		t.Fatalf("fill() failed: %v", err)
+	}
+	if filled.Cmp(quantity) != 0 {
+		t.Fatalf("Expected fill of %s, got %s", quantity, filled)
+	}
+
+	t.Logf("After fill() with force=true: USD Quantity=%s Available=%s BTC=%s",
+		usdHolding.Quantity, usdHolding.Available, btcHolding.Quantity)
+
+	// CRITICAL: Verify the invariant holds
+	// Without the fix, Available would be 1000 but Quantity would be 900
+	if usdHolding.Available.Cmp(usdHolding.Quantity) > 0 {
+		t.Errorf("RACE CONDITION BUG: USD Available (%s) > Quantity (%s)",
+			usdHolding.Available, usdHolding.Quantity)
+	}
+
+	// Verify they're equal (should be 900 = initial - fillValue)
+	if usdHolding.Available.Cmp(usdHolding.Quantity) != 0 {
+		t.Errorf("USD Available (%s) != Quantity (%s)",
+			usdHolding.Available, usdHolding.Quantity)
+	}
+
+	expectedUSD := initialUSD.Sub(fillValue)
+	if usdHolding.Quantity.Cmp(expectedUSD) != 0 {
+		t.Errorf("USD Quantity = %s, expected %s", usdHolding.Quantity, expectedUSD)
+	}
+
+	// Verify BTC was credited
+	if btcHolding.Quantity.Cmp(quantity) != 0 {
+		t.Errorf("BTC Quantity = %s, expected %s", btcHolding.Quantity, quantity)
+	}
+}
+
+// TestKillThenFillRaceConditionSell tests the same race condition for sell orders.
+func TestKillThenFillRaceConditionSell(t *testing.T) {
+	ex, pair, usdHolding, btcHolding := setupTestExchange(t)
+
+	// Create open orders tree for the test
+	pair.openOrders = treeset.NewWith(compareOrdersByClientOrderID)
+	ex.Orders.openOrders = treeset.NewWith(compareOrdersByClientOrderID)
+
+	// Start with 10 BTC
+	initialBTC := decimal.FromInt(10)
+	btcHolding.Quantity = initialBTC
+	btcHolding.Available = initialBTC
+	btcHolding.Lots = ds.NewLots(ds.CostBasisMethodFIFO)
+	btcHolding.Lots.Add(clocky.Now(), initialBTC, decimal.FromInt(1000)) // $100 cost basis
+
+	// Start with $1000 USD
+	initialUSD := decimal.FromInt(1000)
+	usdHolding.Quantity = initialUSD
+	usdHolding.Available = initialUSD
+	usdHolding.IsCash = true
+
+	// Create USDC holding for rebate
+	usdcHolding := newHolding(ex, "USDC")
+	usdcHolding.IsCash = true
+	ex.Holdings.holdingsMap["USDC"] = usdcHolding
+
+	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
+
+	// Create a sell order
+	quantity := decimal.One
+	price := decimal.FromInt(100)
+	hold := quantity // for sell, hold is the quantity being sold
+
+	order := &Order{
+		Pair:          pair,
+		Side:          ds.SideSell,
+		Type:          ds.OrderTypeLimit,
+		State:         ds.OrderStateNew,
+		Quantity:      quantity,
+		LimitPrice:    price,
+		Hold:          hold,
+		ClientOrderID: "test-order-2",
+		onClose:       make(chan struct{}),
+	}
+
+	// Step 1: Take hold from BTC Available (simulates LimitOrder)
+	btcHolding.Available = btcHolding.Available.Sub(hold)
+	t.Logf("After placing sell: BTC Quantity=%s Available=%s Hold=%s",
+		btcHolding.Quantity, btcHolding.Available, hold)
+
+	// Step 2: kill() is called (simulates Cancel before fill update arrives)
+	order.Lock.Lock()
+	order.State = ds.OrderStateCanceled
+	filled := order.Filled                    // = 0 since no fills yet
+	releaseAmount := order.Hold.Sub(filled)   // = 1 - 0 = 1
+	order.Hold = decimal.Zero
+	order.Lock.Unlock()
+
+	if releaseAmount.IsPositive() {
+		btcHolding.Available = btcHolding.Available.Add(releaseAmount)
+	}
+	t.Logf("After kill(): BTC Quantity=%s Available=%s (released %s)",
+		btcHolding.Quantity, btcHolding.Available, releaseAmount)
+
+	// At this point, BTC Available = Quantity = 10 (hold was released)
+	if btcHolding.Available.Cmp(btcHolding.Quantity) != 0 {
+		t.Fatalf("After kill(): BTC Available (%s) != Quantity (%s)",
+			btcHolding.Available, btcHolding.Quantity)
+	}
+
+	// Step 3: fill() arrives with force=true (delayed Coinbase update)
+	fillValue := decimal.FromInt(100)
+	feeRate := decimal.Zero
+	filledQty, err := order.fill(quantity, fillValue, feeRate, true)
+	if err != nil {
+		t.Fatalf("fill() failed: %v", err)
+	}
+	if filledQty.Cmp(quantity) != 0 {
+		t.Fatalf("Expected fill of %s, got %s", quantity, filledQty)
+	}
+
+	t.Logf("After fill() with force=true: BTC Quantity=%s Available=%s USD=%s",
+		btcHolding.Quantity, btcHolding.Available, usdHolding.Quantity)
+
+	// CRITICAL: Verify the invariant holds for BTC
+	// Without the fix, BTC Available would be 10 but Quantity would be 9
+	if btcHolding.Available.Cmp(btcHolding.Quantity) > 0 {
+		t.Errorf("RACE CONDITION BUG: BTC Available (%s) > Quantity (%s)",
+			btcHolding.Available, btcHolding.Quantity)
+	}
+
+	// Verify they're equal (should be 9 = initial - filled)
+	if btcHolding.Available.Cmp(btcHolding.Quantity) != 0 {
+		t.Errorf("BTC Available (%s) != Quantity (%s)",
+			btcHolding.Available, btcHolding.Quantity)
+	}
+
+	expectedBTC := initialBTC.Sub(quantity)
+	if btcHolding.Quantity.Cmp(expectedBTC) != 0 {
+		t.Errorf("BTC Quantity = %s, expected %s", btcHolding.Quantity, expectedBTC)
+	}
+
+	// Verify USD was credited
+	expectedUSD := initialUSD.Add(fillValue) // no fee
+	if usdHolding.Quantity.Cmp(expectedUSD) != 0 {
+		t.Errorf("USD Quantity = %s, expected %s", usdHolding.Quantity, expectedUSD)
 	}
 }

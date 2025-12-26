@@ -101,7 +101,70 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 		p.LastPrice = trade.Price
 	}
 
-	// update order book
+	// simulate passive order fills BEFORE applying book updates
+	// trades consume liquidity from the order book; our passive orders
+	// only get filled after the liquidity ahead of us is consumed
+	if !Live && len(tick.Trades) > 0 {
+		p.Lock.RLock()
+		var orders []*Order
+		for i := p.openOrders.Iterator(); i.Next(); {
+			orders = append(orders, i.Value())
+		}
+		p.Lock.RUnlock()
+		for _, trade := range tick.Trades {
+			// pop from book to consume liquidity ahead of our orders
+			// trade.Side is the taker side, so we pop from the opposite side
+			// (a taker sell hits bids, a taker buy lifts asks)
+			remaining := trade.Quantity
+			for remaining.IsPositive() {
+				fill, ok := p.OrderBook.Pop(trade.Side, remaining, trade.Price)
+				if !ok {
+					break
+				}
+				remaining = remaining.Sub(fill.Size)
+				// check if any of our orders are at this price level
+				for _, order := range orders {
+					if order.Type != ds.OrderTypeLimit || order.State.IsFinal() {
+						continue
+					}
+					// our bid fills when taker sells, our ask fills when taker buys
+					if trade.Side != order.Side.Flip() {
+						continue
+					}
+					// check if trade reached our price level
+					// buy fills when fill.Price <= limitPrice
+					// sell fills when fill.Price >= limitPrice
+					if order.LimitPrice.Mul(decimal.Decimal(order.Side)).Cmp(fill.Price.Mul(decimal.Decimal(order.Side))) < 0 {
+						continue
+					}
+					// we're at this price level - fill our order
+					order.Lock.RLock()
+					unfilled := order.Quantity.Sub(order.Filled)
+					order.Lock.RUnlock()
+					fillQty := fill.Size.Min(unfilled)
+					if fillQty.IsPositive() {
+						fillValue := order.LimitPrice.Mul(fillQty)
+						filled, err := order.fill(fillQty, fillValue, p.Exchange.MakerFee, false)
+						if err == nil && filled.IsPositive() {
+							if gVerbose {
+								log.Printf("[sim] %s limit filled %s @ $%s (trade: %s %s @ $%s)",
+									order.Side, filled, order.LimitPrice,
+									trade.Side, trade.Quantity, trade.Price)
+							}
+							// push back unfilled portion to book
+							leftover := fill.Size.Sub(filled)
+							if leftover.IsPositive() {
+								p.OrderBook.Push(trade.Side.Flip(), fill.Price, leftover)
+							}
+						}
+					}
+					break // only one order per price level gets filled per pop
+				}
+			}
+		}
+	}
+
+	// update order book (after processing trades)
 	if tick.Bids != nil || tick.Asks != nil {
 		p.OrderBook.Lock.Lock()
 		if tick.Snap {
@@ -115,43 +178,6 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 		}
 		p.OrderBook.Broadcast()
 		p.OrderBook.Lock.Unlock()
-	}
-
-	// simulate people trading with our algorithm
-	if !Live {
-		p.Lock.RLock()
-		var orders []*Order
-		for i := p.openOrders.Iterator(); i.Next(); {
-			orders = append(orders, i.Value())
-		}
-		p.Lock.RUnlock()
-		for _, trade := range tick.Trades {
-			remaining := trade.Quantity
-			for _, order := range orders {
-				if !remaining.IsPositive() {
-					break
-				}
-				if order.Type == ds.OrderTypeLimit {
-					if trade.Side == order.Side.Flip() {
-						// buy fills when trade.Price <= limitPrice
-						// sell fills when trade.Price >= limitPrice
-						// using side multiplier: limitPrice*side >= tradePrice*side
-						if order.LimitPrice.Mul(decimal.Decimal(order.Side)).Cmp(trade.Price.Mul(decimal.Decimal(order.Side))) >= 0 {
-							fillValue := order.LimitPrice.Mul(remaining)
-							filled, err := order.fill(remaining, fillValue, p.Exchange.MakerFee)
-							if err == nil && filled.IsPositive() {
-								if gVerbose {
-									log.Printf("[sim] %s limit filled %s @ $%s (trade: %s %s @ $%s)",
-										order.Side, filled, order.LimitPrice,
-										trade.Side, trade.Quantity, trade.Price)
-								}
-								remaining = remaining.Sub(filled)
-							}
-						}
-					}
-				}
-			}
-		}
 	}
 }
 

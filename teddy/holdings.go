@@ -21,12 +21,6 @@ func newHoldings(exchange *Exchange) *Holdings {
 		holdingsMap:   make(map[string]*Holding),
 		holdingsArray: make([]*Holding, 0),
 	}
-	if Live {
-		switch exchange.Exchange {
-		case ds.ExchangeCoinbase:
-			hs.fetchCoinbaseHoldings()
-		}
-	}
 	return hs
 }
 
@@ -120,38 +114,18 @@ func captureInitialHoldings() {
 	}
 }
 
-func (hs *Holdings) fetchCoinbaseHoldings() {
-	portfolioUUID := coinbase.GetPortfolioUUID(CoinbaseClient)
-	breakdown, err := CoinbaseClient.GetPortfolioBreakdown(portfolioUUID)
-	if err != nil {
-		loggy.Fatalf("coinbase: error fetching portfolio breakdown: %v", err)
-	}
-	for _, pos := range breakdown.Breakdown.SpotPositions {
-		if pos.AccountType != "ACCOUNT_TYPE_FIAT" && pos.AccountType != "ACCOUNT_TYPE_WALLET" {
-			continue
+var (
+	coinbaseAccountsOnce sync.Once
+	coinbaseAccountsSave []*coinbase.Account
+)
+
+func getCoinbaseAccounts() []*coinbase.Account {
+	coinbaseAccountsOnce.Do(func() {
+		accounts, err := CoinbaseClient.GetAccounts()
+		if err != nil {
+			loggy.Fatalf("getting coinbase accounts: %v", err)
 		}
-		holding := hs.Lookup(pos.Asset)
-		if holding == nil {
-			continue
-		}
-		holding.Lock.Lock()
-		holding.IsCash = pos.IsCash
-		if pos.IsCash {
-			holding.Quantity = decimal.Parse(pos.TotalBalanceFiat.String())
-			holding.Available = decimal.Parse(pos.AvailableToTradeFiat.String())
-		} else {
-			holding.Quantity = decimal.Parse(pos.TotalBalanceCrypto.String())
-			holding.Available = decimal.Parse(pos.AvailableToTradeCrypto.String())
-			err := CoinbaseClient.SyncTransactions(pos.Asset)
-			if err != nil {
-				loggy.Fatalf("coinbase: error syncing transactions for asset %s: %v", pos.Asset, err)
-			}
-			holding.Lots, err = CoinbaseClient.GetLots(pos.Asset, GetCostBasisMethod())
-			if err != nil {
-				loggy.Fatalf("coinbase: error fetching lots for asset %s: %v", pos.Asset, err)
-			}
-		}
-		holding.Check()
-		holding.Lock.Unlock()
-	}
+		coinbaseAccountsSave = accounts
+	})
+	return coinbaseAccountsSave
 }

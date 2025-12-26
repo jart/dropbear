@@ -26,7 +26,7 @@ var (
 	flagUSD       = decimal.Flag("usd", "20000", "coinbase usd balance")
 	flagSymbol    = flag.String("symbol", "BTC", "coinbase product to trade")
 	flagTarget    = decimal.Flag("target", "5000", "target inventory in usd")
-	flagSpread    = decimal.FlagBPS("spread", "2", "spread threshold in basis points")
+	flagSpread    = decimal.FlagBPS("spread", "3", "spread threshold in basis points")
 	flagSpreadMin = decimal.FlagBPS("spread-min", "0.5", "minimum spread threshold in basis points")
 	flagSpreadMax = decimal.FlagBPS("spread-max", "10", "maximum spread threshold in basis points")
 	flagProfit    = decimal.FlagBPS("profit", "5", "profit threshold in basis points")
@@ -40,7 +40,7 @@ var (
 	flagSamples   = flag.Int("samples", 7000, "number of samples for baseline ema")
 	flagCooldown  = clocky.DurationFlag("cooldown", "5s", "duration to wait between activities")
 	flagFreshness = clocky.DurationFlag("freshness", "1500ms", "suspend trading after this long an outage")
-	flagIntensity = clocky.DurationFlag("intensity", "5m", "trading intensity window (e.g. 5m, 0 for disabled)")
+	flagIntensity = clocky.DurationFlag("intensity", "2h", "trading intensity window (e.g. 5m, 0 for disabled)")
 )
 
 var (
@@ -192,6 +192,9 @@ func onCoinbaseTickImpl(tick *ds.Tick) {
 
 func checkSpread(now clocky.Time) {
 
+	// force warmup after an hour, come hell or high water
+	forceStart := !gWarmedUp && now.Sub(gFirstEvent) > clocky.Hour
+
 	// don't trade if firehose is compromised
 	if now.Sub(gLastTrade) < *flagCooldown ||
 		now.Sub(gLastActivity) < *flagCooldown ||
@@ -212,19 +215,23 @@ func checkSpread(now clocky.Time) {
 	deviation := spread.Sub(baseline)
 	isReady := gSpreadEMA.IsReady()
 	gSpreadLock.Unlock()
-	if !isReady {
+	if !isReady && !forceStart {
 		return
 	}
 
 	// get other indicators
 	coinbaseMin := gCoinbaseMin
 	coinbaseMax := gCoinbaseMax
-	if gPriceMin != nil && coinbaseMin.IsZero() {
+	if gPriceMin != nil && coinbaseMin.IsZero() && !forceStart {
 		return
 	}
 	if !gWarmedUp {
 		gWarmedUp = true
-		log.Printf("warmup complete in %s", now.Sub(gFirstEvent))
+		if forceStart {
+			log.Printf("warmup forced after %s", now.Sub(gFirstEvent))
+		} else {
+			log.Printf("warmup complete in %s", now.Sub(gFirstEvent))
+		}
 	}
 
 	// calculate coin health based on velocity balance

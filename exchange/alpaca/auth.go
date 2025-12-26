@@ -22,14 +22,14 @@ func GetKey() (string, string) {
 	keyOnce.Do(func() {
 		data, err := os.ReadFile(*flagKey)
 		if err != nil {
-			loggy.Fatalf("reading coinbase key file: %w", err)
+			loggy.Fatalf("reading coinbase key file: %v", err)
 		}
 		var config struct {
 			Key    string `json:"key"`
 			Secret string `json:"secret"`
 		}
 		if err := json.Unmarshal(data, &config); err != nil {
-			loggy.Fatalf("parsing coinbase key file: %w", err)
+			loggy.Fatalf("parsing coinbase key file: %v", err)
 		}
 		keySaveKey = config.Key
 		keySaveSecret = config.Secret

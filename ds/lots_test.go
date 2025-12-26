@@ -53,9 +53,9 @@ func TestLots_Simple(t *testing.T) {
 func TestLots_FIFO(t *testing.T) {
 	lots := NewLots(CostBasisMethodFIFO)
 	// Add 3 lots at different times with different prices
-	lots.Add(clocky.Time(100), one, decimal.FromInt(10))  // $10/unit
-	lots.Add(clocky.Time(200), one, decimal.FromInt(20))  // $20/unit
-	lots.Add(clocky.Time(300), one, decimal.FromInt(30))  // $30/unit
+	lots.Add(clocky.Time(100), one, decimal.FromInt(10)) // $10/unit
+	lots.Add(clocky.Time(200), one, decimal.FromInt(20)) // $20/unit
+	lots.Add(clocky.Time(300), one, decimal.FromInt(30)) // $30/unit
 
 	// FIFO should consume oldest first
 	cost := lots.Consume(one, zero)
@@ -77,9 +77,9 @@ func TestLots_FIFO(t *testing.T) {
 func TestLots_LIFO(t *testing.T) {
 	lots := NewLots(CostBasisMethodLIFO)
 	// Add 3 lots at different times with different prices
-	lots.Add(clocky.Time(100), one, decimal.FromInt(10))  // $10/unit
-	lots.Add(clocky.Time(200), one, decimal.FromInt(20))  // $20/unit
-	lots.Add(clocky.Time(300), one, decimal.FromInt(30))  // $30/unit
+	lots.Add(clocky.Time(100), one, decimal.FromInt(10)) // $10/unit
+	lots.Add(clocky.Time(200), one, decimal.FromInt(20)) // $20/unit
+	lots.Add(clocky.Time(300), one, decimal.FromInt(30)) // $30/unit
 
 	// LIFO should consume newest first
 	cost := lots.Consume(one, zero)
@@ -101,9 +101,9 @@ func TestLots_LIFO(t *testing.T) {
 func TestLots_HIFO(t *testing.T) {
 	lots := NewLots(CostBasisMethodHIFO)
 	// Add 3 lots with different cost-per-unit
-	lots.Add(clocky.Time(100), one, decimal.FromInt(20))  // $20/unit
-	lots.Add(clocky.Time(200), one, decimal.FromInt(10))  // $10/unit
-	lots.Add(clocky.Time(300), one, decimal.FromInt(30))  // $30/unit
+	lots.Add(clocky.Time(100), one, decimal.FromInt(20)) // $20/unit
+	lots.Add(clocky.Time(200), one, decimal.FromInt(10)) // $10/unit
+	lots.Add(clocky.Time(300), one, decimal.FromInt(30)) // $30/unit
 
 	// HIFO should consume highest cost first
 	cost := lots.Consume(one, zero)
@@ -124,8 +124,8 @@ func TestLots_HIFO(t *testing.T) {
 
 func TestLots_GetCostBasis(t *testing.T) {
 	lots := NewLots(CostBasisMethodFIFO)
-	lots.Add(clocky.Time(100), two, decimal.FromInt(20))  // $10/unit
-	lots.Add(clocky.Time(200), two, decimal.FromInt(40))  // $20/unit
+	lots.Add(clocky.Time(100), two, decimal.FromInt(20)) // $10/unit
+	lots.Add(clocky.Time(200), two, decimal.FromInt(40)) // $20/unit
 
 	// GetCostBasis should not mutate
 	cost := lots.GetCostBasis(one, zero)
@@ -152,7 +152,7 @@ func TestLots_GetCostBasis(t *testing.T) {
 
 func TestLots_GetCostBasis_Fallback(t *testing.T) {
 	lots := NewLots(CostBasisMethodFIFO)
-	lots.Add(clocky.Time(100), two, decimal.FromInt(20))  // $10/unit
+	lots.Add(clocky.Time(100), two, decimal.FromInt(20)) // $10/unit
 
 	// Request more than available, fallback price = $50/unit
 	fallback := decimal.FromInt(50)
@@ -165,7 +165,7 @@ func TestLots_GetCostBasis_Fallback(t *testing.T) {
 
 func TestLots_Consume_Partial(t *testing.T) {
 	lots := NewLots(CostBasisMethodFIFO)
-	lots.Add(clocky.Time(100), four, decimal.FromInt(40))  // $10/unit
+	lots.Add(clocky.Time(100), four, decimal.FromInt(40)) // $10/unit
 
 	// Consume half
 	cost := lots.Consume(two, zero)
@@ -191,7 +191,7 @@ func TestLots_Consume_Partial(t *testing.T) {
 
 func TestLots_Consume_GoesNegative(t *testing.T) {
 	lots := NewLots(CostBasisMethodFIFO)
-	lots.Add(clocky.Time(100), two, decimal.FromInt(20))  // $10/unit
+	lots.Add(clocky.Time(100), two, decimal.FromInt(20)) // $10/unit
 
 	// Consume more than available with fallback price $50/unit
 	fallback := decimal.FromInt(50)
@@ -212,7 +212,7 @@ func TestLots_DebtRecovery_Partial(t *testing.T) {
 	lots := NewLots(CostBasisMethodFIFO)
 
 	// Create debt by consuming from empty
-	lots.Consume(three, decimal.FromInt(100))  // now at -3
+	lots.Consume(three, decimal.FromInt(100)) // now at -3
 
 	if lots.Size.Cmp(decimal.FromInt(-3)) != 0 {
 		t.Fatalf("expected size -3, got %s", lots.Size)
@@ -235,7 +235,7 @@ func TestLots_DebtRecovery_Exact(t *testing.T) {
 	lots := NewLots(CostBasisMethodFIFO)
 
 	// Create debt
-	lots.Consume(three, decimal.FromInt(100))  // now at -3
+	lots.Consume(three, decimal.FromInt(100)) // now at -3
 
 	// Add exactly 3 units - should clear debt with nothing left over
 	lots.Add(clocky.Time(100), three, decimal.FromInt(30))
@@ -313,8 +313,8 @@ func TestLots_SameTime_FIFO(t *testing.T) {
 func TestLots_SamePrice_HIFO(t *testing.T) {
 	lots := NewLots(CostBasisMethodHIFO)
 	// Add lots with same cost-per-unit - should use insertion order
-	lots.Add(clocky.Time(100), two, decimal.FromInt(20))  // $10/unit, first
-	lots.Add(clocky.Time(200), two, decimal.FromInt(20))  // $10/unit, second
+	lots.Add(clocky.Time(100), two, decimal.FromInt(20)) // $10/unit, first
+	lots.Add(clocky.Time(200), two, decimal.FromInt(20)) // $10/unit, second
 
 	// Should consume first inserted when prices equal
 	cost := lots.Consume(two, zero)

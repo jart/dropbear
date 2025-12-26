@@ -41,7 +41,7 @@ var (
 	flagCooldown  = clocky.DurationFlag("cooldown", "5s", "duration to wait between activities")
 	flagFreshness = clocky.DurationFlag("freshness", "1500ms", "suspend trading after this long an outage")
 	flagIntensity = clocky.DurationFlag("intensity", "2h", "trading intensity window (e.g. 5m, 0 for disabled)")
-	flagPassive   = decimal.FlagBPS("passive", "3", "passive order spread from mid in basis points")
+	flagPassive   = decimal.FlagBPS("passive", "5", "passive order spread from mid in basis points")
 	flagRelist    = decimal.FlagBPS("relist", "1", "relist passive order if price moves this many bps")
 )
 
@@ -62,6 +62,7 @@ var (
 	gCoinbaseMax   decimal.Decimal
 	gCoinbasePrice decimal.Decimal
 	gTradeLock     sync.Mutex
+	gStatusLock    sync.Mutex
 	gIntensityLock sync.Mutex
 	gSpreadLock    sync.Mutex
 	gPriceLock     sync.Mutex
@@ -102,6 +103,34 @@ func main() {
 		gIntensity = indicators.NewIntensity(*flagIntensity)
 	}
 
+	// preseed min/max indicators from historical candles BEFORE starting
+	// the live data stream, otherwise live ticks could set first > last
+	if teddy.Live && gPriceMin != nil {
+		client := teddy.CoinbaseClient
+		symbol := *flagSymbol + "-USD"
+		granularity := coinbase.CandleGranularityMinute
+		candles, err := client.GetCandles(symbol, granularity, 0, 0, 0)
+		if err != nil {
+			log.Printf("failed to fetch candles: %v", err)
+		} else if len(candles) == 0 {
+			log.Printf("no candles returned for %s", symbol)
+		} else {
+			log.Printf("candles go from %s to %s", candles[0].Start, candles[len(candles)-1].Start)
+			for _, c := range candles {
+				gPriceMin.Add(c.Start, c.Low)
+				gPriceMax.Add(c.Start, c.High)
+			}
+			if gPriceMin.IsReady() && gPriceMax.IsReady() {
+				gCoinbaseMin = gPriceMin.Value
+				gCoinbaseMax = gPriceMax.Value
+				log.Printf("preseeded min/max from %d candles: $%s - $%s",
+					len(candles), gCoinbaseMin.Format(2), gCoinbaseMax.Format(2))
+			} else {
+				log.Printf("loaded %d candles but min/max not ready", len(candles))
+			}
+		}
+	}
+
 	gCoinbase = teddy.Exchanges.Get(ds.ExchangeCoinbase)
 	gHolding = gCoinbase.Holdings.Get(*flagSymbol)
 	gCoinbasePair = gCoinbase.Pairs.Get(*flagSymbol + "-USD")
@@ -114,18 +143,6 @@ func main() {
 		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "-FDUSD")
 	}
 	gBinancePair.OnTick = onBinanceTick
-
-	if teddy.Live {
-		client := teddy.CoinbaseClient
-		symbol := gCoinbasePair.Symbol()
-		granularity := coinbase.CandleGranularityMinute
-		if candles, err := client.GetCandles(symbol, granularity, 0, 0, 0); err == nil {
-			for _, c := range candles {
-				gPriceMin.Add(c.Start, c.Low)
-				gPriceMax.Add(c.Start, c.High)
-			}
-		}
-	}
 
 	teddy.SetBalance(ds.ExchangeCoinbase, "USD", *flagUSD)
 	teddy.SetBenchmark(gCoinbasePair)
@@ -150,7 +167,9 @@ func onBinanceTickImpl(tick *ds.Tick) {
 	}
 
 	// log status every minute
-	logStatus(tick.Time)
+	if shouldLogStatus(tick.Time) {
+		logStatus()
+	}
 
 	// track intensity of binance trading
 	if gIntensity != nil && len(tick.Trades) > 0 {
@@ -211,10 +230,8 @@ func onCoinbaseTickImpl(tick *ds.Tick) {
 // now is the time when the tick was read by our websocket
 func checkSpread(now clocky.Time) {
 
-	// fail if warmup takes too long
-	if !gWarmedUp && now.Sub(gFirstEvent) > clocky.Hour {
-		panic("warmup took longer than an hour")
-	}
+	// force warmup after an hour, come hell or high water
+	forceStart := !gWarmedUp && now.Sub(gFirstEvent) > clocky.Hour
 
 	// don't trade if firehose is compromised
 	if now.Sub(gLastTrade) < *flagCooldown ||
@@ -237,19 +254,32 @@ func checkSpread(now clocky.Time) {
 	gDeviation = deviation
 	isReady := gSpreadEMA.IsReady() || gPriceMin != nil
 	gSpreadLock.Unlock()
-	if !isReady {
+	if !isReady && !forceStart {
 		return
 	}
 
 	// get other indicators
 	coinbaseMin := gCoinbaseMin
 	coinbaseMax := gCoinbaseMax
-	if gPriceMin != nil && coinbaseMin.IsZero() {
+	if gPriceMin != nil && coinbaseMin.IsZero() && !forceStart {
 		return
+	}
+	// wait for intensity indicator to warm up before trading
+	if gIntensity != nil && !forceStart {
+		gIntensityLock.Lock()
+		intensityReady := gIntensity.IsReady()
+		gIntensityLock.Unlock()
+		if !intensityReady {
+			return
+		}
 	}
 	if !gWarmedUp {
 		gWarmedUp = true
-		log.Printf("warmup complete in %s", now.Sub(gFirstEvent))
+		if forceStart {
+			log.Printf("warmup forced after %s", now.Sub(gFirstEvent))
+		} else {
+			log.Printf("warmup complete in %s", now.Sub(gFirstEvent))
+		}
 	}
 
 	// calculate coin health based on velocity balance
@@ -519,8 +549,12 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed, balance 
 			if *flagVerbose {
 				log.Printf("[passive] cancel bid: disposition=%s inv=$%s", disposition, inventoryValue.Format(0))
 			}
-			gPassiveBid.Cancel()
-			gPassiveBid = nil
+			err := gPassiveBid.Cancel()
+			if err != nil {
+				log.Printf("[passive] cancel bid error: %v", err)
+			} else {
+				gPassiveBid = nil
+			}
 		} else {
 			// check if price moved enough to warrant relisting
 			priceDiff := desiredBidPrice.Sub(bidPrice).Abs().Div(bidPrice)
@@ -529,15 +563,19 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed, balance 
 					log.Printf("[passive] relist bid: old=$%s new=$%s diff=%sbps",
 						bidPrice.Format(2), desiredBidPrice.Format(2), priceDiff.BPS().Format(2))
 				}
-				gPassiveBid.Cancel()
-				gPassiveBid = nil
+				err := gPassiveBid.Cancel()
+				if err != nil {
+					log.Printf("[passive] relist bid cancel error: %v", err)
+				} else {
+					gPassiveBid = nil
+				}
 			}
 		}
 	}
 
 	// place new bid if needed
 	if wantBid && gPassiveBid == nil {
-		order, err := gCoinbasePair.LimitOrder(ds.SideBuy, passiveBidQty, desiredBidPrice, ds.LimitOrderStrategyPostOnly)
+		order, err := gCoinbasePair.LimitOrder(ds.SideBuy, passiveBidQty, desiredBidPrice, ds.OrderStrategyPostOnly)
 		if err != nil {
 			if *flagVerbose && err != ds.ErrPostOnly && err != ds.ErrSelfTrade {
 				log.Printf("[passive] bid failed: %v", err)
@@ -584,7 +622,7 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed, balance 
 
 	// place new ask if needed
 	if wantAsk && gPassiveAsk == nil {
-		order, err := gCoinbasePair.LimitOrder(ds.SideSell, passiveAskQty, desiredAskPrice, ds.LimitOrderStrategyPostOnly)
+		order, err := gCoinbasePair.LimitOrder(ds.SideSell, passiveAskQty, desiredAskPrice, ds.OrderStrategyPostOnly)
 		if err != nil {
 			if *flagVerbose && err != ds.ErrPostOnly && err != ds.ErrSelfTrade {
 				log.Printf("[passive] ask failed: %v", err)
@@ -717,7 +755,7 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 	gCoinbasePair.Lock.RUnlock()
 	// set limit price at expected fill price (protects against adverse moves)
 	limitPrice := quote.Div(quantity).Quantize(quoteIncrement)
-	order, err := gCoinbasePair.LimitOrder(side, quantity, limitPrice, ds.LimitOrderStrategyIOC)
+	order, err := gCoinbasePair.LimitOrder(side, quantity, limitPrice, ds.OrderStrategyIOC)
 	t2 := clocky.Now()
 	if err != nil {
 		if err == ds.ErrSelfTrade {
@@ -787,18 +825,22 @@ func getQuote(side ds.Side, size decimal.Decimal) (decimal.Decimal, bool) {
 	}
 }
 
-// logStatus prints indicator status every minute
-// Shows raw values with '?' suffix if indicator not ready
-func logStatus(now clocky.Time) {
-	// only log every minute
+func shouldLogStatus(now clocky.Time) bool {
+	gStatusLock.Lock()
+	defer gStatusLock.Unlock()
 	if now.Sub(gLastStatus) < clocky.Minute {
-		return
+		return false
 	}
-	// in backtest mode, only log if verbose
 	if !teddy.Live && !*flagVerbose {
-		return
+		return false
 	}
 	gLastStatus = now
+	return true
+}
+
+// logStatus prints indicator status every minute
+// Shows raw values with '?' suffix if indicator not ready
+func logStatus() {
 
 	// intensity ready?
 	var alpha, kappa decimal.Decimal

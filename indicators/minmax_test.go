@@ -203,6 +203,39 @@ func TestMax_IrregularTimestamps(t *testing.T) {
 	}
 }
 
+func TestMinMax_CandlePreseeding(t *testing.T) {
+	// Simulates preseeding from historical candles like mm does on startup.
+	// 343 candles spanning 348 minutes should make a 42m indicator ready.
+	window := 42 * clocky.Minute
+	min := NewMin(window)
+	max := NewMax(window)
+
+	// Simulate candles from 13:01 to 18:49 (348 minute span)
+	startTime := clocky.MustParseTime("2025-12-25T13:01:00")
+	endTime := clocky.MustParseTime("2025-12-25T18:49:00")
+	span := endTime.Sub(startTime)
+	if span < window {
+		t.Fatalf("test data span %s < window %s", span, window)
+	}
+
+	// Add first candle
+	min.Add(startTime, decimal.Parse("100"))
+	max.Add(startTime, decimal.Parse("100"))
+	if min.IsReady() || max.IsReady() {
+		t.Error("should not be ready after single candle")
+	}
+
+	// Add last candle
+	min.Add(endTime, decimal.Parse("110"))
+	max.Add(endTime, decimal.Parse("110"))
+	if !min.IsReady() {
+		t.Errorf("min should be ready after span %s >= window %s", span, window)
+	}
+	if !max.IsReady() {
+		t.Errorf("max should be ready after span %s >= window %s", span, window)
+	}
+}
+
 func BenchmarkMaxAdd_Naive(b *testing.B) {
 	rng := rand.New(rand.NewSource(42))
 	data := make([]decimal.Decimal, 1000)

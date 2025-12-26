@@ -29,11 +29,11 @@ type Intensity struct {
 }
 
 const (
-	numBins       = 5000  // support five bins per basis point
-	maxDelta      = 0.01  // recognize trades within 1% of mid-price
-	minVolume     = 10000 // minimum USD volume for reliable estimate
-	minBins       = 5     // minimum filled bins for reliable regression
-	minVolumeBin  = 1e-8  // minimum quantity per trade (filters dust)
+	numBins       = 5000    // support five bins per basis point
+	maxDelta      = 0.01    // recognize trades within 1% of mid-price
+	minVolume     = 10000.0 // minimum usd volume for reliable estimate
+	minBins       = 5       // minimum filled bins for reliable regression
+	minVolumeBin  = 1e-8    // minimum quantity per trade (filters dust)
 	decayInterval = clocky.Second
 	binWidth      = maxDelta / numBins
 	ln2           = 0.6931471805599453
@@ -54,13 +54,14 @@ func (ti *Intensity) SetMidPrice(mid decimal.Decimal) {
 }
 
 // AddTrade records a trade execution for intensity.
-func (ti *Intensity) AddTrade(time clocky.Time, price, quantity decimal.Decimal) {
+func (ti *Intensity) AddTrade(time clocky.Time, priceUSD, quantity decimal.Decimal) {
 
 	// calculate distance from market
 	if ti.midPrice <= 0 {
 		return
 	}
-	delta := price.Float64() - ti.midPrice
+	priceUSD64 := priceUSD.Float64()
+	delta := priceUSD64 - ti.midPrice
 	if delta < 0 {
 		delta = -delta
 	}
@@ -96,8 +97,7 @@ func (ti *Intensity) AddTrade(time clocky.Time, price, quantity decimal.Decimal)
 
 	// add volume to appropriate bin (in USD value, not raw quantity)
 	bin := int(delta / binWidth)
-	usdValue := newVolume * price.Float64()
-	ti.binVolume[bin] += usdValue
+	ti.binVolume[bin] += newVolume * priceUSD64
 
 	// compute regression stats from bins
 	var sumX, sumY, sumXY, sumXX, count float64
@@ -113,18 +113,7 @@ func (ti *Intensity) AddTrade(time clocky.Time, price, quantity decimal.Decimal)
 		sumXX += x * x
 		count++
 	}
-
-	// if only only one bin is filled
-	// that means all trades are very close to the midpoint
-	// assume very high koopa (will be clamped in usage anyway)
-	if count < 2 {
-		if count == 1 {
-			v := ti.totalVolume()
-			if v > minVolume {
-				ti.Kappa = decimal.FromInt(100000)
-				ti.Alpha = decimal.FromFloat64(v)
-			}
-		}
+	if count == 0 {
 		return
 	}
 
@@ -156,10 +145,10 @@ func (ti *Intensity) IsReady() bool {
 	if ti.Kappa.IsZero() {
 		return false
 	}
-	if ti.totalVolume() < minVolume {
+	if !ti.hasVolume(minVolume) {
 		return false
 	}
-	if ti.filledBins() < minBins {
+	if !ti.hasBins(minBins) {
 		return false
 	}
 	return true
@@ -173,20 +162,26 @@ func (ti *Intensity) OptimalSpread() decimal.Decimal {
 	return decimal.One.Div(ti.Kappa)
 }
 
-func (ti *Intensity) totalVolume() float64 {
-	total := 0.0
+func (ti *Intensity) hasVolume(v float64) bool {
+	t := 0.0
 	for i := range numBins {
-		total += ti.binVolume[i]
-	}
-	return total
-}
-
-func (ti *Intensity) filledBins() int {
-	count := 0
-	for i := range numBins {
-		if ti.binVolume[i] > minVolumeBin {
-			count++
+		t += ti.binVolume[i]
+		if t >= v {
+			return true
 		}
 	}
-	return count
+	return false
+}
+
+func (ti *Intensity) hasBins(b int) bool {
+	c := 0
+	for i := range numBins {
+		if ti.binVolume[i] > minVolumeBin {
+			c++
+			if c >= b {
+				return true
+			}
+		}
+	}
+	return false
 }

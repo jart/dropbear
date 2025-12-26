@@ -26,18 +26,18 @@ func getKey() (string, ed25519.PrivateKey) {
 	keyOnce.Do(func() {
 		data, err := os.ReadFile(*flagKey)
 		if err != nil {
-			loggy.Fatalf("reading coinbase key file: %w", err)
+			loggy.Fatalf("reading coinbase key file: %v", err)
 		}
 		var config struct {
 			ID         string `json:"id"`
 			PrivateKey string `json:"privateKey"`
 		}
 		if err := json.Unmarshal(data, &config); err != nil {
-			loggy.Fatalf("parsing coinbase key file: %w", err)
+			loggy.Fatalf("parsing coinbase key file: %v", err)
 		}
 		keyBytes, err := base64.StdEncoding.DecodeString(config.PrivateKey)
 		if err != nil {
-			loggy.Fatalf("decoding coinbase private key base64: %w", err)
+			loggy.Fatalf("decoding coinbase private key base64: %v", err)
 		}
 		if len(keyBytes) != ed25519.PrivateKeySize {
 			loggy.Fatalf("private coinbase key wrong size: got %d, want %d", len(keyBytes), ed25519.PrivateKeySize)

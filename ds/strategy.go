@@ -1,22 +1,22 @@
 package ds
 
-type LimitOrderStrategy int
+type OrderStrategy int
 
 const (
-	LimitOrderStrategyMarketable LimitOrderStrategy = iota // maker + taker
-	LimitOrderStrategyPostOnly                             // maker
-	LimitOrderStrategyIOC                                  // taker
+	OrderStrategyMarketable OrderStrategy = iota // maker + taker
+	OrderStrategyPostOnly                        // maker
+	OrderStrategyIOC                             // taker
 )
 
-func (l LimitOrderStrategy) String() string {
+func (l OrderStrategy) String() string {
 	switch l {
-	case LimitOrderStrategyMarketable:
+	case OrderStrategyMarketable:
 		return "marketable"
-	case LimitOrderStrategyPostOnly:
+	case OrderStrategyPostOnly:
 		return "postonly"
-	case LimitOrderStrategyIOC:
+	case OrderStrategyIOC:
 		return "ioc"
 	default:
-		panic("invalid limit order strategy")
+		panic("invalid order strategy")
 	}
 }

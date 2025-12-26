@@ -531,6 +531,46 @@ func (b *Book) SellLimit(quantity, limitPrice decimal.Decimal) (decimal.Decimal,
 	return quantity.Sub(remaining), fills
 }
 
+// Pop removes up to maxQty from the best price on the opposite side.
+// For buys, pops from asks at or below limitPrice.
+// For sells, pops from bids at or above limitPrice.
+// Returns the fill and true if successful, or zero and false if no matching liquidity.
+func (b *Book) Pop(side Side, maxQty, limitPrice decimal.Decimal) (Level, bool) {
+	b.Lock.Lock()
+	defer b.Lock.Unlock()
+	var book *treemap.Map[decimal.Decimal, decimal.Decimal]
+	switch side {
+	case SideBuy:
+		book = b.asks
+	case SideSell:
+		book = b.bids
+	}
+	it := book.Iterator()
+	if !it.Next() {
+		return Level{}, false
+	}
+	price := it.Key()
+	size := it.Value()
+	// buy: price must be <= limit; sell: price must be >= limit
+	// using: price * side <= limitPrice * side
+	if price.Mul(decimal.Decimal(side)).Cmp(limitPrice.Mul(decimal.Decimal(side))) > 0 {
+		return Level{}, false
+	}
+	fillSize := maxQty.Min(size)
+	newSize := size.Sub(fillSize)
+	if newSize.IsZero() {
+		book.Remove(price)
+	} else {
+		book.Put(price, newSize)
+	}
+	return Level{Price: price, Size: fillSize}, true
+}
+
+// Push adds liquidity back to the book on the given side.
+func (b *Book) Push(side Side, price, size decimal.Decimal) {
+	b.Add(side, price, size)
+}
+
 // reverseDecimalComparator for descending order (bids)
 func reverseDecimalComparator(a, b decimal.Decimal) int {
 	return -cmp.Compare(a, b)

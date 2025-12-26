@@ -19,16 +19,25 @@ type Holding struct {
 	WinCount   int
 	LossCount  int
 	Lots       *ds.Lots
+	IsFiat     bool
 	IsCash     bool
 }
 
 func newHolding(exchange *Exchange, symbol string) *Holding {
-	return &Holding{
+	h := &Holding{
 		Exchange: exchange,
 		Symbol:   symbol,
+		IsFiat:   looksLikeFiatSymbol(symbol),
 		IsCash:   looksLikeCashSymbol(symbol),
 		Lots:     ds.NewLots(GetCostBasisMethod()),
 	}
+	if Live {
+		switch exchange.Exchange {
+		case ds.ExchangeCoinbase:
+			h.fetchCoinbaseHolding()
+		}
+	}
+	return h
 }
 
 // check verifies critical accounting invariants.
@@ -53,9 +62,44 @@ func (h *Holding) Check() {
 	}
 }
 
-func looksLikeCashSymbol(symbol string) bool {
+func (h *Holding) fetchCoinbaseHolding() {
+	for _, account := range getCoinbaseAccounts() {
+		if account.Currency == h.Symbol {
+			h.IsFiat = account.Type == "ACCOUNT_TYPE_FIAT"
+			h.IsCash = h.IsFiat || looksLikeCashSymbol(h.Symbol)
+			h.Quantity = decimal.Parse(account.AvailableBalance.Value)
+			h.Available = h.Quantity.Sub(decimal.Parse(account.Hold.Value))
+			if !h.IsFiat {
+				err := CoinbaseClient.SyncTransactions(h.Symbol)
+				if err != nil {
+					loggy.Fatalf("coinbase: error syncing transactions for asset %s: %v", h.Symbol, err)
+				}
+				h.Lots, err = CoinbaseClient.GetLots(h.Symbol, GetCostBasisMethod())
+				if err != nil {
+					loggy.Fatalf("coinbase: error fetching lots for asset %s: %v", h.Symbol, err)
+				}
+			}
+			h.Check()
+			return
+		}
+	}
+}
+
+func looksLikeFiatSymbol(symbol string) bool {
 	switch symbol {
-	case "USD", "USDC", "USDT", "FDUSD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "CNY":
+	case "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "CNY":
+		return true
+	default:
+		return false
+	}
+}
+
+func looksLikeCashSymbol(symbol string) bool {
+	if looksLikeFiatSymbol(symbol) {
+		return true
+	}
+	switch symbol {
+	case "USDC", "USDT", "FDUSD":
 		return true
 	default:
 		return false

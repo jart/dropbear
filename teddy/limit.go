@@ -8,7 +8,7 @@ import (
 )
 
 // LimitOrder places a limit order on the exchange or simulates one in backtest mode.
-func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, strategy ds.LimitOrderStrategy) (*Order, error) {
+func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, strategy ds.OrderStrategy) (*Order, error) {
 	exchange := p.Exchange
 	orders := exchange.Orders
 	feeRate := exchange.TakerFee
@@ -52,7 +52,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	}
 
 	// post-only orders aren't allowed to cross the spread
-	if strategy == ds.LimitOrderStrategyPostOnly {
+	if strategy == ds.OrderStrategyPostOnly {
 		bestBid, bestAsk := p.OrderBook.BestBidAsk()
 		switch side {
 		case ds.SideBuy:
@@ -104,18 +104,20 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	if Live {
 		switch p.Exchange.Exchange {
 		case ds.ExchangeCoinbase:
-			orderID, err := CoinbaseClient.LimitOrder(p.Symbol(), side, quantity, limitPrice, "", strategy, GetCostBasisMethod())
+			orderID, err := CoinbaseClient.LimitOrder(p.Symbol(), side, quantity, limitPrice, order.ClientOrderID, strategy, GetCostBasisMethod())
+			if orderID != "" {
+				orders.lock.Lock()
+				order.OrderID = orderID
+				orders.ordersMap[orderID] = order
+				orders.lock.Unlock()
+			}
 			if err != nil {
 				order.kill(ds.OrderStateInvalid)
 				return nil, err
 			}
-			orders.lock.Lock()
-			order.OrderID = orderID
-			orders.ordersMap[orderID] = order
-			orders.lock.Unlock()
 			return order, nil
 		default:
-			loggy.Fatalf("limit orders not supported on %v", p.Exchange)
+			loggy.Fatalf("orders not supported on %v", p.Exchange)
 		}
 	}
 
@@ -127,31 +129,35 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 
 	// marketable limit orders may take liquidity by crossing the spread
 	switch strategy {
-	case ds.LimitOrderStrategyMarketable, ds.LimitOrderStrategyIOC:
-		var takenQuantity decimal.Decimal
-		var fills []ds.Level
-		switch side {
-		case ds.SideBuy:
-			takenQuantity, fills = p.OrderBook.BuyLimit(quantity, limitPrice)
-		case ds.SideSell:
-			takenQuantity, fills = p.OrderBook.SellLimit(quantity, limitPrice)
-		}
-		for _, fill := range fills {
+	case ds.OrderStrategyMarketable, ds.OrderStrategyIOC:
+		remaining := quantity
+		for remaining.IsPositive() {
+			fill, ok := p.OrderBook.Pop(side, remaining, limitPrice)
+			if !ok {
+				break
+			}
 			fillValue := fill.Price.Mul(fill.Size)
-			_, _ = order.fill(fill.Size, fillValue, exchange.TakerFee)
+			filled, err := order.fill(fill.Size, fillValue, exchange.TakerFee, false)
+			if unfilled := fill.Size.Sub(filled); unfilled.IsPositive() {
+				p.OrderBook.Push(side.Flip(), fill.Price, unfilled)
+			}
+			if err != nil || !filled.IsPositive() {
+				break
+			}
+			remaining = remaining.Sub(filled)
 		}
-		if takenQuantity.Cmp(quantity) == 0 {
+		if remaining.IsZero() {
 			return order, nil
 		}
-		// IOC cancels unfilled portion immediately
-		if strategy == ds.LimitOrderStrategyIOC {
+		if strategy == ds.OrderStrategyIOC {
 			order.kill(ds.OrderStateCanceled)
 			return order, nil
 		}
-		quantity = quantity.Sub(takenQuantity)
+		quantity = remaining
 	}
 
-	// order goes on book for remaining quantity (post-only and marketable only)
-	p.OrderBook.Add(side, limitPrice, quantity)
+	// in live mode the exchange tracks the order; in backtest mode we just
+	// track it in openOrders and let handleTick simulate fills by popping
+	// from the book when trades happen at our price level
 	return order, nil
 }

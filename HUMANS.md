@@ -44,16 +44,16 @@ go run ./cmd/record.binance -name dreary FDUSDUSDT USDTUSD BTCFDUSD ETHFDUSD SOL
 
 ## 3. running the software
 
-Here's an example of how to backtest the [cmd/spread/main.go] trading bot.
+Here's an example of how to backtest the [cmd/mm/main.go](cmd/mm/main.go) trading bot.
 
 ```
-go run ./cmd/spread -backtest chaos -symbol ZEC
+go run ./cmd/spread -backtest dogdays -symbol LTC -usd 8000 -target 4000 -size 2000 -spread 3
 ```
 
 To run *all* the backtests for the trading bot just say:
 
 ```
-./scripts/test.sh spread
+./scripts/test.sh mm
 ```
 
 Now you're ready to read [CLAUDE.md](CLAUDE.md) for the rest of our tutorial.

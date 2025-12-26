@@ -133,7 +133,7 @@ func (c *Client) MarketOrder(productID string, side ds.Side, quantity decimal.De
 // Returns:
 // - order ID if successful, otherwise empty string
 // - error if failed, e.g. ErrPostOnly
-func (c *Client) LimitOrder(productID string, side ds.Side, quantity, limitPrice decimal.Decimal, clientOrderID string, orderStrategy ds.LimitOrderStrategy, costBasisMethod ds.CostBasisMethod) (string, error) {
+func (c *Client) LimitOrder(productID string, side ds.Side, quantity, limitPrice decimal.Decimal, clientOrderID string, orderStrategy ds.OrderStrategy, costBasisMethod ds.CostBasisMethod) (string, error) {
 	if clientOrderID == "" {
 		clientOrderID = GenerateClientOrderID()
 	}
@@ -142,7 +142,7 @@ func (c *Client) LimitOrder(productID string, side ds.Side, quantity, limitPrice
 	}
 	var orderConfiguration map[string]any
 	switch orderStrategy {
-	case ds.LimitOrderStrategyMarketable:
+	case ds.OrderStrategyMarketable:
 		orderConfiguration = map[string]any{
 			"limit_limit_gtc": map[string]any{
 				"base_size":   quantity.String(),
@@ -150,7 +150,7 @@ func (c *Client) LimitOrder(productID string, side ds.Side, quantity, limitPrice
 				"post_only":   false,
 			},
 		}
-	case ds.LimitOrderStrategyPostOnly:
+	case ds.OrderStrategyPostOnly:
 		orderConfiguration = map[string]any{
 			"limit_limit_gtc": map[string]any{
 				"base_size":   quantity.String(),
@@ -158,7 +158,7 @@ func (c *Client) LimitOrder(productID string, side ds.Side, quantity, limitPrice
 				"post_only":   true,
 			},
 		}
-	case ds.LimitOrderStrategyIOC:
+	case ds.OrderStrategyIOC:
 		orderConfiguration = map[string]any{
 			"sor_limit_ioc": map[string]any{
 				"base_size":   quantity.String(),

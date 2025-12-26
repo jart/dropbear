@@ -32,7 +32,7 @@ func GetPortfolioUUID(client *Client) string {
 				return
 			}
 		}
-		loggy.Fatalf("coinbase: portfolio name not found: " + flag)
+		loggy.Fatalf("coinbase: portfolio name not found: %s", flag)
 	})
 	return thePortfolioUUID
 }

@@ -74,13 +74,17 @@ func (r *report) Print() {
 		benchReturn = benchmarkValue.Sub(r.startEquity).Div(r.startEquity)
 	}
 
-	// cagr calculation
+	// cagr calculation - compound at quantum intervals then annualize
 	cagr := 0.0
 	if duration > 0 && r.startEquity.IsPositive() {
-		years := float64(duration) / float64(365*24*clocky.Hour)
-		if years > 0 {
+		quantums := float64(duration) / float64(*flagQuantum)
+		quantumsPerYear := float64(365*24*clocky.Hour) / float64(*flagQuantum)
+		if quantums > 0 {
 			totalReturn := endEquity.Div(r.startEquity).Float64()
-			cagr = (math.Pow(totalReturn, 1.0/years) - 1) * 100
+			cagr = (math.Pow(totalReturn, quantumsPerYear/quantums) - 1) * 100
+			if cagr > 1e9 {
+				cagr = math.Inf(1)
+			}
 		}
 	}
 

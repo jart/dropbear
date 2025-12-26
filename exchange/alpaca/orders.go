@@ -45,15 +45,15 @@ func (c *Client) MarketOrder(symbol string, qty decimal.Decimal) (*Order, error)
 }
 
 // LimitOrderBuy places a GTC limit buy order.
-func (c *Client) LimitOrder(symbol string, side ds.Side, qty, limitPrice decimal.Decimal, strategy ds.LimitOrderStrategy) (*Order, error) {
+func (c *Client) LimitOrder(symbol string, side ds.Side, qty, limitPrice decimal.Decimal, strategy ds.OrderStrategy) (*Order, error) {
 	if qty.IsNegative() {
 		return nil, errors.New("quantity must be positive for limit orders")
 	}
 	var time_in_force string
 	switch strategy {
-	case ds.LimitOrderStrategyMarketable:
+	case ds.OrderStrategyMarketable:
 		time_in_force = "gtc"
-	case ds.LimitOrderStrategyIOC:
+	case ds.OrderStrategyIOC:
 		time_in_force = "ioc"
 	default:
 		return nil, fmt.Errorf("%v orders not supported by Alpaca", strategy)

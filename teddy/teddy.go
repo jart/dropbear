@@ -24,14 +24,13 @@ var (
 	flagVerboseSim = flag.Bool("verbose-sim", false, "log order simulation decisions")
 )
 
-var gVerbose bool
-
 var (
 	Live              bool
 	BinanceClient     *binance.Client
 	CoinbaseClient    *coinbase.Client
 	gManager          *manager
 	gSigChan          chan os.Signal
+	gVerbose          bool
 	gBenchmark        *Pair
 	gReport           *report
 	gStrategyEquity   *metrics.Equity
@@ -70,7 +69,7 @@ func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
 		defer h.Lock.Unlock()
 		h.Quantity = quantity
 		h.Available = quantity
-		if !h.IsCash {
+		if !h.IsFiat {
 			h.Lots.Add(clocky.Now(), quantity, decimal.Zero)
 		}
 	}

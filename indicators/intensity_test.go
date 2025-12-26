@@ -96,11 +96,12 @@ func TestIntensityExponentialDecay(t *testing.T) {
 		now = now.Add(clocky.Second * 2) // 2s per trade = 1000s total = 16.7 minutes
 	}
 
-	// after 5+ half-lives, total volume should be much less than 500
-	// steady state volume ≈ trades_per_halflife = halfLife / inter-arrival = 60s / 2s = 30
+	// after 5+ half-lives, total volume should be much less than 50000 (500 trades × $100)
+	// steady state volume ≈ trades_per_halflife × price = (60s / 2s) × $100 = $3000
+	// binVolume stores USD value, not raw quantity
 	vol := ti.totalVolume()
-	if vol > 100 {
-		t.Errorf("expected volume < 100 due to decay, got %.1f", vol)
+	if vol > 10000 {
+		t.Errorf("expected volume < 10000 due to decay, got %.1f", vol)
 	}
 	t.Logf("Volume after 5 half-lives: %.1f", vol)
 }
@@ -156,5 +157,24 @@ func BenchmarkIntensity(b *testing.B) {
 		price := decimal.FromInt(100).Mul(decimal.One.Add(decimal.FromFloat64(delta)))
 		ti.AddTrade(now, price, decimal.One)
 		now = now.Add(clocky.Millisecond * 100)
+		_ = ti.IsReady()
 	}
+}
+
+func (ti *Intensity) totalVolume() float64 {
+	total := 0.0
+	for i := range numBins {
+		total += ti.binVolume[i]
+	}
+	return total
+}
+
+func (ti *Intensity) filledBins() int {
+	count := 0
+	for i := range numBins {
+		if ti.binVolume[i] > minVolumeBin {
+			count++
+		}
+	}
+	return count
 }

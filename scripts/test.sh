@@ -42,7 +42,7 @@ run() {
             else
                 JUDGEMENT="bad"
             fi
-            printf "%s %-10s %-4s vol=%4.1f profit=%8.2f sharpe=%7s buys=%4d sells=%4d invested=%5s %s\n" \
+            printf "%s %-10s %-4s vol=%5.1f profit=%8.2f sharpe=%7s buys=%6d sells=%6d invested=%5s %s\n" \
                 "$CMD" "$DATASET" "$COIN" "$VOLUME" "$PROFIT" "$SHARPE" "$BUYS" "$SELLS" "$INVESTED" "$JUDGEMENT" >>"$REPORT"
             echo "$VOLUME $PROFIT $PROFIT_BENCH $SHARPE $SHARPE_BENCH $INVESTED $JUDGEMENT" >>"$RESULTS"
             rm -f $OUTPATH

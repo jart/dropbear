@@ -9,23 +9,25 @@ import (
 
 // Account represents a Coinbase account.
 type Account struct {
-	UUID             string         `json:"uuid"`
-	Name             string         `json:"name"`
-	Currency         string         `json:"currency"`
-	AvailableBalance MonetaryAmount `json:"available_balance"`
-	Hold             MonetaryAmount `json:"hold"`
-}
-
-// AccountsResponse is the response from the accounts endpoint.
-type AccountsResponse struct {
-	Accounts []Account `json:"accounts"`
-	Cursor   string    `json:"cursor"`
-	HasNext  bool      `json:"has_next"`
+	UUID              string         `json:"uuid"`
+	Name              string         `json:"name"`     // e.g. "BTC Wallet"
+	Currency          string         `json:"currency"` // e.g. "BTC"
+	Default           bool           `json:"default"`
+	Active            bool           `json:"active"`
+	Ready             bool           `json:"ready"`
+	CreatedAt         string         `json:"created_at"` // e.g. "2025-12-17T23:31:39.664Z"
+	UpdatedAt         string         `json:"updated_at"` // e.g. "2025-12-26T01:48:23.615578Z"
+	DeletedAt         *string        `json:"deleted_at"` // e.g. null
+	Type              string         `json:"type"`       // e.g. "ACCOUNT_TYPE_CRYPTO", "ACCOUNT_TYPE_FIAT", "ACCOUNT_TYPE_VAULT", "ACCOUNT_TYPE_PERP_FUTURES"
+	RetailPortfolioID string         `json:"retail_portfolio_id"`
+	Platform          string         `json:"platform"` // e.g. "ACCOUNT_PLATFORM_CONSUMER", "ACCOUNT_PLATFORM_INTX"
+	AvailableBalance  MonetaryAmount `json:"available_balance"`
+	Hold              MonetaryAmount `json:"hold"`
 }
 
 // GetAccounts retrieves all accounts with pagination.
-func (c *Client) GetAccounts() (*AccountsResponse, error) {
-	var allAccounts []Account
+func (c *Client) GetAccounts() ([]*Account, error) {
+	var allAccounts []*Account
 	cursor := ""
 	for {
 		path := "/api/v3/brokerage/accounts?limit=250"
@@ -41,7 +43,11 @@ func (c *Client) GetAccounts() (*AccountsResponse, error) {
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
 		}
-		var result AccountsResponse
+		var result struct {
+			Accounts []*Account `json:"accounts"`
+			Cursor   string     `json:"cursor"`
+			HasNext  bool       `json:"has_next"`
+		}
 		if err := json.Unmarshal(body, &result); err != nil {
 			return nil, fmt.Errorf("decoding response: %w", err)
 		}
@@ -51,5 +57,5 @@ func (c *Client) GetAccounts() (*AccountsResponse, error) {
 		}
 		cursor = result.Cursor
 	}
-	return &AccountsResponse{Accounts: allAccounts}, nil
+	return allAccounts, nil
 }
