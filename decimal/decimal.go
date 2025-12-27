@@ -4,9 +4,10 @@ import (
 	"encoding/binary"
 	"io"
 	"math"
+	"sync/atomic"
 )
 
-// Decimal represents a fixed-point decimal number with 9 decimal places.
+// Decimal represents a fixed-point decimal number with 9 decimal places on each side.
 type Decimal int64
 
 const (
@@ -16,16 +17,19 @@ const (
 	Two     = Decimal(Scale * 2)
 	Half    = Decimal(Scale / 2)
 	Tenth   = Decimal(Scale / 10)
-	Max     = Decimal(9_000_000_000 * Scale)
-	Min     = Decimal(-9_000_000_000 * Scale)
-	Satoshi = Decimal(10)          // 0.00000001
-	Cent    = Decimal(Scale / 100) // 0.01
+	Max     = Decimal(math.MaxInt64) // 9,223,372,036.854_775_807
+	Min     = Decimal(math.MinInt64) // -9,223,372,036.854_775_808
+	Satoshi = Decimal(10)            // 0.00000001
+	Cent    = Decimal(Scale / 100)   // 0.01
 	Scale   = 1_000_000_000
 	Places  = 9
 )
 
 // FromInt converts int to Decimal.
 func FromInt(n int) Decimal {
+	if n > math.MaxInt64/Scale || n < math.MinInt64/Scale {
+		panic("decimal overflow")
+	}
 	return Decimal(int64(n) * Scale)
 }
 
@@ -45,19 +49,59 @@ func ParseBPS(s string) Decimal {
 	return Parse(s).DivInt(10000)
 }
 
-func (d Decimal) Neg() Decimal          { return -d }
-func (d Decimal) IsPositive() bool      { return d > 0 }
-func (d Decimal) IsNegative() bool      { return d < 0 }
-func (d Decimal) Add(o Decimal) Decimal { return d + o }
-func (d Decimal) Sub(o Decimal) Decimal { return d - o }
-func (d Decimal) IsZero() bool          { return d == 0 }
-func (d Decimal) Sqr() Decimal          { return d.Mul(d) }
-func (d Decimal) BPS() Decimal          { return d.MulInt(10000) }
-func (d Decimal) Int64() int64          { return int64(d) / Scale }
-func (d Decimal) Float64() float64      { return float64(d) / Scale }
-func (d Decimal) Int() int              { return int(int64(d) / Scale) }
-func (d Decimal) MulInt(n int) Decimal  { return Decimal(int64(d) * int64(n)) }
-func (d Decimal) DivInt(n int) Decimal  { return Decimal(int64(d) / int64(n)) }
+// Add returns d + o, panicking on overflow.
+func (x Decimal) Add(y Decimal) Decimal {
+	z := x + y
+	if ((z ^ x) & (z ^ y)) < 0 {
+		panic("decimal overflow")
+	}
+	return z
+}
+
+// Sub returns d - o, panicking on overflow.
+func (x Decimal) Sub(y Decimal) Decimal {
+	z := x - y
+	if ((x ^ y) & (z ^ x)) < 0 {
+		panic("decimal overflow")
+	}
+	return z
+}
+
+// Neg returns -d.
+func (d Decimal) Neg() Decimal {
+	if d == Min {
+		panic("decimal overflow")
+	}
+	return -d
+}
+
+// MulInt multiplies d by n, panicking on overflow.
+func (d Decimal) MulInt(n int) Decimal {
+	x, y := int64(d), int64(n)
+	z := x * y
+	if y != 0 && z/y != x {
+		panic("decimal overflow")
+	}
+	return Decimal(z)
+}
+
+// DivInt divides d by n, panicking on overflow.
+func (d Decimal) DivInt(n int) Decimal {
+	x, y := int64(d), int64(n)
+	if x == math.MinInt64 && y == -1 {
+		panic("decimal overflow")
+	}
+	return Decimal(x / y)
+}
+
+func (d Decimal) IsPositive() bool { return d > 0 }
+func (d Decimal) IsNegative() bool { return d < 0 }
+func (d Decimal) IsZero() bool     { return d == 0 }
+func (d Decimal) Sqr() Decimal     { return d.Mul(d) }
+func (d Decimal) BPS() Decimal     { return d.MulInt(10000) }
+func (d Decimal) Int64() int64     { return int64(d) / Scale }
+func (d Decimal) Float64() float64 { return float64(d) / Scale }
+func (d Decimal) Int() int         { return int(int64(d) / Scale) }
 
 // Cmp compares d and o and returns -1 if d < o, 0 if d == o, 1 if d > o.
 func (d Decimal) Cmp(o Decimal) int {
@@ -94,6 +138,26 @@ func (d Decimal) Max(o Decimal) Decimal {
 // Truncate removes the fractional part, rounding toward zero.
 func (d Decimal) Truncate() Decimal {
 	return Decimal(int64(d) / Scale * Scale)
+}
+
+// Store atomically stores v into d.
+func (d *Decimal) Store(v Decimal) {
+	atomic.StoreInt64((*int64)(d), int64(v))
+}
+
+// Load atomically loads and returns the value of d.
+func (d *Decimal) Load() Decimal {
+	return Decimal(atomic.LoadInt64((*int64)(d)))
+}
+
+// AtomicAdd atomically adds v to d.
+func (d *Decimal) AtomicAdd(v Decimal) Decimal {
+	return Decimal(atomic.AddInt64((*int64)(d), int64(v)))
+}
+
+// Exchange atomically replaces v into d.
+func (d *Decimal) Exchange(v Decimal) Decimal {
+	return Decimal(atomic.SwapInt64((*int64)(d), int64(v)))
 }
 
 func (d Decimal) Encode(b []byte) []byte {

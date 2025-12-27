@@ -4,6 +4,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"log"
 	"sync"
 )
 
@@ -38,7 +39,7 @@ func (o *Order) Cancel() error {
 	if o.OrderID == "" || o.State.IsFinal() {
 		return ds.ErrOrderNotFound
 	}
-	if Live {
+	if !Paper {
 		switch o.Pair.Exchange.Exchange {
 		case ds.ExchangeCoinbase:
 			if err := CoinbaseClient.CancelOrder(o.OrderID); err != nil {
@@ -57,21 +58,20 @@ func (order *Order) kill(state ds.OrderState) {
 	pair := order.Pair
 	orders := pair.Exchange.Orders
 	order.Lock.Lock()
-	order.State = state
-	hold := order.Hold
-	spent := order.FillValue.Add(order.Fee) // amount of hold consumed by fills
-	order.Hold = decimal.Zero
+	order.State.Store(state)
+	hold := order.Hold.Load()
+	spent := order.FillValue.Load().Add(order.Fee.Load()) // amount of hold consumed by fills
+	order.Hold.Store(decimal.Zero)
 	order.Lock.Unlock()
 	switch order.Side {
 	case ds.SideBuy:
 		// only release unused portion of hold (hold minus what was spent on fills)
 		releaseAmount := hold.Sub(spent)
 		if releaseAmount.IsPositive() {
-			qh := pair.Exchange.Holdings.Get(pair.QuoteCurrency)
-			qh.Lock.Lock()
-			qh.Available = qh.Available.Add(releaseAmount)
-			qh.Check()
-			qh.Lock.Unlock()
+			pair.QuoteCurrency.Lock.Lock()
+			add(&pair.QuoteCurrency.Available, releaseAmount)
+			pair.QuoteCurrency.Check()
+			pair.QuoteCurrency.Lock.Unlock()
 		}
 	case ds.SideSell:
 		// for sell orders, hold is in base currency
@@ -81,11 +81,10 @@ func (order *Order) kill(state ds.OrderState) {
 		order.Lock.RUnlock()
 		releaseAmount := hold.Sub(filled)
 		if releaseAmount.IsPositive() {
-			bh := pair.Exchange.Holdings.Get(pair.BaseCurrency)
-			bh.Lock.Lock()
-			bh.Available = bh.Available.Add(releaseAmount)
-			bh.Check()
-			bh.Lock.Unlock()
+			pair.BaseCurrency.Lock.Lock()
+			add(&pair.BaseCurrency.Available, releaseAmount)
+			pair.BaseCurrency.Check()
+			pair.BaseCurrency.Lock.Unlock()
 		}
 	}
 	orders.lock.Lock()
@@ -93,11 +92,13 @@ func (order *Order) kill(state ds.OrderState) {
 		orders.openOrders.Remove(order)
 	}
 	orders.lock.Unlock()
-	pair.Lock.Lock()
-	if pair.openOrders.Contains(order) {
-		pair.openOrders.Remove(order)
-	}
-	pair.Lock.Unlock()
+	func() {
+		pair.Lock.Lock()
+		defer pair.Lock.Unlock()
+		if pair.openOrders.Contains(order) {
+			pair.openOrders.Remove(order)
+		}
+	}()
 	order.closeOnce.Do(func() {
 		close(order.onClose)
 	})
@@ -111,7 +112,6 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (de
 	pair := order.Pair
 	exchange := pair.Exchange
 	orders := exchange.Orders
-	holdings := exchange.Holdings
 	now := clocky.Now()
 
 	// perform sanity checks
@@ -124,43 +124,44 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (de
 
 	// update order atomically, clamping fill to available quantity
 	order.Lock.Lock()
-	if !force && order.State.IsFinal() {
+	if !force && order.State.Load().IsFinal() {
 		order.Lock.Unlock()
 		return decimal.Zero, ds.ErrOrderNotFound
 	}
-	remaining := order.Quantity.Sub(order.Filled)
+	remaining := order.Quantity.Load().Sub(order.Filled.Load())
 	if !remaining.IsPositive() {
 		order.Lock.Unlock()
 		return decimal.Zero, ds.ErrOrderNotFound
 	}
+
 	// clamp fill to remaining quantity
 	actualFilled := filled.Min(remaining)
 	actualValue := value.Mul(actualFilled).Div(filled) // proportional value
 	fee := actualValue.Mul(feeRate)
 	dir := decimal.Decimal(order.Side)
 	total := actualValue.Add(fee.Mul(dir))
-	rebate := fee.Mul(exchange.Rebate)
+	rebate := fee.Mul(exchange.Rebate.Load())
 
 	// detect if kill() already ran and released the hold
 	// this happens when a fill update arrives after we locally cancelled
 	// in this case, we need to also adjust Available since kill() released it
-	holdAlreadyReleased := force && order.Hold.IsZero() && order.State.IsFinal()
+	holdAlreadyReleased := force && order.Hold.Load().IsZero() && order.State.Load().IsFinal()
 
 	releaseHold := decimal.Zero
-	totalFilled := order.Filled.Add(actualFilled)
-	isFullyFilled := totalFilled.Cmp(order.Quantity) == 0
-	order.LastFillTime = now
-	order.Filled = totalFilled
-	order.FillValue = order.FillValue.Add(actualValue)
-	order.FillPrice = order.FillValue.Div(order.Filled)
-	order.Fee = order.Fee.Add(fee)
+	totalFilled := order.Filled.Load().Add(actualFilled)
+	isFullyFilled := totalFilled.Cmp(order.Quantity.Load()) == 0
+	order.LastFillTime.Store(now)
+	order.Filled.Store(totalFilled)
+	add(&order.Fee, fee)
+	add(&order.FillValue, actualValue)
+	order.FillPrice.Store(order.FillValue.Load().Div(order.Filled.Load()))
 	if isFullyFilled {
-		releaseHold = order.Hold
-		order.State = ds.OrderStateFilled
-		order.Hold = decimal.Zero
+		releaseHold = order.Hold.Load()
+		order.State.Store(ds.OrderStateFilled)
+		order.Hold.Store(decimal.Zero)
 	} else {
 		if !force {
-			order.State = ds.OrderStatePartiallyFilled
+			order.State.Store(ds.OrderStatePartiallyFilled)
 		}
 	}
 	order.Lock.Unlock()
@@ -170,73 +171,69 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (de
 
 		// debit cash holding of purchase price and commission
 		// additionally we release unused hold if order is fully filled
-		quoteHolding := holdings.Get(pair.QuoteCurrency)
-		quoteHolding.Lock.Lock()
-		quoteHolding.Quantity = quoteHolding.Quantity.Sub(total)
-		quoteHolding.Volume = quoteHolding.Volume.Add(actualValue)
-		quoteHolding.SellVolume = quoteHolding.SellVolume.Add(actualValue)
+		pair.QuoteCurrency.Lock.Lock()
+		pair.QuoteCurrency.Volume += actualValue.Float64()
+		pair.QuoteCurrency.SellVolume += actualValue.Float64()
+		sub(&pair.QuoteCurrency.Quantity, total)
 		// on full fill, adjust Available for difference between hold and actual cost
 		// unusedHold can be negative if Coinbase charged more than we estimated
 		if releaseHold.IsPositive() {
 			order.Lock.RLock()
-			cumulativeSpent := order.FillValue.Add(order.Fee)
+			cumulativeSpent := order.FillValue.Load().Add(order.Fee.Load())
 			order.Lock.RUnlock()
 			unusedHold := releaseHold.Sub(cumulativeSpent)
-			quoteHolding.Available = quoteHolding.Available.Add(unusedHold)
+			add(&pair.QuoteCurrency.Available, unusedHold)
 		} else if holdAlreadyReleased {
 			// kill() already released the hold back to Available, but this fill
 			// actually happened so we need to debit Available by the fill cost
-			quoteHolding.Available = quoteHolding.Available.Sub(total)
+			sub(&pair.QuoteCurrency.Available, total)
 		}
-		quoteHolding.Check()
-		quoteHolding.Lock.Unlock()
+		pair.QuoteCurrency.Check()
+		pair.QuoteCurrency.Lock.Unlock()
 
 		// credit asset holding with filled quantity
-		baseHolding := holdings.Get(pair.BaseCurrency)
-		baseHolding.Lock.Lock()
-		baseHolding.Available = baseHolding.Available.Add(actualFilled)
-		baseHolding.Quantity = baseHolding.Quantity.Add(actualFilled)
-		baseHolding.Volume = baseHolding.Volume.Add(actualFilled)
-		baseHolding.BuyVolume = baseHolding.BuyVolume.Add(actualFilled)
-		baseHolding.Lots.Add(now, actualFilled, total)
-		baseHolding.Check()
-		baseHolding.Lock.Unlock()
+		pair.BaseCurrency.Lock.Lock()
+		add(&pair.BaseCurrency.Available, actualFilled)
+		add(&pair.BaseCurrency.Quantity, actualFilled)
+		pair.BaseCurrency.Volume += actualFilled.Float64()
+		pair.BaseCurrency.BuyVolume += actualFilled.Float64()
+		pair.BaseCurrency.Lots.Add(now, actualFilled, total)
+		pair.BaseCurrency.Check()
+		pair.BaseCurrency.Lock.Unlock()
 
 	case ds.SideSell:
 
 		// credit cash holding with sale proceeds minus commission
-		quoteHolding := holdings.Get(pair.QuoteCurrency)
-		quoteHolding.Lock.Lock()
-		quoteHolding.Quantity = quoteHolding.Quantity.Add(total)
-		quoteHolding.Available = quoteHolding.Available.Add(total)
-		quoteHolding.Volume = quoteHolding.Volume.Add(actualValue)
-		quoteHolding.SellVolume = quoteHolding.SellVolume.Add(actualValue)
-		quoteHolding.Check()
-		quoteHolding.Lock.Unlock()
+		pair.QuoteCurrency.Lock.Lock()
+		add(&pair.QuoteCurrency.Quantity, total)
+		add(&pair.QuoteCurrency.Available, total)
+		pair.QuoteCurrency.Volume += actualValue.Float64()
+		pair.QuoteCurrency.SellVolume += actualValue.Float64()
+		pair.QuoteCurrency.Check()
+		pair.QuoteCurrency.Lock.Unlock()
 
 		// debit asset holding with filled quantity
 		// note: Available was already reduced by hold when order was placed
 		// the fill consumes from the hold, so we only debit Quantity here
-		baseHolding := holdings.Get(pair.BaseCurrency)
-		baseHolding.Lock.Lock()
-		baseHolding.Quantity = baseHolding.Quantity.Sub(actualFilled)
+		pair.BaseCurrency.Lock.Lock()
+		sub(&pair.BaseCurrency.Quantity, actualFilled)
 		if holdAlreadyReleased {
 			// kill() already released the hold back to Available, but this fill
 			// actually happened so we need to debit Available by the filled amount
-			baseHolding.Available = baseHolding.Available.Sub(actualFilled)
+			sub(&pair.BaseCurrency.Available, actualFilled)
 		}
-		baseHolding.Volume = baseHolding.Volume.Add(actualFilled)
-		baseHolding.SellVolume = baseHolding.SellVolume.Add(actualFilled)
-		baseHolding.Lots.Consume(actualFilled, decimal.Zero)
-		baseHolding.Check()
-		baseHolding.Lock.Unlock()
+		pair.BaseCurrency.Volume += actualFilled.Float64()
+		pair.BaseCurrency.SellVolume += actualFilled.Float64()
+		pair.BaseCurrency.Lots.Consume(actualFilled, decimal.Zero)
+		pair.BaseCurrency.Check()
+		pair.BaseCurrency.Lock.Unlock()
 	}
 
 	// credit usdc holding with commission rebate
-	usdcHolding := holdings.Get("USDC")
+	usdcHolding := exchange.Holdings.Get("USDC")
 	usdcHolding.Lock.Lock()
-	usdcHolding.Available = usdcHolding.Available.Add(rebate)
-	usdcHolding.Quantity = usdcHolding.Quantity.Add(rebate)
+	add(&usdcHolding.Quantity, rebate)
+	add(&usdcHolding.Available, rebate)
 	usdcHolding.Check()
 	usdcHolding.Lock.Unlock()
 
@@ -258,11 +255,9 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (de
 	exchange.Lock.Lock()
 	exchange.Fees = exchange.Fees.Add(fee)
 	exchange.Lock.Unlock()
-	if gReport != nil {
-		gReport.lock.Lock()
-		gReport.trades[order.Side]++
-		gReport.lock.Unlock()
-	}
+	pair.Lock.Lock()
+	pair.Trades[order.Side]++
+	pair.Lock.Unlock()
 
 	// notify subscribers that order changed
 	orders.OnOrderEvent(order)
@@ -272,5 +267,10 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (de
 		})
 	}
 
+	if *flagVerbose {
+		percentFilled := order.Filled.Div(order.Quantity).MulInt(100).Truncate()
+		log.Printf("[teddy] %s limit %s%% filled %s @ $%s",
+			order.Side, percentFilled, filled, order.LimitPrice)
+	}
 	return actualFilled, nil
 }

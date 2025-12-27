@@ -48,7 +48,7 @@ func main() {
 
 	for {
 		err := tick.Deserialize(reader)
-		if err == io.EOF {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
 		if err != nil {

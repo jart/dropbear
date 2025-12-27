@@ -2,7 +2,6 @@ package teddy
 
 import (
 	"dropbear/decimal"
-	"dropbear/ds"
 	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
 	"sync"
@@ -61,7 +60,7 @@ func (hs *Holdings) All() []*Holding {
 func (hs *Holdings) GetEquityUSD() decimal.Decimal {
 	total := decimal.Zero
 	for _, holding := range hs.All() {
-		price := holding.Exchange.GetPriceUSD(holding.Symbol)
+		price := holding.Exchange.Pairs.GetPriceUSD(holding.Symbol)
 		holding.Lock.RLock()
 		value := holding.Quantity.Mul(price)
 		holding.Lock.RUnlock()
@@ -77,41 +76,13 @@ func (hs *Holdings) GetInvestedUSD() decimal.Decimal {
 		if holding.IsCash {
 			continue
 		}
-		price := holding.Exchange.GetPriceUSD(holding.Symbol)
+		price := holding.Exchange.Pairs.GetPriceUSD(holding.Symbol)
 		holding.Lock.RLock()
 		value := holding.Quantity.Mul(price)
 		holding.Lock.RUnlock()
 		total = total.Add(value)
 	}
 	return total
-}
-
-type initialHolding struct {
-	Exchange ds.Exchange
-	Symbol   string
-	Quantity decimal.Decimal
-}
-
-func captureInitialHoldings() {
-	haveSomething := false
-	for _, exchange := range Exchanges.All() {
-		for _, holding := range exchange.Holdings.All() {
-			holding.Lock.RLock()
-			qty := holding.Quantity
-			holding.Lock.RUnlock()
-			if qty.IsPositive() {
-				haveSomething = true
-				gInitialHoldings = append(gInitialHoldings, initialHolding{
-					Exchange: exchange.Exchange,
-					Symbol:   holding.Symbol,
-					Quantity: qty,
-				})
-			}
-		}
-	}
-	if !haveSomething {
-		loggy.Fatalf("no initial cash or holdings set for backtest; forgot to call teddy.SetBalance()?")
-	}
 }
 
 var (

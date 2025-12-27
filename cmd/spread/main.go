@@ -94,9 +94,9 @@ func main() {
 
 	gBinance = teddy.Exchanges.Get(ds.ExchangeBinance)
 	if *flagSymbol == "ZEC" {
-		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "-USDT")
+		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "USDT")
 	} else {
-		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "-FDUSD")
+		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "FDUSD")
 	}
 	gBinancePair.OnTick = onBinanceTick
 

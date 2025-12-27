@@ -13,9 +13,9 @@ type Holding struct {
 	Symbol     string // e.g. USD, BTC
 	Quantity   decimal.Decimal
 	Available  decimal.Decimal
-	Volume     decimal.Decimal
-	BuyVolume  decimal.Decimal
-	SellVolume decimal.Decimal
+	Volume     float64
+	BuyVolume  float64
+	SellVolume float64
 	WinCount   int
 	LossCount  int
 	Lots       *ds.Lots
@@ -32,7 +32,7 @@ func newHolding(exchange *Exchange, symbol string) *Holding {
 		Lots:     ds.NewLots(GetCostBasisMethod()),
 	}
 	if Live {
-		switch exchange.Exchange {
+		switch h.Exchange.Exchange {
 		case ds.ExchangeCoinbase:
 			h.fetchCoinbaseHolding()
 		}
@@ -40,24 +40,27 @@ func newHolding(exchange *Exchange, symbol string) *Holding {
 	return h
 }
 
-// check verifies critical accounting invariants.
+func (h *Holding) String() string {
+	return h.Symbol
+}
+
 func (h *Holding) Check() {
-	if h.Quantity.IsNegative() {
+	if h.Quantity.Load().IsNegative() {
 		loggy.Fatalf("accounting invariant violated: %s Quantity is negative: %s",
-			h.Symbol, h.Quantity)
+			h.Symbol, h.Quantity.Load())
 	}
-	if h.Available.IsNegative() {
+	if h.Available.Load().IsNegative() {
 		loggy.Fatalf("accounting invariant violated: %s Available is negative: %s",
-			h.Symbol, h.Available)
+			h.Symbol, h.Available.Load())
 	}
-	if h.Available.Cmp(h.Quantity) > 0 {
+	if h.Available.Load().Cmp(h.Quantity.Load()) > 0 {
 		loggy.Fatalf("accounting invariant violated: %s Available (%s) > Quantity (%s)",
-			h.Symbol, h.Available, h.Quantity)
+			h.Symbol, h.Available.Load(), h.Quantity.Load())
 	}
 	if !h.IsCash {
-		if h.Quantity.Cmp(h.Lots.Size) != 0 {
+		if h.Quantity.Load().Cmp(h.Lots.Size) != 0 {
 			loggy.Fatalf("accounting invariant violated: %s Quantity (%s) != Lots.Size (%s)",
-				h.Symbol, h.Quantity, h.Lots.Size)
+				h.Symbol, h.Quantity.Load(), h.Lots.Size)
 		}
 	}
 }
@@ -67,8 +70,17 @@ func (h *Holding) fetchCoinbaseHolding() {
 		if account.Currency == h.Symbol {
 			h.IsFiat = account.Type == "ACCOUNT_TYPE_FIAT"
 			h.IsCash = h.IsFiat || looksLikeCashSymbol(h.Symbol)
-			h.Quantity = decimal.Parse(account.AvailableBalance.Value)
-			h.Available = h.Quantity.Sub(decimal.Parse(account.Hold.Value))
+			if !h.IsFiat {
+				err := CoinbaseClient.SyncTransactions(h.Symbol)
+				if err != nil {
+					loggy.Fatalf("coinbase: error syncing transactions for asset %s: %v", h.Symbol, err)
+				}
+			}
+			h.Lock.Lock()
+			quantity := decimal.Parse(account.AvailableBalance.Value)
+			hold := decimal.Parse(account.Hold.Value)
+			h.Quantity.Store(quantity)
+			h.Available.Store(quantity.Sub(hold))
 			if !h.IsFiat {
 				err := CoinbaseClient.SyncTransactions(h.Symbol)
 				if err != nil {
@@ -80,6 +92,7 @@ func (h *Holding) fetchCoinbaseHolding() {
 				}
 			}
 			h.Check()
+			h.Lock.Unlock()
 			return
 		}
 	}

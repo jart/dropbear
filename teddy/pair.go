@@ -7,7 +7,6 @@ import (
 	"dropbear/exchange/binanceusd"
 	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
-	"log"
 	"strings"
 	"sync"
 
@@ -19,67 +18,70 @@ type Pair struct {
 	Lock           sync.RWMutex
 	Exchange       *Exchange
 	LastPrice      decimal.Decimal
-	BaseCurrency   string // e.g. BTC
-	QuoteCurrency  string // e.g. USD
+	BaseCurrency   *Holding
+	QuoteCurrency  *Holding
 	BaseIncrement  decimal.Decimal
 	QuoteIncrement decimal.Decimal
 	QuoteMinSize   decimal.Decimal
 	QuoteMaxSize   decimal.Decimal
 	BaseMinSize    decimal.Decimal
 	BaseMaxSize    decimal.Decimal
+	Trades         map[ds.Side]int
 	OrderBook      *ds.Book
 	OnTick         func(*ds.Tick)
+	OnReady        func()
+	repr           string
+	isReady        bool
+	hasL2Data      bool
+	hasTradeData   bool
 	openOrders     *treeset.Set[*Order]
 	dataLock       sync.RWMutex
 }
 
-func (p *Pair) String() string {
-	return p.Symbol
-}
-
 func newPair(exchange *Exchange, symbol string) *Pair {
+	if gRunning {
+		loggy.Fatalf("cannot create new pair %s@%s while teddy is running", symbol, exchange)
+	}
 	baseCurrency, quoteCurrency := splitProductID(symbol)
 	p := &Pair{
 		Symbol:         symbol,
 		Exchange:       exchange,
-		BaseCurrency:   baseCurrency,
-		QuoteCurrency:  quoteCurrency,
-		BaseIncrement:  decimal.Satoshi,
-		QuoteIncrement: decimal.Satoshi,
-		QuoteMinSize:   decimal.One,
-		QuoteMaxSize:   decimal.Max,
-		BaseMinSize:    decimal.Satoshi,
-		BaseMaxSize:    decimal.Max,
+		BaseCurrency:   exchange.Holdings.Get(baseCurrency),
+		QuoteCurrency:  exchange.Holdings.Get(quoteCurrency),
+		BaseIncrement:  guessIncrement(baseCurrency),
+		QuoteIncrement: guessIncrement(quoteCurrency),
+		QuoteMinSize:   guessQuoteMinSize(quoteCurrency),
+		QuoteMaxSize:   guessQuoteMaxSize(quoteCurrency),
+		BaseMinSize:    guessBaseMinSize(baseCurrency),
+		BaseMaxSize:    guessBaseMaxSize(baseCurrency),
+		Trades:         make(map[ds.Side]int),
 		OrderBook:      ds.NewBook(),
 		OnTick:         func(*ds.Tick) {},
+		OnReady:        func() {},
 		openOrders:     treeset.NewWith(compareOrdersByClientOrderID),
+		repr:           symbol + "@" + exchange.Exchange.String(),
+	}
+	if Live {
+		p.refresh()
 	}
 	return p
 }
 
-func (p *Pair) init() {
-	if Live {
-		p.refresh()
-		go p.refreshDaemon()
-		switch p.Exchange.Exchange {
-		case ds.ExchangeBinance:
-			go p.liveDataDaemon(binance.MarketData(p.Symbol, BinanceClient))
-		case ds.ExchangeBinanceUSD:
-			go p.liveDataDaemon(binanceusd.MarketData(p.Symbol, BinanceUSDClient))
-		case ds.ExchangeCoinbase:
-			go p.liveDataDaemon(coinbase.MarketData(p.Symbol, CoinbaseClient))
-		default:
-			panic("unsupported exchange")
-		}
-	} else {
-		p.QuoteIncrement = guessIncrement(p.QuoteCurrency)
-		p.BaseIncrement = guessIncrement(p.BaseCurrency)
-		switch p.Exchange.Exchange {
-		case ds.ExchangeCoinbase:
-			p.Exchange.Holdings.Get(p.BaseCurrency)
-			p.Exchange.Holdings.Get(p.QuoteCurrency)
-		}
-		gManager.Register(p)
+func (p *Pair) String() string {
+	return p.repr
+}
+
+func (p *Pair) run() {
+	go p.refreshDaemon()
+	switch p.Exchange.Exchange {
+	case ds.ExchangeBinance:
+		go p.liveDataDaemon(binance.MarketData(p.Symbol, BinanceClient))
+	case ds.ExchangeBinanceusd:
+		go p.liveDataDaemon(binanceusd.MarketData(p.Symbol, BinanceusdClient))
+	case ds.ExchangeCoinbase:
+		go p.liveDataDaemon(coinbase.MarketData(p.Symbol, CoinbaseClient))
+	default:
+		panic("unsupported exchange")
 	}
 }
 
@@ -92,15 +94,46 @@ func (p *Pair) liveDataDaemon(channel <-chan *ds.Tick) {
 
 func (p *Pair) handleTick(tick *ds.Tick) {
 
+	// pulse rate limiter
+	if Paper {
+		gRateLimiter.Pulse(tick.Time)
+	}
+
 	// update last price
-	for _, trade := range tick.Trades {
-		p.LastPrice = trade.Price
+	if len(tick.Trades) > 0 {
+		p.hasTradeData = true
+		for _, trade := range tick.Trades {
+			p.LastPrice = trade.Price
+		}
+	}
+
+	// update order book
+	if tick.Bids != nil || tick.Asks != nil {
+		p.hasL2Data = true
+		p.OrderBook.Lock.Lock()
+		if tick.Snap {
+			p.OrderBook.Clear()
+		}
+		for _, bid := range tick.Bids {
+			p.OrderBook.UpdateBid(bid.Price, bid.Size)
+		}
+		for _, ask := range tick.Asks {
+			p.OrderBook.UpdateAsk(ask.Price, ask.Size)
+		}
+		p.OrderBook.Broadcast()
+		p.OrderBook.Lock.Unlock()
+	}
+
+	if !p.isReady && p.hasL2Data && p.hasTradeData {
+		p.isReady = true
+		p.OnReady()
+		p.Exchange.Pairs.markReady(p)
 	}
 
 	// simulate passive order fills BEFORE applying book updates
 	// trades consume liquidity from the order book; our passive orders
 	// only get filled after the liquidity ahead of us is consumed
-	if !Live && len(tick.Trades) > 0 {
+	if Paper && p.isReady && len(tick.Trades) > 0 {
 		p.Lock.RLock()
 		var orders []*Order
 		for i := p.openOrders.Iterator(); i.Next(); {
@@ -142,12 +175,6 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 						fillValue := order.LimitPrice.Mul(fillQty)
 						filled, err := order.fill(fillQty, fillValue, p.Exchange.MakerFee, false)
 						if err == nil && filled.IsPositive() {
-							if gVerbose {
-								log.Printf("[sim] %s limit filled %s @ $%s (trade: %s %s @ $%s)",
-									order.Side, filled, order.LimitPrice,
-									trade.Side, trade.Quantity, trade.Price)
-							}
-							// push back unfilled portion to book
 							leftover := fill.Size.Sub(filled)
 							if leftover.IsPositive() {
 								p.OrderBook.Push(trade.Side.Flip(), fill.Price, leftover)
@@ -160,21 +187,6 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 		}
 	}
 
-	// update order book (after processing trades)
-	if tick.Bids != nil || tick.Asks != nil {
-		p.OrderBook.Lock.Lock()
-		if tick.Snap {
-			p.OrderBook.Clear()
-		}
-		for _, bid := range tick.Bids {
-			p.OrderBook.UpdateBid(bid.Price, bid.Size)
-		}
-		for _, ask := range tick.Asks {
-			p.OrderBook.UpdateAsk(ask.Price, ask.Size)
-		}
-		p.OrderBook.Broadcast()
-		p.OrderBook.Lock.Unlock()
-	}
 }
 
 func (p *Pair) refreshDaemon() {
@@ -190,8 +202,8 @@ func (p *Pair) refresh() {
 		p.refreshCoinbase()
 	case ds.ExchangeBinance:
 		p.refreshBinance()
-	case ds.ExchangeBinanceUSD:
-		p.refreshBinanceUSD()
+	case ds.ExchangeBinanceusd:
+		p.refreshBinanceusd()
 	default:
 		panic("not implemented")
 	}
@@ -202,14 +214,12 @@ func (p *Pair) refreshCoinbase() {
 	if err != nil {
 		loggy.Fatalf("failed to get coinbase product info: %v", err)
 	}
-	p.Lock.Lock()
-	defer p.Lock.Unlock()
-	p.BaseIncrement = decimal.Parse(json.BaseMinSize)
-	p.QuoteIncrement = decimal.Parse(json.QuoteIncrement)
-	p.QuoteMinSize = decimal.Parse(json.QuoteMinSize)
-	p.QuoteMaxSize = decimal.Parse(json.QuoteMaxSize)
-	p.BaseMinSize = decimal.Parse(json.BaseMinSize)
-	p.BaseMaxSize = decimal.Parse(json.BaseMaxSize)
+	p.BaseIncrement.Store(decimal.Parse(json.BaseMinSize))
+	p.QuoteIncrement.Store(decimal.Parse(json.QuoteIncrement))
+	p.QuoteMinSize.Store(decimal.Parse(json.QuoteMinSize))
+	p.QuoteMaxSize.Store(decimal.Parse(json.QuoteMaxSize))
+	p.BaseMinSize.Store(decimal.Parse(json.BaseMinSize))
+	p.BaseMaxSize.Store(decimal.Parse(json.BaseMaxSize))
 }
 
 func (p *Pair) refreshBinance() {
@@ -217,17 +227,13 @@ func (p *Pair) refreshBinance() {
 	if err != nil {
 		loggy.Fatalf("failed to get binance symbol info: %v", err)
 	}
-	p.Lock.Lock()
-	defer p.Lock.Unlock()
 	for _, filter := range json.Filters {
 		p.refreshBinanceFilter(filter)
 	}
 }
 
-func (p *Pair) refreshBinanceUSD() {
-	json := getBinanceUSDSymbol(p.Symbol)
-	p.Lock.Lock()
-	defer p.Lock.Unlock()
+func (p *Pair) refreshBinanceusd() {
+	json := getBinanceusdSymbol(p.Symbol)
 	for _, filter := range json.Filters {
 		p.refreshBinanceFilter(filter)
 	}
@@ -236,35 +242,35 @@ func (p *Pair) refreshBinanceUSD() {
 func (p *Pair) refreshBinanceFilter(filter *binance.Filter) {
 	switch filter.FilterType {
 	case "PRICE_FILTER":
-		p.QuoteIncrement = decimal.Parse(filter.TickSize)
+		p.QuoteIncrement.Store(decimal.Parse(filter.TickSize))
 	case "LOT_SIZE":
-		p.BaseIncrement = decimal.Parse(filter.StepSize)
-		p.BaseMinSize = decimal.Parse(filter.MinQty)
-		p.BaseMaxSize = decimal.Parse(filter.MaxQty)
+		p.BaseIncrement.Store(decimal.Parse(filter.StepSize))
+		p.BaseMinSize.Store(decimal.Parse(filter.MinQty))
+		p.BaseMaxSize.Store(decimal.Parse(filter.MaxQty))
 	case "NOTIONAL":
-		p.QuoteMinSize = decimal.Parse(filter.MinNotional)
-		p.QuoteMaxSize = decimal.Parse(filter.MaxNotional)
+		p.QuoteMinSize.Store(decimal.Parse(filter.MinNotional))
+		p.QuoteMaxSize.Store(decimal.Parse(filter.MaxNotional))
 	}
 }
 
 var (
-	binanceUSDExchangeInfoOnce sync.Once
-	binanceUSDExchangeInfoSave *binanceusd.ExchangeInfo
+	binanceusdExchangeInfoOnce sync.Once
+	binanceusdExchangeInfoSave *binanceusd.ExchangeInfo
 )
 
-func getBinanceUSDExchangeInfo() *binanceusd.ExchangeInfo {
-	binanceUSDExchangeInfoOnce.Do(func() {
-		info, err := BinanceUSDClient.GetExchangeInfo()
+func getBinanceusdExchangeInfo() *binanceusd.ExchangeInfo {
+	binanceusdExchangeInfoOnce.Do(func() {
+		info, err := BinanceusdClient.GetExchangeInfo()
 		if err != nil {
 			loggy.Fatalf("failed to get binanceusd exchange info: %v", err)
 		}
-		binanceUSDExchangeInfoSave = info
+		binanceusdExchangeInfoSave = info
 	})
-	return binanceUSDExchangeInfoSave
+	return binanceusdExchangeInfoSave
 }
 
-func getBinanceUSDSymbol(symbol string) *binanceusd.Symbol {
-	info := getBinanceUSDExchangeInfo()
+func getBinanceusdSymbol(symbol string) *binanceusd.Symbol {
+	info := getBinanceusdExchangeInfo()
 	for _, s := range info.Symbols {
 		if s.Symbol == symbol {
 			return s
@@ -297,4 +303,58 @@ func guessIncrement(currency string) decimal.Decimal {
 	default:
 		return decimal.Satoshi
 	}
+}
+
+func guessQuoteMinSize(currency string) decimal.Decimal {
+	switch currency {
+	case "BTC":
+		return decimal.Parse("0.00001")
+	case "ETH":
+		return decimal.Parse("0.00022")
+	default:
+		return decimal.One
+	}
+}
+
+func guessQuoteMaxSize(currency string) decimal.Decimal {
+	switch currency {
+	case "BTC":
+		return decimal.FromInt(200)
+	case "ETH":
+		return decimal.FromInt(2500)
+	default:
+		return decimal.FromInt(150_000_000)
+	}
+}
+
+func guessBaseMinSize(currency string) decimal.Decimal {
+	switch currency {
+	case "BTC":
+		return decimal.Satoshi
+	case "ETH":
+		return decimal.Parse("0.0001")
+	default:
+		return decimal.One
+	}
+}
+
+func guessBaseMaxSize(currency string) decimal.Decimal {
+	switch currency {
+	case "BTC":
+		return decimal.FromInt(3_400)
+	case "ETH":
+		return decimal.FromInt(508_300)
+	default:
+		return decimal.FromInt(150_000_000)
+	}
+}
+
+func comparePairs(p, q *Pair) int {
+	if p.Exchange.Exchange < q.Exchange.Exchange {
+		return -1
+	}
+	if p.Exchange.Exchange > q.Exchange.Exchange {
+		return +1
+	}
+	return strings.Compare(p.Symbol, q.Symbol)
 }

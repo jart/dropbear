@@ -8,7 +8,6 @@ import (
 	"dropbear/exchange/binanceusd"
 	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
-	"dropbear/teddy/metrics"
 	"flag"
 	"log"
 	"os"
@@ -18,50 +17,48 @@ import (
 )
 
 var (
+	flagPaper      = flag.Bool("paper", false, "simulate order execution on live data")
 	flagBacktest   = flag.String("backtest", "", "name of backtest dataset")
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flagRFR        = decimal.FlagBPS("rfr", "487", "annualized risk-free rate in basis points")
 	flagQuantum    = clocky.DurationFlag("quantum", "1h30m", "metric sampling interval while backtesting")
-	flagVerboseSim = flag.Bool("verbose-sim", false, "log order simulation decisions")
+	flagVerbose    = flag.Bool("teddy-verbose", false, "log order simulation decisions")
 )
 
 var (
-	Live              bool
-	BinanceClient     *binance.Client
-	BinanceUSDClient  *binanceusd.Client
-	CoinbaseClient    *coinbase.Client
-	gManager          *manager
-	gSigChan          chan os.Signal
-	gVerbose          bool
-	gBenchmark        *Pair
-	gReport           *report
-	gStrategyEquity   *metrics.Equity
-	gBenchmarkEquity  *metrics.Equity
-	gStrategyInvested *metrics.Invested
-	gBenchmarkQty     decimal.Decimal
-	gInitialHoldings  []initialHolding
-	gRateLimiter      *rateLimiter
+	Live             bool // true means we're in live trading or paper trading mode, i.e. not backtesting
+	Paper            bool // true means we're connected to live data but all trading orders are simulated
+	BinanceClient    *binance.Client
+	BinanceusdClient *binanceusd.Client
+	CoinbaseClient   *coinbase.Client
+	gSigChan         chan os.Signal
+	gRunning         bool
+	gBenchmark       *Pair
+	gRateLimiter     *rateLimiter
 )
 
 func Init() {
 	Live = *flagBacktest == ""
-	gVerbose = *flagVerboseSim
 	BinanceClient = binance.NewClient()
-	BinanceUSDClient = binanceusd.NewClient()
+	BinanceusdClient = binanceusd.NewClient()
 	CoinbaseClient = coinbase.NewClient()
 	if Live {
+		if *flagPaper {
+			Paper = true
+			gRateLimiter = newRateLimiterCoinbase()
+		}
 		gSigChan = make(chan os.Signal, 1)
-		signal.Notify(gSigChan, syscall.SIGINT, syscall.SIGTERM)
+		signal.Notify(gSigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 		loggy.AlsoLogToFile()
+		log.Printf("running %s", loggy.CommandLine())
 	} else {
+		if *flagPaper {
+			panic("-paper is implied by -backtest")
+		}
+		Paper = true
 		ds.SetOffline()
 		clocky.Now = clocky.FakeNow
-		gReport = newReport()
-		gManager = newManager()
 		gRateLimiter = newRateLimiterCoinbase()
-		gStrategyInvested = metrics.NewInvested()
-		gStrategyEquity = metrics.NewEquity(*flagQuantum)
-		gBenchmarkEquity = metrics.NewEquity(*flagQuantum)
 	}
 }
 
@@ -75,42 +72,63 @@ func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
 	}
 	if !Live {
 		ex := Exchanges.Get(exchange)
-		h := ex.Holdings.Get(symbol)
-		h.Lock.Lock()
-		defer h.Lock.Unlock()
-		h.Quantity = quantity
-		h.Available = quantity
-		if !h.IsFiat {
-			h.Lots.Add(clocky.Now(), quantity, decimal.Zero)
+		ho := ex.Holdings.Get(symbol)
+		ho.Lock.Lock()
+		defer ho.Lock.Unlock()
+		ho.Quantity = quantity
+		ho.Available = quantity
+		if !ho.IsFiat {
+			ho.Lots.Add(clocky.Now(), quantity, decimal.Zero)
 		}
+		ho.Check()
 	}
 }
 
-// SetBenchmark sets the asset against which performance in judged in backtest mode.
+// SetBenchmark sets the asset against which performance in judged.
 func SetBenchmark(pair *Pair) {
-	if !Live {
-		gBenchmark = pair
-	}
+	gBenchmark = pair
 }
 
 // Run starts the main event loop.
 // This should be called at the end of your main() function.
 func Run() {
-	if Live {
-		defer func() {
-			for _, exchange := range Exchanges.All() {
-				for _, order := range exchange.Orders.Open() {
-					order.Cancel()
-				}
+	gRunning = true
+	defer func() {
+		gRunning = false
+	}()
+	if gBenchmark == nil {
+		panic("you forgot to call teddy.SetBenchmark()")
+	}
+	defer func() {
+		for _, exchange := range Exchanges.All() {
+			for _, order := range exchange.Orders.Open() {
+				order.Cancel()
 			}
-		}()
-		<-gSigChan
+		}
+	}()
+	report := newReport(gBenchmark)
+	if Live {
+		for _, exchange := range Exchanges.All() {
+			exchange.run()
+			for _, pair := range exchange.Pairs.All() {
+				pair.run()
+			}
+		}
+		for {
+			if <-gSigChan == syscall.SIGUSR1 {
+				report.Print()
+			} else {
+				break
+			}
+		}
 		log.Printf("goodbye")
 	} else {
-		if gBenchmark == nil {
-			log.Fatalf("you forgot to call teddy.SetBenchmark() in backtest mode")
+		manager := newManager(report)
+		for _, exchange := range Exchanges.All() {
+			for _, pair := range exchange.Pairs.All() {
+				manager.Register(pair)
+			}
 		}
-		captureInitialHoldings()
 		if *flagCPUProfile != "" {
 			f, err := os.Create(*flagCPUProfile)
 			if err != nil {
@@ -122,10 +140,9 @@ func Run() {
 			}
 			defer pprof.StopCPUProfile()
 		}
-		gManager.Run()
-		gReport.Print()
-		os.Exit(0)
+		manager.Run()
 	}
+	report.Print()
 }
 
 // Spawn runs the given function in a goroutine in live mode, or inline in backtest mode.

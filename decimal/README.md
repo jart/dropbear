@@ -4,13 +4,10 @@ A fixed-point decimal library optimized for financial calculations.
 
 ## Design
 
-`Decimal` is a 64-bit signed integer representing a number with 9 fixed
-decimal places. The value `1.00` is stored internally as
-`1_000_000_000`.
-
-```go
-type Decimal int64
-```
+`Decimal` let's you encode real numbers with nine decimal places on each side.
+It's an alias for `int64`. The value `1.00` is stored internally as `1_000_000_000`.
+The max number is `9,223,372,036.854_775_807` and the min is `-9,223,372,036.854_775_808`.
+For safety, `Decimal` does overflow checking, rather than paying the cost of growing data.
 
 ## Why not float64?
 
@@ -22,16 +19,23 @@ calculations:
 0.1 + 0.2 == 0.3                  // Decimal
 ```
 
+That prevents your calculations from scaling, unless you use algorithms
+like Kahan summation. But in every day scenarios, you're more likely to
+run into logic errors with floating point, due to how inexactness hurts
+operators like equality unless special care is taken.
+
 ## Why not big.Int or big.Rat?
 
 Performance. In benchmarks, this implementation is significantly faster:
 
 | Operation | int64 Decimal | big.Int | Slowdown |
 |-----------|---------------|---------|----------|
-| Add       | 0.48ns        | 18.5ns  | 39x      |
-| Mul       | 0.48ns        | 47ns    | 98x      |
-| Parse     | 12ns          | 266ns   | 22x      |
+| Parse     | 16ns          | 266ns   | 16x      |
+| Add       | 2.1ns         | 18.5ns  | 10x      |
+| Mul       | 4.7ns         | 47ns    | 10x      |
 | Div       | 16ns          | 50ns    | 3x       |
+| MulInt    | 2ns           | 50ns    | 25x      |
+| DivInt    | 2ns           | 50ns    | 25x      |
 | String    | 29ns          | 199ns   | 7x       |
 
 The big.Int version also allocates 1-3 heap objects per operation, while

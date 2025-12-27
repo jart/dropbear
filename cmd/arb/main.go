@@ -23,10 +23,10 @@ import (
 var (
 	flagVerbose   = flag.Bool("verbose", false, "enable verbose logging")
 	flagSymbol    = flag.String("symbol", "BTC", "coinbase currency to trade")
-	flagPredictor = flag.String("predictor", "BTCUSDT@binanceusd", "predictor symbol@exchange (e.g. BTCUSDT@binanceusd, BTCFDUSD@binance)")
+	flagPredictor = flag.String("predictor", "BTCFDUSD@binance", "predictor symbol@exchange")
 	flagUSD       = decimal.Flag("usd", "10000", "coinbase usd balance")
 	flagCoin      = decimal.Flag("coin", "0.4", "symbol balance in base currency")
-	flagBuffer    = decimal.FlagPercent("buffer", "0.5", "percent of balance buffer to keep free")
+	flagBuffer    = decimal.FlagPercent("buffer", "1", "percent of balance buffer to keep free")
 	flagThreshold = decimal.FlagBPS("threshold", "3", "minimum spread deviation to trade (basis points)")
 	flagCooldown  = clocky.DurationFlag("cooldown", "50ms", "minimum time between trades")
 	flagFreshness = clocky.DurationFlag("freshness", "400ms", "max age of market data before suspending")
@@ -52,9 +52,6 @@ func main() {
 	flag.Parse()
 	loggy.Init()
 	teddy.Init()
-
-	log.Printf("arb: symbol=%s predictor=%s threshold=%sbps cooldown=%s samples=%d",
-		*flagSymbol, *flagPredictor, (*flagThreshold).BPS(), *flagCooldown, *flagSamples)
 
 	// initialize spread baseline tracker
 	gSpreadEMA = indicators.NewWWMA(*flagSamples)
@@ -109,11 +106,14 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	gSpreadEMA.Add(spread)
 	baseline := gSpreadEMA.Value
 	isReady := gSpreadEMA.IsReady()
-	gSpreadLock.Unlock()
 	if !isReady {
-		log.Printf("[warmup] WWMA is %.2f%% ready", gSpreadEMA.Progress()*100)
+		if teddy.Live {
+			log.Printf("[warmup] WWMA is %.2f%% ready", gSpreadEMA.Progress()*100)
+		}
+		gSpreadLock.Unlock()
 		return
 	}
+	gSpreadLock.Unlock()
 	deviation := spread.Sub(baseline)
 
 	// the important thing to understand about arbitrage, is this game is not about

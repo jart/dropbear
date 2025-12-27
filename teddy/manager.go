@@ -9,29 +9,29 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/emirpasic/gods/v2/sets/treeset"
 	"github.com/emirpasic/gods/v2/trees/binaryheap"
 )
 
 type managerEntry struct {
-	data         *recordedMarketData
-	tick         *ds.Tick
-	pair         *Pair
-	hasTradeData bool
-	hasL2Data    bool
+	data *recordedMarketData
+	tick *ds.Tick
+	pair *Pair
 }
 
 type manager struct {
 	heap     *binaryheap.Heap[*managerEntry]
-	unready  *treeset.Set[*managerEntry]
+	sample   func(clocky.Time)
 	lock     sync.Mutex
+	report   *report
+	ready    bool
 	finished bool
 }
 
-func newManager() *manager {
+func newManager(report *report) *manager {
 	return &manager{
-		heap:    binaryheap.NewWith(compareManagerEntries),
-		unready: treeset.NewWith(compareManagerEntriesByPtr),
+		heap:   binaryheap.NewWith(compareManagerEntries),
+		sample: func(clocky.Time) {},
+		report: report,
 	}
 }
 
@@ -40,7 +40,6 @@ func (m *manager) Close() {
 		entry, _ := m.heap.Pop()
 		entry.data.Close()
 	}
-	m.unready.Clear()
 	m.finished = false
 }
 
@@ -49,7 +48,7 @@ func (m *manager) Register(pair *Pair) {
 	entry := &managerEntry{pair: pair, data: data, tick: &ds.Tick{}}
 	err := data.Read(entry.tick)
 	if err != nil {
-		if err == io.EOF {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			data.Close()
 			return
 		}
@@ -61,81 +60,48 @@ func (m *manager) Register(pair *Pair) {
 		panic(fmt.Sprintf("cannot register %v pair after market data manager has started running", pair))
 	}
 	m.heap.Push(entry)
-	m.unready.Add(entry)
 }
 
 func (m *manager) Run() {
 	m.lock.Lock()
 	m.finished = true
 	m.lock.Unlock()
-	isReady := false
+	oldOnReady := Exchanges.OnReady
+	Exchanges.OnReady = func() {
+		oldOnReady()
+		m.report.Init()
+		m.sample = m.report.Sample
+		m.ready = true
+	}
 	for !m.heap.Empty() {
 
 		// globally order ticks by time
 		entry, _ := m.heap.Pop()
 		now := entry.tick.Time
 		clocky.SetNow(now)
-		gRateLimiter.Pulse(now)
 
-		// wait all pairs have received some data
+		// update data structures
+		m.sample(now)
 		entry.pair.handleTick(entry.tick)
-		if !isReady {
-			if len(entry.tick.Trades) > 0 {
-				entry.hasTradeData = true
-			}
-			if entry.tick.Bids != nil || entry.tick.Asks != nil {
-				entry.hasL2Data = true
-			}
-			if entry.hasTradeData && entry.hasL2Data && m.unready.Contains(entry) {
-				m.unready.Remove(entry)
-				if m.unready.Empty() {
-					for _, exchange := range Exchanges.All() {
-						for _, holding := range exchange.Holdings.All() {
-							holding.Lock.RLock()
-							quantity := holding.Quantity
-							holding.Lock.RUnlock()
-							if holding.IsCash {
-								// convert cash to benchmark asset
-								gBenchmarkQty = gBenchmarkQty.Add(quantity.Div(gBenchmark.LastPrice))
-							} else if holding.Symbol == gBenchmark.BaseCurrency {
-								// include existing holdings of benchmark asset
-								gBenchmarkQty = gBenchmarkQty.Add(quantity)
-							}
-						}
-					}
-					gReport.startTime = now
-					gReport.startEquity = GetEquityUSD()
-					isReady = true
-				}
-			}
-		}
-
-		// track strategy performance versus hodling
-		if isReady && gStrategyEquity.ShouldSample(now) {
-			gStrategyEquity.Sample(now, GetEquityUSD())
-			gBenchmarkEquity.Sample(now, gBenchmarkQty.Mul(gBenchmark.LastPrice))
-			gStrategyInvested.Sample(GetInvestedUSD().Float64())
-		}
 
 		// dispatch to user
-		if isReady {
-			gReport.endTime = now
+		if m.ready {
 			entry.pair.OnTick(entry.tick)
 		}
 
 		// read next tick
 		err := entry.data.Read(entry.tick)
 		if err != nil {
-			if err == io.EOF {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				entry.data.Close()
-				break
+				continue // keep processing other data sources
 			}
-			loggy.Fatalf("failed to read tick: %v", err)
+			panic("failed to read tick: " + err.Error())
 		}
 		m.heap.Push(entry)
 	}
-	if !isReady {
-		loggy.Fatalf("the intersection of market data across all pairs is empty; cannot run backtest")
+	if !m.ready {
+		panic("the intersection of market data across all pairs is empty; cannot run backtest")
 	}
 }
 

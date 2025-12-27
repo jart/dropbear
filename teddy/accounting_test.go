@@ -40,11 +40,18 @@ func setupTestExchange(t *testing.T) (*Exchange, *Pair, *Holding, *Holding) {
 		pairsMap: make(map[string]*Pair),
 	}
 
+	// Create holdings
+	usdHolding := newHolding(ex, "USD")
+	btcHolding := newHolding(ex, "BTC")
+	ex.Holdings.holdingsMap["USD"] = usdHolding
+	ex.Holdings.holdingsMap["BTC"] = btcHolding
+	ex.Holdings.holdingsArray = append(ex.Holdings.holdingsArray, usdHolding, btcHolding)
+
 	// Create pair
 	pair := &Pair{
 		Exchange:       ex,
-		BaseCurrency:   "BTC",
-		QuoteCurrency:  "USD",
+		BaseCurrency:   btcHolding,
+		QuoteCurrency:  usdHolding,
 		BaseIncrement:  decimal.Satoshi,
 		QuoteIncrement: decimal.Parse("0.01"),
 		QuoteMinSize:   decimal.One,
@@ -53,16 +60,10 @@ func setupTestExchange(t *testing.T) (*Exchange, *Pair, *Holding, *Holding) {
 		BaseMaxSize:    decimal.FromInt(1000),
 		OrderBook:      ds.NewBook(),
 		LastPrice:      decimal.FromInt(100), // $100 per BTC for easy math
+		Trades:         make(map[ds.Side]int),
 	}
 	ex.Pairs.pairsMap["BTC-USD"] = pair
 	ex.Pairs.pairsArray = append(ex.Pairs.pairsArray, pair)
-
-	// Create holdings
-	usdHolding := newHolding(ex, "USD")
-	btcHolding := newHolding(ex, "BTC")
-	ex.Holdings.holdingsMap["USD"] = usdHolding
-	ex.Holdings.holdingsMap["BTC"] = btcHolding
-	ex.Holdings.holdingsArray = append(ex.Holdings.holdingsArray, usdHolding, btcHolding)
 
 	return ex, pair, usdHolding, btcHolding
 }
@@ -272,7 +273,7 @@ func TestInvestedCannotExceedInitialBalance(t *testing.T) {
 		}
 
 		// Calculate invested amount
-		invested := btcHolding.Quantity.Mul(ex.GetPriceUSD("BTC"))
+		invested := btcHolding.Quantity.Mul(ex.Pairs.GetPriceUSD("BTC"))
 		if invested.Cmp(maxInvested) > 0 {
 			maxInvested = invested
 		}
@@ -660,8 +661,8 @@ func TestKillThenFillRaceConditionSell(t *testing.T) {
 	// Step 2: kill() is called (simulates Cancel before fill update arrives)
 	order.Lock.Lock()
 	order.State = ds.OrderStateCanceled
-	filled := order.Filled                    // = 0 since no fills yet
-	releaseAmount := order.Hold.Sub(filled)   // = 1 - 0 = 1
+	filled := order.Filled                  // = 0 since no fills yet
+	releaseAmount := order.Hold.Sub(filled) // = 1 - 0 = 1
 	order.Hold = decimal.Zero
 	order.Lock.Unlock()
 

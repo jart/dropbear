@@ -1,7 +1,17 @@
 package decimal
 
+import "math"
+
+const (
+	maxInt      = math.MaxInt64 / Scale
+	minInt      = math.MinInt64 / Scale
+	maxIntDiv10 = maxInt / 10
+	minIntDiv10 = minInt / 10
+)
+
 // Parse parses a decimal string like "123.45" or "3.6372083e-07".
-// Panics on invalid input.
+// More than 9 decimal places is truncated (not rounded).
+// Panics on invalid input or integer overflow.
 func Parse(str string) Decimal {
 	if len(str) == 0 {
 		panic("decimal.Parse: empty string")
@@ -21,11 +31,25 @@ func Parse(str string) Decimal {
 	// parse integer part
 	digits := 0
 	x := int64(0)
-	for i < len(str) && str[i] >= '0' && str[i] <= '9' {
-		x *= 10
-		x += int64(str[i]-'0') * s
-		digits++
-		i++
+	for i < len(str) {
+		if str[i] >= '0' && str[i] <= '9' {
+			// sorry you can't do stuff like 9'223'372'036.854'775'807e-9
+			if x > maxIntDiv10 || x < minIntDiv10 {
+				panic("decimal.Parse overflow in " + str)
+			}
+			x *= 10
+			y := int64(str[i]-'0') * s
+			x += y
+			digits++
+			i++
+		} else if str[i] == '_' || str[i] == ',' || str[i] == '\'' {
+			i++
+		} else {
+			break
+		}
+	}
+	if x > maxInt || x < minInt {
+		panic("decimal.Parse overflow in " + str)
 	}
 
 	// parse fractional part (only read up to Places digits to avoid overflow)
@@ -33,14 +57,20 @@ func Parse(str string) Decimal {
 		i++
 		f := int64(0)
 		k := 0
-		for i < len(str) && str[i] >= '0' && str[i] <= '9' {
-			if k < Places {
-				f *= 10
-				f += int64(str[i] - '0')
-				k++
+		for i < len(str) {
+			if str[i] >= '0' && str[i] <= '9' {
+				if k < Places {
+					f *= 10
+					f += int64(str[i] - '0')
+					k++
+				}
+				digits++
+				i++
+			} else if str[i] == '_' || str[i] == ',' || str[i] == '\'' {
+				i++
+			} else {
+				break
 			}
-			digits++
-			i++
 		}
 		if k < Places {
 			f *= pow10[Places-k]

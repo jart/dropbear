@@ -18,7 +18,6 @@ var (
 func Init() {
 	log.SetFlags(0)
 	log.SetOutput(gLogWriter)
-	log.Printf("argv: %s", strings.Join(os.Args, " "))
 }
 
 // Fatalf logs an error, raises SIGINT to trigger cleanup, and blocks.
@@ -38,6 +37,21 @@ func AlsoLogToFile() {
 			log.Fatalf("opening log file: %v", err)
 		}
 	}
+}
+
+// CommandLine returns the full command line with all flag values (including defaults).
+func CommandLine() string {
+	prog := os.Args[0]
+	if idx := strings.LastIndex(prog, "/"); idx != -1 {
+		prog = prog[idx+1:]
+	}
+	var parts []string
+	parts = append(parts, prog)
+	flag.VisitAll(func(f *flag.Flag) {
+		parts = append(parts, fmt.Sprintf("-%s=%s", f.Name, f.Value.String()))
+	})
+	parts = append(parts, flag.Args()...)
+	return strings.Join(parts, " ")
 }
 
 type logWriter struct {

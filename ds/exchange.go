@@ -8,7 +8,7 @@ type Exchange int
 const (
 	ExchangeAlpaca Exchange = iota
 	ExchangeBinance
-	ExchangeBinanceUSD
+	ExchangeBinanceusd
 	ExchangeCoinbase
 )
 
@@ -27,7 +27,7 @@ func ParseExchange(s string) (Exchange, error) {
 	case "binance":
 		return ExchangeBinance, nil
 	case "binanceusd":
-		return ExchangeBinanceUSD, nil
+		return ExchangeBinanceusd, nil
 	case "coinbase":
 		return ExchangeCoinbase, nil
 	default:
@@ -41,7 +41,7 @@ func (e Exchange) String() string {
 		return "alpaca"
 	case ExchangeBinance:
 		return "binance"
-	case ExchangeBinanceUSD:
+	case ExchangeBinanceusd:
 		return "binanceusd"
 	case ExchangeCoinbase:
 		return "coinbase"

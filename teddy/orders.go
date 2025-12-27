@@ -51,20 +51,13 @@ func (os *Orders) Open() []*Order {
 }
 
 func newOrders(ex *Exchange) *Orders {
-	os := &Orders{
+	return &Orders{
 		Exchange:     ex,
 		OnOrderEvent: func(*Order) {},
 		ordersArray:  make([]*Order, 0),
 		ordersMap:    make(map[string]*Order),
 		openOrders:   treeset.NewWith(compareOrdersByClientOrderID),
 	}
-	if Live {
-		switch ex.Exchange {
-		case ds.ExchangeCoinbase:
-			go os.coinbaseOrderUpdateDaemon()
-		}
-	}
-	return os
 }
 
 func (os *Orders) create(pair *Pair, otype ds.OrderType, side ds.Side, quantity, limitPrice, hold decimal.Decimal) *Order {
@@ -85,9 +78,11 @@ func (os *Orders) create(pair *Pair, otype ds.OrderType, side ds.Side, quantity,
 	os.ordersArray = append(os.ordersArray, order)
 	os.openOrders.Add(order)
 	os.lock.Unlock()
-	pair.Lock.Lock()
-	pair.openOrders.Add(order)
-	pair.Lock.Unlock()
+	func() {
+		pair.Lock.Lock()
+		defer pair.Lock.Unlock()
+		pair.openOrders.Add(order)
+	}()
 	os.OnOrderEvent(order)
 	return order
 }
@@ -123,10 +118,10 @@ func (os *Orders) onCoinbaseOrderUpdate(orderUpdate *coinbase.OrderUpdate) {
 
 	// compute deltas from our tracked state
 	order.Lock.Lock()
-	oldFilled := order.Filled
-	oldValue := order.FillValue
-	oldState := order.State
-	oldFees := order.lastFees
+	oldFilled := order.Filled.Load()
+	oldValue := order.FillValue.Load()
+	oldState := order.State.Load()
+	oldFees := order.lastFees.Load()
 	feeDelta := cbFee.Sub(oldFees)
 	fillDelta := cbFilled.Sub(oldFilled)
 	valueDelta := cbValue.Sub(oldValue)
@@ -134,7 +129,7 @@ func (os *Orders) onCoinbaseOrderUpdate(orderUpdate *coinbase.OrderUpdate) {
 	if valueDelta.IsPositive() {
 		feeRate = feeDelta.Div(valueDelta)
 	}
-	order.lastFees = cbFee
+	order.lastFees.Store(cbFee)
 	order.Lock.Unlock()
 
 	// sanity check deltas
@@ -147,11 +142,11 @@ func (os *Orders) onCoinbaseOrderUpdate(orderUpdate *coinbase.OrderUpdate) {
 
 	// update order metadata that coinbase controls
 	order.Lock.Lock()
-	order.CreatedTime = clocky.MustParseTime(orderUpdate.CreationTime)
-	order.Quantity = cbQuantity // coinbase may adjust quantity for market orders
-	order.LimitPrice = decimal.Parse(orderUpdate.LimitPrice)
+	order.CreatedTime.Store(clocky.MustParseTime(orderUpdate.CreationTime))
+	order.Quantity.Store(cbQuantity) // coinbase may adjust quantity for market orders
+	order.LimitPrice.Store(decimal.Parse(orderUpdate.LimitPrice))
 	if !oldState.IsFinal() && !cbState.IsFinal() {
-		order.State = cbState
+		order.State.Store(cbState)
 	}
 	order.Lock.Unlock()
 

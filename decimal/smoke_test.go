@@ -46,15 +46,37 @@ func randomCryptoValueImpl(rng *rand.Rand) float64 {
 // bigScale is 10^9 as a big.Int for exact arithmetic
 var bigScale = big.NewInt(Scale)
 
+// exactAdd returns a+b if it fits in int64, or (0, false) if it overflows.
+func exactAdd(a, b Decimal) (Decimal, bool) {
+	result := new(big.Int).Add(big.NewInt(int64(a)), big.NewInt(int64(b)))
+	if !result.IsInt64() {
+		return 0, false
+	}
+	return Decimal(result.Int64()), true
+}
+
+// exactSub returns a-b if it fits in int64, or (0, false) if it overflows.
+func exactSub(a, b Decimal) (Decimal, bool) {
+	result := new(big.Int).Sub(big.NewInt(int64(a)), big.NewInt(int64(b)))
+	if !result.IsInt64() {
+		return 0, false
+	}
+	return Decimal(result.Int64()), true
+}
+
 // exactMul computes a*b using exact arbitrary-precision arithmetic,
 // then truncates to our 9 decimal place precision (matching Go's int64 truncation semantics).
-func exactMul(a, b Decimal) Decimal {
+// Returns (result, true) if result fits in int64, or (0, false) if it overflows.
+func exactMul(a, b Decimal) (Decimal, bool) {
 	aBig := big.NewInt(int64(a))
 	bBig := big.NewInt(int64(b))
 	product := new(big.Int).Mul(aBig, bBig)
 	// Truncate toward zero (Go's int64 division semantics)
 	result := new(big.Int).Quo(product, bigScale)
-	return Decimal(result.Int64())
+	if !result.IsInt64() {
+		return 0, false
+	}
+	return Decimal(result.Int64()), true
 }
 
 // exactDiv computes a/b using exact arbitrary-precision arithmetic with rounding.
@@ -99,13 +121,8 @@ func TestSmoke(t *testing.T) {
 		aDec := FromFloat64(a)
 		bDec := FromFloat64(b)
 
-		// Test Mul (skip if result would overflow)
-		expectedMul := exactMul(aDec, bDec)
-		absExpected := int64(expectedMul)
-		if absExpected < 0 {
-			absExpected = -absExpected
-		}
-		if absExpected < limit*Scale {
+		// Test Mul (skip if result would overflow int64)
+		if expectedMul, ok := exactMul(aDec, bDec); ok {
 			decMul := aDec.Mul(bDec)
 			if decMul != expectedMul {
 				t.Errorf("Mul MISMATCH:\n  a = %s (%d)\n  b = %s (%d)\n  expected: %d\n  got: %d",
@@ -137,22 +154,24 @@ func TestSmoke(t *testing.T) {
 			}
 		}
 
-		// Test Add (exact, no precision loss)
-		expectedAdd := Decimal(int64(aDec) + int64(bDec))
-		decAdd := aDec.Add(bDec)
-		if decAdd != expectedAdd {
-			t.Errorf("Add MISMATCH:\n  a = %s\n  b = %s\n  expected: %d\n  got: %d",
-				aDec.String(), bDec.String(), int64(expectedAdd), int64(decAdd))
-			return
+		// Test Add (skip if would overflow int64)
+		if expectedAdd, ok := exactAdd(aDec, bDec); ok {
+			decAdd := aDec.Add(bDec)
+			if decAdd != expectedAdd {
+				t.Errorf("Add MISMATCH:\n  a = %s\n  b = %s\n  expected: %d\n  got: %d",
+					aDec.String(), bDec.String(), int64(expectedAdd), int64(decAdd))
+				return
+			}
 		}
 
-		// Test Sub (exact, no precision loss)
-		expectedSub := Decimal(int64(aDec) - int64(bDec))
-		decSub := aDec.Sub(bDec)
-		if decSub != expectedSub {
-			t.Errorf("Sub MISMATCH:\n  a = %s\n  b = %s\n  expected: %d\n  got: %d",
-				aDec.String(), bDec.String(), int64(expectedSub), int64(decSub))
-			return
+		// Test Sub (skip if would overflow int64)
+		if expectedSub, ok := exactSub(aDec, bDec); ok {
+			decSub := aDec.Sub(bDec)
+			if decSub != expectedSub {
+				t.Errorf("Sub MISMATCH:\n  a = %s\n  b = %s\n  expected: %d\n  got: %d",
+					aDec.String(), bDec.String(), int64(expectedSub), int64(decSub))
+				return
+			}
 		}
 	}
 }
@@ -247,7 +266,10 @@ func TestSmokeEdgeCases(t *testing.T) {
 
 			// Test mul against exact big.Int result
 			decMul := aDec.Mul(bDec)
-			expectedMul := exactMul(aDec, bDec)
+			expectedMul, ok := exactMul(aDec, bDec)
+			if !ok {
+				t.Fatalf("exactMul overflow for %s", tc.name)
+			}
 			if decMul != expectedMul {
 				t.Errorf("Mul: got %d, expected %d", int64(decMul), int64(expectedMul))
 			}

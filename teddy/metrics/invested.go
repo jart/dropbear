@@ -1,40 +1,38 @@
 package metrics
 
+import "dropbear/decimal"
+
 type Invested struct {
-	min   float64
-	max   float64
-	sum   float64
-	count int
+	min decimal.Decimal
+	max decimal.Decimal
+	avg decimal.Decimal
+	cnt int
 }
 
 func NewInvested() *Invested {
 	return &Invested{}
 }
 
-// SampleInvested tracks how much.
-func (iv *Invested) Sample(x float64) {
-	if iv.count == 0 {
-		iv.min = x
-		iv.max = x
+func (iv *Invested) Sample(d decimal.Decimal) {
+	if iv.cnt == 0 {
+		iv.min = d
+		iv.max = d
 	} else {
-		iv.min = min(iv.min, x)
-		iv.max = max(iv.max, x)
+		iv.min = iv.min.Min(d)
+		iv.max = iv.max.Max(d)
 	}
-	iv.sum += x
-	iv.count++
+	iv.cnt++
+	iv.avg = iv.avg.Add(d.Sub(iv.avg).Div(decimal.FromInt(iv.cnt)))
 }
 
-func (iv *Invested) Min() float64 {
+func (iv *Invested) Min() decimal.Decimal {
 	return iv.min
 }
 
-func (iv *Invested) Max() float64 {
+func (iv *Invested) Max() decimal.Decimal {
 	return iv.max
 }
 
-func (iv *Invested) Avg() float64 {
-	if iv.count == 0 {
-		return 0
-	}
-	return iv.sum / float64(iv.count)
+func (iv *Invested) Avg() decimal.Decimal {
+	return iv.avg
 }

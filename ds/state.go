@@ -1,8 +1,11 @@
 package ds
 
-import "dropbear/decimal"
+import (
+	"dropbear/decimal"
+	"sync/atomic"
+)
 
-type OrderState int
+type OrderState int32
 
 const (
 	OrderStateNew OrderState = iota
@@ -47,6 +50,16 @@ func (os OrderState) IsFinal() bool {
 	default:
 		return false
 	}
+}
+
+// Store atomically stores v into d.
+func (d *OrderState) Store(v OrderState) {
+	atomic.StoreInt32((*int32)(d), int32(v))
+}
+
+// Load atomically loads and returns the value of d.
+func (d *OrderState) Load() OrderState {
+	return OrderState(atomic.LoadInt32((*int32)(d)))
 }
 
 func NewOrderStateForCoinbase(state string, cumulativeQuantity decimal.Decimal) OrderState {

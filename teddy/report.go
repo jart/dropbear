@@ -4,6 +4,8 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/loggy"
+	"dropbear/teddy/metrics"
 	"fmt"
 	"math"
 	"strings"
@@ -11,52 +13,107 @@ import (
 )
 
 type report struct {
-	lock        sync.Mutex
-	startTime   clocky.Time
-	endTime     clocky.Time
-	startEquity decimal.Decimal
-	endEquity   decimal.Decimal
-	trades      map[ds.Side]int
+	lock              sync.RWMutex
+	startTime         clocky.Time
+	startEquity       decimal.Decimal
+	endEquity         decimal.Decimal
+	trades            map[ds.Side]int
+	initialHoldings   []initialHolding
+	benchmark         *Pair
+	benchmarkQuantity decimal.Decimal
+	benchmarkEquity   *metrics.Equity
+	strategyEquity    *metrics.Equity
+	strategyInvested  *metrics.Invested
 }
 
-func newReport() *report {
+type initialHolding struct {
+	Symbol   string
+	Quantity decimal.Decimal
+}
+
+func newReport(benchmark *Pair) *report {
 	return &report{
-		trades: make(map[ds.Side]int),
+		benchmark:        benchmark,
+		trades:           make(map[ds.Side]int),
+		benchmarkEquity:  metrics.NewEquity(*flagQuantum),
+		strategyEquity:   metrics.NewEquity(*flagQuantum),
+		strategyInvested: metrics.NewInvested(),
+	}
+}
+
+// Init captures initial values for report.
+func (r *report) Init() {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.startTime = clocky.Now()
+	r.startEquity = GetEquityUSD()
+	r.benchmarkQuantity = decimal.Zero
+	for _, exchange := range Exchanges.All() {
+		for _, holding := range exchange.Holdings.All() {
+			quantity := holding.Quantity.Load()
+			if holding.Symbol == r.benchmark.BaseCurrency.Symbol {
+				r.benchmarkQuantity = r.benchmarkQuantity.Add(quantity)
+			} else {
+				quantityUSD := exchange.Pairs.GetPriceUSD(holding.Symbol).Mul(quantity)
+				r.benchmarkQuantity = r.benchmarkQuantity.Add(quantityUSD.Div(r.benchmark.LastPrice.Load()))
+			}
+			r.initialHoldings = append(r.initialHoldings, initialHolding{
+				Symbol:   holding.Symbol,
+				Quantity: quantity,
+			})
+		}
+	}
+	if !Live && r.benchmarkQuantity.IsZero() {
+		loggy.Fatalf("no initial cash or holdings set for backtest; forgot to call teddy.SetBalance()?")
+	}
+}
+
+func (r *report) Sample(now clocky.Time) {
+	shouldSample := func() bool {
+		r.lock.RLock()
+		defer r.lock.RUnlock()
+		return r.strategyEquity.ShouldSample(now)
+	}()
+	if shouldSample {
+		invested := GetInvestedUSD()
+		equity := GetEquityUSD()
+		r.lock.Lock()
+		defer r.lock.Unlock()
+		r.strategyInvested.Sample(invested)
+		r.strategyEquity.Sample(now, equity)
+		r.benchmarkEquity.Sample(now, r.benchmarkQuantity.Mul(r.benchmark.LastPrice.Load()))
 	}
 }
 
 func (r *report) Print() {
+	endTime := clocky.Now()
+	r.lock.Lock()
+	defer r.lock.Unlock()
 	cb := Exchanges.Get(ds.ExchangeCoinbase)
 
 	// get total volume from usd holding
 	usd := cb.Holdings.Get("USD")
+	endEquity := GetEquityUSD()
+	riskFreeRate := GetRiskFreeRate().Float64()
+	fees := cb.Fees.Load()
+	rebate := cb.Rebate.Load()
+	rebates := fees.Mul(rebate)
 	usd.Lock.RLock()
 	usdVolume := usd.Volume
 	usd.Lock.RUnlock()
 
-	endEquity := GetEquityUSD()
-	riskFreeRate := GetRiskFreeRate().Float64()
-
-	cb.Lock.RLock()
-	fees := cb.Fees
-	rebate := cb.Rebate
-	cb.Lock.RUnlock()
-
-	// compute rebates
-	rebates := fees.Mul(rebate)
-
 	// compute 30-day volume (scale from backtest duration)
-	duration := r.endTime.Sub(r.startTime)
-	vol30day := decimal.Zero
+	vol30day := 0.0
+	duration := endTime.Sub(r.startTime)
 	if duration > 0 {
-		durationHours := int(duration / clocky.Hour)
+		durationHours := float64(duration) / float64(clocky.Hour)
 		if durationHours > 0 {
-			vol30day = usdVolume.MulInt(30 * 24).DivInt(durationHours)
+			vol30day = usdVolume * 30 * 24 / float64(durationHours)
 		}
 	}
 
 	// benchmark: what if we just held the benchmark asset
-	benchmarkValue := gBenchmarkQty.Mul(gBenchmark.LastPrice)
+	benchmarkValue := r.benchmarkQuantity.Mul(r.benchmark.LastPrice.Load())
 
 	// profit/loss
 	endProfit := decimal.Zero
@@ -92,22 +149,20 @@ func (r *report) Print() {
 	fmt.Println()
 	fmt.Printf("start %s\n", r.startTime)
 	fmt.Printf("start.equity %s\n", r.startEquity)
-	for _, h := range gInitialHoldings {
-		fmt.Printf("start.%s %s\n", strings.ToLower(h.Symbol), h.Quantity)
+	for _, ih := range r.initialHoldings {
+		fmt.Printf("start.%s %s\n", strings.ToLower(ih.Symbol), ih.Quantity)
 	}
 
 	// print end state
 	fmt.Println()
-	fmt.Printf("end %s\n", r.endTime)
+	fmt.Printf("end %s\n", endTime)
 	fmt.Printf("end.profit %s\n", endProfit)
 	fmt.Printf("end.return %s\n", endReturn.MulInt(100))
-	fmt.Printf("end.sharpe %.2f\n", gStrategyEquity.Sharpe(riskFreeRate))
+	fmt.Printf("end.sharpe %.2f\n", r.strategyEquity.Sharpe(riskFreeRate))
 	fmt.Printf("end.equity %s\n", endEquity)
 	for _, exchange := range Exchanges.All() {
 		for _, holding := range exchange.Holdings.All() {
-			holding.Lock.RLock()
-			qty := holding.Quantity
-			holding.Lock.RUnlock()
+			qty := holding.Quantity.Load()
 			if qty.IsPositive() {
 				fmt.Printf("end.%s %s\n", strings.ToLower(holding.Symbol), qty)
 			}
@@ -138,21 +193,20 @@ func (r *report) Print() {
 		fmt.Printf("end.winrate %.1f\n", winRate)
 	}
 	fmt.Printf("end.rebates %s\n", rebates)
-	fmt.Printf("end.vol30day %s\n", vol30day.DivInt(1_000_000))
+	fmt.Printf("end.vol30day %.6f\n", vol30day/1_000_000)
 	fmt.Printf("end.cagr %.2f\n", cagr)
-	fmt.Printf("end.maxdd %.2f\n", gStrategyEquity.MaxDrawdown()*100)
+	fmt.Printf("end.maxdd %.2f\n", r.strategyEquity.MaxDrawdown()*100)
 
 	// usd invested efficiency metrics
-	fmt.Printf("invested.min %.0f\n", gStrategyInvested.Min())
-	fmt.Printf("invested.max %.0f\n", gStrategyInvested.Max())
-	fmt.Printf("invested.avg %.0f\n", gStrategyInvested.Avg())
+	fmt.Printf("invested.min %s\n", r.strategyInvested.Min().Format(0))
+	fmt.Printf("invested.max %s\n", r.strategyInvested.Max().Format(0))
+	fmt.Printf("invested.avg %s\n", r.strategyInvested.Avg().Format(0))
 
 	// print benchmark
 	fmt.Println()
 	fmt.Printf("bench.profit %s\n", benchProfit)
 	fmt.Printf("bench.return %s\n", benchReturn.MulInt(100))
-	fmt.Printf("bench.sharpe %.2f\n", gBenchmarkEquity.Sharpe(riskFreeRate))
+	fmt.Printf("bench.sharpe %.2f\n", r.benchmarkEquity.Sharpe(riskFreeRate))
 	fmt.Printf("bench.equity %s\n", benchmarkValue)
-	fmt.Printf("bench.%s %s\n", strings.ToLower(gBenchmark.BaseCurrency), gBenchmarkQty)
-	fmt.Printf("bench.maxdd %.2f\n", gBenchmarkEquity.MaxDrawdown()*100)
+	fmt.Printf("bench.maxdd %.2f\n", r.benchmarkEquity.MaxDrawdown()*100)
 }

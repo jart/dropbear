@@ -26,92 +26,80 @@ type Exchange struct {
 	TakerFee decimal.Decimal
 	Rebate   decimal.Decimal
 	Fees     decimal.Decimal
+	OnReady  func()
+}
+
+func newExchange(exchange ds.Exchange) *Exchange {
+	if gRunning {
+		loggy.Fatalf("cannot create new exchange %ss while teddy is running", exchange)
+	}
+	ex := &Exchange{
+		Exchange: exchange,
+		OnReady:  func() {},
+	}
+	switch exchange {
+	case ds.ExchangeCoinbase:
+		if Live {
+			err := ex.fetchCoinbaseFeeRates()
+			if err != nil {
+				loggy.Fatalf("could not determine fee rates for %v: %v", exchange, err)
+			}
+		} else {
+			ex.MakerFee = *flagCoinbaseMakerFee
+			ex.TakerFee = *flagCoinbaseTakerFee
+			ex.Rebate = *flagCoinbaseRebate
+		}
+	}
+	ex.Holdings = newHoldings(ex)
+	ex.Orders = newOrders(ex)
+	ex.Pairs = newPairs(ex)
+	return ex
 }
 
 func (ex *Exchange) String() string {
 	return ex.Exchange.String()
 }
 
-// GetPriceUSD returns the price of the given symbol in USD on this exchange.
-func (ex *Exchange) GetPriceUSD(symbol string) decimal.Decimal {
-	switch symbol {
-	case "USD", "USDT", "USDC":
-		return decimal.One
+func (ex *Exchange) run() {
+	switch ex.Exchange {
+	case ds.ExchangeCoinbase:
+		go coinbase.HTTPWarmupDaemon(3) // keep 3 connections warm
+		go ex.Orders.coinbaseOrderUpdateDaemon()
+		go ex.coinbaseFeeRatesDaemon()
 	}
-	ex.Pairs.lock.RLock()
-	pair := ex.Pairs.pairsMap[symbol]
-	if pair == nil {
-		pair = ex.Pairs.pairsMap[symbol+"-USD"]
-		if pair == nil {
-			pair = ex.Pairs.pairsMap[symbol+"-USDT"]
-			if pair == nil {
-				pair = ex.Pairs.pairsMap[symbol+"-USDC"]
-				if pair == nil {
-					loggy.Fatalf("don't know to determine USD value of %s on %s", symbol, ex)
-				}
-			}
-		}
-	}
-	ex.Pairs.lock.RUnlock()
-	pair.Lock.RLock()
-	price := pair.LastPrice
-	pair.Lock.RUnlock()
-	return price
 }
 
-func (ex *Exchange) refreshFeeRatesDaemon() {
+func (ex *Exchange) coinbaseFeeRatesDaemon() {
 	for {
 		Hibernate()
-		err := ex.refreshFeeRates()
+		err := ex.fetchCoinbaseFeeRates()
 		if err != nil {
 			log.Printf("error refreshing fee rates for %v: %v", ex.Exchange, err)
 		}
 	}
 }
 
-func newExchange(exchange ds.Exchange) *Exchange {
-	ex := &Exchange{Exchange: exchange}
-	ex.Holdings = newHoldings(ex)
-	ex.Orders = newOrders(ex)
-	ex.Pairs = newPairs(ex)
-	err := ex.refreshFeeRates()
+func (ex *Exchange) fetchCoinbaseFeeRates() error {
+	summary, err := CoinbaseClient.GetTransactionSummary()
 	if err != nil {
-		loggy.Fatalf("could not determine fee rates for %v: %v", exchange, err)
+		return err
 	}
-	go ex.refreshFeeRatesDaemon()
-	if exchange == ds.ExchangeCoinbase && Live {
-		go coinbase.HTTPWarmupDaemon(3) // keep 3 connections warm
-	}
-	return ex
-}
-
-func (ex *Exchange) refreshFeeRates() error {
-	if Live {
-		switch ex.Exchange {
-		case ds.ExchangeCoinbase:
-			summary, err := CoinbaseClient.GetTransactionSummary()
-			if err != nil {
-				return err
-			}
-			ex.Lock.Lock()
-			ex.MakerFee = decimal.Parse(summary.FeeTier.MakerFeeRate)
-			ex.TakerFee = decimal.Parse(summary.FeeTier.TakerFeeRate)
-			if strings.Contains(summary.FeeTier.PricingTier, "VIP") {
-				ex.Rebate = decimal.Parse("0.25")
-			} else {
-				ex.Rebate = decimal.Zero
-			}
-			ex.Lock.Unlock()
-		}
+	ex.MakerFee.Store(decimal.Parse(summary.FeeTier.MakerFeeRate))
+	ex.TakerFee.Store(decimal.Parse(summary.FeeTier.TakerFeeRate))
+	if strings.Contains(summary.FeeTier.PricingTier, "VIP") {
+		ex.Rebate.Store(decimal.Parse("0.25"))
 	} else {
-		switch ex.Exchange {
-		case ds.ExchangeCoinbase:
-			ex.Lock.Lock()
-			ex.MakerFee = *flagCoinbaseMakerFee
-			ex.TakerFee = *flagCoinbaseTakerFee
-			ex.Rebate = *flagCoinbaseRebate
-			ex.Lock.Unlock()
-		}
+		ex.Rebate.Store(decimal.Zero)
 	}
 	return nil
+}
+
+func compareExchanges(a, b *Exchange) int {
+	if a.Exchange < b.Exchange {
+		return -1
+	}
+	if a.Exchange > b.Exchange {
+		return +1
+	}
+	return 0
 }

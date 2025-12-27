@@ -3,6 +3,7 @@ package clocky
 import (
 	"encoding/binary"
 	"io"
+	"sync/atomic"
 	"time"
 )
 
@@ -64,6 +65,26 @@ func MustParseTime(s string) Time {
 		panic("invalid timestamp: " + s)
 	}
 	return t
+}
+
+// Store atomically stores v into d.
+func (d *Time) Store(v Time) {
+	atomic.StoreInt64((*int64)(d), int64(v))
+}
+
+// Load atomically loads and returns the value of d.
+func (d *Time) Load() Time {
+	return Time(atomic.LoadInt64((*int64)(d)))
+}
+
+// AtomicAdd atomically adds v to d.
+func (d *Time) AtomicAdd(v Duration) Time {
+	return Time(atomic.AddInt64((*int64)(d), int64(v)))
+}
+
+// Exchange atomically replaces v into d.
+func (d *Time) Exchange(v Time) Time {
+	return Time(atomic.SwapInt64((*int64)(d), int64(v)))
 }
 
 func (d Time) Encode(b []byte) []byte {

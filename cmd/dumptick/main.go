@@ -43,7 +43,7 @@ func dump(path string) error {
 	for {
 		var tick ds.Tick
 		err = tick.Deserialize(r)
-		if err == io.EOF {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
 		if err != nil {

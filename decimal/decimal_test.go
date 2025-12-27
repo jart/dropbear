@@ -11,7 +11,9 @@ func init() {
 	rng := rand.New(rand.NewSource(42))
 	randomNumbers = make([]Decimal, 32)
 	for i := range 32 {
-		randomNumbers[i] = FromFloat64(randomCryptoValue(rng))
+		// Use realistic trading values (prices up to $100k, quantities up to 1000)
+		// to avoid overflow in multiplication benchmarks
+		randomNumbers[i] = FromFloat64(rng.Float64() * 100000)
 	}
 }
 
@@ -114,6 +116,7 @@ func TestMul(t *testing.T) {
 		{"0.1876", "0.9995", "0.1875062"},             // medium fractions that caused overflow
 		{"0.5", "0.5", "0.25"},                        // simple fractions
 		{"0.999999999", "0.999999999", "0.999999998"}, // near-1 fractions (exact result)
+		{"1e9", "8", "8000000000"},                    // max representable without overflow
 	}
 	for _, tt := range tests {
 		a := Parse(tt.a)
@@ -410,10 +413,24 @@ func BenchmarkMul(b *testing.B) {
 	}
 }
 
+func BenchmarkMulInt(b *testing.B) {
+	for i := 0; b.Loop(); i++ {
+		a := randomNumbers[(i+0)&31]
+		_ = a.MulInt(2)
+	}
+}
+
 func BenchmarkDiv(b *testing.B) {
 	for i := 0; b.Loop(); i++ {
 		a := randomNumbers[(i+0)&31]
 		c := randomNumbers[(i+1)&31]
 		_ = a.Div(c)
+	}
+}
+
+func BenchmarkDivInt(b *testing.B) {
+	for i := 0; b.Loop(); i++ {
+		a := randomNumbers[(i+0)&31]
+		_ = a.DivInt(2)
 	}
 }

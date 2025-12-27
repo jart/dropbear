@@ -138,9 +138,9 @@ func main() {
 
 	gBinance = teddy.Exchanges.Get(ds.ExchangeBinance)
 	if *flagSymbol == "ZEC" {
-		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "-USDT")
+		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "USDT")
 	} else {
-		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "-FDUSD")
+		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "FDUSD")
 	}
 	gBinancePair.OnTick = onBinanceTick
 
@@ -763,7 +763,7 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 				log.Printf("[order] skipped %s: would self-trade", side)
 			}
 		} else {
-			log.Printf("[error] failed to place order: %v", err)
+			log.Printf("[error] failed to place %s order: %v", side, err)
 		}
 		return
 	}

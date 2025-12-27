@@ -5,50 +5,24 @@ import (
 	"dropbear/ds"
 	"dropbear/loggy"
 	"fmt"
+	"log"
 )
 
 // LimitOrder places a limit order on the exchange or simulates one in backtest mode.
 func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, strategy ds.OrderStrategy) (*Order, error) {
-	exchange := p.Exchange
-	orders := exchange.Orders
-	feeRate := exchange.TakerFee
+
+	// compute notional value
 	notional := quantity.Mul(limitPrice)
-
-	// sanity check order parameters
-	if quantity.Cmp(p.BaseMinSize) < 0 {
-		return nil, fmt.Errorf("quantity %s %s is below minimum size of %s %s",
-			quantity, p.BaseCurrency, p.BaseMinSize, p.BaseCurrency)
-	}
-	if quantity.Cmp(p.BaseMaxSize) > 0 {
-		return nil, fmt.Errorf("quantity %s %s is above maximum size of %s %s",
-			quantity, p.BaseCurrency, p.BaseMaxSize, p.BaseCurrency)
-	}
-	if quantity.Quantize(p.BaseIncrement).Cmp(quantity) != 0 {
-		return nil, fmt.Errorf("quantity %s %s is not a multiple of increment %s %s",
-			quantity, p.BaseCurrency, p.BaseIncrement, p.BaseCurrency)
-	}
-	if limitPrice.Quantize(p.QuoteIncrement).Cmp(limitPrice) != 0 {
-		return nil, fmt.Errorf("limitPrice %s %s is not a multiple of increment %s %s",
-			limitPrice, p.QuoteCurrency, p.QuoteIncrement, p.QuoteCurrency)
-	}
-	if notional.Cmp(p.QuoteMinSize) < 0 {
-		return nil, fmt.Errorf("notional %s %s is below minimum size of %s %s",
-			notional, p.QuoteCurrency, p.QuoteMinSize, p.QuoteCurrency)
-	}
-	if notional.Cmp(p.QuoteMaxSize) > 0 {
-		return nil, fmt.Errorf("notional %s %s is above maximum size of %s %s",
-			notional, p.QuoteCurrency, p.QuoteMaxSize, p.QuoteCurrency)
+	switch side {
+	case ds.SideBuy:
+		notional = notional.QuantizeUp(p.QuoteIncrement.Load())
+	case ds.SideSell:
+		notional = notional.QuantizeDown(p.QuoteIncrement.Load())
 	}
 
-	// self-trading is insane because it appears ot be one of the most legitimately dangerous
-	// practices with the potential to gigafry your brokerage account but is exclusively done
-	// by literal turbonormies who unironically want to "improve user engagement metrics" and
-	// basically get oneshotted by regulators.
-	for it := p.openOrders.Iterator(); it.Next(); {
-		order := it.Value()
-		if order.Side == side.Flip() && limitPrice.Mul(decimal.Decimal(side)).Cmp(order.LimitPrice) >= 0 {
-			return nil, ds.ErrSelfTrade
-		}
+	// validate order parameters
+	if err := p.checkLimitOrderParams(side, quantity, limitPrice, notional); err != nil {
+		return nil, err
 	}
 
 	// post-only orders aren't allowed to cross the spread
@@ -68,7 +42,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 
 	// simulate rate limits in backtest mode
 	// the coinbase client library limits in prod
-	if !Live {
+	if Paper {
 		if !gRateLimiter.Try() {
 			return nil, ds.ErrTooManyRequests
 		}
@@ -79,45 +53,53 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	switch side {
 	case ds.SideBuy:
 		// put on hold enough cash to pay maximum cost
-		maxFee := notional.Mul(feeRate)
+		maxFee := notional.Mul(p.Exchange.TakerFee.Load())
 		maxCost := notional.Add(maxFee)
-		quoteHolding := p.Exchange.Holdings.Get(p.QuoteCurrency)
-		quoteHolding.Lock.Lock()
-		if maxCost.Cmp(quoteHolding.Available) > 0 {
-			quoteHolding.Lock.Unlock()
+		p.QuoteCurrency.Lock.Lock()
+		available := p.QuoteCurrency.Available.Load()
+		if maxCost.Cmp(available) > 0 {
+			p.QuoteCurrency.Lock.Unlock()
+			if *flagVerbose {
+				log.Printf("[teddy] buying %s %s @ $%s for %s %s requires %s %s hold but only had %s %s available",
+					quantity, p.BaseCurrency, limitPrice, notional, p.QuoteCurrency, maxCost, p.QuoteCurrency, available, p.QuoteCurrency)
+			}
 			return nil, ds.ErrInsufficientFunds
 		}
-		quoteHolding.Available = quoteHolding.Available.Sub(maxCost)
-		quoteHolding.Check()
-		quoteHolding.Lock.Unlock()
+		p.QuoteCurrency.Available.Store(available.Sub(maxCost))
+		p.QuoteCurrency.Check()
+		p.QuoteCurrency.Lock.Unlock()
 		hold = maxCost
 	case ds.SideSell:
 		// put on hold enough coin to fill order
-		baseHolding := p.Exchange.Holdings.Get(p.BaseCurrency)
-		baseHolding.Lock.Lock()
-		if quantity.Cmp(baseHolding.Available) > 0 {
-			baseHolding.Lock.Unlock()
+		p.BaseCurrency.Lock.Lock()
+		available := p.BaseCurrency.Available.Load()
+		if quantity.Cmp(available) > 0 {
+			p.BaseCurrency.Lock.Unlock()
+			if *flagVerbose {
+				log.Printf("[teddy] selling %s %s @ $%s requires %s %s hold but only had %s %s available",
+					quantity, p.BaseCurrency, limitPrice, quantity, p.BaseCurrency, available, p.BaseCurrency)
+			}
 			return nil, ds.ErrInsufficientFunds
 		}
-		baseHolding.Available = baseHolding.Available.Sub(quantity)
-		baseHolding.Check()
-		baseHolding.Lock.Unlock()
+		p.BaseCurrency.Available.Store(available.Sub(quantity))
+		p.BaseCurrency.Check()
+		p.BaseCurrency.Lock.Unlock()
 		hold = quantity
 	}
 
 	// create order object
-	order := orders.create(p, ds.OrderTypeLimit, side, quantity, limitPrice, hold)
+	order := p.Exchange.Orders.create(p, ds.OrderTypeLimit, side, quantity, limitPrice, hold)
 
 	// handle live trading
-	if Live {
+	if !Paper {
 		switch p.Exchange.Exchange {
 		case ds.ExchangeCoinbase:
 			orderID, err := CoinbaseClient.LimitOrder(p.Symbol, side, quantity, limitPrice, order.ClientOrderID, strategy, GetCostBasisMethod())
 			if orderID != "" {
-				orders.lock.Lock()
+				p.Exchange.Orders.lock.Lock()
 				order.OrderID = orderID
-				orders.ordersMap[orderID] = order
-				orders.lock.Unlock()
+				p.Exchange.Orders.ordersMap[orderID] = order
+				p.Exchange.Orders.lock.Unlock()
 			}
 			if err != nil {
 				order.kill(ds.OrderStateInvalid)
@@ -145,7 +127,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 				break
 			}
 			fillValue := fill.Price.Mul(fill.Size)
-			filled, err := order.fill(fill.Size, fillValue, exchange.TakerFee, false)
+			filled, err := order.fill(fill.Size, fillValue, p.Exchange.TakerFee, false)
 			if unfilled := fill.Size.Sub(filled); unfilled.IsPositive() {
 				p.OrderBook.Push(side.Flip(), fill.Price, unfilled)
 			}
@@ -168,4 +150,53 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	// track it in openOrders and let handleTick simulate fills by popping
 	// from the book when trades happen at our price level
 	return order, nil
+}
+
+func (p *Pair) checkLimitOrderParams(side ds.Side, quantity, limitPrice, notional decimal.Decimal) error {
+	p.Lock.RLock()
+	defer p.Lock.RUnlock()
+
+	// check quantity
+	if quantity.Cmp(p.BaseMinSize.Load()) < 0 {
+		return fmt.Errorf("quantity %s %s is below minimum size of %s %s",
+			quantity, p.BaseCurrency, p.BaseMinSize.Load(), p.BaseCurrency)
+	}
+	if quantity.Cmp(p.BaseMaxSize.Load()) > 0 {
+		return fmt.Errorf("quantity %s %s is above maximum size of %s %s",
+			quantity, p.BaseCurrency, p.BaseMaxSize.Load(), p.BaseCurrency)
+	}
+
+	// check notional value
+	if notional.Cmp(p.QuoteMinSize.Load()) < 0 {
+		return fmt.Errorf("notional %s %s is below minimum size of %s %s",
+			notional, p.QuoteCurrency, p.QuoteMinSize.Load(), p.QuoteCurrency)
+	}
+	if notional.Cmp(p.QuoteMaxSize.Load()) > 0 {
+		return fmt.Errorf("notional %s %s is above maximum size of %s %s",
+			notional, p.QuoteCurrency, p.QuoteMaxSize.Load(), p.QuoteCurrency)
+	}
+
+	// check rounding
+	if quantity.Quantize(p.BaseIncrement.Load()).Cmp(quantity) != 0 {
+		return fmt.Errorf("quantity %s %s is not a multiple of increment %s %s",
+			quantity, p.BaseCurrency, p.BaseIncrement.Load(), p.BaseCurrency)
+	}
+	if limitPrice.Quantize(p.QuoteIncrement.Load()).Cmp(limitPrice) != 0 {
+		return fmt.Errorf("limitPrice %s %s is not a multiple of increment %s %s",
+			limitPrice, p.QuoteCurrency, p.QuoteIncrement.Load(), p.QuoteCurrency)
+	}
+
+	// self-trading is insane because it appears ot be one of the most legitimately dangerous
+	// practices with the potential to gigafry your brokerage account but is exclusively done
+	// by literal turbonormies who unironically want to "improve user engagement metrics" and
+	// basically get oneshotted by regulators.
+	for it := p.openOrders.Iterator(); it.Next(); {
+		order := it.Value()
+		limitPrice := order.LimitPrice.Load()
+		if order.Side == side.Flip() && limitPrice.Mul(decimal.Decimal(side)).Cmp(limitPrice) >= 0 {
+			return ds.ErrSelfTrade
+		}
+	}
+
+	return nil
 }
