@@ -55,7 +55,7 @@ func (m *marketData) run() {
 		err := m.runOnce()
 		ts2 := time.Now()
 		if err != nil {
-			log.Printf("binance[%s]: market data error: %v", m.Symbol, err)
+			log.Printf("binanceusd[%s]: market data error: %v", m.Symbol, err)
 		}
 		elapsed := ts2.Sub(ts1)
 		if elapsed > 30*time.Second {
@@ -88,7 +88,7 @@ func (m *marketData) runOnce() error {
 	if err != nil {
 		return err
 	}
-	log.Printf("binance[%s]: market data stream connected", m.Symbol)
+	log.Printf("binanceusd[%s]: market data stream connected", m.Symbol)
 
 	// now fetch initial depth snapshot
 	err = m.snapshot()
@@ -104,7 +104,7 @@ func (m *marketData) runOnce() error {
 		}
 		err = m.handleMessage(msg)
 		if err != nil {
-			log.Printf("binance[%s]: market data message handling error: %v", m.Symbol, err)
+			log.Printf("binanceusd[%s]: market data message handling error: %v", m.Symbol, err)
 		}
 	}
 }
@@ -166,7 +166,7 @@ func (m *marketData) handleMessage(data []byte) error {
 		// subscription confirmations, pings, etc.
 		return nil
 	default:
-		log.Printf("binance[%s]: ignoring unknown stream type %q: %s", m.Symbol, stream, data)
+		log.Printf("binanceusd[%s]: ignoring unknown stream type %q: %s", m.Symbol, stream, data)
 		return nil
 	}
 }
@@ -178,7 +178,7 @@ func (m *marketData) handleTrade(data []byte, now clocky.Time) error {
 		return err
 	}
 	if raw.Price == "" || raw.Quantity == "" {
-		log.Printf("binance[%s]: ignoring trade with empty price/quantity: %s", m.Symbol, data)
+		log.Printf("binanceusd[%s]: ignoring trade with empty price/quantity: %s", m.Symbol, data)
 		return nil
 	}
 	tick := &ds.Tick{Time: now}

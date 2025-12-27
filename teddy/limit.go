@@ -67,6 +67,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	}
 
 	// simulate rate limits in backtest mode
+	// the coinbase client library limits in prod
 	if !Live {
 		if !gRateLimiter.Try() {
 			return nil, ds.ErrTooManyRequests

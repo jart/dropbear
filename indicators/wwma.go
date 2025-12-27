@@ -25,6 +25,14 @@ func (w *WWMA) IsReady() bool {
 	return w.samples >= w.count
 }
 
+// Progress returns the progress towards being ready as a decimal between 0 and 1.
+func (w *WWMA) Progress() float64 {
+	if w.samples >= w.count {
+		return 1.0
+	}
+	return float64(w.samples) / float64(w.count)
+}
+
 // Add adds a value to the indicator.
 func (w *WWMA) Add(value decimal.Decimal) {
 	w.samples++

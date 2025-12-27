@@ -1,3 +1,10 @@
+//    o               o
+//              , _|_     _  _    _     , _|_  ,_    _   _ _|_
+//    | |   |  / \_|  |  / |/ |  |/    / \_|  /  |  |/  |/  |
+//    |/ \_/|_/ \/ |_/|_/  |  |_/|__/   \/ |_/   |_/|__/|__/|_/
+//   /|
+//   \|         market taking algorithm x3.161-2025
+
 package main
 
 import (
@@ -22,7 +29,7 @@ var (
 	flagBuffer    = decimal.FlagPercent("buffer", "0.5", "percent of balance buffer to keep free")
 	flagThreshold = decimal.FlagBPS("threshold", "3", "minimum spread deviation to trade (basis points)")
 	flagCooldown  = clocky.DurationFlag("cooldown", "50ms", "minimum time between trades")
-	flagFreshness = clocky.DurationFlag("freshness", "500ms", "max age of market data before suspending")
+	flagFreshness = clocky.DurationFlag("freshness", "400ms", "max age of market data before suspending")
 	flagSamples   = flag.Int("samples", 5000, "number of sample trades used to determine baseline spread")
 )
 
@@ -74,7 +81,9 @@ func main() {
 func onCoinbaseTick(tick *ds.Tick) {
 	teddy.Spawn(func() {
 		if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
+			gOrderLock.Lock()
 			gLastCoinbase = tick.Time
+			gOrderLock.Unlock()
 		}
 	})
 }
@@ -102,10 +111,15 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	isReady := gSpreadEMA.IsReady()
 	gSpreadLock.Unlock()
 	if !isReady {
+		log.Printf("[warmup] WWMA is %.2f%% ready", gSpreadEMA.Progress()*100)
 		return
 	}
 	deviation := spread.Sub(baseline)
 
+	// the important thing to understand about arbitrage, is this game is not about
+	// how we can make money off a big spread. the question is how much trash we're
+	// able to clear from the order book while recovering our costs.
+	//
 	// let's say btc on coinbase usually costs 99, and on binance it's usually 100.
 	// in that case, m=99, P=100, and b=-0.01. suddenly the price on binance shoots
 	// up to 102 but market makers on coinbase are still offering to buy / sell btc
@@ -154,7 +168,7 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	// round down, because buying low is good. whereas sells we want to round up.
 
 	var side ds.Side
-	var size, limi, edge decimal.Decimal
+	var size, limi decimal.Decimal
 	predictedPrice := predictorPrice.Mul(decimal.One.Add(baseline))
 	move := predictedPrice.Sub(mid).Div(mid)
 	if predictedPrice.Cmp(mid) > 0 {
@@ -163,7 +177,6 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 		size = size.QuantizeDown(gCoinbasePair.BaseIncrement)
 		limi = predictedPrice.Div(decimal.One.Add(*flagThreshold))
 		limi = limi.QuantizeDown(gCoinbasePair.QuoteIncrement)
-		edge = limi.Sub(ask).Div(ask)
 		if limi.Cmp(ask) < 0 {
 			return
 		}
@@ -173,7 +186,6 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 		size = size.QuantizeDown(gCoinbasePair.BaseIncrement)
 		limi = predictedPrice.Mul(decimal.One.Add(*flagThreshold))
 		limi = limi.QuantizeUp(gCoinbasePair.QuoteIncrement)
-		edge = bid.Sub(limi).Div(limi)
 		if limi.Cmp(bid) > 0 {
 			return
 		}
@@ -181,6 +193,13 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 
 	logDecision := func() {
 		if *flagVerbose {
+			var edge decimal.Decimal
+			switch side {
+			case ds.SideBuy:
+				edge = ask.Sub(limi).Div(limi)
+			case ds.SideSell:
+				edge = limi.Sub(bid).Div(bid)
+			}
 			log.Printf("[signal] %s spread=%s baseline=%s deviation=%s move=%s edge=%s mid=%s predictor=%s predicted=%s limit=%s",
 				side, spread.BPS().Format(3), baseline.BPS().Format(3), deviation.BPS().Format(3), move.BPS().Format(3),
 				edge.BPS().Format(3), mid, predictorPrice, predictedPrice, limi)
@@ -197,14 +216,14 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 		case ds.SideBuy:
 			if side == ds.SideBuy && limi.Cmp(order.LimitPrice) <= 0 {
 				logDecision()
-				log.Printf("[skip] our buy price suddenly rolled back from %s to %s", order.LimitPrice, limi)
+				log.Printf("[skip] our buy edge is deteriorating! limit price went from %s to %s", order.LimitPrice, limi)
 				gOrderLock.Unlock()
 				return
 			}
 		case ds.SideSell:
 			if side == ds.SideSell && limi.Cmp(order.LimitPrice) >= 0 {
 				logDecision()
-				log.Printf("[skip] our sell price suddenly rolled back from %s to %s", order.LimitPrice, limi)
+				log.Printf("[skip] our sell edge is deteriorating! limit price went from %s to %s", order.LimitPrice, limi)
 				gOrderLock.Unlock()
 				return
 			}
@@ -213,8 +232,10 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	orderTime := clocky.Now()
 	if orderTime < gNextOrder {
 		logDecision()
-		log.Printf("[skip] we placed an order %s ago and have to wait %s because backoff is %s",
-			orderTime.Sub(gLastOrder), gNextOrder.Sub(orderTime), gOrderBackoff)
+		if *flagVerbose {
+			log.Printf("[skip] we placed an order %s ago and have to wait %s because backoff is %s",
+				orderTime.Sub(gLastOrder), gNextOrder.Sub(orderTime), gOrderBackoff)
+		}
 		gOrderLock.Unlock()
 		return
 	}
@@ -222,9 +243,16 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 		gOrderBackoff = 0
 		gNextOrder = 0
 	}
+	if orderTime.Sub(gLastCoinbase) > *flagFreshness {
+		logDecision()
+		log.Printf("[skip] coinbase order book isn't fresh because last update was received %s ago",
+			orderTime.Sub(gLastCoinbase))
+		gOrderLock.Unlock()
+		return
+	}
 	if orderTime.Sub(tradeTime) > *flagFreshness {
 		logDecision()
-		log.Printf("[skip] trade happened %s ago, which we learned about %s ago",
+		log.Printf("[skip] predictor trade data isn't fresh because it happened %s ago, which we learned about %s ago",
 			orderTime.Sub(tradeTime), orderTime.Sub(receivedTime))
 		gOrderLock.Unlock()
 		return
