@@ -17,7 +17,7 @@ var (
 // This should be called from main() after flag.Parse().
 func Init() {
 	log.SetFlags(0)
-	log.SetOutput(gLogWriter)
+	log.SetOutput(&gLogWriter)
 }
 
 // Fatalf logs an error, raises SIGINT to trigger cleanup, and blocks.
@@ -60,7 +60,7 @@ type logWriter struct {
 
 var gLogWriter = logWriter{}
 
-func (w logWriter) Write(p []byte) (n int, err error) {
+func (w *logWriter) Write(p []byte) (n int, err error) {
 	line := clocky.Now().String() + " " + string(p)
 	os.Stderr.WriteString(line)
 	if w.file != nil {

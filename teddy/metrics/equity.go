@@ -4,7 +4,12 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/loggy"
+	"errors"
 	"math"
+)
+
+var (
+	ErrNotEnoughSamples = errors.New("not enough samples for calculation")
 )
 
 // Equity tracks portfolio performance over time for Sharpe ratio calculation.
@@ -48,10 +53,9 @@ func (m *Equity) Sample(timestamp clocky.Time, value decimal.Decimal) {
 
 // Sharpe calculates the annualized Sharpe ratio from sampled deep fucking value.
 // Uses risk-free rate from your -rfr flag. Sample interval controlled by -quantum.
-// This function will panic if the backtesting datasets yielded insufficient samples.
 func (m *Equity) Sharpe(riskFreeRate float64) float64 {
 	if len(m.samples) < 3 {
-		loggy.Fatalf("insufficient samples (%d) for sharpe calculation", len(m.samples))
+		return 0
 	}
 
 	// TODO(jart): 360d should be however much trading time there is in a year.

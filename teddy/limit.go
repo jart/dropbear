@@ -126,8 +126,8 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 			if !ok {
 				break
 			}
-			fillValue := fill.Price.Mul(fill.Size)
-			filled, err := order.fill(fill.Size, fillValue, p.Exchange.TakerFee, false)
+			fillNotional := fill.Price.Mul(fill.Size)
+			filled, err := order.fill(fill.Size, fillNotional, p.Exchange.TakerFee, false)
 			if unfilled := fill.Size.Sub(filled); unfilled.IsPositive() {
 				p.OrderBook.Push(side.Flip(), fill.Price, unfilled)
 			}

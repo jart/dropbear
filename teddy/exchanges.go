@@ -2,6 +2,7 @@ package teddy
 
 import (
 	"dropbear/ds"
+	"log"
 	"sync"
 
 	"github.com/emirpasic/gods/v2/sets/treeset"
@@ -58,6 +59,9 @@ func (es *exchanges) markReady(exchange *Exchange) {
 	isReady := es.unready.Empty()
 	es.lock.Unlock()
 	if isReady {
+		if *flagVerbose {
+			log.Printf("[teddy] all exchanges ready")
+		}
 		es.OnReady()
 	}
 }

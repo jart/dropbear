@@ -134,7 +134,8 @@ func main() {
 	gCoinbase = teddy.Exchanges.Get(ds.ExchangeCoinbase)
 	gHolding = gCoinbase.Holdings.Get(*flagSymbol)
 	gCoinbasePair = gCoinbase.Pairs.Get(*flagSymbol + "-USD")
-	gCoinbasePair.OnTick = onCoinbaseTick
+	coinbaseTick := onCoinbaseTick
+	gCoinbasePair.OnTick.Store(&coinbaseTick)
 
 	gBinance = teddy.Exchanges.Get(ds.ExchangeBinance)
 	if *flagSymbol == "ZEC" {
@@ -142,7 +143,8 @@ func main() {
 	} else {
 		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "FDUSD")
 	}
-	gBinancePair.OnTick = onBinanceTick
+	binanceTick := onBinanceTick
+	gBinancePair.OnTick.Store(&binanceTick)
 
 	teddy.SetBalance(ds.ExchangeCoinbase, "USD", *flagUSD)
 	teddy.SetBenchmark(gCoinbasePair)
@@ -298,10 +300,10 @@ func checkSpread(now clocky.Time) {
 
 	// balance: 1.0 = perfect, 0 = completely one-sided
 	balance := decimal.One
-	maxVolume := buyVolume.Max(sellVolume)
-	if maxVolume.IsPositive() {
-		minVolume := buyVolume.Min(sellVolume)
-		balance = minVolume.Div(maxVolume)
+	maxVolume := max(buyVolume, sellVolume)
+	if maxVolume > 0 {
+		minVolume := min(buyVolume, sellVolume)
+		balance = decimal.FromFloat64(minVolume / maxVolume)
 	}
 	gBalance = balance
 
@@ -785,8 +787,8 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 	}
 
 	// report trade
-	value := quantity.Mul(order.FillPrice)
-	slippage := order.FillPrice.Sub(lastPrice).Div(lastPrice)
+	value := order.Notional
+	slippage := order.Price.Sub(lastPrice).Div(lastPrice)
 	var theft decimal.Decimal
 	if side == ds.SideBuy {
 		theft = value.Div(quote).Sub(decimal.One) // positive = paid more = robbed
@@ -798,7 +800,7 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 		value.Quantize(gCoinbasePair.QuoteIncrement),
 		lastPrice.Quantize(gCoinbasePair.QuoteIncrement),
 		quote.Quantize(gCoinbasePair.QuoteIncrement),
-		order.FillPrice.Quantize(gCoinbasePair.QuoteIncrement),
+		order.Price.Quantize(gCoinbasePair.QuoteIncrement),
 		slippage.BPS().Format(2),
 		theft.BPS().Format(2))
 	if side == ds.SideSell {

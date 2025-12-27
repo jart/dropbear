@@ -30,11 +30,12 @@ func setupTestExchange(t *testing.T) (*Exchange, *Pair, *Holding, *Holding) {
 		holdingsMap: make(map[string]*Holding),
 	}
 	ex.Orders = &Orders{
-		Exchange:     ex,
-		ordersMap:    make(map[string]*Order),
-		ordersArray:  make([]*Order, 0),
-		OnOrderEvent: func(*Order) {},
+		Exchange:    ex,
+		ordersMap:   make(map[string]*Order),
+		ordersArray: make([]*Order, 0),
 	}
+	noop := func(*Order) {}
+	ex.Orders.OnOrderEvent.Store(&noop)
 	ex.Pairs = &Pairs{
 		exchange: ex,
 		pairsMap: make(map[string]*Pair),
@@ -549,11 +550,11 @@ func TestKillThenFillRaceCondition(t *testing.T) {
 		usdHolding.Quantity, usdHolding.Available, hold)
 
 	// Step 2: kill() is called (simulates Cancel before fill update arrives)
-	// This releases the hold because FillValue is still 0
+	// This releases the hold because Notional is still 0
 	order.Lock.Lock()
 	order.State = ds.OrderStateCanceled
-	spent := order.FillValue.Add(order.Fee) // = 0 since no fills yet
-	releaseAmount := order.Hold.Sub(spent)  // = 100 - 0 = 100
+	spent := order.Notional.Add(order.Fee) // = 0 since no fills yet
+	releaseAmount := order.Hold.Sub(spent) // = 100 - 0 = 100
 	order.Hold = decimal.Zero
 	order.Lock.Unlock()
 

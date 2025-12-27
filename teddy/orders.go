@@ -8,6 +8,7 @@ import (
 	"dropbear/loggy"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/emirpasic/gods/v2/sets/treeset"
 )
@@ -18,7 +19,7 @@ type Orders struct {
 	ordersArray  []*Order
 	ordersMap    map[string]*Order // by clientOrderID or orderID
 	openOrders   *treeset.Set[*Order]
-	OnOrderEvent func(*Order)
+	OnOrderEvent atomic.Pointer[func(*Order)]
 }
 
 // Get retrieves an order by its OrderID or ClientOrderID.
@@ -52,11 +53,10 @@ func (os *Orders) Open() []*Order {
 
 func newOrders(ex *Exchange) *Orders {
 	return &Orders{
-		Exchange:     ex,
-		OnOrderEvent: func(*Order) {},
-		ordersArray:  make([]*Order, 0),
-		ordersMap:    make(map[string]*Order),
-		openOrders:   treeset.NewWith(compareOrdersByClientOrderID),
+		Exchange:    ex,
+		ordersArray: make([]*Order, 0),
+		ordersMap:   make(map[string]*Order),
+		openOrders:  treeset.NewWith(compareOrdersByClientOrderID),
 	}
 }
 
@@ -83,7 +83,9 @@ func (os *Orders) create(pair *Pair, otype ds.OrderType, side ds.Side, quantity,
 		defer pair.Lock.Unlock()
 		pair.openOrders.Add(order)
 	}()
-	os.OnOrderEvent(order)
+	if onOrderEvent := os.OnOrderEvent.Load(); onOrderEvent != nil {
+		(*onOrderEvent)(order)
+	}
 	return order
 }
 
@@ -119,7 +121,7 @@ func (os *Orders) onCoinbaseOrderUpdate(orderUpdate *coinbase.OrderUpdate) {
 	// compute deltas from our tracked state
 	order.Lock.Lock()
 	oldFilled := order.Filled.Load()
-	oldValue := order.FillValue.Load()
+	oldValue := order.Notional.Load()
 	oldState := order.State.Load()
 	oldFees := order.lastFees.Load()
 	feeDelta := cbFee.Sub(oldFees)

@@ -35,6 +35,9 @@ func FromInt(n int) Decimal {
 
 // FromFloat64 converts float64 to Decimal.
 func FromFloat64(n float64) Decimal {
+	if n > math.MaxInt64/Scale || n < math.MinInt64/Scale {
+		panic("decimal overflow")
+	}
 	return Decimal(math.Round(n * Scale))
 }
 
@@ -155,8 +158,8 @@ func (d *Decimal) AtomicAdd(v Decimal) Decimal {
 	return Decimal(atomic.AddInt64((*int64)(d), int64(v)))
 }
 
-// Exchange atomically replaces v into d.
-func (d *Decimal) Exchange(v Decimal) Decimal {
+// Swap atomically replaces v into d.
+func (d *Decimal) Swap(v Decimal) Decimal {
 	return Decimal(atomic.SwapInt64((*int64)(d), int64(v)))
 }
 

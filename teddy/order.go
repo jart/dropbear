@@ -17,10 +17,10 @@ type Order struct {
 	Type          ds.OrderType
 	State         ds.OrderState
 	LimitPrice    decimal.Decimal
-	FillValue     decimal.Decimal
-	FillPrice     decimal.Decimal
 	Quantity      decimal.Decimal // filled + unfilled base size
 	Filled        decimal.Decimal // filled base size
+	Notional      decimal.Decimal // filled quote value
+	Price         decimal.Decimal // average fill price
 	Hold          decimal.Decimal
 	Fee           decimal.Decimal
 	PlacedTime    clocky.Time     // when we created the object
@@ -36,7 +36,7 @@ func (o *Order) Wait() {
 }
 
 func (o *Order) Cancel() error {
-	if o.OrderID == "" || o.State.IsFinal() {
+	if o.OrderID == "" || o.State.Load().IsFinal() {
 		return ds.ErrOrderNotFound
 	}
 	if !Paper {
@@ -60,7 +60,7 @@ func (order *Order) kill(state ds.OrderState) {
 	order.Lock.Lock()
 	order.State.Store(state)
 	hold := order.Hold.Load()
-	spent := order.FillValue.Load().Add(order.Fee.Load()) // amount of hold consumed by fills
+	spent := order.Notional.Load().Add(order.Fee.Load()) // amount of hold consumed by fills
 	order.Hold.Store(decimal.Zero)
 	order.Lock.Unlock()
 	switch order.Side {
@@ -77,7 +77,7 @@ func (order *Order) kill(state ds.OrderState) {
 		// for sell orders, hold is in base currency
 		// only release unfilled portion (fills already deducted from Quantity)
 		order.Lock.RLock()
-		filled := order.Filled
+		filled := order.Filled.Load()
 		order.Lock.RUnlock()
 		releaseAmount := hold.Sub(filled)
 		if releaseAmount.IsPositive() {
@@ -102,21 +102,23 @@ func (order *Order) kill(state ds.OrderState) {
 	order.closeOnce.Do(func() {
 		close(order.onClose)
 	})
-	orders.OnOrderEvent(order)
+	if fn := orders.OnOrderEvent.Load(); fn != nil {
+		(*fn)(order)
+	}
 }
 
 // fill accounts for a fill on an order, computing fee from exchange taker rate.
 // Returns the actual filled quantity (may be less than requested if order nearly full)
 // and an error if the order cannot accept any more fills.
-func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (decimal.Decimal, error) {
+func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) (decimal.Decimal, error) {
 	pair := order.Pair
 	exchange := pair.Exchange
 	orders := exchange.Orders
 	now := clocky.Now()
 
 	// perform sanity checks
-	if !value.IsPositive() {
-		panic("fill value must be positive")
+	if !notional.IsPositive() {
+		panic("fill notional must be positive")
 	}
 	if !filled.IsPositive() {
 		panic("fill quantity must be positive")
@@ -136,10 +138,10 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (de
 
 	// clamp fill to remaining quantity
 	actualFilled := filled.Min(remaining)
-	actualValue := value.Mul(actualFilled).Div(filled) // proportional value
-	fee := actualValue.Mul(feeRate)
+	actualNotional := notional.Mul(actualFilled).Div(filled) // proportional notional
+	fee := actualNotional.Mul(feeRate)
 	dir := decimal.Decimal(order.Side)
-	total := actualValue.Add(fee.Mul(dir))
+	total := actualNotional.Add(fee.Mul(dir))
 	rebate := fee.Mul(exchange.Rebate.Load())
 
 	// detect if kill() already ran and released the hold
@@ -153,8 +155,8 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (de
 	order.LastFillTime.Store(now)
 	order.Filled.Store(totalFilled)
 	add(&order.Fee, fee)
-	add(&order.FillValue, actualValue)
-	order.FillPrice.Store(order.FillValue.Load().Div(order.Filled.Load()))
+	add(&order.Notional, actualNotional)
+	order.Price.Store(order.Notional.Load().Div(order.Filled.Load()))
 	if isFullyFilled {
 		releaseHold = order.Hold.Load()
 		order.State.Store(ds.OrderStateFilled)
@@ -172,14 +174,14 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (de
 		// debit cash holding of purchase price and commission
 		// additionally we release unused hold if order is fully filled
 		pair.QuoteCurrency.Lock.Lock()
-		pair.QuoteCurrency.Volume += actualValue.Float64()
-		pair.QuoteCurrency.SellVolume += actualValue.Float64()
+		pair.QuoteCurrency.Volume += actualNotional.Float64()
+		pair.QuoteCurrency.SellVolume += actualNotional.Float64()
 		sub(&pair.QuoteCurrency.Quantity, total)
 		// on full fill, adjust Available for difference between hold and actual cost
 		// unusedHold can be negative if Coinbase charged more than we estimated
 		if releaseHold.IsPositive() {
 			order.Lock.RLock()
-			cumulativeSpent := order.FillValue.Load().Add(order.Fee.Load())
+			cumulativeSpent := order.Notional.Load().Add(order.Fee.Load())
 			order.Lock.RUnlock()
 			unusedHold := releaseHold.Sub(cumulativeSpent)
 			add(&pair.QuoteCurrency.Available, unusedHold)
@@ -207,8 +209,8 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (de
 		pair.QuoteCurrency.Lock.Lock()
 		add(&pair.QuoteCurrency.Quantity, total)
 		add(&pair.QuoteCurrency.Available, total)
-		pair.QuoteCurrency.Volume += actualValue.Float64()
-		pair.QuoteCurrency.SellVolume += actualValue.Float64()
+		pair.QuoteCurrency.Volume += actualNotional.Float64()
+		pair.QuoteCurrency.SellVolume += actualNotional.Float64()
 		pair.QuoteCurrency.Check()
 		pair.QuoteCurrency.Lock.Unlock()
 
@@ -260,7 +262,9 @@ func (order *Order) fill(filled, value, feeRate decimal.Decimal, force bool) (de
 	pair.Lock.Unlock()
 
 	// notify subscribers that order changed
-	orders.OnOrderEvent(order)
+	if fn := orders.OnOrderEvent.Load(); fn != nil {
+		(*fn)(order)
+	}
 	if isFullyFilled {
 		order.closeOnce.Do(func() {
 			close(order.onClose)

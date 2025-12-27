@@ -90,7 +90,8 @@ func main() {
 	gCoinbase = teddy.Exchanges.Get(ds.ExchangeCoinbase)
 	gHolding = gCoinbase.Holdings.Get(*flagSymbol)
 	gCoinbasePair = gCoinbase.Pairs.Get(*flagSymbol + "-USD")
-	gCoinbasePair.OnTick = onCoinbaseTick
+	coinbaseTick := onCoinbaseTick
+	gCoinbasePair.OnTick.Store(&coinbaseTick)
 
 	gBinance = teddy.Exchanges.Get(ds.ExchangeBinance)
 	if *flagSymbol == "ZEC" {
@@ -98,7 +99,8 @@ func main() {
 	} else {
 		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "FDUSD")
 	}
-	gBinancePair.OnTick = onBinanceTick
+	binanceTick := onBinanceTick
+	gBinancePair.OnTick.Store(&binanceTick)
 
 	if teddy.Live {
 		client := teddy.CoinbaseClient
@@ -250,10 +252,10 @@ func checkSpread(now clocky.Time) {
 
 	// balance: 1.0 = perfect, 0 = completely one-sided
 	balance := decimal.One
-	maxVolume := buyVolume.Max(sellVolume)
-	if maxVolume.IsPositive() {
-		minVolume := buyVolume.Min(sellVolume)
-		balance = minVolume.Div(maxVolume)
+	maxVolume := max(buyVolume, sellVolume)
+	if maxVolume > 0 {
+		minVolume := min(buyVolume, sellVolume)
+		balance = decimal.FromFloat64(minVolume / maxVolume)
 	}
 
 	// winRate: 1.0 = all wins, 0 = all losses, default 1.0 if no trades
@@ -408,9 +410,9 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 			decayFactor := decimal.One
 			if (*flagTarget).IsPositive() && gLastSellTime > 0 {
 				invRatio := invested.Div(*flagTarget)
-				timeSinceSell := now - gLastSellTime
+				timeSinceSell := now.Sub(gLastSellTime)
 				if timeSinceSell > 0 {
-					timeRatio := decimal.FromInt(int(timeSinceSell)).Div(decimal.FromInt(int(*flagBuyDecay)))
+					timeRatio := decimal.FromFloat64(float64(timeSinceSell) / float64(*flagBuyDecay))
 					periodScale := invRatio.MulInt(2).Neg().Exp()                // e^(-invRatio*2)
 					decayFactor = timeRatio.Mul(periodScale).Neg().Exp()         // e^(-timeRatio*periodScale)
 					decayFactor = decayFactor.Max(decimal.Zero).Min(decimal.One) // clamp [0,1]
@@ -500,8 +502,8 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 	}
 
 	// report trade
-	value := quantity.Mul(order.FillPrice)
-	slippage := order.FillPrice.Sub(lastPrice).Div(lastPrice)
+	value := order.Notional
+	slippage := order.Price.Sub(lastPrice).Div(lastPrice)
 	var theft decimal.Decimal
 	if side == ds.SideBuy {
 		theft = value.Div(quote).Sub(decimal.One) // positive = paid more = robbed
@@ -513,7 +515,7 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 		value.Quantize(gCoinbasePair.QuoteIncrement),
 		lastPrice.Quantize(gCoinbasePair.QuoteIncrement),
 		quote.Quantize(gCoinbasePair.QuoteIncrement),
-		order.FillPrice.Quantize(gCoinbasePair.QuoteIncrement),
+		order.Price.Quantize(gCoinbasePair.QuoteIncrement),
 		slippage.BPS().Format(2),
 		theft.BPS().Format(2))
 	if side == ds.SideSell {

@@ -28,7 +28,7 @@ func (d Decimal) Mul(o Decimal) Decimal {
 	result := hiHiScaled
 	for _, term := range []int64{hiLo, loHi, loLo} {
 		z := result + term
-		if ((z^result)&(z^term)) < 0 {
+		if ((z ^ result) & (z ^ term)) < 0 {
 			panic("decimal overflow")
 		}
 		result = z

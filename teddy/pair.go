@@ -7,6 +7,7 @@ import (
 	"dropbear/exchange/binanceusd"
 	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
+	"log"
 	"strings"
 	"sync"
 
@@ -55,9 +56,9 @@ func newPair(exchange *Exchange, symbol string) *Pair {
 		BaseMinSize:    guessBaseMinSize(baseCurrency),
 		BaseMaxSize:    guessBaseMaxSize(baseCurrency),
 		Trades:         make(map[ds.Side]int),
-		OrderBook:      ds.NewBook(),
 		OnTick:         func(*ds.Tick) {},
 		OnReady:        func() {},
+		OrderBook:      ds.NewBook(),
 		openOrders:     treeset.NewWith(compareOrdersByClientOrderID),
 		repr:           symbol + "@" + exchange.Exchange.String(),
 	}
@@ -102,9 +103,11 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 	// update last price
 	if len(tick.Trades) > 0 {
 		p.hasTradeData = true
+		lastPrice := decimal.Zero
 		for _, trade := range tick.Trades {
-			p.LastPrice = trade.Price
+			lastPrice = trade.Price
 		}
+		p.LastPrice.Store(lastPrice)
 	}
 
 	// update order book
@@ -125,6 +128,9 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 	}
 
 	if !p.isReady && p.hasL2Data && p.hasTradeData {
+		if *flagVerbose {
+			log.Printf("[teddy] %s pair ready", p)
+		}
 		p.isReady = true
 		p.OnReady()
 		p.Exchange.Pairs.markReady(p)
@@ -172,8 +178,8 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 					order.Lock.RUnlock()
 					fillQty := fill.Size.Min(unfilled)
 					if fillQty.IsPositive() {
-						fillValue := order.LimitPrice.Mul(fillQty)
-						filled, err := order.fill(fillQty, fillValue, p.Exchange.MakerFee, false)
+						fillNotional := order.LimitPrice.Mul(fillQty)
+						filled, err := order.fill(fillQty, fillNotional, p.Exchange.MakerFee, false)
 						if err == nil && filled.IsPositive() {
 							leftover := fill.Size.Sub(filled)
 							if leftover.IsPositive() {

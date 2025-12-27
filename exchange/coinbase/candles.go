@@ -50,7 +50,7 @@ func (c *Client) GetCandles(productID string, granularity CandleGranularity, sta
 	if limit > 0 {
 		url = fmt.Sprintf("%s&limit=%d", url, limit)
 	}
-		c.rateLimiter.Get()
+	c.rateLimiter.Get()
 	resp, err := c.Get(url)
 	if err != nil {
 		return nil, err

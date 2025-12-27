@@ -16,19 +16,24 @@ import (
 	"dropbear/teddy"
 	"flag"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
+	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 )
 
 var (
+	flagDebug     = flag.Bool("debug", false, "enable debug thing")
 	flagVerbose   = flag.Bool("verbose", false, "enable verbose logging")
 	flagSymbol    = flag.String("symbol", "BTC", "coinbase currency to trade")
 	flagPredictor = flag.String("predictor", "BTCFDUSD@binance", "predictor symbol@exchange")
-	flagUSD       = decimal.Flag("usd", "10000", "coinbase usd balance")
+	flagUSD       = decimal.Flag("usd", "50000", "coinbase usd balance")
 	flagCoin      = decimal.Flag("coin", "0.4", "symbol balance in base currency")
 	flagBuffer    = decimal.FlagPercent("buffer", "1", "percent of balance buffer to keep free")
-	flagThreshold = decimal.FlagBPS("threshold", "3", "minimum spread deviation to trade (basis points)")
-	flagCooldown  = clocky.DurationFlag("cooldown", "50ms", "minimum time between trades")
+	flagThreshold = decimal.FlagBPS("threshold", "5", "minimum spread deviation to trade (basis points)")
+	flagCooldown  = clocky.DurationFlag("cooldown", "400ms", "minimum time between trades")
 	flagFreshness = clocky.DurationFlag("freshness", "400ms", "max age of market data before suspending")
 	flagSamples   = flag.Int("samples", 5000, "number of sample trades used to determine baseline spread")
 )
@@ -53,6 +58,11 @@ func main() {
 	loggy.Init()
 	teddy.Init()
 
+	if *flagDebug {
+		go http.ListenAndServe("localhost:6060", nil)
+		launchBrowser("http://localhost:6060/debug/pprof/")
+	}
+
 	// initialize spread baseline tracker
 	gSpreadEMA = indicators.NewWWMA(*flagSamples)
 
@@ -61,21 +71,28 @@ func main() {
 	gCoinbasePair = gCoinbase.Pairs.Get(*flagSymbol + "-USD")
 	gHolding = gCoinbase.Holdings.Get(*flagSymbol)
 	gCash = gCoinbase.Holdings.Get("USD")
-	gCoinbasePair.OnTick = onCoinbaseTick
 
 	// setup predictor (where we watch)
 	predictorExchange, predictorSymbol := parsePredictor(*flagPredictor)
 	predictor := teddy.Exchanges.Get(predictorExchange)
 	gPredictorPair = predictor.Pairs.Get(predictorSymbol)
-	gPredictorPair.OnTick = onPredictorTick
 
+	// prepare for arbitrage
+	teddy.Exchanges.OnReady = onReady
 	teddy.SetBalance(ds.ExchangeCoinbase, *flagSymbol, *flagCoin)
 	teddy.SetBalance(ds.ExchangeCoinbase, "USD", *flagUSD)
 	teddy.SetBenchmark(gCoinbasePair)
 	teddy.Run()
 }
 
+func onReady() {
+	log.Printf("[startup] ready, steady, go")
+	gCoinbasePair.OnTick = onCoinbaseTick
+	gPredictorPair.OnTick = onPredictorTick
+}
+
 func onCoinbaseTick(tick *ds.Tick) {
+	// log.Printf("onCoinbaseTick")
 	teddy.Spawn(func() {
 		if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
 			gOrderLock.Lock()
@@ -86,6 +103,7 @@ func onCoinbaseTick(tick *ds.Tick) {
 }
 
 func onPredictorTick(tick *ds.Tick) {
+	// log.Printf("onPredictorTick")
 	teddy.Spawn(func() {
 		for _, trade := range tick.Trades {
 			arbitrage(trade.Time, tick.Time, trade.Price)
@@ -95,10 +113,22 @@ func onPredictorTick(tick *ds.Tick) {
 
 func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decimal) {
 
+	if teddy.Live {
+		now := clocky.Now()
+		goDelay := now.Sub(receivedTime)
+		if goDelay > clocky.Millisecond {
+			log.Printf("[info] tick took %s to deliver", goDelay)
+		}
+	}
+
 	// calculate spread between coinbase and predictor
 	// spread = (midpoint - prediction) / prediction
 	bid, ask := gCoinbasePair.OrderBook.BestBidAsk()
 	mid := bid.Add(ask).DivInt(2)
+	if !mid.IsPositive() {
+		log.Printf("[error] somehow have non-positive midpoint price %s", mid)
+		return
+	}
 	spread := mid.Sub(predictorPrice).Div(predictorPrice)
 
 	// determine how much spread differs from what it normally is
@@ -171,6 +201,7 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	var size, limi decimal.Decimal
 	predictedPrice := predictorPrice.Mul(decimal.One.Add(baseline))
 	move := predictedPrice.Sub(mid).Div(mid)
+
 	if predictedPrice.Cmp(mid) > 0 {
 		side = ds.SideBuy
 		size = gCash.Available.Mul(decimal.One.Sub(*flagBuffer)).Div(predictedPrice)
@@ -231,8 +262,8 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	}
 	orderTime := clocky.Now()
 	if orderTime < gNextOrder {
-		logDecision()
 		if *flagVerbose {
+			logDecision()
 			log.Printf("[skip] we placed an order %s ago and have to wait %s because backoff is %s",
 				orderTime.Sub(gLastOrder), gNextOrder.Sub(orderTime), gOrderBackoff)
 		}
@@ -282,17 +313,8 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	ackTime := clocky.Now()
 
 	// report result
-	if order.State == ds.OrderStateFilled {
-		value := order.Filled.Mul(order.FillPrice)
-		log.Printf("[trade] %s $%s @ $%s",
-			side, value.Quantize(gCoinbasePair.QuoteIncrement),
-			order.FillPrice.Quantize(gCoinbasePair.QuoteIncrement))
-	} else if order.Filled.IsPositive() {
-		value := order.Filled.Mul(order.FillPrice)
-		log.Printf("[partial] %s $%s @ $%s (wanted $%s)",
-			side, value.Quantize(gCoinbasePair.QuoteIncrement),
-			order.FillPrice.Quantize(gCoinbasePair.QuoteIncrement),
-			size.Format(0))
+	if order.Filled.IsPositive() {
+		log.Printf("[trade] %s %s %s of %s at $%s", side, order.Notional, order.Pair.QuoteCurrency, order.Pair.BaseCurrency, order.Price)
 	} else if *flagVerbose {
 		log.Printf("[miss] %s order not filled (state=%s)", side, order.State)
 	}
@@ -309,4 +331,19 @@ func parsePredictor(s string) (ds.Exchange, string) {
 		loggy.Fatalf("invalid predictor format: %s (expected SYMBOL@exchange)", s)
 	}
 	return ds.MustParseExchange(parts[1]), parts[0]
+}
+
+func launchBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "linux":
+		cmd = exec.Command("xdg-open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	}
+	if cmd != nil {
+		cmd.Run()
+	}
 }

@@ -3,6 +3,7 @@ package teddy
 import (
 	"dropbear/decimal"
 	"dropbear/loggy"
+	"log"
 	"sync"
 
 	"github.com/emirpasic/gods/v2/sets/treeset"
@@ -104,6 +105,9 @@ func (ps *Pairs) markReady(pair *Pair) {
 	isReady := ps.unready.Empty()
 	ps.lock.Unlock()
 	if isReady {
+		if *flagVerbose {
+			log.Printf("[teddy] %s exchange ready", ps.exchange)
+		}
 		ps.exchange.OnReady()
 		Exchanges.markReady(ps.exchange)
 	}

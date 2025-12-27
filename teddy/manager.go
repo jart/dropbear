@@ -68,7 +68,9 @@ func (m *manager) Run() {
 	m.lock.Unlock()
 	oldOnReady := Exchanges.OnReady
 	Exchanges.OnReady = func() {
-		oldOnReady()
+		if oldOnReady != nil {
+			oldOnReady()
+		}
 		m.report.Init()
 		m.sample = m.report.Sample
 		m.ready = true
@@ -94,7 +96,7 @@ func (m *manager) Run() {
 		if err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				entry.data.Close()
-				continue // keep processing other data sources
+				break // yes we really want the intersection of chosen datasets
 			}
 			panic("failed to read tick: " + err.Error())
 		}

@@ -21,7 +21,7 @@ var (
 	flagBacktest   = flag.String("backtest", "", "name of backtest dataset")
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flagRFR        = decimal.FlagBPS("rfr", "487", "annualized risk-free rate in basis points")
-	flagQuantum    = clocky.DurationFlag("quantum", "1h30m", "metric sampling interval while backtesting")
+	flagQuantum    = clocky.DurationFlag("quantum", "1m", "metric sampling interval while backtesting")
 	flagVerbose    = flag.Bool("teddy-verbose", false, "log order simulation decisions")
 )
 
@@ -99,15 +99,12 @@ func Run() {
 	if gBenchmark == nil {
 		panic("you forgot to call teddy.SetBenchmark()")
 	}
-	defer func() {
-		for _, exchange := range Exchanges.All() {
-			for _, order := range exchange.Orders.Open() {
-				order.Cancel()
-			}
-		}
-	}()
 	report := newReport(gBenchmark)
 	if Live {
+		defer cancelAllOpenOrders()
+		sampler := newSamplerDaemon(*flagQuantum, report)
+		defer sampler.Close()
+		sampler.Run()
 		for _, exchange := range Exchanges.All() {
 			exchange.run()
 			for _, pair := range exchange.Pairs.All() {
@@ -176,4 +173,31 @@ func GetInvestedUSD() decimal.Decimal {
 // TODO(jart): this should take a time parameter since it changes.
 func GetRiskFreeRate() decimal.Decimal {
 	return *flagRFR
+}
+
+// cancelAllOpenOrders cancels all open orders across all exchanges.
+// This is implemented to bypass the framework so it can happen on panic.
+func cancelAllOpenOrders() {
+	if Paper {
+		return
+	}
+	for _, exchange := range Exchanges.exchangeArray {
+		switch exchange.Exchange {
+		case ds.ExchangeCoinbase:
+			var orderIDs []string
+			for _, order := range exchange.Orders.openOrders.Values() {
+				if order.OrderID != "" {
+					orderIDs = append(orderIDs, order.OrderID)
+					log.Printf("canceling order %s on %s", order.OrderID, exchange)
+				}
+			}
+			if len(orderIDs) > 0 {
+				if err := CoinbaseClient.CancelOrders(orderIDs); err != nil {
+					log.Printf("error canceling orders on %s: %v", exchange, err)
+				}
+			}
+		default:
+			continue
+		}
+	}
 }

@@ -17,7 +17,6 @@ type report struct {
 	startTime         clocky.Time
 	startEquity       decimal.Decimal
 	endEquity         decimal.Decimal
-	trades            map[ds.Side]int
 	initialHoldings   []initialHolding
 	benchmark         *Pair
 	benchmarkQuantity decimal.Decimal
@@ -34,7 +33,6 @@ type initialHolding struct {
 func newReport(benchmark *Pair) *report {
 	return &report{
 		benchmark:        benchmark,
-		trades:           make(map[ds.Side]int),
 		benchmarkEquity:  metrics.NewEquity(*flagQuantum),
 		strategyEquity:   metrics.NewEquity(*flagQuantum),
 		strategyInvested: metrics.NewInvested(),
@@ -169,9 +167,10 @@ func (r *report) Print() {
 		}
 	}
 	fmt.Printf("end.fees %s\n", fees)
-	fmt.Printf("end.buys %d\n", r.trades[ds.SideBuy])
-	fmt.Printf("end.sells %d\n", r.trades[ds.SideSell])
-	fmt.Printf("end.trades %d\n", r.trades[ds.SideBuy]+r.trades[ds.SideSell])
+	fmt.Printf("end.rebates %s\n", rebates)
+	fmt.Printf("end.vol30day %.6f\n", vol30day/1_000_000)
+	fmt.Printf("end.cagr %.2f\n", cagr)
+	fmt.Printf("end.maxdd %.2f\n", r.strategyEquity.MaxDrawdown()*100)
 
 	// aggregate win/loss counts across all non-cash holdings
 	var totalWins, totalLosses int
@@ -192,15 +191,25 @@ func (r *report) Print() {
 		fmt.Printf("end.losses %d\n", totalLosses)
 		fmt.Printf("end.winrate %.1f\n", winRate)
 	}
-	fmt.Printf("end.rebates %s\n", rebates)
-	fmt.Printf("end.vol30day %.6f\n", vol30day/1_000_000)
-	fmt.Printf("end.cagr %.2f\n", cagr)
-	fmt.Printf("end.maxdd %.2f\n", r.strategyEquity.MaxDrawdown()*100)
+
+	// print trade counts
+	buys, sells := 0, 0
+	for _, exchange := range Exchanges.All() {
+		for _, pair := range exchange.Pairs.All() {
+			pair.Lock.RLock()
+			buys += pair.Trades[ds.SideBuy]
+			sells += pair.Trades[ds.SideSell]
+			pair.Lock.RUnlock()
+		}
+	}
+	fmt.Printf("end.buys %d\n", buys)
+	fmt.Printf("end.sells %d\n", sells)
+	fmt.Printf("end.trades %d\n", buys+sells)
 
 	// usd invested efficiency metrics
-	fmt.Printf("invested.min %s\n", r.strategyInvested.Min().Format(0))
-	fmt.Printf("invested.max %s\n", r.strategyInvested.Max().Format(0))
-	fmt.Printf("invested.avg %s\n", r.strategyInvested.Avg().Format(0))
+	fmt.Printf("invested.min %s\n", r.strategyInvested.Min())
+	fmt.Printf("invested.max %s\n", r.strategyInvested.Max())
+	fmt.Printf("invested.avg %s\n", r.strategyInvested.Avg())
 
 	// print benchmark
 	fmt.Println()
