@@ -34,6 +34,7 @@ func (c *Client) GetAccounts() ([]*Account, error) {
 		if cursor != "" {
 			path += "&cursor=" + cursor
 		}
+		c.rateLimiter.Get()
 		resp, err := c.Get(path)
 		if err != nil {
 			return nil, err

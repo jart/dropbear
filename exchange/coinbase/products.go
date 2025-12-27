@@ -38,6 +38,7 @@ type ProductsResponse struct {
 
 // GetProducts retrieves all available trading products.
 func (c *Client) GetProducts() (*ProductsResponse, error) {
+	c.rateLimiter.Get()
 	resp, err := c.Get("/api/v3/brokerage/products")
 	if err != nil {
 		return nil, err
@@ -56,6 +57,7 @@ func (c *Client) GetProducts() (*ProductsResponse, error) {
 
 // GetProduct retrieves information about a tradable pair on Coinbase.
 func (c *Client) GetProduct(productID string) (*Product, error) {
+	c.rateLimiter.Get()
 	resp, err := c.Get("/api/v3/brokerage/products/" + productID)
 	if err != nil {
 		return nil, err

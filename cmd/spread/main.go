@@ -102,7 +102,7 @@ func main() {
 
 	if teddy.Live {
 		client := teddy.CoinbaseClient
-		symbol := gCoinbasePair.Symbol()
+		symbol := gCoinbasePair.Symbol
 		granularity := coinbase.CandleGranularityMinute
 		if candles, err := client.GetCandles(symbol, granularity, 0, 0, 0); err == nil {
 			for _, c := range candles {

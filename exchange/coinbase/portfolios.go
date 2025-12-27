@@ -44,6 +44,7 @@ type PortfoliosResponse struct {
 
 // GetPortfolios retrieves all portfolios.
 func (c *Client) GetPortfolios() (*PortfoliosResponse, error) {
+	c.rateLimiter.Get()
 	resp, err := c.Get("/api/v3/brokerage/portfolios")
 	if err != nil {
 		return nil, err
@@ -62,6 +63,7 @@ func (c *Client) GetPortfolios() (*PortfoliosResponse, error) {
 
 // GetPortfolioBreakdown retrieves the breakdown for a portfolio.
 func (c *Client) GetPortfolioBreakdown(uuid string) (*PortfolioBreakdown, error) {
+	c.rateLimiter.Get()
 	resp, err := c.Get("/api/v3/brokerage/portfolios/" + uuid)
 	if err != nil {
 		return nil, err

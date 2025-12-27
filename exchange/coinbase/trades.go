@@ -23,6 +23,7 @@ func (c *Client) GetTrades(productID string, start, end clocky.Time, limit int) 
 	if limit > 0 {
 		url = fmt.Sprintf("%s&limit=%d", url, limit)
 	}
+	c.rateLimiter.Get()
 	resp, err := c.Get(url)
 	if err != nil {
 		return nil, err

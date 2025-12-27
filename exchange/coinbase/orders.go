@@ -183,13 +183,19 @@ func (c *Client) createOrder(body map[string]any) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("marshaling order: %w", err)
 	}
-	resp, err := c.Request(ds.FastHTTPClient, "POST", "/api/v3/brokerage/orders", bytes.NewReader(jsonBody))
+	if !c.rateLimiter.Try() {
+		return "", ds.ErrTooManyRequests
+	}
+	resp, err := c.Request(ds.FastHTTPClient, "POST", "/api/v3/brokerage/orders", bytes.NewReader(jsonBody), false)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 	var result CreateOrderResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("create order failed with status code %d", resp.StatusCode)
+		}
 		return "", fmt.Errorf("decoding response: %w", err)
 	}
 	if !result.Success {
@@ -223,7 +229,10 @@ func (c *Client) CancelOrders(orderIDs []string) error {
 	if err != nil {
 		return fmt.Errorf("marshaling cancel request: %w", err)
 	}
-	resp, err := c.Request(ds.FastHTTPClient, "POST", "/api/v3/brokerage/orders/batch_cancel", bytes.NewReader(jsonBody))
+	if !c.rateLimiter.Try() {
+		return ds.ErrTooManyRequests
+	}
+	resp, err := c.Request(ds.FastHTTPClient, "POST", "/api/v3/brokerage/orders/batch_cancel", bytes.NewReader(jsonBody), false)
 	if err != nil {
 		return err
 	}
@@ -246,6 +255,7 @@ func (c *Client) CancelOrder(orderID string) error {
 
 // GetOrder retrieves a single order by ID.
 func (c *Client) GetOrder(orderID string) (*Order, error) {
+	c.rateLimiter.Get()
 	resp, err := c.Get("/api/v3/brokerage/orders/historical/" + orderID)
 	if err != nil {
 		return nil, err
@@ -284,6 +294,7 @@ func (c *Client) ListOrders(orderStatus, cursor string) (*ListOrdersResponse, er
 	if cursor != "" {
 		url += sep + "cursor=" + cursor
 	}
+	c.rateLimiter.Get()
 	resp, err := c.Get(url)
 	if err != nil {
 		return nil, err
@@ -336,7 +347,10 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, price decimal
 	if err != nil {
 		return fmt.Errorf("marshaling edit request: %w", err)
 	}
-	resp, err := c.Request(ds.FastHTTPClient, "POST", "/api/v3/brokerage/orders/edit", bytes.NewReader(jsonBody))
+	if !c.rateLimiter.Try() {
+		return ds.ErrTooManyRequests
+	}
+	resp, err := c.Request(ds.FastHTTPClient, "POST", "/api/v3/brokerage/orders/edit", bytes.NewReader(jsonBody), false)
 	if err != nil {
 		return err
 	}
@@ -353,6 +367,9 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, price decimal
 		} `json:"errors"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("replace order failed with status code %d", resp.StatusCode)
+		}
 		return fmt.Errorf("decoding response: %w", err)
 	}
 	if !result.Success {

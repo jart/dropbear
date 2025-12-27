@@ -52,6 +52,7 @@ func (c *Client) ListFills(startTime, endTime, cursor string) (*ListFillsRespons
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}
+	c.rateLimiter.Get()
 	resp, err := c.Get(path)
 	if err != nil {
 		return nil, err

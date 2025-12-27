@@ -28,7 +28,6 @@ func (ps *Pairs) Lookup(productID string) *Pair {
 }
 
 // Get returns the Pair for the given symbol, e.g. BTC-USD.
-// Even if it's Binance, this uses the Coinbase symbol format.
 // Unlike Lookup, this creates Pair if it doesn't already exist.
 func (ps *Pairs) Get(productID string) *Pair {
 	pair := ps.Lookup(productID)

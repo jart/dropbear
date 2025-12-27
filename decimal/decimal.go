@@ -18,7 +18,8 @@ const (
 	Tenth   = Decimal(Scale / 10)
 	Max     = Decimal(9_000_000_000 * Scale)
 	Min     = Decimal(-9_000_000_000 * Scale)
-	Satoshi = Decimal(10) // 0.00000001
+	Satoshi = Decimal(10)          // 0.00000001
+	Cent    = Decimal(Scale / 100) // 0.01
 	Scale   = 1_000_000_000
 	Places  = 9
 )

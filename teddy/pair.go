@@ -15,6 +15,7 @@ import (
 )
 
 type Pair struct {
+	Symbol         string
 	Lock           sync.RWMutex
 	Exchange       *Exchange
 	LastPrice      decimal.Decimal
@@ -33,27 +34,16 @@ type Pair struct {
 }
 
 func (p *Pair) String() string {
-	return p.Symbol()
-}
-
-func (p *Pair) Symbol() string {
-	switch p.Exchange.Exchange {
-	case ds.ExchangeBinance, ds.ExchangeBinanceUSD:
-		return p.BaseCurrency + p.QuoteCurrency
-	default:
-		return p.BaseCurrency + "-" + p.QuoteCurrency
-	}
+	return p.Symbol
 }
 
 func newPair(exchange *Exchange, symbol string) *Pair {
-	parts := strings.Split(symbol, "-")
-	if len(parts) != 2 {
-		panic("invalid pair symbol: " + symbol)
-	}
+	baseCurrency, quoteCurrency := splitProductID(symbol)
 	p := &Pair{
+		Symbol:         symbol,
 		Exchange:       exchange,
-		BaseCurrency:   parts[0],
-		QuoteCurrency:  parts[1],
+		BaseCurrency:   baseCurrency,
+		QuoteCurrency:  quoteCurrency,
 		BaseIncrement:  decimal.Satoshi,
 		QuoteIncrement: decimal.Satoshi,
 		QuoteMinSize:   decimal.One,
@@ -73,16 +63,19 @@ func (p *Pair) init() {
 		go p.refreshDaemon()
 		switch p.Exchange.Exchange {
 		case ds.ExchangeBinance:
-			go p.liveDataDaemon(binance.MarketData(p.Symbol(), BinanceClient))
+			go p.liveDataDaemon(binance.MarketData(p.Symbol, BinanceClient))
 		case ds.ExchangeBinanceUSD:
-			go p.liveDataDaemon(binanceusd.MarketData(p.Symbol(), BinanceUSDClient))
+			go p.liveDataDaemon(binanceusd.MarketData(p.Symbol, BinanceUSDClient))
 		case ds.ExchangeCoinbase:
-			go p.liveDataDaemon(coinbase.MarketData(p.Symbol(), CoinbaseClient))
+			go p.liveDataDaemon(coinbase.MarketData(p.Symbol, CoinbaseClient))
 		default:
 			panic("unsupported exchange")
 		}
 	} else {
-		if p.Exchange.Exchange == ds.ExchangeCoinbase {
+		p.QuoteIncrement = guessIncrement(p.QuoteCurrency)
+		p.BaseIncrement = guessIncrement(p.BaseCurrency)
+		switch p.Exchange.Exchange {
+		case ds.ExchangeCoinbase:
 			p.Exchange.Holdings.Get(p.BaseCurrency)
 			p.Exchange.Holdings.Get(p.QuoteCurrency)
 		}
@@ -205,7 +198,7 @@ func (p *Pair) refresh() {
 }
 
 func (p *Pair) refreshCoinbase() {
-	json, err := CoinbaseClient.GetProduct(p.Symbol())
+	json, err := CoinbaseClient.GetProduct(p.Symbol)
 	if err != nil {
 		loggy.Fatalf("failed to get coinbase product info: %v", err)
 	}
@@ -220,7 +213,7 @@ func (p *Pair) refreshCoinbase() {
 }
 
 func (p *Pair) refreshBinance() {
-	json, err := BinanceClient.GetSymbol(p.Symbol())
+	json, err := BinanceClient.GetSymbol(p.Symbol)
 	if err != nil {
 		loggy.Fatalf("failed to get binance symbol info: %v", err)
 	}
@@ -232,7 +225,7 @@ func (p *Pair) refreshBinance() {
 }
 
 func (p *Pair) refreshBinanceUSD() {
-	json := getBinanceUSDSymbol(p.Symbol())
+	json := getBinanceUSDSymbol(p.Symbol)
 	p.Lock.Lock()
 	defer p.Lock.Unlock()
 	for _, filter := range json.Filters {
@@ -278,4 +271,30 @@ func getBinanceUSDSymbol(symbol string) *binanceusd.Symbol {
 		}
 	}
 	return nil
+}
+
+func splitProductID(s string) (baseCurrency, quoteCurrency string) {
+	if strings.Contains(s, "-") {
+		parts := strings.SplitN(s, "-", 2)
+		return parts[0], parts[1]
+	}
+	if strings.Contains(s, "/") {
+		parts := strings.SplitN(s, "/", 2)
+		return parts[0], parts[1]
+	}
+	for _, quote := range binanceusd.QuoteCurrencies {
+		if before, found := strings.CutSuffix(s, quote); found && before != "" {
+			return before, quote
+		}
+	}
+	panic("invalid product id: " + s)
+}
+
+func guessIncrement(currency string) decimal.Decimal {
+	switch currency {
+	case "USD", "EUR", "GBP", "JPY", "USDT", "USDC", "BUSD", "DAI":
+		return decimal.Cent
+	default:
+		return decimal.Satoshi
+	}
 }

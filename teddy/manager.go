@@ -45,7 +45,7 @@ func (m *manager) Close() {
 }
 
 func (m *manager) Register(pair *Pair) {
-	data := openRecordedMarketData(*flagBacktest, pair.Exchange.Exchange, pair.Symbol())
+	data := openRecordedMarketData(*flagBacktest, pair.Exchange.Exchange, pair.Symbol)
 	entry := &managerEntry{pair: pair, data: data, tick: &ds.Tick{}}
 	err := data.Read(entry.tick)
 	if err != nil {
@@ -75,6 +75,7 @@ func (m *manager) Run() {
 		entry, _ := m.heap.Pop()
 		now := entry.tick.Time
 		clocky.SetNow(now)
+		gRateLimiter.Pulse(now)
 
 		// wait all pairs have received some data
 		entry.pair.handleTick(entry.tick)

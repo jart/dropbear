@@ -38,8 +38,9 @@ var (
 	gStrategyEquity   *metrics.Equity
 	gBenchmarkEquity  *metrics.Equity
 	gStrategyInvested *metrics.Invested
-	gBenchmarkQty     decimal.Decimal  // quantity of benchmark asset for buy-and-hold comparison
-	gInitialHoldings  []initialHolding // snapshot of holdings when Run() is called
+	gBenchmarkQty     decimal.Decimal
+	gInitialHoldings  []initialHolding
+	gRateLimiter      *rateLimiter
 )
 
 func Init() {
@@ -57,6 +58,7 @@ func Init() {
 		clocky.Now = clocky.FakeNow
 		gReport = newReport()
 		gManager = newManager()
+		gRateLimiter = newRateLimiterCoinbase()
 		gStrategyInvested = metrics.NewInvested()
 		gStrategyEquity = metrics.NewEquity(*flagQuantum)
 		gBenchmarkEquity = metrics.NewEquity(*flagQuantum)

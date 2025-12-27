@@ -52,6 +52,7 @@ type v2AccountsResponse struct {
 func (c *Client) GetV2AccountByCurrencyCode(symbol string) (*V2Account, error) {
 	path := "/v2/accounts?limit=250" // 250 is the maximum limit
 	for path != "" {
+		c.rateLimiter.Get()
 		resp, err := c.Get(path)
 		if err != nil {
 			return nil, err

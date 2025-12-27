@@ -120,24 +120,20 @@ func (m *marketData) snapshot() error {
 		Snap: true,
 	}
 	for _, bid := range depthSnapshot.Bids {
-		if len(bid) >= 2 {
-			price := decimal.Parse(bid[0])
-			size := decimal.Parse(bid[1])
-			tick.Bids = append(tick.Bids, ds.Level{
-				Price: price,
-				Size:  size,
-			})
-		}
+		price := decimal.Parse(bid[0])
+		size := decimal.Parse(bid[1])
+		tick.Bids = append(tick.Bids, ds.Level{
+			Price: price,
+			Size:  size,
+		})
 	}
 	for _, ask := range depthSnapshot.Asks {
-		if len(ask) >= 2 {
-			price := decimal.Parse(ask[0])
-			size := decimal.Parse(ask[1])
-			tick.Asks = append(tick.Asks, ds.Level{
-				Price: price,
-				Size:  size,
-			})
-		}
+		price := decimal.Parse(ask[0])
+		size := decimal.Parse(ask[1])
+		tick.Asks = append(tick.Asks, ds.Level{
+			Price: price,
+			Size:  size,
+		})
 	}
 	m.LastUpdateID = depthSnapshot.LastUpdateID
 	m.channel <- tick

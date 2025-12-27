@@ -22,12 +22,12 @@ func NewClient() *Client {
 
 // Get makes an authenticated GET request.
 func (c *Client) Get(url string) (*http.Response, error) {
-	return c.Request(ds.BulkHttpClient, "GET", url, nil)
+	return c.Request(ds.BulkHttpClient, "GET", url, nil, true)
 }
 
 // Request makes an authenticated API request to Coinbase with rate limiting.
 // Just because the returned error is nil doesn't mean the request succeeded.
-func (c *Client) Request(client *http.Client, method, reqURL string, body io.Reader) (*http.Response, error) {
+func (c *Client) Request(client *http.Client, method, reqURL string, body io.Reader, shouldRetry bool) (*http.Response, error) {
 
 	// read body into memory for retries
 	var bodyBytes []byte
@@ -57,8 +57,6 @@ func (c *Client) Request(client *http.Client, method, reqURL string, body io.Rea
 	// retry loop
 	tries := 0
 	for {
-		// acquire token
-		c.rateLimiter.get()
 
 		// send http request
 		var bodyReader io.Reader
@@ -76,7 +74,7 @@ func (c *Client) Request(client *http.Client, method, reqURL string, body io.Rea
 
 		// handle network errors
 		if err != nil {
-			if !ds.IsRetryableHTTPError(err) {
+			if !shouldRetry || !ds.IsRetryableHTTPError(err) {
 				return nil, err
 			}
 			delay := time.Duration(1<<min(tries, 10)) * time.Millisecond
@@ -87,7 +85,10 @@ func (c *Client) Request(client *http.Client, method, reqURL string, body io.Rea
 		}
 
 		// handle http errors
-		if !ds.IsRetryableHTTPStatusCode(resp.StatusCode) {
+		if !shouldRetry || !ds.IsRetryableHTTPStatusCode(resp.StatusCode) {
+			if resp.StatusCode == http.StatusTooManyRequests {
+				return nil, ds.ErrTooManyRequests
+			}
 			return resp, nil
 		}
 		statusCode := resp.StatusCode

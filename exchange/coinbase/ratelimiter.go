@@ -30,7 +30,17 @@ func newRateLimiter(requestsPerSecond, burst int) *rateLimiter {
 	return rl
 }
 
-func (rl *rateLimiter) get() {
+func (rl *rateLimiter) Try() bool {
+	rl.lock.Lock()
+	defer rl.lock.Unlock()
+	if rl.tokens > 0 {
+		rl.tokens--
+		return true
+	}
+	return false
+}
+
+func (rl *rateLimiter) Get() {
 	rl.lock.Lock()
 	if rl.tokens > 0 {
 		rl.tokens--

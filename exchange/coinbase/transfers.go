@@ -69,7 +69,8 @@ func (c *Client) SendCrypto(accountID string, to string, amount string, currency
 		return nil, fmt.Errorf("marshaling send request: %w", err)
 	}
 	path := fmt.Sprintf("/v2/accounts/%s/transactions", accountID)
-	resp, err := c.Request(ds.BulkHttpClient, "POST", path, bytes.NewReader(jsonBody))
+	c.rateLimiter.Get()
+	resp, err := c.Request(ds.BulkHttpClient, "POST", path, bytes.NewReader(jsonBody), true)
 	if err != nil {
 		return nil, err
 	}

@@ -66,6 +66,13 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 		}
 	}
 
+	// simulate rate limits in backtest mode
+	if !Live {
+		if !gRateLimiter.Try() {
+			return nil, ds.ErrTooManyRequests
+		}
+	}
+
 	// put hold on account
 	hold := decimal.Zero
 	switch side {
@@ -104,7 +111,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	if Live {
 		switch p.Exchange.Exchange {
 		case ds.ExchangeCoinbase:
-			orderID, err := CoinbaseClient.LimitOrder(p.Symbol(), side, quantity, limitPrice, order.ClientOrderID, strategy, GetCostBasisMethod())
+			orderID, err := CoinbaseClient.LimitOrder(p.Symbol, side, quantity, limitPrice, order.ClientOrderID, strategy, GetCostBasisMethod())
 			if orderID != "" {
 				orders.lock.Lock()
 				order.OrderID = orderID

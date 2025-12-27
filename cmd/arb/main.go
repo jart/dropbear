@@ -15,14 +15,14 @@ import (
 
 var (
 	flagVerbose   = flag.Bool("verbose", false, "enable verbose logging")
-	flagSymbol    = flag.String("symbol", "BTC", "coinbase product to trade")
+	flagSymbol    = flag.String("symbol", "BTC", "coinbase currency to trade")
 	flagPredictor = flag.String("predictor", "BTCUSDT@binanceusd", "predictor symbol@exchange (e.g. BTCUSDT@binanceusd, BTCFDUSD@binance)")
 	flagUSD       = decimal.Flag("usd", "10000", "coinbase usd balance")
 	flagCoin      = decimal.Flag("coin", "0.4", "symbol balance in base currency")
 	flagBuffer    = decimal.FlagPercent("buffer", "0.5", "percent of balance buffer to keep free")
 	flagThreshold = decimal.FlagBPS("threshold", "3", "minimum spread deviation to trade (basis points)")
-	flagCooldown  = clocky.DurationFlag("cooldown", "150ms", "minimum time between trades")
-	flagFreshness = clocky.DurationFlag("freshness", "1s", "max age of market data before suspending")
+	flagCooldown  = clocky.DurationFlag("cooldown", "50ms", "minimum time between trades")
+	flagFreshness = clocky.DurationFlag("freshness", "500ms", "max age of market data before suspending")
 	flagSamples   = flag.Int("samples", 5000, "number of sample trades used to determine baseline spread")
 )
 
@@ -33,7 +33,9 @@ var (
 	gCoinbasePair  *teddy.Pair
 	gPredictorPair *teddy.Pair
 	gLastCoinbase  clocky.Time
+	gOrderBackoff  clocky.Duration
 	gLastOrder     clocky.Time
+	gNextOrder     clocky.Time
 	gOrderLock     sync.Mutex
 	gSpreadEMA     *indicators.WWMA
 	gSpreadLock    sync.Mutex
@@ -43,9 +45,6 @@ func main() {
 	flag.Parse()
 	loggy.Init()
 	teddy.Init()
-
-	// parse predictor flag
-	predictorExchange, predictorSymbol := parsePredictor(*flagPredictor)
 
 	log.Printf("arb: symbol=%s predictor=%s threshold=%sbps cooldown=%s samples=%d",
 		*flagSymbol, *flagPredictor, (*flagThreshold).BPS(), *flagCooldown, *flagSamples)
@@ -61,6 +60,7 @@ func main() {
 	gCoinbasePair.OnTick = onCoinbaseTick
 
 	// setup predictor (where we watch)
+	predictorExchange, predictorSymbol := parsePredictor(*flagPredictor)
 	predictor := teddy.Exchanges.Get(predictorExchange)
 	gPredictorPair = predictor.Pairs.Get(predictorSymbol)
 	gPredictorPair.OnTick = onPredictorTick
@@ -74,9 +74,7 @@ func main() {
 func onCoinbaseTick(tick *ds.Tick) {
 	teddy.Spawn(func() {
 		if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
-			if tick.Time > gLastCoinbase {
-				gLastCoinbase = tick.Time
-			}
+			gLastCoinbase = tick.Time
 		}
 	})
 }
@@ -84,17 +82,12 @@ func onCoinbaseTick(tick *ds.Tick) {
 func onPredictorTick(tick *ds.Tick) {
 	teddy.Spawn(func() {
 		for _, trade := range tick.Trades {
-			arbitrage(tick.Time, trade.Price)
+			arbitrage(trade.Time, tick.Time, trade.Price)
 		}
 	})
 }
 
-func arbitrage(now clocky.Time, predictorPrice decimal.Decimal) {
-
-	// don't trade too frequently
-	if now.Sub(gLastOrder) < *flagCooldown {
-		return
-	}
+func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decimal) {
 
 	// calculate spread between coinbase and predictor
 	// spread = (midpoint - prediction) / prediction
@@ -161,64 +154,111 @@ func arbitrage(now clocky.Time, predictorPrice decimal.Decimal) {
 	// round down, because buying low is good. whereas sells we want to round up.
 
 	var side ds.Side
-	var size decimal.Decimal
-	var limi decimal.Decimal
+	var size, limi, edge decimal.Decimal
 	predictedPrice := predictorPrice.Mul(decimal.One.Add(baseline))
+	move := predictedPrice.Sub(mid).Div(mid)
 	if predictedPrice.Cmp(mid) > 0 {
 		side = ds.SideBuy
 		size = gCash.Available.Mul(decimal.One.Sub(*flagBuffer)).Div(predictedPrice)
+		size = size.QuantizeDown(gCoinbasePair.BaseIncrement)
 		limi = predictedPrice.Div(decimal.One.Add(*flagThreshold))
 		limi = limi.QuantizeDown(gCoinbasePair.QuoteIncrement)
+		edge = limi.Sub(ask).Div(ask)
 		if limi.Cmp(ask) < 0 {
 			return
 		}
 	} else {
 		side = ds.SideSell
 		size = gHolding.Available.Mul(decimal.One.Sub(*flagBuffer))
+		size = size.QuantizeDown(gCoinbasePair.BaseIncrement)
 		limi = predictedPrice.Mul(decimal.One.Add(*flagThreshold))
 		limi = limi.QuantizeUp(gCoinbasePair.QuoteIncrement)
+		edge = bid.Sub(limi).Div(limi)
 		if limi.Cmp(bid) > 0 {
 			return
 		}
 	}
 
-	if *flagVerbose {
-		log.Printf("[signal] spread=%sbps baseline=%sbps dev=%sbps predicted=$%s limit=$%s action=%s",
-			spread.BPS().Format(2), baseline.BPS().Format(2),
-			deviation.BPS().Format(2), predictedPrice.Format(2), limi.Format(2), side)
+	logDecision := func() {
+		if *flagVerbose {
+			log.Printf("[signal] %s spread=%s baseline=%s deviation=%s move=%s edge=%s mid=%s predictor=%s predicted=%s limit=%s",
+				side, spread.BPS().Format(3), baseline.BPS().Format(3), deviation.BPS().Format(3), move.BPS().Format(3),
+				edge.BPS().Format(3), mid, predictorPrice, predictedPrice, limi)
+		}
 	}
 
-	// acquire trade lock
+	// rate limit orders by a small amount
+	// send overlapping orders with exponential backoff
+	// only overlap orders if they claim uncharted territory
 	gOrderLock.Lock()
-	if now.Sub(gLastOrder) < *flagCooldown {
+	openOrders := gCoinbase.Orders.Open()
+	for _, order := range openOrders {
+		switch order.Side {
+		case ds.SideBuy:
+			if side == ds.SideBuy && limi.Cmp(order.LimitPrice) <= 0 {
+				logDecision()
+				log.Printf("[skip] our buy price suddenly rolled back from %s to %s", order.LimitPrice, limi)
+				gOrderLock.Unlock()
+				return
+			}
+		case ds.SideSell:
+			if side == ds.SideSell && limi.Cmp(order.LimitPrice) >= 0 {
+				logDecision()
+				log.Printf("[skip] our sell price suddenly rolled back from %s to %s", order.LimitPrice, limi)
+				gOrderLock.Unlock()
+				return
+			}
+		}
+	}
+	orderTime := clocky.Now()
+	if orderTime < gNextOrder {
+		logDecision()
+		log.Printf("[skip] we placed an order %s ago and have to wait %s because backoff is %s",
+			orderTime.Sub(gLastOrder), gNextOrder.Sub(orderTime), gOrderBackoff)
 		gOrderLock.Unlock()
 		return
 	}
-	gLastOrder = now
+	if len(openOrders) == 0 {
+		gOrderBackoff = 0
+		gNextOrder = 0
+	}
+	if orderTime.Sub(tradeTime) > *flagFreshness {
+		logDecision()
+		log.Printf("[skip] trade happened %s ago, which we learned about %s ago",
+			orderTime.Sub(tradeTime), orderTime.Sub(receivedTime))
+		gOrderLock.Unlock()
+		return
+	}
+	if gOrderBackoff == 0 {
+		gOrderBackoff = *flagCooldown
+		gNextOrder = orderTime
+	} else {
+		gOrderBackoff *= 2
+	}
+	gLastOrder = orderTime
+	gNextOrder = gNextOrder.Add(gOrderBackoff)
 	gOrderLock.Unlock()
 
 	// place immediate-or-cancel limit order
-	t0 := now
-	t1 := clocky.Now()
-	size = size.QuantizeDown(gCoinbasePair.BaseIncrement)
 	order, err := gCoinbasePair.LimitOrder(side, size, limi, ds.OrderStrategyIOC)
-	t2 := clocky.Now()
 	if err != nil {
+		logDecision()
 		log.Printf("[error] failed to place order: %v", err)
 		return
 	}
 
 	// wait for order completion
+	sentTime := clocky.Now()
+	logDecision()
 	order.Wait()
-	t3 := clocky.Now()
+	ackTime := clocky.Now()
 
 	// report result
 	if order.State == ds.OrderStateFilled {
 		value := order.Filled.Mul(order.FillPrice)
-		log.Printf("[trade] %s $%s @ $%s latency=%s",
+		log.Printf("[trade] %s $%s @ $%s",
 			side, value.Quantize(gCoinbasePair.QuoteIncrement),
-			order.FillPrice.Quantize(gCoinbasePair.QuoteIncrement),
-			t3.Sub(t0))
+			order.FillPrice.Quantize(gCoinbasePair.QuoteIncrement))
 	} else if order.Filled.IsPositive() {
 		value := order.Filled.Mul(order.FillPrice)
 		log.Printf("[partial] %s $%s @ $%s (wanted $%s)",
@@ -230,8 +270,8 @@ func arbitrage(now clocky.Time, predictorPrice decimal.Decimal) {
 	}
 
 	if teddy.Live {
-		log.Printf("[perf] decided in %s ordered in %s acknowledged in %s",
-			t1.Sub(t0), t2.Sub(t1), t3.Sub(t2))
+		log.Printf("[perf] decided in %s ordered in %s acknowledged in %s round-tripped in %s",
+			orderTime.Sub(receivedTime), sentTime.Sub(orderTime), ackTime.Sub(orderTime), ackTime.Sub(receivedTime))
 	}
 }
 
@@ -240,30 +280,5 @@ func parsePredictor(s string) (ds.Exchange, string) {
 	if len(parts) != 2 {
 		loggy.Fatalf("invalid predictor format: %s (expected SYMBOL@exchange)", s)
 	}
-	symbol := parts[0]
-	exchangeName := parts[1]
-	var exchange ds.Exchange
-	switch exchangeName {
-	case "binance":
-		exchange = ds.ExchangeBinance
-		// convert to teddy format: BTCFDUSD -> BTC-FDUSD
-		symbol = convertBinanceSymbol(symbol)
-	case "binanceusd":
-		exchange = ds.ExchangeBinanceUSD
-		symbol = convertBinanceSymbol(symbol)
-	default:
-		loggy.Fatalf("unknown exchange: %s", exchangeName)
-	}
-	return exchange, symbol
-}
-
-func convertBinanceSymbol(s string) string {
-	// Convert BTCUSDT -> BTC-USDT, BTCFDUSD -> BTC-FDUSD, etc.
-	for _, quote := range []string{"USDT", "USDC", "FDUSD", "BUSD"} {
-		if strings.HasSuffix(s, quote) {
-			base := strings.TrimSuffix(s, quote)
-			return base + "-" + quote
-		}
-	}
-	return s
+	return ds.MustParseExchange(parts[1]), parts[0]
 }

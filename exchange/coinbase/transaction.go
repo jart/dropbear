@@ -150,6 +150,7 @@ func (c *Client) ListV2Transactions(accountID string, startingAfter string, limi
 	if startingAfter != "" {
 		path += "&starting_after=" + startingAfter
 	}
+	c.rateLimiter.Get()
 	resp, err := c.Get(path)
 	if err != nil {
 		return nil, err
@@ -203,6 +204,7 @@ type FeeTierDetails struct {
 // GetTransactionSummary returns fee tier and volume summary.
 // https://docs.cdp.coinbase.com/api-reference/advanced-trade-api/rest-api/fees/get-transaction-summary
 func (c *Client) GetTransactionSummary() (*TransactionSummary, error) {
+	c.rateLimiter.Get()
 	resp, err := c.Get("/api/v3/brokerage/transaction_summary")
 	if err != nil {
 		return nil, err
