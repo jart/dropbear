@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	flagKey = flag.String("alpaca-key", "alpaca.json", "path to alpaca key json file")
+	flagKey = flag.String("alpaca-key", os.ExpandEnv("$HOME/.alpaca.key"), "path to alpaca key json file")
 )
 
 var (

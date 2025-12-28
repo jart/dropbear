@@ -29,6 +29,10 @@ func newRateLimiter(requestsPerSecond, burst int) *rateLimiter {
 	}
 }
 
+func (rl *rateLimiter) Close() error {
+	return nil
+}
+
 func (rl *rateLimiter) Try() bool {
 	rl.lock.Lock()
 	defer rl.lock.Unlock()

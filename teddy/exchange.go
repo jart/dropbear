@@ -4,6 +4,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/exchange/coinbase"
+	"dropbear/exchange/kraken"
 	"dropbear/loggy"
 	"log"
 	"strings"
@@ -22,10 +23,10 @@ type Exchange struct {
 	Holdings *Holdings
 	Orders   *Orders
 	Pairs    *Pairs
-	MakerFee decimal.Decimal
-	TakerFee decimal.Decimal
-	Rebate   decimal.Decimal
-	Fees     decimal.Decimal
+	MakerFee decimal.Decimal // percent of notional commission for limit orders that don't take liquidity
+	TakerFee decimal.Decimal // percent of notional commission for marketable orders that take liquidity
+	Rebate   decimal.Decimal // percent usdc rebate on fees paid (e.g. 0.25 for 25% rebate)
+	Fees     decimal.Decimal // total fees paid on this exchange since starting teddy
 	OnReady  func()
 }
 
@@ -66,6 +67,8 @@ func (ex *Exchange) run() {
 		go coinbase.HTTPWarmupDaemon(3) // keep 3 connections warm
 		go ex.Orders.coinbaseOrderUpdateDaemon()
 		go ex.coinbaseFeeRatesDaemon()
+	case ds.ExchangeKraken:
+		go kraken.HTTPWarmupDaemon(3) // keep 3 connections warm
 	}
 }
 

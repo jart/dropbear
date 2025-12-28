@@ -346,7 +346,7 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 
 	if teddy.Live {
 		log.Printf("[perf] decided in %s ordered in %s acknowledged in %s round-tripped in %s",
-			orderTime.Sub(receivedTime), sentTime.Sub(orderTime), ackTime.Sub(orderTime), ackTime.Sub(receivedTime))
+			orderTime.Sub(receivedTime), sentTime.Sub(orderTime), ackTime.Sub(sentTime), ackTime.Sub(receivedTime))
 	}
 }
 

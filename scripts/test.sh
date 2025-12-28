@@ -3,6 +3,7 @@
 
 export LC_ALL=C
 
+
 SCRIPTS=${0%/*}
 CMD=${1:-spread}
 shift 1
@@ -12,15 +13,19 @@ REPORT=$(mktemp /tmp/dropbear.XXXXXX) || exit 1
 RESULTS=$(mktemp /tmp/dropbear.XXXXXX) || exit 1
 trap onexit EXIT
 
+printf '%s\n' "$ARGS" >"$REPORT"
+
 onexit() {
     rm -f "$RESULTS" "$REPORT"
 }
 
 run() {
     COIN=$1
+    shift
+    EXTRA_ARGS="$*"
     (
         OUTPATH=$(mktemp /tmp/dropbear.XXXXXX) || exit 1
-        EXECUTE="go run ./cmd/$CMD -backtest $DATASET -symbol $COIN $ARGS"
+        EXECUTE="go run ./cmd/$CMD -backtest $DATASET -symbol $COIN $ARGS $EXTRA_ARGS"
         # echo $EXECUTE >&2
         if $EXECUTE >$OUTPATH 2>/dev/null; then
             VOLUME=$(grep end.vol30day $OUTPATH | awk '{print $2}')
@@ -42,8 +47,8 @@ run() {
             else
                 JUDGEMENT="bad"
             fi
-            printf "%s %-10s %-4s vol=%5.1f profit=%8.2f sharpe=%7s buys=%6d sells=%6d invested=%5s %s\n" \
-                "$CMD" "$DATASET" "$COIN" "$VOLUME" "$PROFIT" "$SHARPE" "$BUYS" "$SELLS" "$INVESTED" "$JUDGEMENT" >>"$REPORT"
+            printf "%s %-10s %-4s vol=%5.1f profit=%8.2f sharpe=%7s buys=%6d sells=%6d invested=%7.0s %s %s\n" \
+                "$CMD" "$DATASET" "$COIN" "$VOLUME" "$PROFIT" "$SHARPE" "$BUYS" "$SELLS" "$INVESTED" "$JUDGEMENT" "$EXTRA_ARGS" >>"$REPORT"
             echo "$VOLUME $PROFIT $PROFIT_BENCH $SHARPE $SHARPE_BENCH $INVESTED $JUDGEMENT" >>"$RESULTS"
             rm -f $OUTPATH
         else
@@ -57,7 +62,17 @@ for DATASET in $(cd ~/marketdata/; ls -1); do
         if [ $COIN = USDT ]; then
             continue
         fi
-        run $COIN
+        if [ $CMD = arb ]; then
+            for EXCHANGE in binanceusd; do
+                if [ -d ~/marketdata/$DATASET/$EXCHANGE/ ]; then
+                    for PREDICTOR in ${COIN}USDT; do
+                        run ${COIN} -predictor ${PREDICTOR}@${EXCHANGE}
+                    done
+                fi
+            done
+        else
+            run $COIN
+        fi
     done
 done
 wait

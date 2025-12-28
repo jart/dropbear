@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	flagKey = flag.String("coinbase-key", "coinbase.json", "path to coinbase ed25519 cdp key json file")
+	flagKey = flag.String("coinbase-key", os.ExpandEnv("$HOME/.coinbase.key"), "path to coinbase ed25519 cdp key json file")
 )
 
 var (

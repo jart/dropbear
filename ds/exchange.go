@@ -10,6 +10,7 @@ const (
 	ExchangeBinance
 	ExchangeBinanceusd
 	ExchangeCoinbase
+	ExchangeKraken
 )
 
 func MustParseExchange(s string) Exchange {
@@ -30,6 +31,8 @@ func ParseExchange(s string) (Exchange, error) {
 		return ExchangeBinanceusd, nil
 	case "coinbase":
 		return ExchangeCoinbase, nil
+	case "kraken":
+		return ExchangeKraken, nil
 	default:
 		return 0, fmt.Errorf("unknown exchange: %s", s)
 	}
@@ -45,6 +48,8 @@ func (e Exchange) String() string {
 		return "binanceusd"
 	case ExchangeCoinbase:
 		return "coinbase"
+	case ExchangeKraken:
+		return "kraken"
 	default:
 		panic("invalid exchange")
 	}

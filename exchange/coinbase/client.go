@@ -12,7 +12,7 @@ import (
 
 // Client is a Coinbase Advanced Trade API client.
 type Client struct {
-	rateLimiter *rateLimiter
+	rateLimiter rateLimiter
 }
 
 // NewClient creates a new Client.

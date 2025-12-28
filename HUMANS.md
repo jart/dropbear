@@ -19,7 +19,7 @@ advanced trading API. If you run dropbear a few weeks, you'll be paying 100x les
 literally give you a black american express card for free with 4% cash back in bitcoin, I kid you not.
 
 Next, you go on the <https://portal.cdp.coinbase.com/> website and generate an ed25519 API key. You
-then need to put the key into a `coinbase.json` in this folder that looks like this:
+then need to put the key into a `~/.coinbase.key` in this folder that looks like this:
 
 ```
 {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"dropbear/clocky"
 	"dropbear/ds"
 	"flag"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 
 var (
 	flagLimit = flag.Int("n", 0, "limit number of ticks to print (0 = all)")
+	flagStart = clocky.TimeFlag("start", "", "only print ticks at or after this time")
+	flagEnd   = clocky.TimeFlag("end", "", "only print ticks before this time")
 )
 
 func main() {
@@ -48,6 +51,12 @@ func dump(path string) error {
 		}
 		if err != nil {
 			return err
+		}
+		if *flagStart != 0 && tick.Time < *flagStart {
+			continue
+		}
+		if *flagEnd != 0 && tick.Time >= *flagEnd {
+			continue
 		}
 		fmt.Printf("tick %s\n", tick.Time)
 		if tick.Snap {

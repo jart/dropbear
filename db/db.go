@@ -5,15 +5,13 @@ import (
 	"dropbear/loggy"
 	"flag"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
-	flagDB = flag.String("db", "~/.dropbear.sqlite3", "Path to the database for coinbase fills")
+	flagDB = flag.String("db", os.ExpandEnv("$HOME/.dropbear.sqlite3"), "Path to the database for coinbase fills")
 	dbOnce sync.Once
 	dbSave *sql.DB
 )
@@ -35,7 +33,6 @@ func MustOpen(path string) *sql.DB {
 
 // Open opens a database connection.
 func Open(path string) (*sql.DB, error) {
-	path = expandPath(path)
 	conn, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, err
@@ -53,13 +50,4 @@ func Open(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	return conn, nil
-}
-
-func expandPath(path string) string {
-	if strings.HasPrefix(path, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, path[2:])
-		}
-	}
-	return path
 }

@@ -134,8 +134,7 @@ func main() {
 	gCoinbase = teddy.Exchanges.Get(ds.ExchangeCoinbase)
 	gHolding = gCoinbase.Holdings.Get(*flagSymbol)
 	gCoinbasePair = gCoinbase.Pairs.Get(*flagSymbol + "-USD")
-	coinbaseTick := onCoinbaseTick
-	gCoinbasePair.OnTick.Store(&coinbaseTick)
+	gCoinbasePair.OnTick = onBinanceTick
 
 	gBinance = teddy.Exchanges.Get(ds.ExchangeBinance)
 	if *flagSymbol == "ZEC" {
@@ -143,8 +142,7 @@ func main() {
 	} else {
 		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "FDUSD")
 	}
-	binanceTick := onBinanceTick
-	gBinancePair.OnTick.Store(&binanceTick)
+	gBinancePair.OnTick = onBinanceTick
 
 	teddy.SetBalance(ds.ExchangeCoinbase, "USD", *flagUSD)
 	teddy.SetBenchmark(gCoinbasePair)
