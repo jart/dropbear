@@ -26,16 +26,18 @@ import (
 
 var (
 	flagDebug     = flag.Bool("debug", false, "enable debug thing")
+	flagLevel2    = flag.Bool("level2", false, "order book prediction")
 	flagVerbose   = flag.Bool("verbose", false, "enable verbose logging")
 	flagSymbol    = flag.String("symbol", "BTC", "coinbase currency to trade")
 	flagPredictor = flag.String("predictor", "BTCFDUSD@binance", "predictor symbol@exchange")
+	flagDepth     = decimal.Flag("depth", "100", "order book depth for determining bid/ask")
 	flagUSD       = decimal.Flag("usd", "50000", "coinbase usd balance")
 	flagCoin      = decimal.Flag("coin", "0.4", "symbol balance in base currency")
 	flagBuffer    = decimal.FlagPercent("buffer", "1", "percent of balance buffer to keep free")
 	flagThreshold = decimal.FlagBPS("threshold", "5", "minimum spread deviation to trade (basis points)")
 	flagCooldown  = clocky.DurationFlag("cooldown", "400ms", "minimum time between trades")
 	flagFreshness = clocky.DurationFlag("freshness", "400ms", "max age of market data before suspending")
-	flagSamples   = flag.Int("samples", 5000, "number of sample trades used to determine baseline spread")
+	flagSamples   = flag.Int("samples", 500, "number of sample trades used to determine baseline spread")
 )
 
 var (
@@ -51,6 +53,8 @@ var (
 	gOrderLock     sync.Mutex
 	gSpreadEMA     *indicators.WWMA
 	gSpreadLock    sync.Mutex
+	gStarted       clocky.Time
+	gReady         bool
 )
 
 func main() {
@@ -89,6 +93,9 @@ func onReady() {
 	log.Printf("[startup] ready, steady, go")
 	gCoinbasePair.OnTick = onCoinbaseTick
 	gPredictorPair.OnTick = onPredictorTick
+	gSpreadLock.Lock()
+	gStarted = clocky.Now()
+	gSpreadLock.Unlock()
 }
 
 func onCoinbaseTick(tick *ds.Tick) {
@@ -105,8 +112,21 @@ func onCoinbaseTick(tick *ds.Tick) {
 func onPredictorTick(tick *ds.Tick) {
 	// log.Printf("onPredictorTick")
 	teddy.Spawn(func() {
-		for _, trade := range tick.Trades {
-			arbitrage(trade.Time, tick.Time, trade.Price)
+		if *flagLevel2 {
+			if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
+				bid := gPredictorPair.OrderBook.PickBidByValue(*flagDepth)
+				ask := gPredictorPair.OrderBook.PickAskByValue(*flagDepth)
+				mid := bid.Add(ask).DivInt(2)
+				if !mid.IsPositive() {
+					log.Printf("[error] somehow have non-positive predictor midpoint price %s", mid)
+					return
+				}
+				arbitrage(tick.Time, tick.Time, mid)
+			}
+		} else {
+			for _, trade := range tick.Trades {
+				arbitrage(trade.Time, tick.Time, trade.Price)
+			}
 		}
 	})
 }
@@ -142,6 +162,11 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 		}
 		gSpreadLock.Unlock()
 		return
+	}
+	if !gReady {
+		warmupDuration := receivedTime.Sub(gStarted)
+		log.Printf("[warmup] warmup took %s", warmupDuration)
+		gReady = true
 	}
 	gSpreadLock.Unlock()
 	deviation := spread.Sub(baseline)
