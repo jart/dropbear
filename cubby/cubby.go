@@ -23,6 +23,7 @@ var (
 	flagRFR        = decimal.FlagBPS("rfr", "487", "annualized risk-free rate in basis points")
 	flagQuantum    = clocky.DurationFlag("quantum", "1d", "metric sampling interval while backtesting")
 	flagVerbose    = flag.Bool("cubby-verbose", false, "log order simulation decisions")
+	flagMargin     = flag.Int("margin", 1, "day trading buying power multiplier (4 for PDT)")
 )
 
 var (

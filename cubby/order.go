@@ -163,10 +163,14 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 			order.Lock.RLock()
 			cumulativeSpent := order.Notional.Load().Add(order.Fee.Load())
 			order.Lock.RUnlock()
-			unusedHold := releaseHold.Sub(cumulativeSpent)
-			add(&eq.Cash.Available, unusedHold)
+			// With margin, hold is only a portion of cost, so unusedHold may be negative
+			// Only release back to Available if there's actually unused hold
+			unusedHold := releaseHold.Sub(cumulativeSpent.DivInt(*flagMargin))
+			if unusedHold.IsPositive() {
+				add(&eq.Cash.Available, unusedHold)
+			}
 		} else if holdAlreadyReleased {
-			sub(&eq.Cash.Available, total)
+			sub(&eq.Cash.Available, total.DivInt(*flagMargin))
 		}
 		eq.Cash.Check()
 		eq.Cash.Lock.Unlock()

@@ -42,7 +42,8 @@ func (h *Holding) String() string {
 }
 
 func (h *Holding) Check() {
-	if h.Quantity.Load().IsNegative() {
+	// Allow negative cash when using margin (borrowed money)
+	if h.Quantity.Load().IsNegative() && !(h.IsCash && *flagMargin > 1) {
 		loggy.Fatalf("accounting invariant violated: %s Quantity is negative: %s",
 			h.Symbol, h.Quantity.Load())
 	}
@@ -50,7 +51,8 @@ func (h *Holding) Check() {
 		loggy.Fatalf("accounting invariant violated: %s Available is negative: %s",
 			h.Symbol, h.Available.Load())
 	}
-	if h.Available.Load().Cmp(h.Quantity.Load()) > 0 {
+	// Skip Available <= Quantity check for cash when using margin (we can spend borrowed money)
+	if !h.IsCash && h.Available.Load().Cmp(h.Quantity.Load()) > 0 {
 		loggy.Fatalf("accounting invariant violated: %s Available (%s) > Quantity (%s)",
 			h.Symbol, h.Available.Load(), h.Quantity.Load())
 	}

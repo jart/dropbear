@@ -39,20 +39,33 @@ var (
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
 )
 
+// Margin multiplier - use cubby's -margin flag (default 1, use 4 for PDT day trading)
+func getMargin() int {
+	// Look up cubby's margin flag
+	f := flag.Lookup("margin")
+	if f == nil {
+		return 1
+	}
+	if v, ok := f.Value.(flag.Getter); ok {
+		return v.Get().(int)
+	}
+	return 1
+}
+
 var (
 	gExchange  *cubby.Exchange
 	gEquity    *cubby.Equity
 	gBenchmark *cubby.Equity
 
 	// Intraday state (reset each day)
-	gCandles      []indicators.Candle // rolling window of recent candles
-	gDayHigh      decimal.Decimal     // highest price seen today
-	gDayLow       decimal.Decimal     // lowest price seen today
-	gEntryPrice   decimal.Decimal     // price we entered at (zero if flat)
-	gHighSince    decimal.Decimal     // highest price since entry (for trailing stop)
-	gCurrentDate  time.Time           // current trading day
-	gTradesToday  int                 // number of trades today
-	gClosedToday  bool                // already closed for the day
+	gCandles     []indicators.Candle // rolling window of recent candles
+	gDayHigh     decimal.Decimal     // highest price seen today
+	gDayLow      decimal.Decimal     // lowest price seen today
+	gEntryPrice  decimal.Decimal     // price we entered at (zero if flat)
+	gHighSince   decimal.Decimal     // highest price since entry (for trailing stop)
+	gCurrentDate time.Time           // current trading day
+	gTradesToday int                 // number of trades today
+	gClosedToday bool                // already closed for the day
 
 	// Statistics
 	gTotalTrades   int
@@ -62,11 +75,11 @@ var (
 )
 
 const (
-	marketOpenHour   = 9
-	marketOpenMinute = 30
-	marketCloseHour  = 16
+	marketOpenHour    = 9
+	marketOpenMinute  = 30
+	marketCloseHour   = 16
 	marketCloseMinute = 0
-	closeBeforeMin   = 15 // close positions this many minutes before market close
+	closeBeforeMin    = 15 // close positions this many minutes before market close
 )
 
 func main() {
@@ -215,14 +228,21 @@ func checkBreakoutEntry(c *indicators.Candle, now time.Time) {
 		return
 	}
 
-	// Calculate position size: use most of available cash
+	// Calculate position size: use full buying power (margin handled by cubby -margin flag)
+	// PDT rules allow 4x leverage intraday, must close by EOD
 	cash := gEquity.Cash.Available.Load()
+	buyingPower := cash.MulInt(getMargin())
 	// Reserve 5% buffer for slippage
-	usableCash := cash.MulInt(95).DivInt(100)
-	qty := usableCash.Div(price).Int()
+	usableBuyingPower := buyingPower.MulInt(95).DivInt(100)
+	qty := usableBuyingPower.Div(price).Int()
 
 	if qty <= 0 {
 		return
+	}
+
+	// Cap at 50,000 shares to avoid decimal overflow in fee calculations
+	if qty > 50000 {
+		qty = 50000
 	}
 
 	// Enter long position

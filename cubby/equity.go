@@ -164,15 +164,19 @@ func (e *Equity) MarketOrder(side ds.Side, quantity int) *Order {
 		// Reserve cash - estimate with current price + 5% buffer
 		estimatedCost := e.LastPrice.Load().MulInt(105).DivInt(100).Mul(qty)
 		e.Cash.Lock.Lock()
-		if e.Cash.Available.Cmp(estimatedCost) < 0 {
+		// Check buying power (margin multiplier for day trading)
+		buyingPower := e.Cash.Available.MulInt(*flagMargin)
+		if buyingPower.Cmp(estimatedCost) < 0 {
 			e.Cash.Lock.Unlock()
-			loggy.Fatalf("insufficient USD balance: have %s, need %s",
-				e.Cash.Available, estimatedCost)
+			loggy.Fatalf("insufficient buying power: have %s (cash %s × %d), need %s",
+				buyingPower, e.Cash.Available, *flagMargin, estimatedCost)
 		}
-		sub(&e.Cash.Available, estimatedCost)
+		// Only reserve actual cash portion (margin is borrowed)
+		cashPortion := estimatedCost.DivInt(*flagMargin)
+		sub(&e.Cash.Available, cashPortion)
 		e.Cash.Check()
 		e.Cash.Lock.Unlock()
-		order.Hold.Store(estimatedCost)
+		order.Hold.Store(cashPortion)
 
 	case ds.SideSell:
 		e.Shares.Lock.Lock()
