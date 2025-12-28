@@ -19,7 +19,6 @@ type Holding struct {
 	WinCount   int
 	LossCount  int
 	Lots       *ds.Lots
-	IsFiat     bool
 	IsCash     bool
 }
 
@@ -27,9 +26,8 @@ func newHolding(exchange *Exchange, symbol string) *Holding {
 	h := &Holding{
 		Exchange: exchange,
 		Symbol:   symbol,
-		IsFiat:   symbol == "USD",
 		IsCash:   symbol == "USD",
-		Lots:     ds.NewLots(GetCostBasisMethod()),
+		Lots:     ds.NewLots(ds.CostBasisMethodFIFO),
 	}
 	if Live {
 		h.fetchAlpacaHolding()
@@ -42,15 +40,30 @@ func (h *Holding) String() string {
 }
 
 func (h *Holding) Check() {
-	// Allow negative cash when using margin (borrowed money)
-	if h.Quantity.Load().IsNegative() && !(h.IsCash && *flagMargin > 1) {
-		loggy.Fatalf("accounting invariant violated: %s Quantity is negative: %s",
-			h.Symbol, h.Quantity.Load())
+	// In backtests with many stocks, small rounding errors can accumulate
+	// Allow up to -$100 tolerance for cash, fatal for stocks
+	// tolerance := decimal.Parse("-100")
+	tolerance := decimal.Parse("0")
+
+	qty := h.Quantity.Load()
+	if qty.IsNegative() {
+		// Allow negative cash when using margin, or small tolerance in backtests
+		if h.IsCash && (*flagMargin > 1 || qty.Cmp(tolerance) >= 0) {
+			// OK - margin or small backtest rounding error
+		} else {
+			loggy.Fatalf("accounting invariant violated: %s Quantity is negative: %s",
+				h.Symbol, qty)
+		}
 	}
-	if h.Available.Load().IsNegative() {
-		loggy.Fatalf("accounting invariant violated: %s Available is negative: %s",
-			h.Symbol, h.Available.Load())
+
+	avail := h.Available.Load()
+	if avail.IsNegative() {
+		if !h.IsCash || avail.Cmp(tolerance) < 0 {
+			loggy.Fatalf("accounting invariant violated: %s Available is negative: %s",
+				h.Symbol, avail)
+		}
 	}
+
 	// Skip Available <= Quantity check for cash when using margin (we can spend borrowed money)
 	if !h.IsCash && h.Available.Load().Cmp(h.Quantity.Load()) > 0 {
 		loggy.Fatalf("accounting invariant violated: %s Available (%s) > Quantity (%s)",
@@ -65,7 +78,7 @@ func (h *Holding) Check() {
 }
 
 func (h *Holding) fetchAlpacaHolding() {
-	if h.IsFiat {
+	if h.IsCash {
 		account, err := AlpacaClient.GetAccount()
 		if err != nil {
 			loggy.Fatalf("alpaca: error fetching account: %v", err)

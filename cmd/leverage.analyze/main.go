@@ -472,12 +472,12 @@ func analyzeLeverage(data map[string]*symbolData) {
 	fmt.Printf("  Overnight: 2x buying power / MM%% × product leverage\n\n")
 
 	type levResult struct {
-		symbol      string
-		leverage    int
-		margin      int
-		effDay      float64
+		symbol       string
+		leverage     int
+		margin       int
+		effDay       float64
 		effOvernight float64
-		annVol      float64
+		annVol       float64
 	}
 
 	var results []levResult

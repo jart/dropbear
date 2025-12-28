@@ -10,17 +10,22 @@ import (
 // This is more realistic than zero-fee simulation and essential for
 // backtesting high-frequency strategies.
 type AlpacaEliteFees struct {
-	lock          sync.Mutex
-	monthlyVolume int64 // shares traded this month
-	currentMonth  int   // 1-12
+	lock                  sync.Mutex
+	sharesTradedThisMonth int64
+	currentMonth          int // 1-12
 }
 
 // Fee constants (per share unless noted)
-const (
-	catFeePerTrade           = 0.0003 // CAT fee per trade
-	tafFeePerShare           = 0.0002 // TAF fee per share
-	exchangeTakerFeePerShare = 0.0020 // market orders
-	exchangeMakerFeePerShare = -0.0018 // limit orders (rebate!)
+var (
+	catFeePerTrade           = decimal.Parse("0.0003")  // CAT fee per trade
+	tafFeePerShare           = decimal.Parse("0.0002")  // TAF fee per share
+	exchangeTakerFeePerShare = decimal.Parse("0.0020")  // market orders
+	exchangeMakerFeePerShare = decimal.Parse("-0.0018") // limit orders (rebate!)
+	costPlusTier1Fee         = decimal.Parse("0.0025")  // <200k shares
+	costPlusTier2Fee         = decimal.Parse("0.0020")  // 200k-1M shares
+	costPlusTier3Fee         = decimal.Parse("0.0015")  // 1M-10M shares
+	costPlusTier4Fee         = decimal.Parse("0.0010")  // 10M-50M shares
+	costPlusTier5Fee         = decimal.Parse("0.0005")  // >50M shares
 )
 
 // NewAlpacaEliteFees creates a new fee calculator.
@@ -32,66 +37,58 @@ func NewAlpacaEliteFees() *AlpacaEliteFees {
 // Returns negative values for maker rebates on limit orders.
 func (f *AlpacaEliteFees) Calculate(now clocky.Time, quantity int, isMarketOrder bool) decimal.Decimal {
 	if quantity <= 0 {
-		return decimal.Zero
+		panic("quantity must be positive")
 	}
 
-	f.lock.Lock()
-	defer f.lock.Unlock()
-
-	// Reset monthly volume on new month
-	month := now.Month()
-	if f.currentMonth != month {
-		f.monthlyVolume = 0
-		f.currentMonth = month
-	}
-
-	// Update monthly volume
-	f.monthlyVolume += int64(quantity)
+	// track monthly volume
+	sharesTradedThisMonth := func() int64 {
+		f.lock.Lock()
+		defer f.lock.Unlock()
+		month := now.Month()
+		if f.currentMonth != month {
+			f.sharesTradedThisMonth = 0
+			f.currentMonth = month
+		}
+		f.sharesTradedThisMonth += int64(quantity)
+		return f.sharesTradedThisMonth
+	}()
 
 	qty := decimal.FromInt(quantity)
 
 	// Broker fee (volume-tiered)
-	brokerFee := qty.Mul(f.getBrokerFee())
+	brokerFeePerShare := getBrokerFeePerShare(sharesTradedThisMonth)
+	brokerFee := qty.Mul(brokerFeePerShare)
 
-	// Exchange fee (taker for market, maker for limit)
+	// exchange fee (taker for market, maker for limit)
 	var exchangeFee decimal.Decimal
 	if isMarketOrder {
-		exchangeFee = qty.Mul(decimal.FromFloat64(exchangeTakerFeePerShare))
+		exchangeFee = qty.Mul(exchangeTakerFeePerShare)
 	} else {
-		exchangeFee = qty.Mul(decimal.FromFloat64(exchangeMakerFeePerShare))
+		exchangeFee = qty.Mul(exchangeMakerFeePerShare)
 	}
 
-	// Regulatory fees
-	catFee := decimal.FromFloat64(catFeePerTrade)
-	tafFee := qty.Mul(decimal.FromFloat64(tafFeePerShare))
+	// regulatory fees
+	catFee := catFeePerTrade
+	tafFee := qty.Mul(tafFeePerShare)
 	regulatoryFees := catFee.Add(tafFee)
 
-	// Total fee (can be negative for large limit orders due to maker rebate)
-	totalFee := brokerFee.Add(exchangeFee).Add(regulatoryFees)
-
-	return totalFee
+	// total fee (can be negative for large limit orders due to maker rebate)
+	return brokerFee.Add(exchangeFee).Add(regulatoryFees)
 }
 
-// getBrokerFee returns the volume-tiered broker fee per share.
-func (f *AlpacaEliteFees) getBrokerFee() decimal.Decimal {
-	vol := f.monthlyVolume
+// getBrokerFeePerShare returns the volume-tiered broker fee per share.
+func getBrokerFeePerShare(sharesTradedThisMonth int64) decimal.Decimal {
+	vol := sharesTradedThisMonth
 	switch {
 	case vol < 200_000:
-		return decimal.FromFloat64(0.0025)
+		return costPlusTier1Fee
 	case vol < 1_000_000:
-		return decimal.FromFloat64(0.0020)
+		return costPlusTier2Fee
 	case vol < 10_000_000:
-		return decimal.FromFloat64(0.0015)
+		return costPlusTier3Fee
 	case vol < 50_000_000:
-		return decimal.FromFloat64(0.0010)
+		return costPlusTier4Fee
 	default:
-		return decimal.FromFloat64(0.0005)
+		return costPlusTier5Fee
 	}
-}
-
-// GetMonthlyVolume returns the current monthly trading volume.
-func (f *AlpacaEliteFees) GetMonthlyVolume() int64 {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	return f.monthlyVolume
 }

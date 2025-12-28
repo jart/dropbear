@@ -1,11 +1,17 @@
 package alpaca
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+
+	"dropbear/ds"
 )
+
+//go:embed assets.json
+var assetsJSON []byte
 
 // Asset represents something you can trade.
 type Asset struct {
@@ -26,8 +32,15 @@ type Asset struct {
 	MarginRequirementShort string `json:"margin_requirement_short"` // e.g. "30"
 }
 
-// GetAssets retrieves all open positions.
+// GetAssets retrieves all tradeable assets.
 func (c *Client) GetAssets() ([]Asset, error) {
+	if ds.IsOffline() {
+		var result []Asset
+		if err := json.Unmarshal(assetsJSON, &result); err != nil {
+			return nil, fmt.Errorf("decoding embedded assets: %w", err)
+		}
+		return result, nil
+	}
 	resp, err := c.Get("/v2/assets")
 	if err != nil {
 		return nil, err

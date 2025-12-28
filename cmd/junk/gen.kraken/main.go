@@ -6,11 +6,11 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"sort"
 )
 

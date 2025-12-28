@@ -11,11 +11,11 @@ import (
 // MarginInterest tracks margin interest charges on negative cash balances.
 // Alpaca charges interest on any debit balance at EOD.
 type MarginInterest struct {
-	lock            sync.Mutex
-	spreadOverRFR   decimal.Decimal // additional spread over risk-free rate (e.g., 1% = 0.01)
-	totalCharged    decimal.Decimal
-	yearlyCharged   map[int]decimal.Decimal
-	lastChargeDate  clocky.Time
+	lock           sync.Mutex
+	spreadOverRFR  decimal.Decimal // additional spread over risk-free rate (e.g., 1% = 0.01)
+	totalCharged   decimal.Decimal
+	yearlyCharged  map[int]decimal.Decimal
+	lastChargeDate clocky.Time
 }
 
 // NewMarginInterest creates a margin interest tracker.

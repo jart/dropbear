@@ -19,8 +19,8 @@ type Exchange struct {
 	Holdings      *Holdings
 	Orders        *Orders
 	Equities      *EquityRegistry
-	Fees          decimal.Decimal    // total fees paid
-	FeeCalculator *AlpacaEliteFees   // fee calculator for simulated fills
+	Fees          decimal.Decimal  // total fees paid
+	FeeCalculator *AlpacaEliteFees // fee calculator for simulated fills
 	OnReady       func()
 }
 

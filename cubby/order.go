@@ -127,8 +127,8 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 	actualFilled := filled.Min(remaining)
 	// Divide first to avoid overflow when notional*actualFilled is huge
 	actualNotional := notional.Div(filled).Mul(actualFilled)
-	// Scale fee proportionally if partial fill
-	actualFee := fee.Mul(actualFilled).Div(filled)
+	// Scale fee proportionally if partial fill (divide first to avoid overflow)
+	actualFee := fee.Div(filled).Mul(actualFilled)
 	dir := decimal.Decimal(order.Side)
 	total := actualNotional.Add(actualFee.Mul(dir))
 
@@ -185,14 +185,6 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 		eq.Shares.Lock.Unlock()
 
 	case ds.SideSell:
-		eq.Cash.Lock.Lock()
-		add(&eq.Cash.Quantity, total)
-		add(&eq.Cash.Available, total)
-		eq.Cash.Volume += actualNotional.Float64()
-		eq.Cash.SellVolume += actualNotional.Float64()
-		eq.Cash.Check()
-		eq.Cash.Lock.Unlock()
-
 		eq.Shares.Lock.Lock()
 		sub(&eq.Shares.Quantity, actualFilled)
 		if holdAlreadyReleased {
@@ -200,9 +192,22 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 		}
 		eq.Shares.Volume += actualFilled.Float64()
 		eq.Shares.SellVolume += actualFilled.Float64()
-		eq.Shares.Lots.Consume(actualFilled, decimal.Zero)
+		costBasis := eq.Shares.Lots.Consume(actualFilled, decimal.Zero)
 		eq.Shares.Check()
 		eq.Shares.Lock.Unlock()
+
+		eq.Cash.Lock.Lock()
+		add(&eq.Cash.Quantity, total)
+		// With margin, we borrowed (margin-1)/margin of the original purchase.
+		// On sell, broker takes back loan, we keep: proceeds - cost*(margin-1)/margin
+		// = proceeds - cost + cost/margin = profit + original_hold
+		profit := total.Sub(costBasis)
+		originalHold := costBasis.DivInt(*flagMargin)
+		add(&eq.Cash.Available, originalHold.Add(profit))
+		eq.Cash.Volume += actualNotional.Float64()
+		eq.Cash.SellVolume += actualNotional.Float64()
+		eq.Cash.Check()
+		eq.Cash.Lock.Unlock()
 	}
 
 	if isFullyFilled {

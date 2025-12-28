@@ -162,10 +162,16 @@ func (e *Equity) MarketOrder(side ds.Side, quantity int) *Order {
 	switch side {
 	case ds.SideBuy:
 		// Reserve cash - estimate with current price + 5% buffer
-		estimatedCost := e.LastPrice.Load().MulInt(105).DivInt(100).Mul(qty)
+		estimatedCost := e.LastPrice.Load().Mul(decimal.Parse("1.05")).Mul(qty)
 		e.Cash.Lock.Lock()
 		// Check buying power (margin multiplier for day trading)
-		buyingPower := e.Cash.Available.MulInt(*flagMargin)
+		// Cap cash to avoid overflow: max safe is ~$2B / margin
+		cash := e.Cash.Available.Load()
+		maxSafe := decimal.Parse("2000000000").DivInt(*flagMargin)
+		if cash.Cmp(maxSafe) > 0 {
+			cash = maxSafe
+		}
+		buyingPower := cash.MulInt(*flagMargin)
 		if buyingPower.Cmp(estimatedCost) < 0 {
 			e.Cash.Lock.Unlock()
 			loggy.Fatalf("insufficient buying power: have %s (cash %s × %d), need %s",

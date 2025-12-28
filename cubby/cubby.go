@@ -84,7 +84,7 @@ func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
 		defer ho.Lock.Unlock()
 		ho.Quantity = quantity
 		ho.Available = quantity
-		if !ho.IsFiat {
+		if !ho.IsCash {
 			ho.Lots.Add(clocky.Now(), quantity, decimal.Zero)
 		}
 		ho.Check()
@@ -173,15 +173,14 @@ func GetRiskFreeRate() decimal.Decimal {
 
 // cancelAllOpenOrders cancels all open orders.
 func cancelAllOpenOrders() {
-	if Paper {
-		return
-	}
-	for _, exchange := range Exchanges.exchangeArray {
-		for _, order := range exchange.Orders.openOrders.Values() {
-			if order.OrderID != "" {
-				log.Printf("canceling order %s on %s", order.OrderID, exchange)
-				if err := AlpacaClient.CancelOrder(order.OrderID); err != nil {
-					log.Printf("error canceling order %s on %s: %v", order.OrderID, exchange, err)
+	if !Paper {
+		for _, exchange := range Exchanges.exchangeArray {
+			for _, order := range exchange.Orders.openOrders.Values() {
+				if order.OrderID != "" {
+					log.Printf("canceling order %s on %s", order.OrderID, exchange)
+					if err := AlpacaClient.CancelOrder(order.OrderID); err != nil {
+						log.Printf("error canceling order %s on %s: %v", order.OrderID, exchange, err)
+					}
 				}
 			}
 		}

@@ -29,9 +29,9 @@ var (
 )
 
 var (
-	gExchange     *cubby.Exchange
-	gBenchmark    *cubby.Equity
-	gEquities     []*cubby.Equity
+	gExchange      *cubby.Exchange
+	gBenchmark     *cubby.Equity
+	gEquities      []*cubby.Equity
 	gLastRebalance clocky.Time
 )
 
@@ -173,17 +173,22 @@ func rebalance() {
 
 		// Buy if underweight
 		if diff.IsPositive() && diff.Cmp(threshold) >= 0 {
-			cash := eq.Cash.Available.Load()
-			// Only use 80% of available cash to leave buffer
-			maxBuy := cash.MulInt(80).DivInt(100)
-			buyAmount := diff.Min(maxBuy)
-			if buyAmount.IsPositive() {
-				qty := buyAmount.Div(price).Int()
-				// Verify we have enough cash for this order
-				orderCost := price.MulInt(qty)
-				if qty > 0 && orderCost.Cmp(cash) <= 0 {
-					eq.MarketOrder(ds.SideBuy, qty)
-				}
+			// Read fresh cash each time (cubby decrements on order)
+			availableCash := eq.Cash.Available.Load()
+			// MarketOrder adds 5% buffer + fees, so use 10% margin
+			costPerShare := price.MulInt(110).DivInt(100)
+			if availableCash.Cmp(costPerShare) < 0 {
+				continue
+			}
+			// Calculate max shares we can afford
+			maxQty := availableCash.Div(costPerShare).Int()
+			wantQty := diff.Div(price).Int()
+			qty := wantQty
+			if qty > maxQty {
+				qty = maxQty
+			}
+			if qty > 0 {
+				eq.MarketOrder(ds.SideBuy, qty)
 			}
 		}
 	}

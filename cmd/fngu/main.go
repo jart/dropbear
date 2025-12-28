@@ -32,7 +32,7 @@ import (
 var (
 	flagSymbol    = flag.String("symbol", "FNGU", "symbol to trade")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
-	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
+	flagCash      = decimal.Flag("cash", "800_000", "initial USD balance")
 	flagLookback  = flag.Int("lookback", 15, "breakout lookback period (minutes)")
 	flagTrailPct  = decimal.Flag("trail", "0.025", "trailing stop percentage (0.025 = 2.5%)")
 	flagMinGap    = decimal.Flag("mingap", "0.01", "minimum gap to enter (1%)")
@@ -230,19 +230,22 @@ func checkBreakoutEntry(c *indicators.Candle, now time.Time) {
 
 	// Calculate position size: use full buying power (margin handled by cubby -margin flag)
 	// PDT rules allow 4x leverage intraday, must close by EOD
+	// Cap max position to $1B to avoid decimal overflow on sale proceeds
+	// (with 40x leverage and big gains, selling can produce multi-billion proceeds)
+	maxPosition := decimal.Parse("1000000000")
 	cash := gEquity.Cash.Available.Load()
-	buyingPower := cash.MulInt(getMargin())
-	// Reserve 5% buffer for slippage
-	usableBuyingPower := buyingPower.MulInt(95).DivInt(100)
+	margin := getMargin()
+	// Cap cash before multiplying to avoid overflow in Mul
+	maxCash := maxPosition.DivInt(margin)
+	if cash.Cmp(maxCash) > 0 {
+		cash = maxCash
+	}
+	// Now safe to multiply since cash <= $250M (for margin=4)
+	usableBuyingPower := cash.MulInt(margin).Mul(decimal.Parse("0.95"))
 	qty := usableBuyingPower.Div(price).Int()
 
 	if qty <= 0 {
 		return
-	}
-
-	// Cap at 50,000 shares to avoid decimal overflow in fee calculations
-	if qty > 50000 {
-		qty = 50000
 	}
 
 	// Enter long position

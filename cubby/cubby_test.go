@@ -37,14 +37,8 @@ func TestHolding(t *testing.T) {
 	aapl := ex.Holdings.Get("AAPL")
 
 	// Check initial state
-	if !usd.IsFiat {
-		t.Error("USD should be fiat")
-	}
 	if !usd.IsCash {
 		t.Error("USD should be cash")
-	}
-	if aapl.IsFiat {
-		t.Error("AAPL should not be fiat")
 	}
 	if aapl.IsCash {
 		t.Error("AAPL should not be cash")
@@ -294,13 +288,19 @@ func TestSellOrder(t *testing.T) {
 		t.Errorf("expected 10 AAPL shares remaining, got %s", qty)
 	}
 
-	// Check USD increased (sold at 102)
+	// Check USD increased (sold at 102, minus fees)
 	usd.Lock.RLock()
 	usdQty := usd.Quantity.Load()
 	usd.Lock.RUnlock()
-	expected := decimal.FromInt(5000).Add(decimal.FromInt(1020)) // 5000 + 10*102
-	if usdQty.Cmp(expected) != 0 {
-		t.Errorf("expected USD %s, got %s", expected, usdQty)
+	// Base amount: 5000 + 10*102 = 6020
+	// Minus fees: broker 0.025 + exchange 0.02 + CAT 0.0003 + TAF 0.002 ≈ 0.0473
+	expectedBase := decimal.FromInt(5000).Add(decimal.FromInt(1020))
+	if usdQty.Cmp(expectedBase) > 0 {
+		t.Errorf("expected USD <= %s (before fees), got %s", expectedBase, usdQty)
+	}
+	minExpected := expectedBase.Sub(decimal.Parse("0.05")) // allow up to 5 cents of fees
+	if usdQty.Cmp(minExpected) < 0 {
+		t.Errorf("expected USD >= %s (fees too high), got %s", minExpected, usdQty)
 	}
 }
 

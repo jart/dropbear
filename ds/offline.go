@@ -7,3 +7,8 @@ func SetOffline() {
 	FastHTTPClient = nil
 	fastWSDialer = nil
 }
+
+// IsOffline returns true if dropbear is in offline mode.
+func IsOffline() bool {
+	return BulkHttpClient == nil
+}

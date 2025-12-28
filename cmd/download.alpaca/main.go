@@ -70,7 +70,7 @@ func main() {
 		<-stop
 		log.Println("interrupted, finishing current downloads...")
 		stopped.Store(true)
-		close(jobs)
+		// Don't close jobs here - let producer close it when it detects stopped
 	}()
 
 	// Start workers
@@ -91,13 +91,15 @@ func main() {
 		}()
 	}
 
-	// Queue up work - go backwards from last month
+	// Queue up work - start from current month (for cron freshness)
 	loc, _ := time.LoadLocation("America/New_York")
 	now := time.Now().In(loc)
-	startMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc).AddDate(0, -1, 0)
+	startMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 
 	// Enqueue all symbol/month combinations
 	go func() {
+		defer close(jobs)
 		month := startMonth
 		// Alpaca has data back to ~2016, don't go further
 		floor := time.Date(2016, 1, 1, 0, 0, 0, 0, loc)
@@ -119,14 +121,18 @@ func main() {
 					symbol,
 					month.Format("2006-01"),
 				)
-				if _, err := os.Stat(outPath); err == nil {
-					continue // already have it
+				if info, err := os.Stat(outPath); err == nil {
+					// For current month, redownload if file is stale (modified before today)
+					if month.Equal(startMonth) && info.ModTime().Before(today) {
+						os.Remove(outPath) // delete stale file
+					} else {
+						continue // already have it and it's fresh
+					}
 				}
 				jobs <- job{symbol: symbol, month: month}
 			}
 			month = month.AddDate(0, -1, 0)
 		}
-		close(jobs)
 	}()
 
 	wg.Wait()
