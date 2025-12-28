@@ -6,16 +6,6 @@ import (
 	"dropbear/loggy"
 )
 
-// Candle represents a single OHLC candlestick.
-type Candle struct {
-	Start  clocky.Time     // microsecond unix timestamp
-	Open   decimal.Decimal // first price in period
-	High   decimal.Decimal // highest price in period
-	Low    decimal.Decimal // lowest price in period
-	Close  decimal.Decimal // last price in period
-	Volume decimal.Decimal // volume in period
-}
-
 // Candles is a ring buffer of OHLC candlesticks.
 type Candles struct {
 	Period  clocky.Duration // candle period in microseconds

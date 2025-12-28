@@ -30,7 +30,8 @@ var (
 	flagVerbose   = flag.Bool("verbose", false, "enable verbose logging")
 	flagSymbol    = flag.String("symbol", "BTC", "coinbase currency to trade")
 	flagPredictor = flag.String("predictor", "BTCFDUSD@binance", "predictor symbol@exchange")
-	flagDepth     = decimal.Flag("depth", "100", "order book depth for determining bid/ask")
+	flagPricer    = flag.String("pricer", "", "currency to usd pair, e.g. FDUSDUSDT@binance")
+	flagDepth     = decimal.Flag("depth", "1", "order book depth for determining bid/ask")
 	flagUSD       = decimal.Flag("usd", "50000", "coinbase usd balance")
 	flagCoin      = decimal.Flag("coin", "0.4", "symbol balance in base currency")
 	flagBuffer    = decimal.FlagPercent("buffer", "1", "percent of balance buffer to keep free")
@@ -46,8 +47,10 @@ var (
 	gCoinbase      *teddy.Exchange
 	gCoinbasePair  *teddy.Pair
 	gPredictorPair *teddy.Pair
+	gPricerPair    *teddy.Pair
 	gLastCoinbase  clocky.Time
 	gOrderBackoff  clocky.Duration
+	gPricerPrice   decimal.Decimal
 	gLastOrder     clocky.Time
 	gNextOrder     clocky.Time
 	gOrderLock     sync.Mutex
@@ -81,7 +84,16 @@ func main() {
 	predictor := teddy.Exchanges.Get(predictorExchange)
 	gPredictorPair = predictor.Pairs.Get(predictorSymbol)
 
+	// setup pricer (optional currency to usd pair)
+	if *flagPricer != "" {
+		pricerExchange, pricerSymbol := parsePredictor(*flagPricer)
+		pricer := teddy.Exchanges.Get(pricerExchange)
+		gPricerPair = pricer.Pairs.Get(pricerSymbol)
+		gPricerPair.OnTick = onPricerTick
+	}
+
 	// prepare for arbitrage
+	gPricerPrice = decimal.One
 	teddy.Exchanges.OnReady = onReady
 	teddy.SetBalance(ds.ExchangeCoinbase, *flagSymbol, *flagCoin)
 	teddy.SetBalance(ds.ExchangeCoinbase, "USD", *flagUSD)
@@ -99,24 +111,24 @@ func onReady() {
 }
 
 func onCoinbaseTick(tick *ds.Tick) {
-	// log.Printf("onCoinbaseTick")
-	teddy.Spawn(func() {
-		if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
-			gOrderLock.Lock()
-			gLastCoinbase = tick.Time
-			gOrderLock.Unlock()
-		}
-	})
+	if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
+		gLastCoinbase.Store(tick.Time)
+	}
+}
+
+func onPricerTick(tick *ds.Tick) {
+	if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
+		gPricerPrice.Store(gPricerPair.OrderBook.MidPrice())
+	}
 }
 
 func onPredictorTick(tick *ds.Tick) {
-	// log.Printf("onPredictorTick")
 	teddy.Spawn(func() {
 		if *flagLevel2 {
 			if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
 				bid := gPredictorPair.OrderBook.PickBidByValue(*flagDepth)
 				ask := gPredictorPair.OrderBook.PickAskByValue(*flagDepth)
-				mid := bid.Add(ask).DivInt(2)
+				mid := bid.Add(ask).DivInt(2).Mul(gPricerPrice.Load())
 				if !mid.IsPositive() {
 					log.Printf("[error] somehow have non-positive predictor midpoint price %s", mid)
 					return
@@ -268,49 +280,54 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	gOrderLock.Lock()
 	openOrders := gCoinbase.Orders.Open()
 	for _, order := range openOrders {
+		limitPrice := order.LimitPrice.Load()
 		switch order.Side {
 		case ds.SideBuy:
 			if side == ds.SideBuy && limi.Cmp(order.LimitPrice) <= 0 {
-				logDecision()
-				log.Printf("[skip] our buy edge is deteriorating! limit price went from %s to %s", order.LimitPrice, limi)
 				gOrderLock.Unlock()
+				logDecision()
+				log.Printf("[skip] our buy edge is deteriorating! limit price went from %s to %s", limitPrice, limi)
 				return
 			}
 		case ds.SideSell:
 			if side == ds.SideSell && limi.Cmp(order.LimitPrice) >= 0 {
-				logDecision()
-				log.Printf("[skip] our sell edge is deteriorating! limit price went from %s to %s", order.LimitPrice, limi)
 				gOrderLock.Unlock()
+				logDecision()
+				log.Printf("[skip] our sell edge is deteriorating! limit price went from %s to %s", limitPrice, limi)
 				return
 			}
 		}
 	}
 	orderTime := clocky.Now()
 	if orderTime < gNextOrder {
+		lastOrder := gLastOrder
+		nextOrder := gNextOrder
+		orderBackoff := gOrderBackoff
+		gOrderLock.Unlock()
 		if *flagVerbose {
 			logDecision()
 			log.Printf("[skip] we placed an order %s ago and have to wait %s because backoff is %s",
-				orderTime.Sub(gLastOrder), gNextOrder.Sub(orderTime), gOrderBackoff)
+				orderTime.Sub(lastOrder), nextOrder.Sub(orderTime), orderBackoff)
 		}
-		gOrderLock.Unlock()
 		return
 	}
 	if len(openOrders) == 0 {
 		gOrderBackoff = 0
 		gNextOrder = 0
 	}
-	if orderTime.Sub(gLastCoinbase) > *flagFreshness {
+	lastCoinbase := gLastCoinbase.Load()
+	if orderTime.Sub(lastCoinbase) > *flagFreshness {
+		gOrderLock.Unlock()
 		logDecision()
 		log.Printf("[skip] coinbase order book isn't fresh because last update was received %s ago",
-			orderTime.Sub(gLastCoinbase))
-		gOrderLock.Unlock()
+			orderTime.Sub(lastCoinbase))
 		return
 	}
 	if orderTime.Sub(tradeTime) > *flagFreshness {
+		gOrderLock.Unlock()
 		logDecision()
 		log.Printf("[skip] predictor trade data isn't fresh because it happened %s ago, which we learned about %s ago",
 			orderTime.Sub(tradeTime), orderTime.Sub(receivedTime))
-		gOrderLock.Unlock()
 		return
 	}
 	if gOrderBackoff == 0 {
