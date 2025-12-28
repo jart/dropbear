@@ -1,6 +1,7 @@
 package cubby
 
 import (
+	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/indicators"
@@ -127,8 +128,10 @@ func (e *Equity) simulateFills(candle *indicators.Candle) {
 
 			if unfilled.IsPositive() {
 				fillNotional := fillPrice.Mul(unfilled)
-				// Zero fee for Alpaca stocks
-				_, err := order.fill(unfilled, fillNotional, decimal.Zero, false)
+				// Calculate Alpaca Elite fees
+				isMarketOrder := order.Type == ds.OrderTypeMarket
+				fee := e.Exchange.FeeCalculator.Calculate(clocky.Now(), unfilled.Int(), isMarketOrder)
+				_, err := order.fill(unfilled, fillNotional, fee, false)
 				if err != nil && *flagVerbose {
 					log.Printf("[cubby] fill error for %s: %v", order.ClientOrderID, err)
 				}

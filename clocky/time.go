@@ -22,6 +22,9 @@ func (t Time) Unix() int64              { return int64(t) / 1_000_000 }
 func (t Time) Quantize(d Duration) Time { return Time((int64(t) / int64(d)) * int64(d)) }
 func (t Time) Before(u Time) bool       { return t < u }
 func (t Time) After(u Time) bool        { return t > u }
+func (t Time) Month() int               { return int(time.UnixMicro(int64(t)).Month()) }
+func (t Time) Year() int                { return time.UnixMicro(int64(t)).Year() }
+func (t Time) Weekday() time.Weekday    { return time.UnixMicro(int64(t)).Weekday() }
 
 // String returns formatted local microsecond timestamp.
 // This is intended for displaying the time to us humans.

@@ -99,8 +99,8 @@ func (order *Order) kill(state ds.OrderState) {
 }
 
 // fill accounts for a fill on an order.
-// feeRate is 0 for Alpaca stocks (commission-free).
-func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) (decimal.Decimal, error) {
+// fee is the absolute fee amount to charge (can be negative for maker rebates).
+func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (decimal.Decimal, error) {
 	eq := order.Equity
 	exchange := eq.Exchange
 	orders := exchange.Orders
@@ -127,9 +127,10 @@ func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) 
 	actualFilled := filled.Min(remaining)
 	// Divide first to avoid overflow when notional*actualFilled is huge
 	actualNotional := notional.Div(filled).Mul(actualFilled)
-	fee := actualNotional.Mul(feeRate)
+	// Scale fee proportionally if partial fill
+	actualFee := fee.Mul(actualFilled).Div(filled)
 	dir := decimal.Decimal(order.Side)
-	total := actualNotional.Add(fee.Mul(dir))
+	total := actualNotional.Add(actualFee.Mul(dir))
 
 	holdAlreadyReleased := force && order.Hold.Load().IsZero() && order.State.Load().IsFinal()
 
@@ -138,7 +139,7 @@ func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) 
 	isFullyFilled := totalFilled.Cmp(order.Quantity.Load()) == 0
 	order.LastFillTime.Store(now)
 	order.Filled.Store(totalFilled)
-	add(&order.Fee, fee)
+	add(&order.Fee, actualFee)
 	add(&order.Notional, actualNotional)
 	order.Price.Store(order.Notional.Load().Div(order.Filled.Load()))
 	if isFullyFilled {
@@ -214,7 +215,7 @@ func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) 
 	}
 
 	exchange.Lock.Lock()
-	exchange.Fees = exchange.Fees.Add(fee)
+	exchange.Fees = exchange.Fees.Add(actualFee)
 	exchange.Lock.Unlock()
 	eq.Lock.Lock()
 	eq.Trades[order.Side]++

@@ -14,13 +14,14 @@ import (
 )
 
 type Exchange struct {
-	Lock     sync.RWMutex
-	Exchange ds.Exchange
-	Holdings *Holdings
-	Orders   *Orders
-	Equities *EquityRegistry
-	Fees     decimal.Decimal // total fees paid
-	OnReady  func()
+	Lock          sync.RWMutex
+	Exchange      ds.Exchange
+	Holdings      *Holdings
+	Orders        *Orders
+	Equities      *EquityRegistry
+	Fees          decimal.Decimal    // total fees paid
+	FeeCalculator *AlpacaEliteFees   // fee calculator for simulated fills
+	OnReady       func()
 }
 
 func newExchange(exchange ds.Exchange) *Exchange {
@@ -28,8 +29,9 @@ func newExchange(exchange ds.Exchange) *Exchange {
 		loggy.Fatalf("cannot create new exchange %s while cubby is running", exchange)
 	}
 	ex := &Exchange{
-		Exchange: exchange,
-		OnReady:  func() {},
+		Exchange:      exchange,
+		FeeCalculator: NewAlpacaEliteFees(),
+		OnReady:       func() {},
 	}
 	ex.Holdings = newHoldings(ex)
 	ex.Orders = newOrders(ex)
