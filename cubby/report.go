@@ -250,7 +250,6 @@ func (r *report) Print() {
 	fmt.Printf("invested.max %s\n", r.strategyInvested.Max().FormatThousand(2))
 
 	// margin metrics
-	fmt.Println()
 	marginCalls := ex.MarginCallCount
 	liquidatedValue := ex.LiquidatedValue.Load()
 	if marginCalls > 0 || liquidatedValue.IsPositive() {

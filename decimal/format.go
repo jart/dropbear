@@ -75,24 +75,24 @@ func (d Decimal) Format(n int) string {
 }
 
 // formatMin handles Format() for Min, which can't be negated without overflow.
-// Min = -9223372036854775808 = -9223372036.854775808
+// Min = -9223372036854775808 = -92233720368.54775808
 func formatMin(n int) string {
-	// Full representation with 9 decimal places
-	const full = "-9223372036.854775808"
-	const intPart = "-9223372036"
+	// Full representation with 8 decimal places
+	const full = "-92233720368.54775808"
+	const intPart = "-92233720368"
 
 	if n <= 0 {
 		// Truncate to integer, rounding away from zero
-		// .854775808 >= .5, so round to -9223372037
-		return "-9223372037"
+		// .54775808 >= .5, so round to -92233720369
+		return "-92233720369"
 	}
 	if n >= Places {
 		return full
 	}
 
 	// Build result with n decimal places and rounding
-	// Digits after decimal: 854775808
-	diglet := []byte{'8', '5', '4', '7', '7', '5', '8', '0', '8'}
+	// Digits after decimal: 54775808
+	diglet := []byte{'5', '4', '7', '7', '5', '8', '0', '8'}
 	result := intPart + "."
 
 	// Check if we need to round up (away from zero = more negative = add 1 to magnitude)
@@ -115,8 +115,8 @@ func formatMin(n int) string {
 		}
 		if carry {
 			// Carry propagated into integer part
-			// -9223372036.9... rounds to -9223372037.0...
-			return "-9223372037." + string(make([]byte, n)) // n zeros
+			// -92233720368.5... rounds to -92233720369.0...
+			return "-92233720369." + string(make([]byte, n)) // n zeros
 		}
 		frac = string(fracBytes)
 	}

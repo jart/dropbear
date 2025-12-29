@@ -95,22 +95,6 @@ func (d Decimal) QuantizeNearest(q Decimal) Decimal {
 	return Decimal(res)
 }
 
-// mulInt64 does overflow-checked multiplication
-func mulInt64(a, b int64) (int64, bool) {
-	if a == 0 || b == 0 {
-		return 0, false
-	}
-	res := a * b
-	if res/b != a {
-		return 0, true
-	}
-	// Extra check for MinInt64 * -1
-	if a == math.MinInt64 && b == -1 {
-		return 0, true
-	}
-	return res, false
-}
-
 func checkQuantum(q Decimal) {
 	if q <= 0 {
 		panic("illegal quantum")

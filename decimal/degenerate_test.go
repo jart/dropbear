@@ -216,8 +216,8 @@ func TestMulIntOverflowMoreCases(t *testing.T) {
 		n    int
 	}{
 		{"MinInt", Min, 2},
-		{"LargePos", Parse("5000000000"), 2},
-		{"LargeNeg", Parse("-5000000000"), 2},
+		{"LargePos", Parse("50000000000"), 2},
+		{"LargeNeg", Parse("-50000000000"), 2},
 	}
 
 	for _, tt := range tests {
@@ -305,16 +305,15 @@ func TestFromFloat64Inf(t *testing.T) {
 }
 
 // TestFromFloat64RejectLargeValues tests that FromFloat64 rejects values
-// where float64 lacks sufficient precision for our 9 decimal places.
-// The limit is 2^53 / Scale ≈ 9 million.
+// where float64 lacks sufficient precision for our 8 decimal places.
+// The limit is 2^53 / Scale ≈ 90 million.
 func TestFromFloat64RejectLargeValues(t *testing.T) {
 	largeValues := []float64{
-		9007200,  // just over maxSafeFloat
-		1e7,      // 10 million
+		90072000, // just over maxSafeFloat (90,071,992)
 		1e8,      // 100 million
 		1e9,      // 1 billion
 		9e9,      // 9 billion
-		-9007200, // negative
+		-90072000,
 		-1e9,
 	}
 
@@ -337,9 +336,9 @@ func TestFromFloat64AcceptSafeValues(t *testing.T) {
 		0,
 		1,
 		-1,
-		1000000, // 1 million
-		9000000, // 9 million (just under limit)
-		-9000000,
+		1000000,  // 1 million
+		90000000, // 90 million (just under limit)
+		-90000000,
 		0.123456789,
 		1234.56789,
 	}
@@ -356,11 +355,11 @@ func TestFromFloat64AcceptSafeValues(t *testing.T) {
 	}
 }
 
-// TestFormatOutOfRange tests that Format panics for n outside [0, 9].
+// TestFormatOutOfRange tests that Format panics for n outside [0, 8].
 func TestFormatOutOfRange(t *testing.T) {
 	d := Parse("1.23")
 
-	badValues := []int{-1, 10, 100}
+	badValues := []int{-1, 9, 10, 100}
 	for _, n := range badValues {
 		t.Run(fmt.Sprintf("Format(%d)", n), func(t *testing.T) {
 			defer func() {
@@ -392,9 +391,9 @@ func TestFromFloat64SafeRange(t *testing.T) {
 		{0.0, "0"},
 		{1.0, "1"},
 		{-1.0, "-1"},
-		{0.123456789, "0.123456789"},
+		{0.123456789, "0.12345679"}, // Rounded to 8 places
 		{1000.0, "1000"},
-		{1000000.123456789, "1000000.123456789"},
+		{1000000.123456789, "1000000.12345679"}, // Rounded
 	}
 
 	for _, tt := range tests {
@@ -410,13 +409,12 @@ func TestFromFloat64SafeRange(t *testing.T) {
 
 // TestParseExtremeExponents tests Parse with very large exponents.
 // BUG: Parse does not check for overflow during exponent multiplication.
-// 1e9 is approximately the max safe value (1e9 * Scale = 1e18 ≈ MaxInt64).
+// 1e10 is approximately the max safe value (1e10 * Scale = 1e18 ≈ MaxInt64).
 // Larger exponents silently overflow to garbage values.
 func TestParseExtremeExponents(t *testing.T) {
 	// These should overflow but currently produce garbage instead
 	overflowCases := []string{
-		"1e10", // 1e10 * Scale overflows
-		"1e11",
+		"1e11", // 1e11 * Scale overflows
 		"1e20",
 		"1e50",
 		"1e100",
@@ -441,12 +439,12 @@ func TestParseExtremeExponents(t *testing.T) {
 		}
 	})
 
-	// Verify boundary: 1e9 should work (largest exponent that fits)
-	t.Run("1e9_is_valid", func(t *testing.T) {
-		result := Parse("1e9")
-		want := Parse("1000000000")
+	// Verify boundary: 1e10 should work (largest exponent that fits)
+	t.Run("1e10_is_valid", func(t *testing.T) {
+		result := Parse("1e10")
+		want := Parse("10000000000")
 		if result != want {
-			t.Errorf("Parse(\"1e9\") = %s, want %s", result, want)
+			t.Errorf("Parse(\"1e10\") = %s, want %s", result, want)
 		}
 	})
 
@@ -462,16 +460,18 @@ func TestParseExtremeExponents(t *testing.T) {
 
 // TestParseOverflowInMantissa tests overflow detection during mantissa parsing.
 func TestParseOverflowInMantissa(t *testing.T) {
-	// The max integer part is about 9.2 billion
+	// The max integer part is about 92 billion
 	// Values larger should panic
 
 	tests := []struct {
 		input     string
 		wantPanic bool
 	}{
-		{"9223372036.854775807", false}, // Max value - should work
-		{"9223372037", true},            // Just over max integer part
-		{"10000000000", true},           // 10 billion
+		{"9223372036.854775807", false}, // Max value with 9 places (truncated to 8) - safe
+		{"92233720368.54775807", false}, // Max value with 8 places - safe
+		{"9223372037", false},           // Now safe (9.2B)
+		{"10000000000", false},          // Now safe (10B)
+		{"92233720369", true},           // Just over max integer part
 		{"99999999999", true},           // 100 billion
 	}
 

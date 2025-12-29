@@ -158,9 +158,11 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 	}
 	order.Lock.Unlock()
 
+	// Calculate price for potential recalculations
+	price := actualNotional.Div(actualFilled)
+
 	// Log the fill (if verbose)
 	if Live || *flagVerbose {
-		price := actualNotional.Div(actualFilled)
 		log.Printf("%s %s %s @ %s ($%s)",
 			order.Side.String(), actualFilled.String(), eq.Symbol,
 			price.Format(2), actualNotional.Format(2))
@@ -169,6 +171,23 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 	switch {
 	case order.IsCover:
 		// Buy to cover: pay cash, close short position
+		// Check current position first - it may have changed since order was placed
+		eq.Shares.Lock.Lock()
+		currentQty := eq.Shares.Quantity.Load()
+		if !currentQty.IsNegative() {
+			// Position already closed or is long - nothing to cover
+			eq.Shares.Lock.Unlock()
+			return decimal.Zero, nil
+		}
+		absQty := currentQty.Neg()
+		if actualFilled.Cmp(absQty) > 0 {
+			// Cap at actual short position size
+			actualFilled = absQty
+			actualNotional = actualFilled.Mul(price)
+			total = actualNotional.Add(fee) // Cover costs notional + fee
+		}
+		eq.Shares.Lock.Unlock()
+
 		exchange.Lock.Lock()
 		sub(&exchange.Cash, total)
 		if releaseHold.IsPositive() {
@@ -254,6 +273,22 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 	case order.Side == ds.SideSell:
 		// Regular sell: remove shares, add cash
 		eq.Shares.Lock.Lock()
+
+		// Check current position - it may have changed since order was placed
+		// (e.g., margin call liquidation)
+		currentQty := eq.Shares.Quantity.Load()
+		if !currentQty.IsPositive() {
+			// Position already closed or short - nothing to sell
+			eq.Shares.Lock.Unlock()
+			return decimal.Zero, nil
+		}
+		if actualFilled.Cmp(currentQty) > 0 {
+			// Cap at available shares
+			actualFilled = currentQty
+			actualNotional = actualFilled.Mul(price)
+			total = actualNotional.Sub(fee)
+		}
+
 		sub(&eq.Shares.Quantity, actualFilled)
 		if holdAlreadyReleased {
 			sub(&eq.Shares.Available, actualFilled)

@@ -423,12 +423,23 @@ func (ex *Exchange) AutoLiquidate(deficit decimal.Decimal) {
 // forceSellLong executes a forced liquidation sell for a long position.
 // Returns the notional value of the liquidation.
 func (ex *Exchange) forceSellLong(eq *Equity, holding *Holding, qty decimal.Decimal) decimal.Decimal {
+	holding.Lock.Lock()
+
+	// Check current position - it may have changed since AutoLiquidate snapshot
+	currentQty := holding.Quantity.Load()
+	if !currentQty.IsPositive() {
+		holding.Lock.Unlock()
+		return decimal.Zero // Position already closed or is short
+	}
+	if qty.Cmp(currentQty) > 0 {
+		qty = currentQty // Cap at available shares
+	}
+
 	price := eq.LastPrice.Load()
 	notional := qty.Mul(price)
 	// Forced liquidations use market orders
 	fee := eq.Exchange.FeeCalculator.Calculate(clocky.Now(), qty.Int(), true)
 
-	holding.Lock.Lock()
 	sub(&holding.Quantity, qty)
 	sub(&holding.Available, qty.Min(holding.Available.Load()))
 	holding.Volume += qty.Float64()
@@ -456,12 +467,24 @@ func (ex *Exchange) forceSellLong(eq *Equity, holding *Holding, qty decimal.Deci
 // forceCoverShort executes a forced cover for a short position.
 // Returns the notional value of the cover.
 func (ex *Exchange) forceCoverShort(eq *Equity, holding *Holding, qty decimal.Decimal) decimal.Decimal {
+	holding.Lock.Lock()
+
+	// Check current position - it may have changed since AutoLiquidate snapshot
+	currentQty := holding.Quantity.Load()
+	if !currentQty.IsNegative() {
+		holding.Lock.Unlock()
+		return decimal.Zero // Position already closed or is long
+	}
+	absQty := currentQty.Neg() // Convert to positive for comparison
+	if qty.Cmp(absQty) > 0 {
+		qty = absQty // Cap at actual short position size
+	}
+
 	price := eq.LastPrice.Load()
 	notional := qty.Mul(price)
 	// Forced covers use market orders
 	fee := eq.Exchange.FeeCalculator.Calculate(clocky.Now(), qty.Int(), true)
 
-	holding.Lock.Lock()
 	add(&holding.Quantity, qty) // -100 + 50 = -50
 	holding.Volume += qty.Float64()
 	holding.BuyVolume += qty.Float64()

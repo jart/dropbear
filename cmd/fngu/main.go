@@ -32,8 +32,9 @@ import (
 var (
 	flagSymbol    = flag.String("symbol", "FNGU", "symbol to trade")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
-	flagCash      = decimal.Flag("cash", "800_000", "initial USD balance")
+	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
 	flagLookback  = flag.Int("lookback", 15, "breakout lookback period (minutes)")
+	flagBuffer    = decimal.FlagPercent("buffer", "10", "buffer percentage (10%)")
 	flagTrailPct  = decimal.Flag("trail", "0.025", "trailing stop percentage (0.025 = 2.5%)")
 	flagMinGap    = decimal.Flag("mingap", "0.01", "minimum gap to enter (1%)")
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
@@ -225,7 +226,7 @@ func checkBreakoutEntry(c *indicators.Candle, now time.Time) {
 	if buyingPower.Cmp(maxPosition) > 0 {
 		buyingPower = maxPosition
 	}
-	usableBuyingPower := buyingPower.Mul(decimal.Parse("0.95"))
+	usableBuyingPower := buyingPower.Mul(decimal.One.Sub(*flagBuffer))
 	qty := usableBuyingPower.Div(price).Int()
 
 	if qty <= 0 {

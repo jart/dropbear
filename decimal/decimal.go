@@ -19,11 +19,11 @@ const (
 	Tenth   = Decimal(Scale / 10)
 	Max     = Decimal(math.MaxInt64) // 9,223,372,036.854_775_807
 	Min     = Decimal(math.MinInt64) // -9,223,372,036.854_775_808
-	Epsilon = Decimal(1)             // 0.000000001
-	Satoshi = Decimal(10)            // 0.00000001
+	Epsilon = Decimal(1)             // 0.00000001
+	Satoshi = Decimal(1)             // 0.00000001
 	Cent    = Decimal(Scale / 100)   // 0.01
-	Scale   = 1_000_000_000
-	Places  = 9
+	Scale   = 100_000_000
+	Places  = 8
 )
 
 // FromInt converts int to Decimal.
