@@ -39,19 +39,6 @@ var (
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
 )
 
-// Margin multiplier - use cubby's -margin flag (default 1, use 4 for PDT day trading)
-func getMargin() int {
-	// Look up cubby's margin flag
-	f := flag.Lookup("margin")
-	if f == nil {
-		return 1
-	}
-	if v, ok := f.Value.(flag.Getter); ok {
-		return v.Get().(int)
-	}
-	return 1
-}
-
 var (
 	gExchange  *cubby.Exchange
 	gEquity    *cubby.Equity
@@ -232,16 +219,13 @@ func checkBreakoutEntry(c *indicators.Candle, now time.Time) {
 	// PDT rules allow 4x leverage intraday, must close by EOD
 	// Cap max position to $1B to avoid decimal overflow on sale proceeds
 	// (with 40x leverage and big gains, selling can produce multi-billion proceeds)
-	maxPosition := decimal.Parse("1000000000")
-	cash := gEquity.Cash.Available.Load()
-	margin := getMargin()
-	// Cap cash before multiplying to avoid overflow in Mul
-	maxCash := maxPosition.DivInt(margin)
-	if cash.Cmp(maxCash) > 0 {
-		cash = maxCash
+	maxPosition := decimal.FromInt(1000000000)
+	buyingPower := gEquity.Exchange.DayTradingBuyingPower.Load()
+	// Cap buying power to avoid overflow
+	if buyingPower.Cmp(maxPosition) > 0 {
+		buyingPower = maxPosition
 	}
-	// Now safe to multiply since cash <= $250M (for margin=4)
-	usableBuyingPower := cash.MulInt(margin).Mul(decimal.Parse("0.95"))
+	usableBuyingPower := buyingPower.Mul(decimal.Parse("0.95"))
 	qty := usableBuyingPower.Div(price).Int()
 
 	if qty <= 0 {

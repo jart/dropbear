@@ -15,6 +15,19 @@ const (
 	MinTime = -MaxTime - 1
 )
 
+// Weekday represents a day of the week.
+type Weekday int
+
+const (
+	Sunday Weekday = iota
+	Monday
+	Tuesday
+	Wednesday
+	Thursday
+	Friday
+	Saturday
+)
+
 func (t Time) IsZero() bool             { return t == 0 }
 func (t Time) Add(d Duration) Time      { return Time(int64(t) + int64(d)) }
 func (t Time) Sub(u Time) Duration      { return Duration(int64(t) - int64(u)) }
@@ -22,9 +35,10 @@ func (t Time) Unix() int64              { return int64(t) / 1_000_000 }
 func (t Time) Quantize(d Duration) Time { return Time((int64(t) / int64(d)) * int64(d)) }
 func (t Time) Before(u Time) bool       { return t < u }
 func (t Time) After(u Time) bool        { return t > u }
-func (t Time) Month() int               { return int(time.UnixMicro(int64(t)).Month()) }
-func (t Time) Year() int                { return time.UnixMicro(int64(t)).Year() }
-func (t Time) Weekday() time.Weekday    { return time.UnixMicro(int64(t)).Weekday() }
+func (t Time) Month() int               { return int(time.UnixMicro(int64(t)).In(TZ).Month()) }
+func (t Time) Year() int                { return time.UnixMicro(int64(t)).In(TZ).Year() }
+func (t Time) Weekday() Weekday         { return Weekday(time.UnixMicro(int64(t)).In(TZ).Weekday()) }
+func (t Time) YearMonth() string        { return time.UnixMicro(int64(t)).In(TZ).Format("2006-01") }
 
 // String returns formatted local microsecond timestamp.
 // This is intended for displaying the time to us humans.

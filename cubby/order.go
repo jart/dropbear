@@ -50,7 +50,8 @@ func (o *Order) Cancel() error {
 // kill transitions order to final state.
 func (order *Order) kill(state ds.OrderState) {
 	eq := order.Equity
-	orders := eq.Exchange.Orders
+	exchange := eq.Exchange
+	orders := exchange.Orders
 	order.Lock.Lock()
 	order.State.Store(state)
 	hold := order.Hold.Load()
@@ -59,12 +60,12 @@ func (order *Order) kill(state ds.OrderState) {
 	order.Lock.Unlock()
 	switch order.Side {
 	case ds.SideBuy:
+		// Release unused buying power back
 		releaseAmount := hold.Sub(spent)
 		if releaseAmount.IsPositive() {
-			eq.Cash.Lock.Lock()
-			add(&eq.Cash.Available, releaseAmount)
-			eq.Cash.Check()
-			eq.Cash.Lock.Unlock()
+			exchange.Lock.Lock()
+			add(&exchange.DayTradingBuyingPower, releaseAmount)
+			exchange.Lock.Unlock()
 		}
 	case ds.SideSell:
 		order.Lock.RLock()
@@ -155,26 +156,24 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 
 	switch order.Side {
 	case ds.SideBuy:
-		eq.Cash.Lock.Lock()
-		eq.Cash.Volume += actualNotional.Float64()
-		eq.Cash.SellVolume += actualNotional.Float64()
-		sub(&eq.Cash.Quantity, total)
+		// Deduct cash from exchange
+		exchange.Lock.Lock()
+		sub(&exchange.Cash, total)
 		if releaseHold.IsPositive() {
 			order.Lock.RLock()
 			cumulativeSpent := order.Notional.Load().Add(order.Fee.Load())
 			order.Lock.RUnlock()
-			// With margin, hold is only a portion of cost, so unusedHold may be negative
-			// Only release back to Available if there's actually unused hold
-			unusedHold := releaseHold.Sub(cumulativeSpent.DivInt(*flagMargin))
+			// Release unused buying power back
+			unusedHold := releaseHold.Sub(cumulativeSpent)
 			if unusedHold.IsPositive() {
-				add(&eq.Cash.Available, unusedHold)
+				add(&exchange.DayTradingBuyingPower, unusedHold)
 			}
 		} else if holdAlreadyReleased {
-			sub(&eq.Cash.Available, total.DivInt(*flagMargin))
+			sub(&exchange.DayTradingBuyingPower, total)
 		}
-		eq.Cash.Check()
-		eq.Cash.Lock.Unlock()
+		exchange.Lock.Unlock()
 
+		// Add shares to holding
 		eq.Shares.Lock.Lock()
 		add(&eq.Shares.Available, actualFilled)
 		add(&eq.Shares.Quantity, actualFilled)
@@ -185,6 +184,7 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 		eq.Shares.Lock.Unlock()
 
 	case ds.SideSell:
+		// Remove shares from holding
 		eq.Shares.Lock.Lock()
 		sub(&eq.Shares.Quantity, actualFilled)
 		if holdAlreadyReleased {
@@ -193,21 +193,23 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 		eq.Shares.Volume += actualFilled.Float64()
 		eq.Shares.SellVolume += actualFilled.Float64()
 		costBasis := eq.Shares.Lots.Consume(actualFilled, decimal.Zero)
+		// Track wins/losses
+		profit := total.Sub(costBasis)
+		if profit.IsPositive() {
+			eq.Shares.WinCount++
+		} else if profit.IsNegative() {
+			eq.Shares.LossCount++
+		}
 		eq.Shares.Check()
 		eq.Shares.Lock.Unlock()
 
-		eq.Cash.Lock.Lock()
-		add(&eq.Cash.Quantity, total)
-		// With margin, we borrowed (margin-1)/margin of the original purchase.
-		// On sell, broker takes back loan, we keep: proceeds - cost*(margin-1)/margin
-		// = proceeds - cost + cost/margin = profit + original_hold
-		profit := total.Sub(costBasis)
-		originalHold := costBasis.DivInt(*flagMargin)
-		add(&eq.Cash.Available, originalHold.Add(profit))
-		eq.Cash.Volume += actualNotional.Float64()
-		eq.Cash.SellVolume += actualNotional.Float64()
-		eq.Cash.Check()
-		eq.Cash.Lock.Unlock()
+		// Add proceeds to exchange cash
+		exchange.Lock.Lock()
+		add(&exchange.Cash, total)
+		// Restore buying power: proceeds go back to available buying power
+		// The buying power we get back is the sale proceeds (we can re-invest them)
+		add(&exchange.DayTradingBuyingPower, total)
+		exchange.Lock.Unlock()
 	}
 
 	if isFullyFilled {

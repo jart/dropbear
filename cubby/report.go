@@ -8,7 +8,6 @@ import (
 	"dropbear/loggy"
 	"fmt"
 	"math"
-	"strings"
 	"sync"
 )
 
@@ -25,7 +24,6 @@ type report struct {
 }
 
 type initialHolding struct {
-	IsCash   bool
 	Symbol   string
 	Quantity decimal.Decimal
 }
@@ -47,17 +45,27 @@ func (r *report) Init() {
 	r.startEquity = GetEquityUSD()
 	r.benchmarkQuantity = decimal.Zero
 	for _, exchange := range Exchanges.All() {
+		// Handle cash from exchange
+		cash := exchange.Cash.Load()
+		if cash.IsPositive() {
+			// Convert USD to benchmark shares at current price
+			if r.benchmark.LastPrice.Load().IsPositive() {
+				r.benchmarkQuantity = r.benchmarkQuantity.Add(cash.Div(r.benchmark.LastPrice.Load()))
+			}
+			r.initialHoldings = append(r.initialHoldings, initialHolding{
+				Symbol:   "USD",
+				Quantity: cash,
+			})
+		}
+		// Handle stock holdings
 		for _, holding := range exchange.Holdings.All() {
 			quantity := holding.Quantity.Load()
-			switch holding.Symbol {
-			case r.benchmark.Symbol:
+			if quantity.IsZero() {
+				continue
+			}
+			if holding.Symbol == r.benchmark.Symbol {
 				r.benchmarkQuantity = r.benchmarkQuantity.Add(quantity)
-			case "USD":
-				// Convert USD to benchmark shares at current price
-				if r.benchmark.LastPrice.Load().IsPositive() {
-					r.benchmarkQuantity = r.benchmarkQuantity.Add(quantity.Div(r.benchmark.LastPrice.Load()))
-				}
-			default:
+			} else {
 				// Convert other holdings to USD then to benchmark shares
 				price := exchange.Equities.GetPriceUSD(holding.Symbol)
 				quantityUSD := price.Mul(quantity)
@@ -66,7 +74,6 @@ func (r *report) Init() {
 				}
 			}
 			r.initialHoldings = append(r.initialHoldings, initialHolding{
-				IsCash:   holding.IsCash,
 				Symbol:   holding.Symbol,
 				Quantity: quantity,
 			})
@@ -78,17 +85,22 @@ func (r *report) Init() {
 }
 
 func (r *report) Sample(now clocky.Time) {
+	// Always sample invested on every tick for accurate min/max/avg
+	invested := GetInvestedUSD()
+	r.lock.Lock()
+	r.strategyInvested.Sample(invested)
+	r.lock.Unlock()
+
+	// Sample equity on quantum intervals for Sharpe/drawdown calculations
 	shouldSample := func() bool {
 		r.lock.RLock()
 		defer r.lock.RUnlock()
 		return r.strategyEquity.ShouldSample(now)
 	}()
 	if shouldSample {
-		invested := GetInvestedUSD()
 		equity := GetEquityUSD()
 		r.lock.Lock()
 		defer r.lock.Unlock()
-		r.strategyInvested.Sample(invested)
 		r.strategyEquity.Sample(now, equity)
 		r.benchmarkEquity.Sample(now, r.benchmarkQuantity.Mul(r.benchmark.LastPrice.Load()))
 	}
@@ -100,14 +112,18 @@ func (r *report) Print() {
 	defer r.lock.Unlock()
 	ex := Exchanges.Get(ds.ExchangeAlpaca)
 
-	// Get totals from USD holding
-	usd := ex.Holdings.Get("USD")
+	// Get totals
 	endEquity := GetEquityUSD()
 	riskFreeRate := GetRiskFreeRate().Float64()
 	fees := ex.Fees.Load()
-	usd.Lock.RLock()
-	usdVolume := usd.Volume
-	usd.Lock.RUnlock()
+
+	// Calculate USD volume from all holdings
+	usdVolume := 0.0
+	for _, holding := range ex.Holdings.All() {
+		holding.Lock.RLock()
+		usdVolume += holding.Volume
+		holding.Lock.RUnlock()
+	}
 
 	// Compute 30-day volume (scale from backtest duration)
 	vol30day := 0.0
@@ -156,8 +172,8 @@ func (r *report) Print() {
 	fmt.Printf("start %s\n", r.startTime)
 	fmt.Printf("start.equity %s\n", r.startEquity)
 	for _, ih := range r.initialHoldings {
-		if ih.IsCash {
-			fmt.Printf("start.%s %s\n", strings.ToLower(ih.Symbol), ih.Quantity)
+		if ih.Symbol == "USD" {
+			fmt.Printf("start.usd %s\n", ih.Quantity)
 		}
 	}
 
@@ -168,12 +184,11 @@ func (r *report) Print() {
 	fmt.Printf("end.return %s\n", endReturn.MulInt(100))
 	fmt.Printf("end.sharpe %.2f\n", r.strategyEquity.Sharpe(riskFreeRate))
 	fmt.Printf("end.equity %s\n", endEquity)
+	// Print ending cash balance
 	for _, exchange := range Exchanges.All() {
-		for _, holding := range exchange.Holdings.All() {
-			qty := holding.Quantity.Load()
-			if qty.IsPositive() && holding.IsCash {
-				fmt.Printf("end.%s %s\n", strings.ToLower(holding.Symbol), qty)
-			}
+		cash := exchange.Cash.Load()
+		if cash.IsPositive() {
+			fmt.Printf("end.usd %s\n", cash)
 		}
 	}
 	fmt.Printf("end.fees %s\n", fees)
@@ -185,9 +200,6 @@ func (r *report) Print() {
 	var totalWins, totalLosses int
 	for _, exchange := range Exchanges.All() {
 		for _, holding := range exchange.Holdings.All() {
-			if holding.IsCash {
-				continue
-			}
 			holding.Lock.RLock()
 			totalWins += holding.WinCount
 			totalLosses += holding.LossCount

@@ -3,7 +3,6 @@ package teddy
 import (
 	"dropbear/clocky"
 	"sync/atomic"
-	"time"
 )
 
 type samplerDaemon struct {
@@ -35,7 +34,7 @@ func (sd *samplerDaemon) Run() {
 		sd.ready.Store(true)
 	}
 	go func() {
-		t := time.NewTicker(time.Duration(int64(sd.interval) * int64(time.Microsecond) / 10))
+		t := clocky.NewTicker(sd.interval / 10)
 		for {
 			select {
 			case <-t.C:

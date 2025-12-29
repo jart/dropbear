@@ -54,6 +54,7 @@ func Init() {
 		}
 		Paper = true
 		ds.SetOffline()
+		clocky.SetLive(false)
 		clocky.Now = clocky.FakeNow
 		gRateLimiter = newRateLimiter()
 	}
@@ -70,24 +71,34 @@ func EndTime() clocky.Time {
 }
 
 // SetBalance sets the simulated balance for the given exchange and symbol.
+// For USD, this sets the cash balance on the Exchange.
+// For stocks, this sets the position quantity on the Holding.
 func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
 	if quantity.IsNegative() {
 		panic("cannot set negative balance")
 	}
-	if quantity.IsZero() {
+	if Live {
 		return
 	}
-	if !Live {
-		ex := Exchanges.Get(exchange)
+	ex := Exchanges.Get(exchange)
+	if symbol == "USD" {
+		ex.Lock.Lock()
+		ex.Cash.Store(quantity)
+		// Set buying power based on margin flag
+		ex.RegTBuyingPower.Store(quantity.MulInt(2))
+		ex.DayTradingBuyingPower.Store(quantity.MulInt(4))
+		ex.Lock.Unlock()
+	} else {
+		if quantity.IsZero() {
+			return
+		}
 		ho := ex.Holdings.Get(symbol)
 		ho.Lock.Lock()
-		defer ho.Lock.Unlock()
-		ho.Quantity = quantity
-		ho.Available = quantity
-		if !ho.IsCash {
-			ho.Lots.Add(clocky.Now(), quantity, decimal.Zero)
-		}
+		ho.Quantity.Store(quantity)
+		ho.Available.Store(quantity)
+		ho.Lots.Add(clocky.Now(), quantity, decimal.Zero)
 		ho.Check()
+		ho.Lock.Unlock()
 	}
 }
 

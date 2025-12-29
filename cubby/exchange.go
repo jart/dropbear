@@ -19,9 +19,31 @@ type Exchange struct {
 	Holdings      *Holdings
 	Orders        *Orders
 	Equities      *EquityRegistry
-	Fees          decimal.Decimal  // total fees paid
 	FeeCalculator *AlpacaEliteFees // fee calculator for simulated fills
 	OnReady       func()
+
+	// Account balances (like Alpaca dashboard)
+	// Buying Power
+	RegTBuyingPower       decimal.Decimal // 2x overnight buying power
+	DayTradingBuyingPower decimal.Decimal // 4x intraday buying power (PDT accounts)
+
+	// Margin
+	InitialMargin     decimal.Decimal // margin requirement to open positions
+	MaintenanceMargin decimal.Decimal // margin requirement to hold positions
+
+	// Cash
+	Cash decimal.Decimal // actual cash (can be negative when using margin)
+
+	// Positions
+	Equity          decimal.Decimal // total account value (cash + positions)
+	LongMarketValue decimal.Decimal // value of long positions
+
+	// Fees
+	Fees        decimal.Decimal // total fees paid
+	AccruedFees decimal.Decimal // fees not yet settled
+
+	// Day trading
+	DayTradeCount int // PDT rule tracking
 }
 
 func newExchange(exchange ds.Exchange) *Exchange {
@@ -36,7 +58,27 @@ func newExchange(exchange ds.Exchange) *Exchange {
 	ex.Holdings = newHoldings(ex)
 	ex.Orders = newOrders(ex)
 	ex.Equities = newEquityRegistry(ex)
+	if Live {
+		ex.fetchAlpacaAccount()
+	}
 	return ex
+}
+
+func (ex *Exchange) fetchAlpacaAccount() {
+	account, err := AlpacaClient.GetAccount()
+	if err != nil {
+		loggy.Fatalf("alpaca: error fetching account: %v", err)
+	}
+	ex.Lock.Lock()
+	ex.Cash.Store(decimal.Parse(account.Cash))
+	ex.RegTBuyingPower.Store(decimal.Parse(account.RegTBuyingPower))
+	ex.DayTradingBuyingPower.Store(decimal.Parse(account.DayTradingBuyingPower))
+	ex.Equity.Store(decimal.Parse(account.Equity))
+	ex.LongMarketValue.Store(decimal.Parse(account.LongMarketValue))
+	ex.InitialMargin.Store(decimal.Parse(account.InitialMargin))
+	ex.MaintenanceMargin.Store(decimal.Parse(account.MaintenanceMargin))
+	ex.AccruedFees.Store(decimal.Parse(account.AccruedFees))
+	ex.Lock.Unlock()
 }
 
 func (ex *Exchange) String() string {
@@ -167,11 +209,13 @@ func (hs *Holdings) All() []*Holding {
 }
 
 func (hs *Holdings) GetEquityUSD() decimal.Decimal {
-	total := decimal.Zero
+	// Start with cash balance
+	total := hs.exchange.Cash.Load()
+	// Add value of all stock positions
 	for _, holding := range hs.All() {
 		price := holding.Exchange.Equities.GetPriceUSD(holding.Symbol)
 		holding.Lock.RLock()
-		value := holding.Quantity.Mul(price)
+		value := holding.Quantity.Load().Mul(price)
 		holding.Lock.RUnlock()
 		total = total.Add(value)
 	}
@@ -181,12 +225,9 @@ func (hs *Holdings) GetEquityUSD() decimal.Decimal {
 func (hs *Holdings) GetInvestedUSD() decimal.Decimal {
 	total := decimal.Zero
 	for _, holding := range hs.All() {
-		if holding.IsCash {
-			continue
-		}
 		price := holding.Exchange.Equities.GetPriceUSD(holding.Symbol)
 		holding.Lock.RLock()
-		value := holding.Quantity.Mul(price)
+		value := holding.Quantity.Load().Mul(price)
 		holding.Lock.RUnlock()
 		total = total.Add(value)
 	}

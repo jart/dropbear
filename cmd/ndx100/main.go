@@ -160,7 +160,7 @@ func rebalance() {
 		}
 	}
 
-	// Second pass: execute buys with available cash
+	// Second pass: execute buys with available buying power
 	for _, eq := range gEquities {
 		price := eq.LastPrice.Load()
 		if !price.IsPositive() {
@@ -173,15 +173,15 @@ func rebalance() {
 
 		// Buy if underweight
 		if diff.IsPositive() && diff.Cmp(threshold) >= 0 {
-			// Read fresh cash each time (cubby decrements on order)
-			availableCash := eq.Cash.Available.Load()
+			// Read fresh buying power each time (cubby decrements on order)
+			buyingPower := eq.Exchange.DayTradingBuyingPower.Load()
 			// MarketOrder adds 5% buffer + fees, so use 10% margin
 			costPerShare := price.MulInt(110).DivInt(100)
-			if availableCash.Cmp(costPerShare) < 0 {
+			if buyingPower.Cmp(costPerShare) < 0 {
 				continue
 			}
 			// Calculate max shares we can afford
-			maxQty := availableCash.Div(costPerShare).Int()
+			maxQty := buyingPower.Div(costPerShare).Int()
 			wantQty := diff.Div(price).Int()
 			qty := wantQty
 			if qty > maxQty {

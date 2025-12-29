@@ -57,6 +57,7 @@ func Init() {
 		}
 		Paper = true
 		ds.SetOffline()
+		clocky.SetLive(false)
 		clocky.Now = clocky.FakeNow
 		gRateLimiter = newRateLimiterCoinbase()
 	}

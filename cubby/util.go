@@ -1,9 +1,9 @@
 package cubby
 
 import (
+	"dropbear/clocky"
 	"dropbear/decimal"
 	"math/rand"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -25,15 +25,15 @@ func GenerateOrderID() string {
 
 // Stagger sleeps for a short duration.
 func Stagger() {
-	time.Sleep(time.Duration(rand.Intn(150)+150) * time.Millisecond)
+	clocky.Sleep(clocky.Duration(rand.Intn(150)+150) * clocky.Millisecond)
 }
 
 // Slumber sleeps for a random duration.
 func Slumber() {
-	time.Sleep(time.Duration(rand.Intn(15)+15) * time.Second)
+	clocky.Sleep(clocky.Duration(rand.Intn(15)+15) * clocky.Second)
 }
 
 // Hibernate sleeps for a very long time.
 func Hibernate() {
-	time.Sleep(time.Duration(rand.Intn(15)+15) * time.Minute)
+	clocky.Sleep(clocky.Duration(rand.Intn(15)+15) * clocky.Minute)
 }

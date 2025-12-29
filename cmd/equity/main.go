@@ -80,12 +80,12 @@ func onCandle(c *indicators.Candle) {
 	// Current position
 	shares := gEquity.Shares.Quantity.Load()
 	hasPosition := shares.IsPositive()
-	cash := gEquity.Cash.Available.Load()
+	buyingPower := gEquity.Exchange.DayTradingBuyingPower.Load()
 
 	switch {
-	case bullish && !hasPosition && cash.IsPositive():
-		// Price above SMA, no position - buy with 95% of available cash
-		investAmount := cash.MulInt(95).DivInt(100)
+	case bullish && !hasPosition && buyingPower.IsPositive():
+		// Price above SMA, no position - buy with 95% of available buying power
+		investAmount := buyingPower.Mul(decimal.Parse("0.95"))
 		if price.IsPositive() {
 			qty := investAmount.Div(price).Int()
 			if qty > 0 {

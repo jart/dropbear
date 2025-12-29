@@ -5,7 +5,6 @@ import (
 	"dropbear/decimal"
 	"log"
 	"sync"
-	"time"
 )
 
 // MarginInterest tracks margin interest charges on negative cash balances.
@@ -59,7 +58,7 @@ func (m *MarginInterest) ChargeDaily(now clocky.Time, cashBalance decimal.Decima
 
 	// Charge 3 days on Fridays (weekend)
 	daysToCharge := 1
-	if now.Weekday() == time.Friday {
+	if now.Weekday() == clocky.Friday {
 		daysToCharge = 3
 	}
 	totalCharge := dailyCharge.MulInt(daysToCharge)

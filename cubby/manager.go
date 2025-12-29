@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/emirpasic/gods/v2/trees/binaryheap"
 	"github.com/klauspost/compress/zstd"
@@ -160,8 +159,8 @@ func openRecordedCandleData(symbol string, start, end clocky.Time) *recordedCand
 	}
 
 	// Parse start/end into year-month for filtering
-	startYM := time.UnixMicro(int64(start)).Format("2006-01")
-	endYM := time.UnixMicro(int64(end)).Format("2006-01")
+	startYM := start.YearMonth()
+	endYM := end.YearMonth()
 
 	// Open files within range
 	var files []*os.File

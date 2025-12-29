@@ -19,7 +19,6 @@ type Equity struct {
 	Exchange   *Exchange
 	LastPrice  decimal.Decimal
 	Shares     *Holding // the stock holding (e.g., AAPL shares)
-	Cash       *Holding // USD cash holding
 	Trades     map[ds.Side]int
 	OnCandle   func(*indicators.Candle)
 	OnReady    func()
@@ -36,7 +35,6 @@ func newEquity(exchange *Exchange, symbol string) *Equity {
 		Symbol:     symbol,
 		Exchange:   exchange,
 		Shares:     exchange.Holdings.Get(symbol),
-		Cash:       exchange.Holdings.Get("USD"),
 		Trades:     make(map[ds.Side]int),
 		OnCandle:   func(*indicators.Candle) {},
 		OnReady:    func() {},
@@ -161,35 +159,26 @@ func (e *Equity) MarketOrder(side ds.Side, quantity int) *Order {
 	// Calculate and reserve hold based on current price estimate
 	switch side {
 	case ds.SideBuy:
-		// Reserve cash - estimate with current price + 5% buffer
+		// Reserve buying power - estimate with current price + 5% buffer
 		estimatedCost := e.LastPrice.Load().Mul(decimal.Parse("1.05")).Mul(qty)
-		e.Cash.Lock.Lock()
-		// Check buying power (margin multiplier for day trading)
-		// Cap cash to avoid overflow: max safe is ~$2B / margin
-		cash := e.Cash.Available.Load()
-		maxSafe := decimal.Parse("2000000000").DivInt(*flagMargin)
-		if cash.Cmp(maxSafe) > 0 {
-			cash = maxSafe
-		}
-		buyingPower := cash.MulInt(*flagMargin)
+		e.Exchange.Lock.Lock()
+		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
 		if buyingPower.Cmp(estimatedCost) < 0 {
-			e.Cash.Lock.Unlock()
-			loggy.Fatalf("insufficient buying power: have %s (cash %s × %d), need %s",
-				buyingPower, e.Cash.Available, *flagMargin, estimatedCost)
+			e.Exchange.Lock.Unlock()
+			loggy.Fatalf("insufficient buying power: have %s, need %s",
+				buyingPower, estimatedCost)
 		}
-		// Only reserve actual cash portion (margin is borrowed)
-		cashPortion := estimatedCost.DivInt(*flagMargin)
-		sub(&e.Cash.Available, cashPortion)
-		e.Cash.Check()
-		e.Cash.Lock.Unlock()
-		order.Hold.Store(cashPortion)
+		// Reserve the buying power
+		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
+		e.Exchange.Lock.Unlock()
+		order.Hold.Store(estimatedCost)
 
 	case ds.SideSell:
 		e.Shares.Lock.Lock()
-		if e.Shares.Available.Cmp(qty) < 0 {
+		if e.Shares.Available.Load().Cmp(qty) < 0 {
 			e.Shares.Lock.Unlock()
 			loggy.Fatalf("insufficient %s shares: have %s, need %s",
-				e.Symbol, e.Shares.Available, qty)
+				e.Symbol, e.Shares.Available.Load(), qty)
 		}
 		sub(&e.Shares.Available, qty)
 		e.Shares.Check()
@@ -236,26 +225,26 @@ func (e *Equity) LimitOrder(side ds.Side, quantity int, limitPrice decimal.Decim
 	// Calculate and reserve hold
 	switch side {
 	case ds.SideBuy:
-		// Reserve cash for purchase
+		// Reserve buying power for purchase
 		estimatedCost := limitPrice.Mul(qty)
-		e.Cash.Lock.Lock()
-		if e.Cash.Available.Cmp(estimatedCost) < 0 {
-			e.Cash.Lock.Unlock()
-			loggy.Fatalf("insufficient USD balance: have %s, need %s",
-				e.Cash.Available, estimatedCost)
+		e.Exchange.Lock.Lock()
+		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		if buyingPower.Cmp(estimatedCost) < 0 {
+			e.Exchange.Lock.Unlock()
+			loggy.Fatalf("insufficient buying power: have %s, need %s",
+				buyingPower, estimatedCost)
 		}
-		sub(&e.Cash.Available, estimatedCost)
-		e.Cash.Check()
-		e.Cash.Lock.Unlock()
+		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
+		e.Exchange.Lock.Unlock()
 		order.Hold.Store(estimatedCost)
 
 	case ds.SideSell:
 		// Reserve shares for sale
 		e.Shares.Lock.Lock()
-		if e.Shares.Available.Cmp(qty) < 0 {
+		if e.Shares.Available.Load().Cmp(qty) < 0 {
 			e.Shares.Lock.Unlock()
 			loggy.Fatalf("insufficient %s shares: have %s, need %s",
-				e.Symbol, e.Shares.Available, qty)
+				e.Symbol, e.Shares.Available.Load(), qty)
 		}
 		sub(&e.Shares.Available, qty)
 		e.Shares.Check()
