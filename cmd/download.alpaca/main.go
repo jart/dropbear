@@ -26,8 +26,9 @@ import (
 )
 
 var (
-	flagFeed    = flag.String("feed", "sip", "market data feed (sip, iex)")
-	flagWorkers = flag.Int("workers", 20, "number of parallel download workers")
+	flagFeed       = flag.String("feed", "sip", "market data feed (sip, iex)")
+	flagWorkers    = flag.Int("workers", 20, "number of parallel download workers")
+	flagAdjustment = flag.String("adjustment", "all", "price adjustment (raw, split, dividend, all)")
 )
 
 const dataURL = "https://data.alpaca.markets"
@@ -207,12 +208,12 @@ func fetchMonth(client *alpaca.Client, symbol string, month time.Time) ([]indica
 	end := start.AddDate(0, 1, 0)
 
 	for {
-		url := fmt.Sprintf("%s/v2/stocks/%s/bars?timeframe=1Min&start=%s&end=%s&feed=%s&adjustment=split&limit=10000",
+		url := fmt.Sprintf("%s/v2/stocks/%s/bars?timeframe=1Min&start=%s&end=%s&feed=%s&adjustment=%s&limit=10000",
 			dataURL, symbol,
 			start.UTC().Format(time.RFC3339),
 			end.UTC().Format(time.RFC3339),
-			*flagFeed)
-
+			*flagFeed,
+			*flagAdjustment)
 		if pageToken != "" {
 			url += "&page_token=" + pageToken
 		}
