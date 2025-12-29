@@ -70,20 +70,19 @@ func BenchmarkExpSmall(b *testing.B) {
 }
 
 func TestExpMax(t *testing.T) {
-	// 22.945006538 is the largest 9-decimal-place input that doesn't overflow
-	// 22.945006539 would overflow (e^x > MaxInt64/Scale)
-	d := Parse("22.945006538")
+	// 25.24762513 is approx ln(MaxInt64/Scale) for Scale=1e8
+	d := Parse("25.24762513")
 	got := d.Exp().String()
-	want := "9223372033.80975104"
+	want := "92233720368.54775807" // close to MaxInt64
 	if got != want {
-		t.Errorf("exp(22.945006538) = %s, want %s", got, want)
+		t.Errorf("exp(25.24762513) = %s, want %s", got, want)
 	}
 }
 
 func TestExpMin(t *testing.T) {
 	d := Parse("-21.416413017")
 	got := d.Exp().String()
-	want := "0.000000001"
+	want := "0"
 	if got != want {
 		t.Errorf("exp(-21.416413017) = %s, want %s", got, want)
 	}

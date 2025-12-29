@@ -72,25 +72,25 @@ func TestDivEven(t *testing.T) {
 		// --- Real World: 1/3 splits ---
 		{
 			// 1.0 / 3.0 = 0.333333333333...
-			// Library Scale is 1e9.
-			// Result should be 0.333333333 (exact integer 333,333,333)
+			// Library Scale is 1e8.
+			// Result should be 0.33333333 (exact integer 33,333,333)
 			// The next digit is 3 (less than 5), so both round down.
 			name:     "1.0 / 3.0",
 			d:        One,
 			o:        Decimal(3 * Scale),
-			wantDiv:  Decimal(333333333),
-			wantEven: Decimal(333333333),
+			wantDiv:  Decimal(33333333),
+			wantEven: Decimal(33333333),
 		},
 		{
 			// 2.0 / 3.0 = 0.666666666666...
-			// Result should be 0.666666666...
+			// Result should be 0.66666667...
 			// The remainder is 2/3 of divisor ( > 0.5 ).
-			// Both methods should round UP to ...667
+			// Both methods should round UP to ...67
 			name:     "2.0 / 3.0",
 			d:        Decimal(2 * Scale),
 			o:        Decimal(3 * Scale),
-			wantDiv:  Decimal(666666667),
-			wantEven: Decimal(666666667),
+			wantDiv:  Decimal(66666667),
+			wantEven: Decimal(66666667),
 		},
 	}
 

@@ -75,6 +75,13 @@ func Init() {
 	AfterClose(func() {
 		for _, ex := range Exchanges.All() {
 			ex.LockDTBP()
+			// Charge margin interest on negative cash balance
+			if ex.MarginInterest != nil {
+				charge := ex.MarginInterest.ChargeDaily(clocky.Now(), ex.Cash.Load())
+				if charge.IsPositive() {
+					sub(&ex.Cash, charge)
+				}
+			}
 		}
 	})
 }

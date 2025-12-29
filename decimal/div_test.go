@@ -62,13 +62,13 @@ func TestDiv_Boundary(t *testing.T) {
 			name: "1 / 3 (Round Down)",
 			d:    One,
 			o:    Decimal(3 * Scale),
-			want: Decimal(333_333_333), // 0.333...
+			want: Decimal(33_333_333), // 0.333...
 		},
 		{
 			name: "2 / 3 (Round Up)",
 			d:    Two,
 			o:    Decimal(3 * Scale),
-			want: Decimal(666_666_667), // 0.666...7
+			want: Decimal(66_666_667), // 0.666...7
 		},
 		{
 			name: "1 / 2 (Round Up)",

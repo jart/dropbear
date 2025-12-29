@@ -84,14 +84,14 @@ func (d Decimal) FormatThousand(n int) string {
 }
 
 // formatMinThousand handles FormatThousand() for Min, which can't be negated without overflow.
-// Min = -9223372036854775808 = -9223372036.854775808
+// Min = -9223372036854775808 = -92233720368.54775808
 func formatMinThousand(n int) string {
-	const intPart = "-9,223,372,036"
-	const full = "-9,223,372,036.854775808"
+	const intPart = "-92,233,720,368"
+	const full = "-92,233,720,368.54775808"
 
 	if n <= 0 {
 		// Truncate to integer, rounding away from zero
-		return "-9,223,372,037"
+		return "-92,233,720,369"
 	}
 	if n >= Places {
 		return full

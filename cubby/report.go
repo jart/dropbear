@@ -210,6 +210,13 @@ func (r *report) Print() {
 		}
 	}
 	fmt.Printf("end.fees %s\n", fees.FormatThousand(2))
+	// Margin interest (separate from trading fees/commissions)
+	if ex.MarginInterest != nil {
+		marginInterest := ex.MarginInterest.GetTotalCharged()
+		if marginInterest.IsPositive() {
+			fmt.Printf("end.interest %s\n", marginInterest.FormatThousand(2))
+		}
+	}
 	fmt.Printf("end.vol30day %.6f\n", vol30day/1_000_000)
 	fmt.Printf("end.drawdown %s\n", r.strategyEquity.MaxDrawdown().MulInt(100).Format(2))
 

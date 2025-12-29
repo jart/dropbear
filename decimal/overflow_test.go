@@ -93,7 +93,7 @@ func TestMulIntOverflow(t *testing.T) {
 		Max.MulInt(2)
 	})
 	assertPanics(t, "large * large", func() {
-		Parse("1000000000").MulInt(10)
+		Parse("1000000000").MulInt(100)
 	})
 }
 
@@ -119,14 +119,14 @@ func TestDivIntNoOverflow(t *testing.T) {
 }
 
 func TestExpOverflow(t *testing.T) {
-	assertPanics(t, "Exp(23)", func() {
-		Parse("23").Exp() // e^23 ≈ 9.7e9 > Max
+	assertPanics(t, "Exp(26)", func() {
+		Parse("26").Exp() // e^26 ≈ 1.9e11 > Max/Scale (9.2e10)
 	})
 	assertPanics(t, "Exp(100)", func() {
 		Parse("100").Exp()
 	})
-	assertPanics(t, "Exp(22.945006539)", func() {
-		Parse("22.945006539").Exp() // e^22.945006539 ≈ 9.223e18 > Max
+	assertPanics(t, "Exp(25.24762514)", func() {
+		Parse("25.24762514").Exp() // Just above max safe exponent
 	})
 }
 

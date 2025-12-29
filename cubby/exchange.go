@@ -43,6 +43,9 @@ type Exchange struct {
 	Fees        decimal.Decimal // total fees paid
 	AccruedFees decimal.Decimal // fees not yet settled
 
+	// Margin Interest (charged on negative cash at EOD)
+	MarginInterest *MarginInterest
+
 	// Day trading
 	DayTradeCount int // PDT rule tracking
 
@@ -70,6 +73,7 @@ func newExchange(exchange ds.Exchange) *Exchange {
 	ex := &Exchange{
 		Exchange:         exchange,
 		FeeCalculator:    NewAlpacaEliteFees(),
+		MarginInterest:   NewMarginInterest(100), // 100 bps spread over RFR (Alpaca ~5.75%)
 		OnReady:          func() {},
 		PatternDayTrader: true, // default to PDT mode
 		pdtMinEquity:     decimal.FromInt(25000),
