@@ -46,7 +46,9 @@ func main() {
 			log.Fatalf("failed to get assets: %v", err)
 		}
 		for _, a := range assets {
-			if a.Class == "us_equity" && a.Status == "active" && a.Tradable {
+			if a.Class == alpaca.AssetClassUSEquity &&
+				a.Status == alpaca.AssetStatusActive &&
+				a.Tradable {
 				symbols = append(symbols, a.Symbol)
 			}
 		}
@@ -257,7 +259,7 @@ func fetchMonth(client *alpaca.Client, symbol string, month time.Time) ([]indica
 	return candles, nil
 }
 
-func dataRequest(client *alpaca.Client, url string) (*http.Response, error) {
+func dataRequest(_ *alpaca.Client, url string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err

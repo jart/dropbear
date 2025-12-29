@@ -53,9 +53,8 @@ func (f *AlpacaEliteFees) Calculate(now clocky.Time, quantity int, isMarketOrder
 		return f.sharesTradedThisMonth
 	}()
 
+	// broker fee (volume-tiered)
 	qty := decimal.FromInt(quantity)
-
-	// Broker fee (volume-tiered)
 	brokerFeePerShare := getBrokerFeePerShare(sharesTradedThisMonth)
 	brokerFee := qty.Mul(brokerFeePerShare)
 

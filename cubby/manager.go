@@ -7,6 +7,7 @@ import (
 	"dropbear/loggy"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -49,6 +50,38 @@ func (m *manager) Close() {
 		entry.data.Close()
 	}
 	m.finished = false
+}
+
+// checkLiquidation returns true if account equity has been wiped out.
+func (m *manager) checkLiquidation() bool {
+	equity := GetEquityUSD()
+	if !equity.IsPositive() {
+		log.Printf("[cubby] account equity is %s you got rekt", equity.Format(2))
+		log.Printf("     .... NO! ...                  ... MNO! ...")
+		log.Printf("   ..... MNO!! ...................... MNNOO! ...")
+		log.Printf(" ..... MMNO! ......................... MNNOO!! .")
+		log.Printf("..... MNOONNOO!   MMMMMMMMMMPPPOII!   MNNO!!!! .")
+		log.Printf(" ... !O! NNO! MMMMMMMMMMMMMPPPOOOII!! NO! ....")
+		log.Printf("    ...... ! MMMMMMMMMMMMMPPPPOOOOIII! ! ...")
+		log.Printf("   ........ MMMMMMMMMMMMPPPPPOOOOOOII!! .....")
+		log.Printf("   ........ MMMMMOOOOOOPPPPPPPPOOOOMII! ...")
+		log.Printf("    ....... MMMMM..    OPPMMP    .,OMI! ....")
+		log.Printf("     ...... MMMM::   o.,OPMP,.o   ::I!! ...")
+		log.Printf("         .... NNM:::.,,OOPM!P,.::::!! ....")
+		log.Printf("          .. MMNNNNNOOOOPMO!!IIPPO!!O! .....")
+		log.Printf("         ... MMMMMNNNNOO:!!:!!IPPPPOO! ....")
+		log.Printf("           .. MMMMMNNOOMMNNIIIPPPOO!! ......")
+		log.Printf("          ...... MMMONNMMNNNIIIOO!..........")
+		log.Printf("       ....... MN MOMMMNNNIIIIIO! OO ..........")
+		log.Printf("    ......... MNO! IiiiiiiiiiiiI OOOO ...........")
+		log.Printf("  ...... NNN.MNO! . O!!!!!!!!!O . OONO NO! ........")
+		log.Printf("   .... MNNNNNO! ...OOOOOOOOOOO .  MMNNON!........")
+		log.Printf("   ...... MNNNNO! .. PPPPPPPPP .. MMNON!........")
+		log.Printf("      ...... OO! ................. ON! .......")
+		log.Printf("         ................................")
+		return true
+	}
+	return false
 }
 
 func (m *manager) Register(equity *Equity) {
@@ -104,11 +137,25 @@ func (m *manager) Run() {
 
 		clocky.SetNow(now)
 
+		// fire scheduled callbacks
+		checkSchedule(now)
+
 		m.sample(now)
 		entry.equity.handleCandle(entry.candle)
 
 		if m.ready {
 			entry.equity.OnCandle(entry.candle)
+
+			// Check for liquidation (equity <= 0)
+			if m.checkLiquidation() {
+				entry.data.Close()
+				// Drain remaining entries
+				for !m.heap.Empty() {
+					e, _ := m.heap.Pop()
+					e.data.Close()
+				}
+				return
+			}
 		}
 
 		err := entry.data.Read(entry.candle)
@@ -137,14 +184,17 @@ func compareManagerEntries(a, b *managerEntry) int {
 	return 0
 }
 
-// recordedCandleData reads candles from multiple monthly files for a symbol.
+// recordedCandleData reads candles one month at a time to limit memory usage.
+// Each month is slurped into memory, then the file is closed.
 type recordedCandleData struct {
-	files   []*os.File
-	readers []*zstd.Decoder
-	current int
+	symbolDir string
+	files     []string // remaining monthly files to read
+	candles   []indicators.Candle
+	current   int
 }
 
-// openRecordedCandleData opens all data files for a symbol within the date range.
+// openRecordedCandleData prepares to read candles for a symbol within the date range.
+// Files are loaded one month at a time to avoid file descriptor limits.
 func openRecordedCandleData(symbol string, start, end clocky.Time) *recordedCandleData {
 	base := ds.EquityMinutesDir()
 	if base == "" {
@@ -162,9 +212,8 @@ func openRecordedCandleData(symbol string, start, end clocky.Time) *recordedCand
 	startYM := start.YearMonth()
 	endYM := end.YearMonth()
 
-	// Open files within range
-	var files []*os.File
-	var readers []*zstd.Decoder
+	// Collect filenames within range
+	var filenames []string
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -177,64 +226,91 @@ func openRecordedCandleData(symbol string, start, end clocky.Time) *recordedCand
 		if name < startYM || name > endYM {
 			continue
 		}
-		path := filepath.Join(symbolDir, name)
-		file, err := os.Open(path)
-		if err != nil {
-			continue
-		}
-		reader, err := zstd.NewReader(file)
-		if err != nil {
-			file.Close()
-			continue
-		}
-		files = append(files, file)
-		readers = append(readers, reader)
+		filenames = append(filenames, name)
 	}
 
-	if len(files) == 0 {
+	if len(filenames) == 0 {
 		return nil
 	}
 
-	// Sort by filename (chronological order)
-	indices := make([]int, len(files))
-	for i := range indices {
-		indices[i] = i
-	}
-	sort.Slice(indices, func(i, j int) bool {
-		return files[indices[i]].Name() < files[indices[j]].Name()
-	})
-	sortedFiles := make([]*os.File, len(files))
-	sortedReaders := make([]*zstd.Decoder, len(readers))
-	for i, idx := range indices {
-		sortedFiles[i] = files[idx]
-		sortedReaders[i] = readers[idx]
+	// Sort filenames chronologically
+	sort.Strings(filenames)
+
+	m := &recordedCandleData{
+		symbolDir: symbolDir,
+		files:     filenames,
 	}
 
-	return &recordedCandleData{
-		files:   sortedFiles,
-		readers: sortedReaders,
-		current: 0,
+	// Load first month
+	m.loadNextMonth()
+	if len(m.candles) == 0 {
+		return nil
 	}
+
+	return m
+}
+
+// loadNextMonth loads the next month's candles into memory.
+func (m *recordedCandleData) loadNextMonth() {
+	m.candles = nil
+	m.current = 0
+	for len(m.files) > 0 {
+		name := m.files[0]
+		m.files = m.files[1:]
+		path := filepath.Join(m.symbolDir, name)
+		candles := readCandleFile(path)
+		if len(candles) > 0 {
+			m.candles = candles
+			return
+		}
+	}
+}
+
+// readCandleFile reads all candles from a zstd-compressed file and closes it.
+func readCandleFile(path string) []indicators.Candle {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	reader, err := zstd.NewReader(file)
+	if err != nil {
+		return nil
+	}
+	defer reader.Close()
+
+	var candles []indicators.Candle
+	for {
+		var c indicators.Candle
+		err := c.Deserialize(reader)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		}
+		if err != nil {
+			break
+		}
+		candles = append(candles, c)
+	}
+	return candles
 }
 
 func (m *recordedCandleData) Read(candle *indicators.Candle) error {
-	for m.current < len(m.readers) {
-		err := candle.Deserialize(m.readers[m.current])
-		if err == nil {
+	for {
+		if m.current < len(m.candles) {
+			*candle = m.candles[m.current]
+			m.current++
 			return nil
 		}
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			m.current++
-			continue
+		// Current month exhausted, try loading next
+		m.loadNextMonth()
+		if len(m.candles) == 0 {
+			return io.EOF
 		}
-		return err
 	}
-	return io.EOF
 }
 
 func (m *recordedCandleData) Close() {
-	for i := range m.readers {
-		m.readers[i].Close()
-		m.files[i].Close()
-	}
+	m.candles = nil
+	m.files = nil
 }

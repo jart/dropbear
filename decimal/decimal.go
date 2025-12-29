@@ -19,6 +19,7 @@ const (
 	Tenth   = Decimal(Scale / 10)
 	Max     = Decimal(math.MaxInt64) // 9,223,372,036.854_775_807
 	Min     = Decimal(math.MinInt64) // -9,223,372,036.854_775_808
+	Epsilon = Decimal(1)             // 0.000000001
 	Satoshi = Decimal(10)            // 0.00000001
 	Cent    = Decimal(Scale / 100)   // 0.01
 	Scale   = 1_000_000_000
@@ -28,15 +29,25 @@ const (
 // FromInt converts int to Decimal.
 func FromInt(n int) Decimal {
 	if n > math.MaxInt64/Scale || n < math.MinInt64/Scale {
-		panic("decimal overflow")
+		panicOverflow()
 	}
 	return Decimal(int64(n) * Scale)
 }
 
+// maxSafeFloat is the largest float64 value that can be converted to Decimal
+// without precision loss. Beyond this, float64 can't represent values with
+// nanosecond precision (our smallest unit). This is 2^53 / Scale.
+const maxSafeFloat = float64(1<<53) / Scale // ~9,007,199
+
 // FromFloat64 converts float64 to Decimal.
+// Panics on NaN, infinity, or values where float64 lacks sufficient precision.
+// For large values (above ~9 million), use Parse() with a string instead.
 func FromFloat64(n float64) Decimal {
-	if n > math.MaxInt64/Scale || n < math.MinInt64/Scale {
-		panic("decimal overflow")
+	if math.IsNaN(n) || math.IsInf(n, 0) {
+		panic("decimal: NaN or infinity")
+	}
+	if n > maxSafeFloat || n < -maxSafeFloat {
+		panic("decimal: float64 lacks precision at this scale")
 	}
 	return Decimal(math.Round(n * Scale))
 }
@@ -56,7 +67,7 @@ func ParseBPS(s string) Decimal {
 func (x Decimal) Add(y Decimal) Decimal {
 	z := x + y
 	if ((z ^ x) & (z ^ y)) < 0 {
-		panic("decimal overflow")
+		panicOverflow()
 	}
 	return z
 }
@@ -65,7 +76,7 @@ func (x Decimal) Add(y Decimal) Decimal {
 func (x Decimal) Sub(y Decimal) Decimal {
 	z := x - y
 	if ((x ^ y) & (z ^ x)) < 0 {
-		panic("decimal overflow")
+		panicOverflow()
 	}
 	return z
 }
@@ -73,28 +84,9 @@ func (x Decimal) Sub(y Decimal) Decimal {
 // Neg returns -d.
 func (d Decimal) Neg() Decimal {
 	if d == Min {
-		panic("decimal overflow")
+		panicOverflow()
 	}
 	return -d
-}
-
-// MulInt multiplies d by n, panicking on overflow.
-func (d Decimal) MulInt(n int) Decimal {
-	x, y := int64(d), int64(n)
-	z := x * y
-	if y != 0 && z/y != x {
-		panic("decimal overflow")
-	}
-	return Decimal(z)
-}
-
-// DivInt divides d by n, panicking on overflow.
-func (d Decimal) DivInt(n int) Decimal {
-	x, y := int64(d), int64(n)
-	if x == math.MinInt64 && y == -1 {
-		panic("decimal overflow")
-	}
-	return Decimal(x / y)
 }
 
 func (d Decimal) IsPositive() bool { return d > 0 }
@@ -119,6 +111,9 @@ func (d Decimal) Cmp(o Decimal) int {
 
 func (d Decimal) Abs() Decimal {
 	if d < 0 {
+		if d == Min {
+			panicOverflow()
+		}
 		return -d
 	}
 	return d
@@ -136,11 +131,6 @@ func (d Decimal) Max(o Decimal) Decimal {
 		return d
 	}
 	return o
-}
-
-// Truncate removes the fractional part, rounding toward zero.
-func (d Decimal) Truncate() Decimal {
-	return Decimal(int64(d) / Scale * Scale)
 }
 
 // Store atomically stores v into d.
@@ -180,4 +170,9 @@ func (d *Decimal) Deserialize(reader io.Reader) error {
 	}
 	d.Decode(b[:])
 	return nil
+}
+
+//go:noinline
+func panicOverflow() {
+	panic("decimal overflow")
 }

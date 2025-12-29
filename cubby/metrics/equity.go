@@ -3,19 +3,20 @@ package metrics
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/loggy"
-	"math"
 )
 
 // Equity tracks portfolio performance over time for Sharpe ratio calculation.
 type Equity struct {
-	samples  []float64
+	samples  []decimal.Decimal
 	quantum  clocky.Duration
 	lastTime clocky.Time
 }
 
 // NewEquity creates new equity tracker.
 func NewEquity(quantum clocky.Duration) *Equity {
+	if quantum < clocky.Millisecond {
+		panic("quantum too small")
+	}
 	return &Equity{quantum: quantum}
 }
 
@@ -27,77 +28,103 @@ func (m *Equity) ShouldSample(timestamp clocky.Time) bool {
 // Sample records value of investment at point in time.
 func (m *Equity) Sample(timestamp clocky.Time, value decimal.Decimal) {
 	if !value.IsPositive() {
-		loggy.Fatalf("invalid portfolio value for metrics sampling: %s", value)
+		panic("illegal portfolio value")
 	}
-	// Allow gaps in equity data - equities have market hours
-	m.samples = append(m.samples, value.Float64())
+	m.samples = append(m.samples, value)
 	m.lastTime = timestamp
 }
 
 // Sharpe calculates the annualized Sharpe ratio.
-// Uses ~252 trading days per year for equities.
-func (m *Equity) Sharpe(riskFreeRate float64) float64 {
+func (m *Equity) Sharpe(riskFreeRate decimal.Decimal) decimal.Decimal {
 	if len(m.samples) < 3 {
-		return 0
+		return decimal.Zero
 	}
 
-	// Calculate periods per year based on sampling frequency
-	// For daily or longer sampling: 252 trading days per year
-	// For intraday: scale based on 6.5 trading hours per day
-	var periodsPerYear float64
+	// calculate Periods Per Year
+	// by enforcing quantum >= 1ms, the max periods per year is ~5.9 billion
+	// this fits safely within the 9 billion limit of the decimal library
+	var periodsPerYear int64
 	if m.quantum >= clocky.Day {
-		// Daily sampling = 252 periods per year
-		periodsPerYear = 252.0 * float64(clocky.Day) / float64(m.quantum)
+		// Daily sampling: 252 * (Day / Quantum)
+		periodsPerYear = 252 * int64(clocky.Day) / int64(m.quantum)
 	} else {
-		// Intraday: 252 days * 6.5 hours * 60 minutes = 98,280 trading minutes/year
-		tradingMinutesPerYear := 252.0 * 6.5 * 60
-		periodsPerYear = tradingMinutesPerYear / (float64(m.quantum) / float64(clocky.Minute))
+		// Intraday: 98,280 trading minutes per year
+		// Calculation: 252 days * 6.5 hours * 60 mins * 60 secs * 1,000,000 micros
+		// = 5,896,800,000,000 microseconds per trading year
+		const tradingMicrosPerYear = 98280 * 60 * 1000000
+		periodsPerYear = tradingMicrosPerYear / int64(m.quantum)
 	}
-	riskFreeReturn := riskFreeRate / periodsPerYear
+	if periodsPerYear == 0 {
+		return decimal.Zero
+	}
+	decPeriods := decimal.FromInt(int(periodsPerYear))
+	riskFreePerPeriod := riskFreeRate.Div(decPeriods)
 
-	// compute excess returns for each period
-	meanExcessReturn := 0.0
-	excessReturns := make([]float64, 0, len(m.samples)-1)
+	// compute mean and variance using Welford's algorithm (running method)
+	// This avoids accumulating a massive sum that could overflow
+	//
+	// M_k = M_{k-1} + (x_k - M_{k-1}) / k
+	// S_k = S_{k-1} + (x_k - M_{k-1}) * (x_k - M_k)
+	meanExcess := decimal.Zero
+	m2 := decimal.Zero // sum of squares of differences
+
+	// start from i=1 because we need pairs to calculate return
+	n := 0
+
 	for i := 1; i < len(m.samples); i++ {
+		n++
+
+		// calculate return for this step
 		prev := m.samples[i-1]
 		curr := m.samples[i]
-		assetReturn := (curr - prev) / prev
-		excessReturn := assetReturn - riskFreeReturn
-		meanExcessReturn += excessReturn
-		excessReturns = append(excessReturns, excessReturn)
-	}
-	meanExcessReturn /= float64(len(excessReturns))
 
-	// compute standard deviation
-	variance := 0.0
-	for _, r := range excessReturns {
-		diff := r - meanExcessReturn
-		variance += diff * diff
-	}
-	variance /= float64(len(excessReturns) - 1)
-	stdDevPerPeriod := math.Sqrt(variance)
+		// assetReturn = (curr - prev) / prev
+		assetReturn := curr.Sub(prev).Div(prev)
+		excessReturn := assetReturn.Sub(riskFreePerPeriod)
 
-	if stdDevPerPeriod < 1e-10 {
-		return 0
+		// Welford's Update
+		// delta = x - mean
+		delta := excessReturn.Sub(meanExcess)
+
+		// mean += delta / n
+		meanExcess = meanExcess.Add(delta.DivInt(n))
+
+		// delta2 = x - mean (using the NEW mean)
+		delta2 := excessReturn.Sub(meanExcess)
+
+		// m2 += delta * delta2
+		m2 = m2.Add(delta.Mul(delta2))
 	}
 
-	return meanExcessReturn * math.Sqrt(periodsPerYear) / stdDevPerPeriod
+	// variance = m2 / (n - 1)
+	variance := m2.DivInt(n - 1)
+	stdDev := variance.Sqrt()
+
+	// the final calculation
+	if stdDev.Cmp(decimal.Satoshi) < 0 {
+		return decimal.Zero
+	}
+
+	// Sharpe = Mean * Sqrt(Periods) / StdDev
+	annualizedFactor := decPeriods.Sqrt()
+	return meanExcess.Mul(annualizedFactor).Div(stdDev)
 }
 
 // MaxDrawdown calculates the maximum peak-to-trough decline.
-func (m *Equity) MaxDrawdown() float64 {
+func (m *Equity) MaxDrawdown() decimal.Decimal {
 	if len(m.samples) < 2 {
-		return 0
+		return decimal.Zero
 	}
-	maxDD := 0.0
+	maxDD := decimal.Zero
 	peak := m.samples[0]
 	for _, sample := range m.samples {
-		if sample > peak {
+		if sample.Cmp(peak) > 0 {
 			peak = sample
 		}
-		if peak > 0 {
-			dd := (peak - sample) / peak
-			if dd > maxDD {
+		if peak.IsPositive() {
+			// dd = (peak - sample) / peak
+			dd := peak.Sub(sample).Div(peak)
+			if dd.Cmp(maxDD) > 0 {
 				maxDD = dd
 			}
 		}

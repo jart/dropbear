@@ -15,9 +15,9 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	notional := quantity.Mul(limitPrice)
 	switch side {
 	case ds.SideBuy:
-		notional = notional.QuantizeUp(p.QuoteIncrement.Load())
+		notional = notional.QuantizeAway(p.QuoteIncrement.Load())
 	case ds.SideSell:
-		notional = notional.QuantizeDown(p.QuoteIncrement.Load())
+		notional = notional.QuantizeTruncate(p.QuoteIncrement.Load())
 	}
 
 	// validate order parameters
@@ -177,11 +177,11 @@ func (p *Pair) checkLimitOrderParams(side ds.Side, quantity, limitPrice, notiona
 	}
 
 	// check rounding
-	if quantity.Quantize(p.BaseIncrement.Load()).Cmp(quantity) != 0 {
+	if quantity.QuantizeTruncate(p.BaseIncrement.Load()).Cmp(quantity) != 0 {
 		return fmt.Errorf("quantity %s %s is not a multiple of increment %s %s",
 			quantity, p.BaseCurrency, p.BaseIncrement.Load(), p.BaseCurrency)
 	}
-	if limitPrice.Quantize(p.QuoteIncrement.Load()).Cmp(limitPrice) != 0 {
+	if limitPrice.QuantizeTruncate(p.QuoteIncrement.Load()).Cmp(limitPrice) != 0 {
 		return fmt.Errorf("limitPrice %s %s is not a multiple of increment %s %s",
 			limitPrice, p.QuoteCurrency, p.QuoteIncrement.Load(), p.QuoteCurrency)
 	}

@@ -17,6 +17,6 @@ func (p *Pair) MarketOrder(side ds.Side, quantity decimal.Decimal) (*Order, erro
 		return nil, errors.New("market order failed: price not initialized")
 	}
 	limitPrice := p.LastPrice.Mul(decimal.One.Add(slippage.Mul(decimal.Decimal(side))))
-	limitPrice = limitPrice.Quantize(p.QuoteIncrement)
+	limitPrice = limitPrice.QuantizeTruncate(p.QuoteIncrement.Load())
 	return p.LimitOrder(side, quantity, limitPrice, ds.OrderStrategyIOC)
 }

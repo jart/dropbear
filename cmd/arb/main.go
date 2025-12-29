@@ -242,18 +242,18 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	if predictedPrice.Cmp(mid) > 0 {
 		side = ds.SideBuy
 		size = gCash.Available.Mul(decimal.One.Sub(*flagBuffer)).Div(predictedPrice)
-		size = size.QuantizeDown(gCoinbasePair.BaseIncrement)
+		size = size.QuantizeTruncate(gCoinbasePair.BaseIncrement)
 		limi = predictedPrice.Div(decimal.One.Add(*flagThreshold))
-		limi = limi.QuantizeDown(gCoinbasePair.QuoteIncrement)
+		limi = limi.QuantizeTruncate(gCoinbasePair.QuoteIncrement)
 		if limi.Cmp(ask) < 0 {
 			return
 		}
 	} else {
 		side = ds.SideSell
 		size = gHolding.Available.Mul(decimal.One.Sub(*flagBuffer))
-		size = size.QuantizeDown(gCoinbasePair.BaseIncrement)
+		size = size.QuantizeTruncate(gCoinbasePair.BaseIncrement)
 		limi = predictedPrice.Mul(decimal.One.Add(*flagThreshold))
-		limi = limi.QuantizeUp(gCoinbasePair.QuoteIncrement)
+		limi = limi.QuantizeAway(gCoinbasePair.QuoteIncrement)
 		if limi.Cmp(bid) > 0 {
 			return
 		}

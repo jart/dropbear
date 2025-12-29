@@ -33,7 +33,7 @@ Performance. In benchmarks, this implementation is significantly faster:
 | Parse     | 16ns          | 266ns   | 16x      |
 | Add       | 2.1ns         | 18.5ns  | 10x      |
 | Mul       | 4.7ns         | 47ns    | 10x      |
-| Div       | 16ns          | 50ns    | 3x       |
+| Div       | 5.2ns         | 50ns    | 10x      |
 | MulInt    | 2ns           | 50ns    | 25x      |
 | DivInt    | 2ns           | 50ns    | 25x      |
 | String    | 29ns          | 199ns   | 7x       |

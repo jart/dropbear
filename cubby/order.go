@@ -154,6 +154,14 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 	}
 	order.Lock.Unlock()
 
+	// Log the fill (if verbose)
+	if Live || *flagVerbose {
+		price := actualNotional.Div(actualFilled)
+		log.Printf("%s %s %s @ %s ($%s)",
+			order.Side.String(), actualFilled.String(), eq.Symbol,
+			price.Format(2), actualNotional.Format(2))
+	}
+
 	switch order.Side {
 	case ds.SideBuy:
 		// Deduct cash from exchange

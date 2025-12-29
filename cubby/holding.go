@@ -26,7 +26,7 @@ func newHolding(exchange *Exchange, symbol string) *Holding {
 	h := &Holding{
 		Exchange: exchange,
 		Symbol:   symbol,
-		Lots:     ds.NewLots(GetCostBasisMethod()),
+		Lots:     ds.NewLots(ds.CostBasisMethodFIFO),
 	}
 	if Live {
 		h.fetchAlpacaPosition()
@@ -66,10 +66,8 @@ func (h *Holding) fetchAlpacaPosition() {
 	}
 	for _, pos := range positions {
 		if pos.Symbol == h.Symbol {
-			h.Lock.Lock()
 			qty := decimal.Parse(pos.Qty)
 			h.Quantity.Store(qty)
-			h.Lock.Unlock()
 			return
 		}
 	}

@@ -22,7 +22,7 @@ func (iv *Invested) Sample(d decimal.Decimal) {
 		iv.max = iv.max.Max(d)
 	}
 	iv.cnt++
-	iv.avg = iv.avg.Add(d.Sub(iv.avg).Div(decimal.FromInt(iv.cnt)))
+	iv.avg = iv.avg.Add(d.Sub(iv.avg).DivIntEven(iv.cnt))
 }
 
 func (iv *Invested) Min() decimal.Decimal {

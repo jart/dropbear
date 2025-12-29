@@ -238,7 +238,7 @@ func TestFloat64(t *testing.T) {
 	}
 }
 
-func TestQuantize(t *testing.T) {
+func TestQuantizeTruncate(t *testing.T) {
 	q := Parse("0.01")
 	tests := []struct {
 		input string
@@ -252,9 +252,9 @@ func TestQuantize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		d := Parse(tt.input)
-		got := d.Quantize(q).String()
+		got := d.QuantizeTruncate(q).String()
 		if got != tt.want {
-			t.Errorf("Quantize(%s) = %s, want %s", tt.input, got, tt.want)
+			t.Errorf("QuantizeTruncate(%s) = %s, want %s", tt.input, got, tt.want)
 		}
 	}
 }
@@ -303,7 +303,7 @@ func TestQuantizeCeil(t *testing.T) {
 	}
 }
 
-func TestQuantizeUp(t *testing.T) {
+func TestQuantizeAway(t *testing.T) {
 	q := Parse("0.01")
 	tests := []struct {
 		input string
@@ -318,9 +318,9 @@ func TestQuantizeUp(t *testing.T) {
 	}
 	for _, tt := range tests {
 		d := Parse(tt.input)
-		got := d.QuantizeUp(q).String()
+		got := d.QuantizeAway(q).String()
 		if got != tt.want {
-			t.Errorf("QuantizeUp(%s) = %s, want %s", tt.input, got, tt.want)
+			t.Errorf("QuantizeAway(%s) = %s, want %s", tt.input, got, tt.want)
 		}
 	}
 }
@@ -425,6 +425,14 @@ func BenchmarkDiv(b *testing.B) {
 		a := randomNumbers[(i+0)&31]
 		c := randomNumbers[(i+1)&31]
 		_ = a.Div(c)
+	}
+}
+
+func BenchmarkDivEven(b *testing.B) {
+	for i := 0; b.Loop(); i++ {
+		a := randomNumbers[(i+0)&31]
+		c := randomNumbers[(i+1)&31]
+		_ = a.DivEven(c)
 	}
 }
 

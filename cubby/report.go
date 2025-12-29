@@ -45,10 +45,10 @@ func (r *report) Init() {
 	r.startEquity = GetEquityUSD()
 	r.benchmarkQuantity = decimal.Zero
 	for _, exchange := range Exchanges.All() {
-		// Handle cash from exchange
+		// handle cash from exchange
 		cash := exchange.Cash.Load()
 		if cash.IsPositive() {
-			// Convert USD to benchmark shares at current price
+			// convert USD to benchmark shares at current price
 			if r.benchmark.LastPrice.Load().IsPositive() {
 				r.benchmarkQuantity = r.benchmarkQuantity.Add(cash.Div(r.benchmark.LastPrice.Load()))
 			}
@@ -57,7 +57,7 @@ func (r *report) Init() {
 				Quantity: cash,
 			})
 		}
-		// Handle stock holdings
+		// handle stock holdings
 		for _, holding := range exchange.Holdings.All() {
 			quantity := holding.Quantity.Load()
 			if quantity.IsZero() {
@@ -66,7 +66,7 @@ func (r *report) Init() {
 			if holding.Symbol == r.benchmark.Symbol {
 				r.benchmarkQuantity = r.benchmarkQuantity.Add(quantity)
 			} else {
-				// Convert other holdings to USD then to benchmark shares
+				// convert other holdings to USD then to benchmark shares
 				price := exchange.Equities.GetPriceUSD(holding.Symbol)
 				quantityUSD := price.Mul(quantity)
 				if r.benchmark.LastPrice.Load().IsPositive() {
@@ -85,13 +85,14 @@ func (r *report) Init() {
 }
 
 func (r *report) Sample(now clocky.Time) {
-	// Always sample invested on every tick for accurate min/max/avg
+
+	// always sample invested on every tick for accurate min/max/avg
 	invested := GetInvestedUSD()
 	r.lock.Lock()
 	r.strategyInvested.Sample(invested)
 	r.lock.Unlock()
 
-	// Sample equity on quantum intervals for Sharpe/drawdown calculations
+	// sample equity on quantum intervals for Sharpe/drawdown calculations
 	shouldSample := func() bool {
 		r.lock.RLock()
 		defer r.lock.RUnlock()
@@ -112,12 +113,11 @@ func (r *report) Print() {
 	defer r.lock.Unlock()
 	ex := Exchanges.Get(ds.ExchangeAlpaca)
 
-	// Get totals
+	// get totals
 	endEquity := GetEquityUSD()
-	riskFreeRate := GetRiskFreeRate().Float64()
 	fees := ex.Fees.Load()
 
-	// Calculate USD volume from all holdings
+	// calculate usd volume from all holdings
 	usdVolume := 0.0
 	for _, holding := range ex.Holdings.All() {
 		holding.Lock.RLock()
@@ -125,7 +125,7 @@ func (r *report) Print() {
 		holding.Lock.RUnlock()
 	}
 
-	// Compute 30-day volume (scale from backtest duration)
+	// compute 30-day volume (scale from backtest duration)
 	vol30day := 0.0
 	duration := endTime.Sub(r.startTime)
 	if duration > 0 {
@@ -135,10 +135,10 @@ func (r *report) Print() {
 		}
 	}
 
-	// Benchmark: what if we just held the benchmark asset
+	// benchmark: what if we just held the benchmark asset
 	benchmarkValue := r.benchmarkQuantity.Mul(r.benchmark.LastPrice.Load())
 
-	// Profit/loss
+	// profit/loss
 	endProfit := decimal.Zero
 	benchProfit := decimal.Zero
 	if r.startEquity.IsPositive() {
@@ -146,7 +146,7 @@ func (r *report) Print() {
 		benchProfit = benchmarkValue.Sub(r.startEquity)
 	}
 
-	// Percent gain/loss
+	// percent gain/loss
 	endReturn := decimal.Zero
 	benchReturn := decimal.Zero
 	if r.startEquity.IsPositive() {
@@ -154,49 +154,66 @@ func (r *report) Print() {
 		benchReturn = benchmarkValue.Sub(r.startEquity).Div(r.startEquity)
 	}
 
-	// CAGR calculation (uses calendar years, not trading time)
+	// compounding annual growth rate
+	// the industry standard for comparing investment strategies
 	cagr := 0.0
+	benchCagr := 0.0
 	if duration > 0 && r.startEquity.IsPositive() {
 		years := float64(duration) / float64(clocky.Year)
 		if years > 0 {
 			totalReturn := endEquity.Div(r.startEquity).Float64()
-			cagr = (math.Pow(totalReturn, 1/years) - 1) * 100
-			if cagr > 1e9 {
-				cagr = math.Inf(1)
+			if totalReturn <= 0 {
+				// lost everything (or more with margin) - CAGR is undefined
+				cagr = math.Inf(-1)
+			} else {
+				cagr = (math.Pow(totalReturn, 1/years) - 1) * 100
+				if cagr > 1e9 {
+					cagr = math.Inf(1)
+				}
+			}
+			benchReturn := benchmarkValue.Div(r.startEquity).Float64()
+			if benchReturn <= 0 {
+				benchCagr = math.Inf(-1)
+			} else {
+				benchCagr = (math.Pow(benchReturn, 1/years) - 1) * 100
+				if benchCagr > 1e9 {
+					benchCagr = math.Inf(1)
+				}
 			}
 		}
 	}
 
-	// Print start state
+	// print start state
 	fmt.Println()
 	fmt.Printf("start %s\n", r.startTime)
-	fmt.Printf("start.equity %s\n", r.startEquity)
+	fmt.Printf("start.equity %s\n", r.startEquity.FormatThousand(2))
 	for _, ih := range r.initialHoldings {
 		if ih.Symbol == "USD" {
-			fmt.Printf("start.usd %s\n", ih.Quantity)
+			fmt.Printf("start.usd %s\n", ih.Quantity.FormatThousand(2))
 		}
 	}
 
-	// Print end state
+	// print end state
 	fmt.Println()
 	fmt.Printf("end %s\n", endTime)
-	fmt.Printf("end.profit %s\n", endProfit)
-	fmt.Printf("end.return %s\n", endReturn.MulInt(100))
-	fmt.Printf("end.sharpe %.2f\n", r.strategyEquity.Sharpe(riskFreeRate))
-	fmt.Printf("end.equity %s\n", endEquity)
-	// Print ending cash balance
+	fmt.Printf("end.cagr %.2f\n", cagr)
+	fmt.Printf("end.sharpe %s\n", r.strategyEquity.Sharpe(GetRiskFreeRate()).Format(3))
+	fmt.Printf("end.profit %s\n", endProfit.FormatThousand(2))
+	fmt.Printf("end.return %s\n", endReturn.MulInt(100).Format(2))
+	fmt.Printf("end.equity %s\n", endEquity.FormatThousand(2))
+
+	// print ending cash balance
 	for _, exchange := range Exchanges.All() {
 		cash := exchange.Cash.Load()
 		if cash.IsPositive() {
-			fmt.Printf("end.usd %s\n", cash)
+			fmt.Printf("end.usd %s\n", cash.FormatThousand(2))
 		}
 	}
-	fmt.Printf("end.fees %s\n", fees)
+	fmt.Printf("end.fees %s\n", fees.FormatThousand(2))
 	fmt.Printf("end.vol30day %.6f\n", vol30day/1_000_000)
-	fmt.Printf("end.cagr %.2f\n", cagr)
-	fmt.Printf("end.maxdd %.2f\n", r.strategyEquity.MaxDrawdown()*100)
+	fmt.Printf("end.drawdown %s\n", r.strategyEquity.MaxDrawdown().MulInt(100).Format(2))
 
-	// Aggregate win/loss counts
+	// aggregate win/loss counts
 	var totalWins, totalLosses int
 	for _, exchange := range Exchanges.All() {
 		for _, holding := range exchange.Holdings.All() {
@@ -213,7 +230,7 @@ func (r *report) Print() {
 		fmt.Printf("end.winrate %.1f\n", winRate)
 	}
 
-	// Print trade counts
+	// print trade counts
 	buys, sells := 0, 0
 	for _, exchange := range Exchanges.All() {
 		for _, eq := range exchange.Equities.All() {
@@ -227,16 +244,17 @@ func (r *report) Print() {
 	fmt.Printf("end.sells %d\n", sells)
 	fmt.Printf("end.trades %d\n", buys+sells)
 
-	// Invested metrics
-	fmt.Printf("invested.min %s\n", r.strategyInvested.Min())
-	fmt.Printf("invested.max %s\n", r.strategyInvested.Max())
-	fmt.Printf("invested.avg %s\n", r.strategyInvested.Avg())
+	// invested metrics
+	fmt.Printf("invested.min %s\n", r.strategyInvested.Min().FormatThousand(2))
+	fmt.Printf("invested.avg %s\n", r.strategyInvested.Avg().FormatThousand(2))
+	fmt.Printf("invested.max %s\n", r.strategyInvested.Max().FormatThousand(2))
 
-	// Print benchmark
+	// if you had just held the stock...
 	fmt.Println()
-	fmt.Printf("bench.profit %s\n", benchProfit)
-	fmt.Printf("bench.return %s\n", benchReturn.MulInt(100))
-	fmt.Printf("bench.sharpe %.2f\n", r.benchmarkEquity.Sharpe(riskFreeRate))
-	fmt.Printf("bench.equity %s\n", benchmarkValue)
-	fmt.Printf("bench.maxdd %.2f\n", r.benchmarkEquity.MaxDrawdown()*100)
+	fmt.Printf("bench.cagr %.2f\n", benchCagr)
+	fmt.Printf("bench.sharpe %s\n", r.benchmarkEquity.Sharpe(GetRiskFreeRate()).Format(3))
+	fmt.Printf("bench.profit %s\n", benchProfit.FormatThousand(2))
+	fmt.Printf("bench.return %s\n", benchReturn.MulInt(100).Format(2))
+	fmt.Printf("bench.equity %s\n", benchmarkValue.FormatThousand(2))
+	fmt.Printf("bench.maxdd %s\n", r.benchmarkEquity.MaxDrawdown().MulInt(100).Format(2))
 }

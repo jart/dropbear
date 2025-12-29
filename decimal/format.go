@@ -1,121 +1,34 @@
 package decimal
 
-// Precision returns the number of decimal places in this value.
-// Useful for determining formatting precision from an increment like 0.01 -> 2.
-// For example Decimal.Parse("1.2034").Format(Decimal.Parse("0.01").Precision()) -> "1.20"
-// Whereas Parse("1.2034").Quantize(Decimal.Parse("0.01")).String() -> "1.2"
-// Whereas Decimal.Parse("1.2034").String() -> "1.2034"
-func (d Decimal) Precision() int {
-	v := int64(d)
-	if v < 0 {
-		v = -v
-	}
-	n := Places
-	for n > 0 && v%10 == 0 {
-		v /= 10
-		n--
-	}
-	return n
-}
-
-// FormatCommas returns the decimal formatted with commas and exactly n decimal places.
-func (d Decimal) FormatCommas(n int) string {
-	v := int64(d)
-	s := v < 0
-	if s {
-		v = -v
-	}
-
-	// skip the (places - n) least significant fractional digits, with rounding
-	skip := Places - n
-	if skip < 0 {
-		skip = 0
-	}
-	if skip > 0 {
-		var remainder int64
-		for j := 0; j < skip; j++ {
-			remainder = v % 10
-			v /= 10
-		}
-		if remainder >= 5 {
-			v++
-		}
-	}
-
-	isZero := v == 0
-
-	// extract fractional part
-	var frac int64
-	for j := 0; j < n && j < Places; j++ {
-		frac += (v % 10) * pow10[j]
-		v /= 10
-	}
-
-	// format integer part with commas
-	var b [40]byte
-	i := len(b)
-
-	if v == 0 {
-		i--
-		b[i] = '0'
-	} else {
-		digits := 0
-		for v > 0 {
-			if digits > 0 && digits%3 == 0 {
-				i--
-				b[i] = ','
-			}
-			i--
-			b[i] = byte(v%10) + '0'
-			v /= 10
-			digits++
-		}
-	}
-
-	if s && !isZero {
-		i--
-		b[i] = '-'
-	}
-
-	intPart := string(b[i:])
-
-	if n == 0 {
-		return intPart
-	}
-
-	// format fractional part
-	var fb [10]byte
-	fi := len(fb)
-	for j := 0; j < n; j++ {
-		fi--
-		fb[fi] = byte(frac%10) + '0'
-		frac /= 10
-	}
-
-	return intPart + "." + string(fb[fi:])
-}
-
 // Format returns the decimal formatted with exactly n decimal places, zero-padded.
 // For example Decimal.Parse("1.2034").Format(2) -> 13.20"
 // Whereas Decimal.Parse("1.2034").String() -> "1.2034"
 func (d Decimal) Format(n int) string {
+	if n < 0 || n > Places {
+		panic("illegal places")
+	}
+
+	// setup computation
 	var b [32]byte
 	i := len(b)
 	v := int64(d)
 	s := v < 0
 	if s {
+		if d == Min {
+			// handle Min specially: -Min overflows int64
+			// Min = -9223372036854775808 = -9223372036.854775808
+			// we process the digits directly without negation
+			return formatMin(n)
+		}
 		v = -v
 	}
 
 	// skip the (places - n) least significant fractional digits, with rounding
-	skip := Places - n
-	if skip < 0 {
-		skip = 0
-	}
+	skip := max(Places - n, 0)
 	if skip > 0 {
 		// check if we need to round up
 		var remainder int64
-		for j := 0; j < skip; j++ {
+		for range skip {
 			remainder = v % 10
 			v /= 10
 		}
@@ -159,4 +72,54 @@ func (d Decimal) Format(n int) string {
 	}
 
 	return string(b[i:])
+}
+
+// formatMin handles Format() for Min, which can't be negated without overflow.
+// Min = -9223372036854775808 = -9223372036.854775808
+func formatMin(n int) string {
+	// Full representation with 9 decimal places
+	const full = "-9223372036.854775808"
+	const intPart = "-9223372036"
+
+	if n <= 0 {
+		// Truncate to integer, rounding away from zero
+		// .854775808 >= .5, so round to -9223372037
+		return "-9223372037"
+	}
+	if n >= Places {
+		return full
+	}
+
+	// Build result with n decimal places and rounding
+	// Digits after decimal: 854775808
+	diglet := []byte{'8', '5', '4', '7', '7', '5', '8', '0', '8'}
+	result := intPart + "."
+
+	// Check if we need to round up (away from zero = more negative = add 1 to magnitude)
+	roundUp := n < len(diglet) && diglet[n] >= '5'
+
+	// Take first n digits
+	frac := string(diglet[:n])
+
+	if roundUp {
+		// Add 1 to the fractional part, propagating carry if needed
+		fracBytes := []byte(frac)
+		carry := true
+		for i := len(fracBytes) - 1; i >= 0 && carry; i-- {
+			if fracBytes[i] < '9' {
+				fracBytes[i]++
+				carry = false
+			} else {
+				fracBytes[i] = '0'
+			}
+		}
+		if carry {
+			// Carry propagated into integer part
+			// -9223372036.9... rounds to -9223372037.0...
+			return "-9223372037." + string(make([]byte, n)) // n zeros
+		}
+		frac = string(fracBytes)
+	}
+
+	return result + frac
 }

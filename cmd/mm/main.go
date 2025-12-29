@@ -405,8 +405,8 @@ func checkSpread(now clocky.Time) {
 				spread.BPS().Format(2),
 				baseline.BPS().Format(2),
 				deviation.BPS().Format(2),
-				gCoinbasePrice.Quantize(gCoinbasePair.QuoteIncrement),
-				gBinancePrice.Quantize(gBinancePair.QuoteIncrement))
+				gCoinbasePrice,
+				gBinancePrice)
 		}
 		executeTrade(now, ds.SideSell, deviation)
 		return
@@ -432,8 +432,8 @@ func checkSpread(now clocky.Time) {
 				spread.BPS().Format(2),
 				baseline.BPS().Format(2),
 				deviation.BPS().Format(2),
-				gCoinbasePrice.Quantize(gCoinbasePair.QuoteIncrement),
-				gBinancePrice.Quantize(gBinancePair.QuoteIncrement))
+				gCoinbasePrice,
+				gBinancePrice)
 		}
 		executeTrade(now, ds.SideBuy, deviation)
 		return
@@ -497,8 +497,8 @@ func updatePassiveOrders(_ clocky.Time, disposition Disposition, greed, balance 
 	gBidDelta = bidSpread
 
 	// desired passive order prices
-	desiredBidPrice := midPrice.Mul(decimal.One.Sub(bidSpread)).Quantize(quoteIncrement)
-	desiredAskPrice := midPrice.Mul(decimal.One.Add(askSpread)).Quantize(quoteIncrement)
+	desiredBidPrice := midPrice.Mul(decimal.One.Sub(bidSpread)).QuantizeFloor(quoteIncrement)
+	desiredAskPrice := midPrice.Mul(decimal.One.Add(askSpread)).QuantizeCeil(quoteIncrement)
 
 	// quantity for passive orders
 	// scale down bid size when balance is poor (accumulating)
@@ -695,13 +695,13 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 					if *flagVerbose {
 						gap := topCost.Sub(buyPrice).Div(topCost)
 						log.Printf("[logic] skip buy: price $%s not %sbps below last buy $%s (gap=%sbps scale=%s decay=%s%% inv=$%s)",
-							buyPrice.Quantize(gCoinbasePair.QuoteIncrement),
+							buyPrice,
 							effectiveBuygap.BPS().Format(1),
-							topCost.Quantize(gCoinbasePair.QuoteIncrement),
+							topCost,
 							gap.BPS().Format(2),
 							inventoryScale.Format(2),
 							decayFactor.MulInt(100).Format(0),
-							invested.Quantize(gCoinbasePair.QuoteIncrement))
+							invested)
 						gLastActivity = now
 					}
 					return
@@ -725,10 +725,7 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 				if *flagVerbose {
 					loss := costBasis.Sub(quote)
 					log.Printf("[logic] skip sell: would lose $%s (cost=$%s quote=$%s spread=%sbps < panic=%sbps)",
-						loss.Quantize(gCoinbasePair.QuoteIncrement),
-						costBasis.Quantize(gCoinbasePair.QuoteIncrement),
-						quote.Quantize(gCoinbasePair.QuoteIncrement),
-						spread.Abs().BPS().Format(2), (*flagPanic).BPS())
+						loss, costBasis, quote, spread.Abs().BPS().Format(2), (*flagPanic).BPS())
 					gLastActivity = now
 				}
 				return
@@ -754,7 +751,7 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 	quoteIncrement := gCoinbasePair.QuoteIncrement
 	gCoinbasePair.Lock.RUnlock()
 	// set limit price at expected fill price (protects against adverse moves)
-	limitPrice := quote.Div(quantity).Quantize(quoteIncrement)
+	limitPrice := quote.Div(quantity).QuantizeNearest(quoteIncrement)
 	order, err := gCoinbasePair.LimitOrder(side, quantity, limitPrice, ds.OrderStrategyIOC)
 	t2 := clocky.Now()
 	if err != nil {
@@ -794,13 +791,7 @@ func executeTrade(now clocky.Time, side ds.Side, spread decimal.Decimal) {
 		theft = decimal.One.Sub(value.Div(quote)) // positive = received less = robbed
 	}
 	log.Printf("[trade] %s $%s @ last=$%s quote=$%s fill=$%s slip=%sbps theft=%sbps",
-		side,
-		value.Quantize(gCoinbasePair.QuoteIncrement),
-		lastPrice.Quantize(gCoinbasePair.QuoteIncrement),
-		quote.Quantize(gCoinbasePair.QuoteIncrement),
-		order.Price.Quantize(gCoinbasePair.QuoteIncrement),
-		slippage.BPS().Format(2),
-		theft.BPS().Format(2))
+		side, value, lastPrice, quote, order.Price, slippage.BPS().Format(2), theft.BPS().Format(2))
 	if side == ds.SideSell {
 		gLastSellTime = clocky.Now()
 		// track win/loss for this trade

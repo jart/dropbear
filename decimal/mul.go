@@ -1,38 +1,45 @@
 package decimal
 
+import (
+	"math"
+	"math/bits"
+)
+
 // Mul multiplies two decimals, panicking on overflow.
 func (d Decimal) Mul(o Decimal) Decimal {
-	// we want (d * o) / Scale, but d * o can overflow int64.
-	// split each operand into hi (units) and lo (fraction) parts.
-	// then compute the 4 cross-products carefully to avoid overflow.
-	dv, ov := int64(d), int64(o)
-	dHi, dLo := dv/Scale, dv%Scale
-	oHi, oLo := ov/Scale, ov%Scale
 
-	// check if dHi*oHi would overflow when multiplied by Scale
-	hiHi := dHi * oHi
-	if hiHi != 0 && ((hiHi < 0) != ((dHi < 0) != (oHi < 0))) {
-		panic("decimal overflow")
-	}
-	hiHiScaled := hiHi * Scale
-	if hiHi != 0 && hiHiScaled/hiHi != Scale {
-		panic("decimal overflow")
+	// 1. Determine the sign of the result.
+	sign := int64(1)
+	if (d < 0) != (o < 0) {
+		sign = -1
 	}
 
-	// compute cross terms (these can't overflow since |dLo|, |oLo| < Scale)
-	hiLo := dHi * oLo
-	loHi := dLo * oHi
-	loLo := dLo * oLo / Scale
+	// 2. Convert to absolute values as uint64 to safely handle MinInt64.
+	//    Note: -uint64(MinInt64) is 2^63, which fits in uint64.
+	uD, uO := uint64(d), uint64(o)
+	if d < 0 {
+		uD = -uD
+	}
+	if o < 0 {
+		uO = -uO
+	}
 
-	// sum with overflow checking
-	result := hiHiScaled
-	for _, term := range []int64{hiLo, loHi, loLo} {
-		z := result + term
-		if ((z ^ result) & (z ^ term)) < 0 {
-			panic("decimal overflow")
+	// 3. Perform full 128-bit multiplication: (hi, lo) = uD * uO
+	hi, lo := bits.Mul64(uD, uO)
+
+	// 4. Divide the 128-bit product by Scale.
+	//    bits.Div64 returns (quo, rem) and panics if quo overflows uint64.
+	//    We discard 'rem' (truncation), or use it for rounding if desired.
+	quo, _ := bits.Div64(hi, lo, uint64(Scale))
+
+	// 5. Check for overflow of the signed 64-bit result range.
+	//    The quotient must fit in the positive part of int64.
+	if quo > math.MaxInt64 {
+		if quo == 9223372036854775808 && sign == -1 {
+			return Min
 		}
-		result = z
+		panicOverflow()
 	}
 
-	return Decimal(result)
+	return Decimal(sign * int64(quo))
 }

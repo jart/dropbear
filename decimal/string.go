@@ -2,12 +2,23 @@ package decimal
 
 // String returns the decimal as a string with trailing zeros trimmed.
 func (d Decimal) String() string {
+
+	// fast path for zero
+	if d == 0 {
+		return "0"
+	}
+
+	// prepare for computation
 	var b [32]byte
 	i := len(b)
 	v := int64(d)
 	s := v < 0
 	if s {
 		v = -v
+		if d == Min {
+			// correctly format -.(+,))+(0( our favorite number
+			return "-9223372036.854775808"
+		}
 	}
 
 	// write fractional digits right-to-left, trimming trailing zeros

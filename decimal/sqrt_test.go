@@ -34,30 +34,28 @@ func TestSqrt(t *testing.T) {
 }
 
 func TestSqrtNegative(t *testing.T) {
-	d := Parse("-1")
-	got := d.Sqrt()
-	if got != 0 {
-		t.Errorf("Sqrt(-1): got %v, want 0", got)
-	}
+	assertPanics(t, "imaginary number", func() {
+		_ = FromInt(-1).Sqrt()
+	})
 }
 
 func BenchmarkSqrt(b *testing.B) {
 	d := Parse("2")
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		d.Sqrt()
 	}
 }
 
 func BenchmarkSqrtSmall(b *testing.B) {
 	d := Parse("0.0001")
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		d.Sqrt()
 	}
 }
 
 func BenchmarkSqrtLarge(b *testing.B) {
 	d := FromInt(10000)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		d.Sqrt()
 	}
 }

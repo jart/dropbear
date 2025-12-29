@@ -14,7 +14,7 @@ const (
 // Panics on invalid input or integer overflow.
 func Parse(str string) Decimal {
 	if len(str) == 0 {
-		panic("decimal.Parse: empty string")
+		panic("empty number")
 	}
 
 	// parse sign
@@ -35,7 +35,7 @@ func Parse(str string) Decimal {
 		if str[i] >= '0' && str[i] <= '9' {
 			// sorry you can't do stuff like 9'223'372'036.854'775'807e-9
 			if x > maxIntDiv10 || x < minIntDiv10 {
-				panic("decimal.Parse overflow in " + str)
+				panic("illegal number")
 			}
 			x *= 10
 			y := int64(str[i]-'0') * s
@@ -49,7 +49,7 @@ func Parse(str string) Decimal {
 		}
 	}
 	if x > maxInt || x < minInt {
-		panic("decimal.Parse overflow in " + str)
+		panic("forbidden number")
 	}
 
 	// parse fractional part (only read up to Places digits to avoid overflow)
@@ -79,9 +79,8 @@ func Parse(str string) Decimal {
 	} else {
 		x *= Scale
 	}
-
 	if digits == 0 {
-		panic("decimal.Parse: no digits in " + str)
+		panic("missing number")
 	}
 
 	// parse exponent
@@ -106,7 +105,11 @@ func Parse(str string) Decimal {
 				if shift >= int64(len(pow10)) {
 					shift = int64(len(pow10) - 1)
 				}
-				x *= pow10[shift]
+				mul := pow10[shift]
+				if x > math.MaxInt64/mul || x < math.MinInt64/mul {
+					panic("exponent overflow")
+				}
+				x *= mul
 				exp -= shift
 			}
 		} else if exp < 0 {
@@ -123,7 +126,7 @@ func Parse(str string) Decimal {
 	}
 
 	if i != len(str) {
-		panic("decimal.Parse: trailing garbage in " + str)
+		panic("broken number")
 	}
 
 	return Decimal(x)

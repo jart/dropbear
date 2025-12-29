@@ -86,7 +86,7 @@ func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
 		ex.Cash.Store(quantity)
 		// Set buying power based on margin flag
 		ex.RegTBuyingPower.Store(quantity.MulInt(2))
-		ex.DayTradingBuyingPower.Store(quantity.MulInt(4))
+		ex.DayTradingBuyingPower.Store(quantity.MulInt(*flagMargin))
 		ex.Lock.Unlock()
 	} else {
 		if quantity.IsZero() {
