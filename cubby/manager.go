@@ -52,6 +52,13 @@ func (m *manager) Close() {
 	m.finished = false
 }
 
+// checkMarginCalls checks all exchanges for margin calls and triggers auto-liquidation.
+func (m *manager) checkMarginCalls() {
+	for _, ex := range Exchanges.All() {
+		ex.CheckMarginCall()
+	}
+}
+
 // checkLiquidation returns true if account equity has been wiped out.
 func (m *manager) checkLiquidation() bool {
 	equity := GetEquityUSD()
@@ -145,6 +152,9 @@ func (m *manager) Run() {
 
 		if m.ready {
 			entry.equity.OnCandle(entry.candle)
+
+			// Check for margin calls (equity < maintenance margin)
+			m.checkMarginCalls()
 
 			// Check for liquidation (equity <= 0)
 			if m.checkLiquidation() {

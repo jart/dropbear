@@ -93,15 +93,140 @@ func (m *MarginInterest) GetYearlyCharged(year int) decimal.Decimal {
 	return m.yearlyCharged[year]
 }
 
-// MaintenanceMarginRate returns the maintenance margin requirement for a stock.
+// MaintenanceMarginRate returns the maintenance margin rate for a stock.
 // Default is 30% for most stocks, but varies for volatile/meme stocks.
 func MaintenanceMarginRate(symbol string) decimal.Decimal {
 	assets, _ := AlpacaClient.GetAssets()
-	return assets[symbol].MarginRequirementLong
+	if asset, ok := assets[symbol]; ok {
+		return asset.MarginRequirementLong
+	}
+	return decimal.Parse("0.30") // default 30%
+}
+
+// MaintenanceMarginRateShort returns the maintenance margin rate for shorting a stock.
+func MaintenanceMarginRateShort(symbol string) decimal.Decimal {
+	assets, _ := AlpacaClient.GetAssets()
+	if asset, ok := assets[symbol]; ok {
+		return asset.MarginRequirementShort
+	}
+	return decimal.Parse("0.30") // default 30%
 }
 
 // InitialMarginRate returns the initial margin requirement (Reg-T).
-// This is 50% for most stocks.
+// This is max(50%, maintenance rate) for most stocks.
 func InitialMarginRate(symbol string) decimal.Decimal {
 	return MaintenanceMarginRate(symbol).Max(decimal.Half)
+}
+
+// InitialMarginRateShort returns the initial margin requirement for shorting.
+func InitialMarginRateShort(symbol string) decimal.Decimal {
+	return MaintenanceMarginRateShort(symbol).Max(decimal.Half)
+}
+
+// Thresholds for special margin rules
+var (
+	lowPriceLongThreshold  = decimal.Parse("2.50") // 100% margin for longs < $2.50
+	lowPriceShortThreshold = decimal.Parse("5.00") // special rules for shorts < $5.00
+	shortMinPerShareLow    = decimal.Parse("2.50") // min $2.50/share for stocks < $5
+	shortMinPerShareHigh   = decimal.Parse("5.00") // min $5.00/share for stocks >= $5
+)
+
+// MaintenanceMargin calculates the maintenance margin required for a position.
+// For long positions: rate * abs(quantity * price)
+// For short positions: max(rate * value, min_per_share * quantity)
+// Special rules apply for low-priced stocks.
+func MaintenanceMargin(symbol string, quantity, price decimal.Decimal) decimal.Decimal {
+	if quantity.IsZero() {
+		return decimal.Zero
+	}
+
+	absQty := quantity.Abs()
+	value := absQty.Mul(price)
+
+	if quantity.IsPositive() {
+		// Long position
+		if price.Cmp(lowPriceLongThreshold) < 0 {
+			// Low-priced stocks require 100% margin
+			return value
+		}
+		rate := MaintenanceMarginRate(symbol).Max(decimal.Parse("0.30"))
+		return value.Mul(rate)
+	}
+
+	// Short position
+	rate := MaintenanceMarginRateShort(symbol).Max(decimal.Parse("0.30"))
+	marginByRate := value.Mul(rate)
+
+	if price.Cmp(lowPriceShortThreshold) < 0 {
+		// For stocks < $5: 100% or $2.50/share, whichever is greater
+		minPerShare := absQty.Mul(shortMinPerShareLow)
+		return marginByRate.Max(minPerShare).Max(value)
+	}
+
+	// For stocks >= $5: rate or $5.00/share, whichever is greater
+	minPerShare := absQty.Mul(shortMinPerShareHigh)
+	return marginByRate.Max(minPerShare)
+}
+
+// InitialMargin calculates the initial margin required to open a position.
+// Reg-T requires at least 50% for all marginable securities.
+func InitialMargin(symbol string, quantity, price decimal.Decimal) decimal.Decimal {
+	if quantity.IsZero() {
+		return decimal.Zero
+	}
+
+	absQty := quantity.Abs()
+	value := absQty.Mul(price)
+
+	if quantity.IsPositive() {
+		// Long position
+		if price.Cmp(lowPriceLongThreshold) < 0 {
+			// Low-priced stocks require 100% margin
+			return value
+		}
+		// Reg-T: max(50%, maintenance rate)
+		rate := InitialMarginRate(symbol)
+		return value.Mul(rate)
+	}
+
+	// Short position
+	rate := InitialMarginRateShort(symbol)
+	marginByRate := value.Mul(rate)
+
+	if price.Cmp(lowPriceShortThreshold) < 0 {
+		// For stocks < $5: 100% or $2.50/share, whichever is greater
+		minPerShare := absQty.Mul(shortMinPerShareLow)
+		return marginByRate.Max(minPerShare).Max(value)
+	}
+
+	// For stocks >= $5: max(50%, rate) or $5.00/share, whichever is greater
+	minPerShare := absQty.Mul(shortMinPerShareHigh)
+	return marginByRate.Max(minPerShare)
+}
+
+// IsMarginable returns whether a symbol can be traded on margin.
+func IsMarginable(symbol string) bool {
+	assets, _ := AlpacaClient.GetAssets()
+	if asset, ok := assets[symbol]; ok {
+		return asset.Marginable
+	}
+	return false
+}
+
+// IsShortable returns whether a symbol can be sold short.
+func IsShortable(symbol string) bool {
+	assets, _ := AlpacaClient.GetAssets()
+	if asset, ok := assets[symbol]; ok {
+		return asset.Shortable
+	}
+	return false
+}
+
+// IsEasyToBorrow returns whether a symbol is easy to borrow for shorting.
+func IsEasyToBorrow(symbol string) bool {
+	assets, _ := AlpacaClient.GetAssets()
+	if asset, ok := assets[symbol]; ok {
+		return asset.EasyToBorrow
+	}
+	return false
 }

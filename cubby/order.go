@@ -28,6 +28,10 @@ type Order struct {
 	LastFillTime  clocky.Time
 	onClose       chan struct{}
 	closeOnce     sync.Once
+
+	// Short selling flags
+	IsShortSale bool // true if this is a short sale (sell short)
+	IsCover     bool // true if this is a buy-to-cover
 }
 
 func (o *Order) Wait() {
@@ -162,9 +166,65 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 			price.Format(2), actualNotional.Format(2))
 	}
 
-	switch order.Side {
-	case ds.SideBuy:
-		// Deduct cash from exchange
+	switch {
+	case order.IsCover:
+		// Buy to cover: pay cash, close short position
+		exchange.Lock.Lock()
+		sub(&exchange.Cash, total)
+		if releaseHold.IsPositive() {
+			order.Lock.RLock()
+			cumulativeSpent := order.Notional.Load().Add(order.Fee.Load())
+			order.Lock.RUnlock()
+			unusedHold := releaseHold.Sub(cumulativeSpent)
+			if unusedHold.IsPositive() {
+				add(&exchange.DayTradingBuyingPower, unusedHold)
+			}
+		} else if holdAlreadyReleased {
+			sub(&exchange.DayTradingBuyingPower, total)
+		}
+		exchange.Lock.Unlock()
+
+		// Close short position (increase quantity toward zero)
+		eq.Shares.Lock.Lock()
+		add(&eq.Shares.Quantity, actualFilled) // -100 + 50 = -50
+		eq.Shares.Volume += actualFilled.Float64()
+		eq.Shares.BuyVolume += actualFilled.Float64()
+		// Consume from ShortLots to get proceeds (cost basis for shorts)
+		shortProceeds := eq.Shares.ShortLots.Consume(actualFilled, decimal.Zero)
+		// P&L = proceeds from short sale - cost to cover
+		// profit if shortProceeds > total (sold high, bought low)
+		profit := shortProceeds.Sub(total)
+		if profit.IsPositive() {
+			eq.Shares.WinCount++
+		} else if profit.IsNegative() {
+			eq.Shares.LossCount++
+		}
+		eq.Shares.Check()
+		eq.Shares.Lock.Unlock()
+
+	case order.IsShortSale:
+		// Short sale: receive cash, create short position
+		eq.Shares.Lock.Lock()
+		sub(&eq.Shares.Quantity, actualFilled) // 0 - 100 = -100 (short)
+		eq.Shares.Volume += actualFilled.Float64()
+		eq.Shares.SellVolume += actualFilled.Float64()
+		// Track short proceeds in ShortLots (this is our "cost basis" for the short)
+		eq.Shares.ShortLots.Add(now, actualFilled, total)
+		eq.Shares.Check()
+		eq.Shares.Lock.Unlock()
+
+		// Add proceeds to exchange cash
+		exchange.Lock.Lock()
+		add(&exchange.Cash, total)
+		// Release margin hold and restore appropriate buying power
+		if releaseHold.IsPositive() {
+			// Short sales use margin, not buying power directly
+			// The proceeds don't add to buying power the same way
+		}
+		exchange.Lock.Unlock()
+
+	case order.Side == ds.SideBuy:
+		// Regular buy: deduct cash, add shares
 		exchange.Lock.Lock()
 		sub(&exchange.Cash, total)
 		if releaseHold.IsPositive() {
@@ -191,8 +251,8 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 		eq.Shares.Check()
 		eq.Shares.Lock.Unlock()
 
-	case ds.SideSell:
-		// Remove shares from holding
+	case order.Side == ds.SideSell:
+		// Regular sell: remove shares, add cash
 		eq.Shares.Lock.Lock()
 		sub(&eq.Shares.Quantity, actualFilled)
 		if holdAlreadyReleased {
@@ -215,7 +275,6 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 		exchange.Lock.Lock()
 		add(&exchange.Cash, total)
 		// Restore buying power: proceeds go back to available buying power
-		// The buying power we get back is the sale proceeds (we can re-invest them)
 		add(&exchange.DayTradingBuyingPower, total)
 		exchange.Lock.Unlock()
 	}

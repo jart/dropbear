@@ -7,14 +7,16 @@ import (
 
 // Schedule holds callbacks for market events.
 type Schedule struct {
-	beforeOpen  []func() // called before market opens (9:30 AM ET)
-	afterOpen   []func() // called after market opens
-	beforeClose []func() // called before market closes (4:00 PM ET)
-	afterClose  []func() // called after market closes
-	lastDate    string
-	firedOpen   bool
-	firedClose  bool
-	nyLoc       *time.Location
+	beforeOpen       []func() // called before market opens (9:30 AM ET)
+	afterOpen        []func() // called after market opens
+	beforeCloseEarly []func() // called 10 min before close (15:50 ET) - ends day trading time
+	beforeClose      []func() // called before market closes (4:00 PM ET)
+	afterClose       []func() // called after market closes
+	lastDate         string
+	firedOpen        bool
+	firedCloseEarly  bool
+	firedClose       bool
+	nyLoc            *time.Location
 }
 
 // US equity market hours in Eastern Time
@@ -45,6 +47,12 @@ func AfterOpen(fn func()) {
 	gSchedule.afterOpen = append(gSchedule.afterOpen, fn)
 }
 
+// BeforeCloseEarly registers a callback to run 10 min before market close (15:50 ET).
+// This is when day trading time ends and only 2x leverage is available.
+func BeforeCloseEarly(fn func()) {
+	gSchedule.beforeCloseEarly = append(gSchedule.beforeCloseEarly, fn)
+}
+
 // BeforeClose registers a callback to run before market close.
 func BeforeClose(fn func()) {
 	gSchedule.beforeClose = append(gSchedule.beforeClose, fn)
@@ -65,12 +73,14 @@ func checkSchedule(now clocky.Time) {
 	timeOfDay := hour*60 + min
 
 	marketOpen := MarketOpenHour*60 + MarketOpenMinute    // 9:30 = 570
+	closeEarly := MarketCloseHour*60 - 10                 // 15:50 = 950
 	marketClose := MarketCloseHour*60 + MarketCloseMinute // 16:00 = 960
 
 	// New trading day
 	if date != s.lastDate {
 		s.lastDate = date
 		s.firedOpen = false
+		s.firedCloseEarly = false
 		s.firedClose = false
 	}
 
@@ -83,6 +93,15 @@ func checkSchedule(now clocky.Time) {
 		for _, fn := range s.afterOpen {
 			fn()
 		}
+	}
+
+	// Before Close Early (fire once per day when we cross 15:50)
+	// This ends day trading time - only 2x leverage after this
+	if !s.firedCloseEarly && timeOfDay >= closeEarly {
+		for _, fn := range s.beforeCloseEarly {
+			fn()
+		}
+		s.firedCloseEarly = true
 	}
 
 	// Before/After Close (fire once per day when we cross 16:00)
@@ -110,4 +129,26 @@ func IsMarketOpen() bool {
 	marketOpen := MarketOpenHour*60 + MarketOpenMinute
 	marketClose := MarketCloseHour*60 + MarketCloseMinute
 	return timeOfDay >= marketOpen && timeOfDay < marketClose
+}
+
+// IsMarketOpenCandle returns true if the given timestamp is the market open candle (9:30 AM ET).
+func IsMarketOpenCandle(ts clocky.Time) bool {
+	t := time.UnixMicro(int64(ts)).In(gSchedule.nyLoc)
+	weekday := t.Weekday()
+	if weekday == time.Saturday || weekday == time.Sunday {
+		return false
+	}
+	return t.Hour() == MarketOpenHour && t.Minute() == MarketOpenMinute
+}
+
+// IsMarketCloseCandle returns true if the given timestamp is the last candle before market close.
+// For 1-minute candles, this is the 15:59 candle (which closes at 16:00).
+func IsMarketCloseCandle(ts clocky.Time) bool {
+	t := time.UnixMicro(int64(ts)).In(gSchedule.nyLoc)
+	weekday := t.Weekday()
+	if weekday == time.Saturday || weekday == time.Sunday {
+		return false
+	}
+	// The last trading minute is 15:59 (closes at 16:00)
+	return t.Hour() == MarketCloseHour-1 && t.Minute() == 59
 }

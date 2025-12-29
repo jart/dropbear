@@ -249,6 +249,15 @@ func (r *report) Print() {
 	fmt.Printf("invested.avg %s\n", r.strategyInvested.Avg().FormatThousand(2))
 	fmt.Printf("invested.max %s\n", r.strategyInvested.Max().FormatThousand(2))
 
+	// margin metrics
+	fmt.Println()
+	marginCalls := ex.MarginCallCount
+	liquidatedValue := ex.LiquidatedValue.Load()
+	if marginCalls > 0 || liquidatedValue.IsPositive() {
+		fmt.Printf("margin.calls %d\n", marginCalls)
+		fmt.Printf("margin.liquidated %s\n", liquidatedValue.FormatThousand(2))
+	}
+
 	// if you had just held the stock...
 	fmt.Println()
 	fmt.Printf("bench.cagr %.2f\n", benchCagr)

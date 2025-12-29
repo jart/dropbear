@@ -87,6 +87,9 @@ func (e *Equity) simulateFills(candle *indicators.Candle) {
 	}
 	e.Lock.RUnlock()
 
+	isOpenCandle := IsMarketOpenCandle(candle.Start)
+	isCloseCandle := IsMarketCloseCandle(candle.Start)
+
 	for _, order := range orders {
 		if order.State.IsFinal() {
 			continue
@@ -94,12 +97,14 @@ func (e *Equity) simulateFills(candle *indicators.Candle) {
 
 		var shouldFill bool
 		var fillPrice decimal.Decimal
+		var isMarketOrder bool
 
 		switch order.Type {
 		case ds.OrderTypeMarket:
 			// Market orders fill at the open price
 			shouldFill = true
 			fillPrice = candle.Open
+			isMarketOrder = true
 
 		case ds.OrderTypeLimit:
 			// Limit orders fill if price touches the limit
@@ -117,6 +122,60 @@ func (e *Equity) simulateFills(candle *indicators.Candle) {
 					fillPrice = order.LimitPrice
 				}
 			}
+
+		case ds.OrderTypeMOO:
+			// Market-On-Open: fills at open price on market open candle
+			if isOpenCandle {
+				shouldFill = true
+				fillPrice = candle.Open
+				isMarketOrder = true
+			}
+
+		case ds.OrderTypeMOC:
+			// Market-On-Close: fills at close price on market close candle
+			if isCloseCandle {
+				shouldFill = true
+				fillPrice = candle.Close
+				isMarketOrder = true
+			}
+
+		case ds.OrderTypeLOO:
+			// Limit-On-Open: limit order that only fills at market open
+			if isOpenCandle {
+				switch order.Side {
+				case ds.SideBuy:
+					// Buy LOO fills if open price <= limit price
+					if candle.Open.Cmp(order.LimitPrice) <= 0 {
+						shouldFill = true
+						fillPrice = candle.Open // fill at open, not limit
+					}
+				case ds.SideSell:
+					// Sell LOO fills if open price >= limit price
+					if candle.Open.Cmp(order.LimitPrice) >= 0 {
+						shouldFill = true
+						fillPrice = candle.Open
+					}
+				}
+			}
+
+		case ds.OrderTypeLOC:
+			// Limit-On-Close: limit order that only fills at market close
+			if isCloseCandle {
+				switch order.Side {
+				case ds.SideBuy:
+					// Buy LOC fills if close price <= limit price
+					if candle.Close.Cmp(order.LimitPrice) <= 0 {
+						shouldFill = true
+						fillPrice = candle.Close // fill at close, not limit
+					}
+				case ds.SideSell:
+					// Sell LOC fills if close price >= limit price
+					if candle.Close.Cmp(order.LimitPrice) >= 0 {
+						shouldFill = true
+						fillPrice = candle.Close
+					}
+				}
+			}
 		}
 
 		if shouldFill {
@@ -127,7 +186,6 @@ func (e *Equity) simulateFills(candle *indicators.Candle) {
 			if unfilled.IsPositive() {
 				fillNotional := fillPrice.Mul(unfilled)
 				// Calculate Alpaca Elite fees
-				isMarketOrder := order.Type == ds.OrderTypeMarket
 				fee := e.Exchange.FeeCalculator.Calculate(clocky.Now(), unfilled.Int(), isMarketOrder)
 				_, err := order.fill(unfilled, fillNotional, fee, false)
 				if err != nil && *flagVerbose {
@@ -270,6 +328,387 @@ func (e *Equity) LimitOrder(side ds.Side, quantity int, limitPrice decimal.Decim
 	if *flagVerbose {
 		log.Printf("[cubby] placed %s limit order for %d %s @ $%s",
 			side, quantity, e.Symbol, limitPrice)
+	}
+
+	return order
+}
+
+// MOOOrder places a Market-On-Open order (fills at next market open).
+func (e *Equity) MOOOrder(side ds.Side, quantity int) *Order {
+	if quantity <= 0 {
+		loggy.Fatalf("quantity must be positive")
+	}
+	qty := decimal.FromInt(quantity)
+
+	order := &Order{
+		Equity:        e,
+		ClientOrderID: GenerateOrderID(),
+		Side:          side,
+		Type:          ds.OrderTypeMOO,
+		State:         ds.OrderStateNew,
+		Quantity:      qty,
+		PlacedTime:    e.Exchange.Now(),
+		onClose:       make(chan struct{}),
+	}
+
+	switch side {
+	case ds.SideBuy:
+		// Reserve buying power - estimate with current price + 5% buffer
+		estimatedCost := e.LastPrice.Load().Mul(decimal.Parse("1.05")).Mul(qty)
+		e.Exchange.Lock.Lock()
+		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		if buyingPower.Cmp(estimatedCost) < 0 {
+			e.Exchange.Lock.Unlock()
+			loggy.Fatalf("insufficient buying power: have %s, need %s",
+				buyingPower, estimatedCost)
+		}
+		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
+		e.Exchange.Lock.Unlock()
+		order.Hold.Store(estimatedCost)
+
+	case ds.SideSell:
+		e.Shares.Lock.Lock()
+		if e.Shares.Available.Load().Cmp(qty) < 0 {
+			e.Shares.Lock.Unlock()
+			loggy.Fatalf("insufficient %s shares: have %s, need %s",
+				e.Symbol, e.Shares.Available.Load(), qty)
+		}
+		sub(&e.Shares.Available, qty)
+		e.Shares.Check()
+		e.Shares.Lock.Unlock()
+		order.Hold.Store(qty)
+	}
+
+	e.Exchange.Orders.lock.Lock()
+	e.Exchange.Orders.Add(order)
+	e.Exchange.Orders.lock.Unlock()
+
+	e.Lock.Lock()
+	e.openOrders.Add(order)
+	e.Lock.Unlock()
+
+	if *flagVerbose {
+		log.Printf("[cubby] placed %s MOO order for %d %s",
+			side, quantity, e.Symbol)
+	}
+
+	return order
+}
+
+// MOCOrder places a Market-On-Close order (fills at market close price).
+func (e *Equity) MOCOrder(side ds.Side, quantity int) *Order {
+	if quantity <= 0 {
+		loggy.Fatalf("quantity must be positive")
+	}
+	qty := decimal.FromInt(quantity)
+
+	order := &Order{
+		Equity:        e,
+		ClientOrderID: GenerateOrderID(),
+		Side:          side,
+		Type:          ds.OrderTypeMOC,
+		State:         ds.OrderStateNew,
+		Quantity:      qty,
+		PlacedTime:    e.Exchange.Now(),
+		onClose:       make(chan struct{}),
+	}
+
+	switch side {
+	case ds.SideBuy:
+		estimatedCost := e.LastPrice.Load().Mul(decimal.Parse("1.05")).Mul(qty)
+		e.Exchange.Lock.Lock()
+		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		if buyingPower.Cmp(estimatedCost) < 0 {
+			e.Exchange.Lock.Unlock()
+			loggy.Fatalf("insufficient buying power: have %s, need %s",
+				buyingPower, estimatedCost)
+		}
+		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
+		e.Exchange.Lock.Unlock()
+		order.Hold.Store(estimatedCost)
+
+	case ds.SideSell:
+		e.Shares.Lock.Lock()
+		if e.Shares.Available.Load().Cmp(qty) < 0 {
+			e.Shares.Lock.Unlock()
+			loggy.Fatalf("insufficient %s shares: have %s, need %s",
+				e.Symbol, e.Shares.Available.Load(), qty)
+		}
+		sub(&e.Shares.Available, qty)
+		e.Shares.Check()
+		e.Shares.Lock.Unlock()
+		order.Hold.Store(qty)
+	}
+
+	e.Exchange.Orders.lock.Lock()
+	e.Exchange.Orders.Add(order)
+	e.Exchange.Orders.lock.Unlock()
+
+	e.Lock.Lock()
+	e.openOrders.Add(order)
+	e.Lock.Unlock()
+
+	if *flagVerbose {
+		log.Printf("[cubby] placed %s MOC order for %d %s",
+			side, quantity, e.Symbol)
+	}
+
+	return order
+}
+
+// LOOOrder places a Limit-On-Open order (fills at market open if limit is satisfied).
+func (e *Equity) LOOOrder(side ds.Side, quantity int, limitPrice decimal.Decimal) *Order {
+	if quantity <= 0 {
+		loggy.Fatalf("quantity must be positive")
+	}
+	qty := decimal.FromInt(quantity)
+
+	order := &Order{
+		Equity:        e,
+		ClientOrderID: GenerateOrderID(),
+		Side:          side,
+		Type:          ds.OrderTypeLOO,
+		State:         ds.OrderStateNew,
+		LimitPrice:    limitPrice,
+		Quantity:      qty,
+		PlacedTime:    e.Exchange.Now(),
+		onClose:       make(chan struct{}),
+	}
+
+	switch side {
+	case ds.SideBuy:
+		estimatedCost := limitPrice.Mul(qty)
+		e.Exchange.Lock.Lock()
+		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		if buyingPower.Cmp(estimatedCost) < 0 {
+			e.Exchange.Lock.Unlock()
+			loggy.Fatalf("insufficient buying power: have %s, need %s",
+				buyingPower, estimatedCost)
+		}
+		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
+		e.Exchange.Lock.Unlock()
+		order.Hold.Store(estimatedCost)
+
+	case ds.SideSell:
+		e.Shares.Lock.Lock()
+		if e.Shares.Available.Load().Cmp(qty) < 0 {
+			e.Shares.Lock.Unlock()
+			loggy.Fatalf("insufficient %s shares: have %s, need %s",
+				e.Symbol, e.Shares.Available.Load(), qty)
+		}
+		sub(&e.Shares.Available, qty)
+		e.Shares.Check()
+		e.Shares.Lock.Unlock()
+		order.Hold.Store(qty)
+	}
+
+	e.Exchange.Orders.lock.Lock()
+	e.Exchange.Orders.Add(order)
+	e.Exchange.Orders.lock.Unlock()
+
+	e.Lock.Lock()
+	e.openOrders.Add(order)
+	e.Lock.Unlock()
+
+	if *flagVerbose {
+		log.Printf("[cubby] placed %s LOO order for %d %s @ $%s",
+			side, quantity, e.Symbol, limitPrice)
+	}
+
+	return order
+}
+
+// LOCOrder places a Limit-On-Close order (fills at market close if limit is satisfied).
+func (e *Equity) LOCOrder(side ds.Side, quantity int, limitPrice decimal.Decimal) *Order {
+	if quantity <= 0 {
+		loggy.Fatalf("quantity must be positive")
+	}
+	qty := decimal.FromInt(quantity)
+
+	order := &Order{
+		Equity:        e,
+		ClientOrderID: GenerateOrderID(),
+		Side:          side,
+		Type:          ds.OrderTypeLOC,
+		State:         ds.OrderStateNew,
+		LimitPrice:    limitPrice,
+		Quantity:      qty,
+		PlacedTime:    e.Exchange.Now(),
+		onClose:       make(chan struct{}),
+	}
+
+	switch side {
+	case ds.SideBuy:
+		estimatedCost := limitPrice.Mul(qty)
+		e.Exchange.Lock.Lock()
+		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		if buyingPower.Cmp(estimatedCost) < 0 {
+			e.Exchange.Lock.Unlock()
+			loggy.Fatalf("insufficient buying power: have %s, need %s",
+				buyingPower, estimatedCost)
+		}
+		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
+		e.Exchange.Lock.Unlock()
+		order.Hold.Store(estimatedCost)
+
+	case ds.SideSell:
+		e.Shares.Lock.Lock()
+		if e.Shares.Available.Load().Cmp(qty) < 0 {
+			e.Shares.Lock.Unlock()
+			loggy.Fatalf("insufficient %s shares: have %s, need %s",
+				e.Symbol, e.Shares.Available.Load(), qty)
+		}
+		sub(&e.Shares.Available, qty)
+		e.Shares.Check()
+		e.Shares.Lock.Unlock()
+		order.Hold.Store(qty)
+	}
+
+	e.Exchange.Orders.lock.Lock()
+	e.Exchange.Orders.Add(order)
+	e.Exchange.Orders.lock.Unlock()
+
+	e.Lock.Lock()
+	e.openOrders.Add(order)
+	e.Lock.Unlock()
+
+	if *flagVerbose {
+		log.Printf("[cubby] placed %s LOC order for %d %s @ $%s",
+			side, quantity, e.Symbol, limitPrice)
+	}
+
+	return order
+}
+
+// ShortOrder places a short sale market order (sell shares you don't own).
+// The shares are borrowed and sold at market. Profit is made if price goes down.
+func (e *Equity) ShortOrder(quantity int) *Order {
+	if quantity <= 0 {
+		loggy.Fatalf("quantity must be positive")
+	}
+
+	// Check if symbol is shortable
+	if !IsShortable(e.Symbol) {
+		loggy.Fatalf("%s is not shortable", e.Symbol)
+	}
+
+	qty := decimal.FromInt(quantity)
+
+	order := &Order{
+		Equity:        e,
+		ClientOrderID: GenerateOrderID(),
+		Side:          ds.SideSell,
+		Type:          ds.OrderTypeMarket,
+		State:         ds.OrderStateNew,
+		Quantity:      qty,
+		PlacedTime:    e.Exchange.Now(),
+		onClose:       make(chan struct{}),
+		IsShortSale:   true,
+	}
+
+	// Reserve margin for short sale (not buying power)
+	// Initial margin is typically 50% for shorts
+	marginRequired := InitialMargin(e.Symbol, qty.Neg(), e.LastPrice.Load())
+
+	e.Exchange.Lock.Lock()
+	buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+	if buyingPower.Cmp(marginRequired) < 0 {
+		e.Exchange.Lock.Unlock()
+		loggy.Fatalf("insufficient margin for short: have %s, need %s",
+			buyingPower, marginRequired)
+	}
+	sub(&e.Exchange.DayTradingBuyingPower, marginRequired)
+	e.Exchange.Lock.Unlock()
+	order.Hold.Store(marginRequired)
+
+	// Track available for cover
+	e.Shares.Lock.Lock()
+	add(&e.Shares.Available, qty) // Available to cover
+	e.Shares.Lock.Unlock()
+
+	// Register order
+	e.Exchange.Orders.lock.Lock()
+	e.Exchange.Orders.Add(order)
+	e.Exchange.Orders.lock.Unlock()
+
+	e.Lock.Lock()
+	e.openOrders.Add(order)
+	e.Lock.Unlock()
+
+	if *flagVerbose {
+		log.Printf("[cubby] placed short sale order for %d %s (margin: $%s)",
+			quantity, e.Symbol, marginRequired)
+	}
+
+	return order
+}
+
+// CoverOrder places a buy-to-cover market order to close a short position.
+func (e *Equity) CoverOrder(quantity int) *Order {
+	if quantity <= 0 {
+		loggy.Fatalf("quantity must be positive")
+	}
+	qty := decimal.FromInt(quantity)
+
+	// Verify we have a short position to cover
+	e.Shares.Lock.Lock()
+	if !e.Shares.Quantity.Load().IsNegative() {
+		e.Shares.Lock.Unlock()
+		loggy.Fatalf("cannot cover: %s is not short (quantity: %s)",
+			e.Symbol, e.Shares.Quantity.Load())
+	}
+	absShort := e.Shares.Quantity.Load().Neg()
+	available := e.Shares.Available.Load()
+	if available.Cmp(qty) < 0 {
+		e.Shares.Lock.Unlock()
+		loggy.Fatalf("cannot cover %s shares: only %s available (short position: %s)",
+			qty, available, absShort)
+	}
+	// Reserve shares for cover
+	sub(&e.Shares.Available, qty)
+	e.Shares.Lock.Unlock()
+
+	order := &Order{
+		Equity:        e,
+		ClientOrderID: GenerateOrderID(),
+		Side:          ds.SideBuy,
+		Type:          ds.OrderTypeMarket,
+		State:         ds.OrderStateNew,
+		Quantity:      qty,
+		PlacedTime:    e.Exchange.Now(),
+		onClose:       make(chan struct{}),
+		IsCover:       true,
+	}
+
+	// Reserve buying power to cover
+	estimatedCost := e.LastPrice.Load().Mul(decimal.Parse("1.05")).Mul(qty)
+	e.Exchange.Lock.Lock()
+	buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+	if buyingPower.Cmp(estimatedCost) < 0 {
+		e.Exchange.Lock.Unlock()
+		// Restore available
+		e.Shares.Lock.Lock()
+		add(&e.Shares.Available, qty)
+		e.Shares.Lock.Unlock()
+		loggy.Fatalf("insufficient buying power to cover: have %s, need %s",
+			buyingPower, estimatedCost)
+	}
+	sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
+	e.Exchange.Lock.Unlock()
+	order.Hold.Store(estimatedCost)
+
+	// Register order
+	e.Exchange.Orders.lock.Lock()
+	e.Exchange.Orders.Add(order)
+	e.Exchange.Orders.lock.Unlock()
+
+	e.Lock.Lock()
+	e.openOrders.Add(order)
+	e.Lock.Unlock()
+
+	if *flagVerbose {
+		log.Printf("[cubby] placed cover order for %d %s",
+			quantity, e.Symbol)
 	}
 
 	return order

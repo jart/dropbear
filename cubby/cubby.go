@@ -24,6 +24,7 @@ var (
 	flagQuantum    = clocky.DurationFlag("quantum", "1d", "metric sampling interval while backtesting")
 	flagVerbose    = flag.Bool("cubby-verbose", false, "log order simulation decisions")
 	flagMargin     = flag.Int("margin", 1, "day trading buying power multiplier (4 for PDT)")
+	flagPDT        = flag.Bool("pdt", true, "enable pattern day trader mode (4x intraday leverage)")
 )
 
 var (
@@ -58,6 +59,24 @@ func Init() {
 		clocky.Now = clocky.FakeNow
 		gRateLimiter = newRateLimiter()
 	}
+
+	// Register DTBP lifecycle callbacks
+	// These fire at specific market times to manage day trading buying power
+	AfterOpen(func() {
+		for _, ex := range Exchanges.All() {
+			ex.InitDTBP()
+		}
+	})
+	BeforeCloseEarly(func() {
+		for _, ex := range Exchanges.All() {
+			ex.EndDayTradingTime()
+		}
+	})
+	AfterClose(func() {
+		for _, ex := range Exchanges.All() {
+			ex.LockDTBP()
+		}
+	})
 }
 
 // StartTime returns the backtest start time.
@@ -84,9 +103,20 @@ func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
 	if symbol == "USD" {
 		ex.Lock.Lock()
 		ex.Cash.Store(quantity)
+		// Set PDT mode from flag
+		ex.PatternDayTrader = *flagPDT
 		// Set buying power based on margin flag
 		ex.RegTBuyingPower.Store(quantity.MulInt(2))
-		ex.DayTradingBuyingPower.Store(quantity.MulInt(*flagMargin))
+		if *flagPDT {
+			ex.DayTradingBuyingPower.Store(quantity.MulInt(4))
+			ex.BodDTBP = quantity.MulInt(4)
+			ex.IsDayTradingTime = true
+		} else {
+			ex.DayTradingBuyingPower.Store(quantity.MulInt(*flagMargin))
+			ex.BodDTBP = quantity.MulInt(2)
+		}
+		// Initialize LastEquity for DTBP lifecycle
+		ex.LastEquity = quantity
 		ex.Lock.Unlock()
 	} else {
 		if quantity.IsZero() {

@@ -1,0 +1,259 @@
+AAPX       T-Rex 2X Long Apple Daily Target ETF
+ABNG       Themes ETF Trust Leverage Shares 2x Long ABNB Daily ETF
+AFRU       T-REX 2X Long AFRM Daily Target ETF
+AMDU       Tidal Trust II Defiance Leveraged Long Income AMD ETF
+AMUN       abrdn Funds Ultra Short Municipal  Income Active ETF
+ANEL       Tidal Trust II Defiance Daily Target 2x Long ANET ETF
+APLX       Tradr 2X Long APLD Daily ETF
+ARCX       Tradr 2X Long ACHR Daily ETF
+ARMU       T-REX 2X Long ARM Daily Target ETF
+ASTX       Tradr 2X Long ASTS Daily ETF
+AURU       Tradr 2X Long AUR Daily ETF
+AUSM       Allspring Ultra Short Municipal ETF
+AVGG       Themes ETF Trust Leverage Shares 2X Long AVGO Daily ETF
+AVGU       GraniteShares ETF Trust GraniteShares 2x Long AVGO Daily ETF
+AVXX       Tidal Trust II Defiance Daily Target 2x Long AVAV ETF
+AXUP       T-REX 2X Long AXON Daily Target ETF
+BAIG       Themes ETF Trust Leverage Shares 2X Long BBAI Daily ETF
+BAMU       Brookstone Ultra-Short Bond ETF
+BEG        Themes ETF Trust Leverage Shares 2x Long BE Daily ETF
+BEGS       Rareview 2x Bull Cryptocurrency & Precious Metals ETF
+BEX        Tradr 2X Long BE Daily ETF
+BIDG       Themes ETF Trust Leverage Shares 2X Long BIDU Daily ETF
+BILZ       PIMCO Ultra Short Government Active ETF
+BKNU       T-REX 2X Long BKNG Daily Target ETF
+BKUI       BNY Mellon Ultra Short Income ETF
+BLSG       Themes ETF Trust Leverage Shares 2X Long BLSH Daily ETF
+BLSX       Tradr 2X Long BLSH Daily ETF
+BMNG       Themes ETF Trust Leverage Shares 2X Long BMNR Daily ETF
+BMNU       T-REX 2X Long BMNR Daily Target ETF
+BMNZ       Defiance Daily Target 2X Short BMNR ETF
+BNKD       MicroSectors U.S. Big Banks -3x Inverse Leveraged ETNs due February 17, 2045
+BNKU       MicroSectors U.S. Big Banks 3x Leveraged ETNs due February 17, 2045
+BU         Tidal Trust II Defiance Daily Target 2X Long BU ETF
+BULG       Themes ETF Trust Leverage Shares 2X Long BULL Daily ETF
+BULU       T-REX 2X Long BULL Daily Target ETF
+BULX       GraniteShares ETF Trust GraniteShares 2x Long BULL Daily ETF
+CCUP       T-REX 2X Long CRCL Daily Target ETF
+CEGX       Tradr 2X Long CEG Daily ETF
+CELT       Tradr 2X Long CELH Daily ETF
+CGUI       Capital Group Ultra Short Income ETF
+CIFG       Themes ETF Trust Leverage Shares 2X Long CIFR Daily ETF
+CIFU       T-REX 2X Long CIFR Daily Target ETF
+CLSX       Tradr 2X Long CLSK Daily ETF
+CMGG       Themes ETF Trust Leverage Shares 2X Long CMG Daily ETF
+CNCG       Themes ETF Trust Leverage Shares 2X Long CNC Daily ETF
+COIA       ProShares Ultra COIN
+COIO       Leverage Shares 2x Capped Accelerated COIN Monthly ETF
+CONX       Direxion Shares ETF Trust Direxion Daily COIN Bull 2X ETF
+CORD       T-REX 2X Inverse CRWV Daily Target ETF
+CORX       2x Corn ETF
+COTG       Themes ETF Trust Leverage Shares 2X Long COST Daily ETF
+COZX       Tradr 2X Long CORZ Daily ETF
+CPXR       USCF Daily Target 2X Copper Index ETF
+CRCA       ProShares Ultra CRCL
+CRCD       T-REX 2X Inverse CRCL Daily Target ETF
+CRCG       Themes ETF Trust Leverage Shares 2X Long CRCL Daily ETF
+CRDU       Tradr 2X Long CRDO Daily ETF
+CRWG       Themes ETF Trust Leverage Shares 2X Long CRWV Daily ETF
+CRWU       T-REX 2X Long CRWV Daily Target ETF
+CSEX       Tradr 2X Long CLS Daily ETF
+CVSB       Calvert Ultra-Short Investment Grade ETF
+CWVX       Tradr 2X Long CRWV Daily ETF
+CXRN       Teucrium 2x Daily Corn ETF
+DAMD       Defiance Daily Target 2X Short AMD ETF
+DASX       Tradr 2X Long DASH Daily ETF
+DJTU       T-REX 2X Long DJT Daily Target ETF
+DKNX       Tidal Trust II Defiance Daily Target 2X Long DKNG ETF
+DKUP       T-REX 2X Long DKNG Daily Target ETF
+DOGD       Tradr 2X Long DDOG Daily ETF
+DUOG       Themes ETF Trust Leverage Shares 2X Long DUOL Daily ETF
+ENPX       Tradr 2X Long ENPH Daily ETF
+ETHD       ProShares UltraShort Ether ETF
+ETHI       Tidal Trust II Defiance Leveraged Long Income Ethereum ETF
+ETHT       ProShares Ultra Ether ETF
+ETRL       GraniteShares ETF Trust GraniteShares 2x Long ETOR Daily ETF
+EVSB       Eaton Vance Ultra-Short Income ETF
+FIGG       Themes ETF Trust Leverage Shares 2x Long FIG Daily ETF
+FLUD       Franklin Ultra Short Bond ETF
+FLYT       Tradr 2X Long FLY Daily ETF
+FNGU       MicroSectors FANG+ 3x Leveraged ETNs due February 17, 2045
+FRDU       Direxion Shares ETF Trust Direxion Daily F Bull 2X ETF
+FUMB       First Trust Ultra Short Duration Municipal ETF
+FUTG       Themes ETF Trust Leverage Shares 2x Long FUTU Daily ETF
+GEVG       Themes ETF Trust Leverage Shares 2X Long GEV Daily ETF
+GEVX       Tradr 2X Long GEV Daily ETF
+GLGG       Themes ETF Trust Leverage Shares 2X Long GLXY Daily ETF
+GLXU       T-REX 2X Long GLXY Daily Target ETF
+GMEU       T-REX 2X Long GME Daily Target ETF
+GMOC       GMO Ultra-Short Income ETF
+GOOX       T-Rex 2X Long Alphabet Daily Target ETF
+GOU        GraniteShares ETF Trust GraniteShares 2x Long GOOGL Daily ETF
+GRAG       Themes ETF Trust Leverage Shares 2X Long GRAB Daily ETF
+GSST       Goldman Sachs Ultra Short Bond ETF
+GSX        Tradr 2X Long GS Daily ETF
+GSY        Invesco Ultra Short Duration ETF
+GUMI       Goldman Sachs Ultra Short Municipal Income ETF
+HIMY       Tidal Trust II Defiance Leveraged Long Income HIMS ETF
+HODU       Direxion Shares ETF Trust Direxion Daily HOOD Bull 2X ETF
+HOOI       Tidal Trust II Defiance Leveraged Long Income HOOD ETF
+HOOZ       Defiance Daily Target 2X Short HOOD ETF
+ICSH       iShares Ultra Short Duration Bond Active ETF
+IRE        Defiance Daily Target 2X Long IREN ETF
+IREG       Themes ETF Trust Leverage Shares 2X Long IREN Daily ETF
+IREX       Tradr 2X Long IREN Daily ETF
+ISUL       GraniteShares ETF Trust GraniteShares 2x Long ISRG Daily ETF
+JMST       JPMorgan Ultra-Short Municipal Income ETF
+JOBX       Tradr 2X Long JOBY Daily ETF
+JPST       JPMorgan Ultra-Short Income ETF
+KBDU       KraneShares 2x Long BIDU Daily ETF
+KCSH       KraneShares Sustainable Ultra Short Duration Index ETF
+KJD        KraneShares Trust KraneShares 2x Long JD Daily ETF
+KLAG       Themes ETF Trust Leverage Shares 2x Long KLAC Daily ETF
+KMLI       KraneShares Trust KraneShares 2x Long MELI Daily ETF
+KTUP       T-REX 2X Long KTOS Daily Target ETF
+LABX       Tradr 2X Long ALAB Daily ETF
+LACG       Themes ETF Trust Leverage Shares 2X Long LAC Daily ETF
+LINT       Direxion Shares ETF Trust Direxion Daily INTC Bull 2X ETF
+LLYZ       Tidal Trust II Defiance Daily Target 2X Short LLY ETF
+LMNX       Tidal Trust II Defiance Daily Target 2x Long LMND ETF
+LMTL       Direxion Shares ETF Trust Direxion Daily LMT Bull 2X ETF
+LRCU       Tradr 2X Long LRCX Daily ETF
+LVLN       State Street SPDR S&P Leveraged Loan ETF
+LYFX       Tradr 2X Long LYFT Daily ETF
+MDBX       Tradr 2X Long MDB Daily ETF
+MPG        Themes ETF Trust Leverage Shares 2X Long MP Daily ETF
+MPL        Defiance Daily Target 2X Long MP ETF
+MSFX       T-Rex 2X Long Microsoft Daily Target ETF
+MSOO       Leverage Shares 2x Capped Accelerated MSTR Monthly ETF
+NBIG       Themes ETF Trust Leverage Shares 2X Long NBIS Daily ETF
+NBIL       GraniteShares ETF Trust GraniteShares 2x Long NBIS Daily ETF
+NEBX       Tradr 2X Long NBIS Daily ETF
+NEMG       Themes ETF Trust Leverage Shares 2x Long NEM Daily ETF
+NETG       Themes ETF Trust Leverage Shares 2X Long NET Daily ETF
+NETX       Tradr 2X Long NET Daily ETF
+NIOG       Themes ETF Trust Leverage Shares 2X Long NIO Daily ETF
+NNEX       Tradr 2X Long NNE Daily ETF
+NOWL       GraniteShares ETF Trust GraniteShares 2x Long NOW Daily ETF
+NRGD       MicroSectors U.S. Big Oil -3x Inverse Leveraged ETNs due February 17, 2045
+NRGU       MicroSectors U.S. Big Oil 3x Leveraged ETNs due February 17, 2045
+NUG        Themes ETF Trust Leverage Shares 2X Long NU Daily ETF
+NUSB       NuShares ETF Trust Nuveen Ultra Short Income ETF
+NVDB       ProShares Ultra NVDA
+NVDO       Leverage Shares 2x Capped Accelerated NVDA Monthly ETF
+NVOX       Defiance Daily Target 2x Long NVO ETF
+NVTX       Tradr 2X Long NVTS Daily ETF
+NWMX       Tradr 2X Long NEM Daily ETF
+OKLS       Defiance Daily Target 2X Short OKLO ETF
+OKTG       Themes ETF Trust Leverage Shares 2X Long OKTA Daily ETF
+OKTX       Tradr 2X Long OKTA Daily ETF
+OPEG       Themes ETF Trust Leverage Shares 2X Long OPEN Daily ETF
+OPER       ClearShares Ultra-Short Maturity ETF
+OPEX       Tradr 2X Long OPEN Daily ETF
+ORCU       Direxion Shares ETF Trust Direxion Daily ORCL Bull 2X ETF
+OSCX       Tidal Trust II Defiance Daily Target 2x Long OSCR ETF
+PBRG       Themes ETF Trust Leverage Shares 2X Long PBR Daily ETF
+PDDL       GraniteShares ETF Trust GraniteShares 2x Long PDD Daily ETF
+PLOO       Leverage Shares 2x Capped Accelerated PLTR Monthly ETF
+PLT        Tidal Trust II Defiance Leveraged Long Income PLTR ETF
+PLTA       ProShares Ultra PLTR
+PONX       Tradr 2X Long PONY Daily ETF
+PULS       PGIM Ultra Short Bond ETF
+PULT       Putnam ESG Ultra Short ETF
+PUSH       PGIM Ultra Short Municipal Bond ETF
+PXIU       T-REX 2X Long UPXI Daily Target ETF
+QBTX       Tradr 2X Long QBTS Daily ETF
+QBTZ       Tidal Trust II Defiance Daily Target 2x Short QBTS ETF
+QPUX       Tidal Trust II Defiance 2X Daily Long Pure Quantum ETF
+QQDN       ProShares Trust ProShares UltraShort QQQ Mega
+QQQU       Direxion Daily Magnificent 7 Bull 2X Shares
+QQUP       ProShares Trust ProShares Ultra QQQ Mega
+QQXL       ProShares Trust ProShares Ultra QQQ Top 30
+QSU        Defiance Daily Target 2X Long QS ETF
+QSX        Tradr 2X Long QS Daily ETF
+QUBX       Tradr 2X Long QUBT Daily ETF
+RARE       Ultragenyx Pharmaceutical Inc. Common Stock
+RAVI       FlexShares Ultra-Short Income Fund
+RBLU       T-REX 2X Long RBLX Daily Target ETF
+RDIV       Invesco S&P Ultra Dividend Revenue ETF
+RGTU       Tradr 2X Long RGTI Daily ETF
+RGTX       Tidal Trust II Defiance Daily Target 2X Long RGTI ETF
+RGTZ       Tidal Trust II Defiance Daily Target 2x Short RGTI ETF
+RIOX       Defiance Daily Target 2X Long RIOT ETF
+RKLZ       Tidal Trust II Defiance Daily Target 2x Short RKLB ETF
+ROBN       T-Rex 2X Long HOOD Daily Target ETF
+SATG       Themes ETF Trust Leverage Shares 2X Long SATS Daily ETF
+SBTU       T-REX 2X Long SBET Daily Target ETF
+SBU        Themes ETF Trust Leverage Shares 2X Long SBUX Daily ETF
+SCUS       Schwab Ultra-Short Income ETF
+SHPU       Direxion Shares ETF Trust Direxion Daily SHOP Bull 2X ETF
+SKRE       ETF Opportunities Trust Tuttle Capital Daily 2X Inverse Regional Banks ETF
+SLON       ProShares Ultra Solana ETF
+SLTY       YieldMax Ultra Short Option Income Strategy ETF
+SMCC       Tidal Trust II Defiance Leveraged Long Income SMCI ETF
+SMCZ       Tidal Trust II Defiance Daily Target 2X Short SMCI ETF
+SMU        Tradr 2X Long SMR Daily ETF
+SMUP       T-REX 2X Long SMR Daily Target ETF
+SNAG       Themes ETF Trust Leverage Shares 2x Long SNAP Daily ETF
+SNOU       T-REX 2X Long SNOW Daily Target ETF
+SNPX       Tradr 2X Long SNPS Daily ETF
+SOLX       T-REX 2X Long SOL Daily Target ETF
+SPOG       Themes ETF Trust Leverage Shares 2X Long SPOT Daily ETF
+SPTU       State Street SPDR Portfolio Ultra Short T-Bill ETF
+SRPU       Tradr 2X Long SRPT Daily ETF
+STSM       Defiance Daily Target 2X Short TSM ETF
+TBUX       T. Rowe Price Ultra Short-Term Bond ETF
+TBXU       Direxion Daily Biotech Top 5 Bull 2X ETF
+TEMT       Tradr 2X Long TEM Daily ETF
+TERG       Themes ETF Trust Leverage Shares 2X Long TER Daily ETF
+TEXU       Direxion Daily Energy Top 5 Bull 2X ETF
+TSLI       ProShares Ultra TSLA
+TSLO       Leverage Shares 2x Capped Accelerated TSLA Monthly ETF
+TSXD       Direxion Daily Semiconductors Top 5 Bear 2X ETF
+TSXU       Direxion Daily Semiconductors Top 5 Bull 2X ETF
+TTDU       T-REX 2X Long TTD Daily Target ETF
+TTXD       Direxion Daily Technology Top 5 Bear 2X ETF
+TTXU       Direxion Daily Technology Top 5 Bull 2X ETF
+TUSB       Thrivent Ultra Short Bond ETF
+TUSI       Touchstone Ultra Short Income ETF
+TXXD       Listed Funds Trust 21Shares 2x Long Dogecoin ETF
+TXXS       Listed Funds Trust 21Shares 2x Long Sui ETF
+UAPR       Innovator U.S. Equity Ultra Buffer ETF - April
+UAUG       Innovator U.S. Equity Ultra Buffer ETF - August
+UCTT       Ultra Clean Holdings, Inc. Common Stock
+UDEC       Innovator U.S. Equity Ultra Buffer ETF - December
+UFEB       Innovator U.S. Equity Ultra Buffer ETF - February
+UGP        Ultrapar Participacoes S.A.
+UJAN       Innovator U.S. Equity Ultra Buffer ETF - January
+UJUL       Innovator U.S. Equity Ultra Buffer ETF - July
+UJUN       Innovator U.S. Equity Ultra Buffer ETF - June
+ULST       State Street Ultra Short Term Bond ETF
+ULTY       YieldMax Ultra Option Income Strategy ETF
+UMAR       Innovator U.S. Equity Ultra Buffer ETF - March
+UMAY       Innovator U.S. Equity Ultra Buffer ETF - May
+UNHG       Themes ETF Trust Leverage Shares 2X Long UNH Daily ETF
+UNOV       Innovator U.S. Equity Ultra Buffer ETF - November
+UNX        Tradr 2X Long U Daily ETF
+UOCT       Innovator U.S. Equity Ultra Buffer ETF - October
+UPAR       UPAR Ultra Risk Parity ETF
+UPSG       Themes ETF Trust Leverage Shares 2X Long UPS Daily ETF
+UPSX       Tradr 2X Long UPST Daily ETF
+URAA       Direxion Daily Uranium Industry Bull 2X Shares
+URSP       ProShares Ultra S&P 500 Equal Weight
+USEP       Innovator U.S. Equity Ultra Buffer ETF - September
+UXRP       Proshares Ultra XRP ETF
+UYLD       Angel Oak Funds Trust Angel Oak UltraShort Income ETF
+VALG       Themes ETF Trust Leverage Shares 2X Long VALE Daily ETF
+VGUS       Vanguard Institutional Index Funds Vanguard Ultra-Short Treasury ETF
+VOYX       Tradr 2X Long VOYG Daily ETF
+VSTL       Tidal Trust II Defiance Daily Target 2X Long VST ETF
+VUSB       Vanguard Ultra-Short Bond ETF
+VUSI       Voya Ultra Short Income ETF
+VVX        V2X, Inc.
+WHTX       2x Wheat ETF
+WILD       VistaShares Animal Spirits Daily 2X Strategy ETF
+WULX       Tradr 2X Long WULF Daily ETF
+WXET       Teucrium 2x Daily Wheat ETF
+XRPK       T-REX 2X Long XRP Daily Target ETF
+XXRP       Teucrium 2x Long Daily XRP ETF
+YEAR       AB Ultra Short Income ETF

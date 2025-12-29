@@ -15,21 +15,27 @@ import (
 )
 
 type Asset struct {
-	Symbol                 string      // e.g. GOOG, BRK.B, BTC/USD
-	Class                  AssetClass  // e.g. AssetClassUSEquity, AssetClassCrypto
-	Exchange               Exchange    // e.g. ExchangeNYSE, ExchangeNASDAQ, ExchangeCrypto
-	Status                 AssetStatus // e.g. AssetStatusActive, AssetStatusInactive
-	Name                   string      // e.g. Alphabet Inc. Class C Capital Stock, Bitcoin / US Dollar
-	ID                     string      // e.g. 60d10d62-7876-415d-9feb-c92cd87076da
-	Tradable               bool
-	Marginable             bool
-	Shortable              bool
-	EasyToBorrow           bool
-	Fractionable           bool
-	MarginRequirementLong  decimal.Decimal // e.g. "0.3" for most equities
-	MarginRequirementShort decimal.Decimal // e.g. "0.3" for most equities
-	MinTradeIncrement      decimal.Decimal // e.g. 0.000000001 for crypto, otherwise 1
-	PriceIncrement         decimal.Decimal // e.g. 0.000000001 for crypto, otherwise 0.01
+	Symbol                 string          // e.g. GOOG, BRK.B, BTC/USD
+	Class                  AssetClass      // e.g. AssetClassUSEquity, AssetClassCrypto
+	Exchange               Exchange        // e.g. ExchangeNYSE, ExchangeNASDAQ, ExchangeCrypto
+	Status                 AssetStatus     // e.g. AssetStatusActive, AssetStatusInactive
+	Name                   string          // e.g. Alphabet Inc. Class C Capital Stock, Bitcoin / US Dollar
+	ID                     string          // e.g. 60d10d62-7876-415d-9feb-c92cd87076da
+	IPO                    bool            // currently in initial public offering phase (limit orders only)
+	Tradable               bool            // can be bought or sold on Alpaca
+	Marginable             bool            // can be purchased with borrowed funds (margin)
+	Shortable              bool            // can be sold short (subject to availability)
+	EasyToBorrow           bool            // readily available for shorting (no locate required)
+	Fractionable           bool            // supports fractional shares during regular market hours
+	FractionableExtHours   bool            // supports fractional shares during extended hours
+	HasOptions             bool            // options contracts are available for this asset
+	OptionsLateClose       bool            // options trade 15 min past close
+	PTPNoException         bool            // publicly traded partnership subject to 10% withholding
+	PTPWithException       bool            // publicly traded partnership currently exempt from withholding
+	MarginRequirementLong  decimal.Decimal // initial margin requirement to buy this asset (e.g., 0.25 for 25%)
+	MarginRequirementShort decimal.Decimal // maintenance margin requirement to hold a short position (e.g., 0.30 for 30%)
+	MinTradeIncrement      decimal.Decimal // smallest amount of the asset that can be traded (e.g., 0.000000001 for crypto)
+	PriceIncrement         decimal.Decimal // smallest unit of price movement supported (tick size)
 }
 
 // GetAssets retrieves all tradeable assets.
@@ -98,21 +104,22 @@ var (
 )
 
 type jsonAsset struct {
-	ID                     string `json:"id"`       // e.g. 60d10d62-7876-415d-9feb-c92cd87076da
-	Class                  string `json:"class"`    // e.g. us_equity, crypto
-	Exchange               string `json:"exchange"` // e.g. NYSE, CRYPTO
-	Symbol                 string `json:"symbol"`   // e.g. BTC/USD
-	Name                   string `json:"name"`     // e.g. Bitcoin / US Dollar
-	Status                 string `json:"status"`   // e.g. active
-	Tradable               bool   `json:"tradable"`
-	Marginable             bool   `json:"marginable"`
-	Shortable              bool   `json:"shortable"`
-	EasyToBorrow           bool   `json:"easy_to_borrow"`
-	Fractionable           bool   `json:"fractionable"`
-	MinTradeIncrement      string `json:"min_trade_increment,omitempty"`
-	PriceIncrement         string `json:"price_increment,omitempty"`
-	MarginRequirementLong  string `json:"margin_requirement_long"`  // e.g. "100"
-	MarginRequirementShort string `json:"margin_requirement_short"` // e.g. "30"
+	ID                     string   `json:"id"`       // e.g. 60d10d62-7876-415d-9feb-c92cd87076da
+	Class                  string   `json:"class"`    // e.g. us_equity, crypto
+	Exchange               string   `json:"exchange"` // e.g. NYSE, CRYPTO
+	Symbol                 string   `json:"symbol"`   // e.g. BTC/USD
+	Name                   string   `json:"name"`     // e.g. Bitcoin / US Dollar
+	Status                 string   `json:"status"`   // e.g. active
+	Tradable               bool     `json:"tradable"`
+	Marginable             bool     `json:"marginable"`
+	Shortable              bool     `json:"shortable"`
+	EasyToBorrow           bool     `json:"easy_to_borrow"`
+	Fractionable           bool     `json:"fractionable"`
+	MinTradeIncrement      string   `json:"min_trade_increment,omitempty"`
+	PriceIncrement         string   `json:"price_increment,omitempty"`
+	MarginRequirementLong  string   `json:"margin_requirement_long"`  // e.g. "100"
+	MarginRequirementShort string   `json:"margin_requirement_short"` // e.g. "30"
+	Attributes             []string `json:"attributes,omitempty"`
 }
 
 func (c *Client) loadAssets() ([]jsonAsset, error) {
@@ -166,7 +173,7 @@ func translateAssets(jsonAssets []jsonAsset) (map[string]*Asset, error) {
 		if ja.PriceIncrement != "" {
 			priceIncrement = decimal.Parse(ja.PriceIncrement)
 		}
-		result[ja.Symbol] = &Asset{
+		asset := &Asset{
 			Symbol:                 ja.Symbol,
 			Class:                  ac,
 			Exchange:               ex,
@@ -183,6 +190,25 @@ func translateAssets(jsonAssets []jsonAsset) (map[string]*Asset, error) {
 			MinTradeIncrement:      minTradeIncrement,
 			PriceIncrement:         priceIncrement,
 		}
+		for _, attr := range ja.Attributes {
+			switch attr {
+			case "ipo":
+				asset.IPO = true
+			case "has_options":
+				asset.HasOptions = true
+			case "ptp_no_exception":
+				asset.PTPNoException = true
+			case "ptp_with_exception":
+				asset.PTPWithException = true
+			case "options_late_close":
+				asset.OptionsLateClose = true
+			case "fractional_eh_enabled":
+				asset.FractionableExtHours = true
+			default:
+				log.Printf("[alpaca] unknown asset attribute for %s: %s", ja.Symbol, attr)
+			}
+		}
+		result[ja.Symbol] = asset
 	}
 	return result, nil
 }
