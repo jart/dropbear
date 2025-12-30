@@ -13,23 +13,23 @@ func TestDTBP_PDTAccount_4xIntraday(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	b := Brokers.Get(ds.BrokerAlpaca)
 
 	// Set $50,000 initial balance (above $25k PDT threshold)
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.PatternDayTrader = true
-	ex.LastEquity = decimal.FromInt(50000)
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.PatternDayTrader = true
+	b.LastEquity = decimal.FromInt(50000)
+	b.Lock.Unlock()
 
 	// Initialize DTBP (simulates market open)
-	ex.InitDTBP()
+	b.InitDTBP()
 
 	// Should have 4x leverage
-	ex.Lock.RLock()
-	bodDTBP := ex.BodDTBP
-	isDayTradingTime := ex.IsDayTradingTime
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bodDTBP := b.BodDTBP
+	isDayTradingTime := b.IsDayTradingTime
+	b.Lock.RUnlock()
 
 	// Expected: $50k * 4 = $200k
 	expected := decimal.FromInt(200000)
@@ -41,8 +41,8 @@ func TestDTBP_PDTAccount_4xIntraday(t *testing.T) {
 	}
 
 	// Verify leverage multiplier
-	if ex.GetLeverageMultiplier() != 4 {
-		t.Errorf("expected 4x leverage, got %dx", ex.GetLeverageMultiplier())
+	if b.GetLeverageMultiplier() != 4 {
+		t.Errorf("expected 4x leverage, got %dx", b.GetLeverageMultiplier())
 	}
 }
 
@@ -51,30 +51,30 @@ func TestDTBP_PDTAccount_2xOvernight(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	b := Brokers.Get(ds.BrokerAlpaca)
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.PatternDayTrader = true
-	ex.LastEquity = decimal.FromInt(50000)
-	ex.IsDayTradingTime = true
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.PatternDayTrader = true
+	b.LastEquity = decimal.FromInt(50000)
+	b.IsDayTradingTime = true
+	b.Lock.Unlock()
 
 	// End day trading time (simulates 15:50)
-	ex.EndDayTradingTime()
+	b.EndDayTradingTime()
 
 	// Should now be 2x leverage only
-	ex.Lock.RLock()
-	isDayTradingTime := ex.IsDayTradingTime
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	isDayTradingTime := b.IsDayTradingTime
+	b.Lock.RUnlock()
 
 	if isDayTradingTime {
 		t.Error("IsDayTradingTime should be false after EndDayTradingTime")
 	}
 
 	// Verify leverage multiplier is now 2x
-	if ex.GetLeverageMultiplier() != 2 {
-		t.Errorf("expected 2x leverage after close, got %dx", ex.GetLeverageMultiplier())
+	if b.GetLeverageMultiplier() != 2 {
+		t.Errorf("expected 2x leverage after close, got %dx", b.GetLeverageMultiplier())
 	}
 }
 
@@ -83,23 +83,23 @@ func TestDTBP_NonPDT_2xAlways(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	b := Brokers.Get(ds.BrokerAlpaca)
 
 	// Set $50,000 but NOT PDT
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.PatternDayTrader = false
-	ex.LastEquity = decimal.FromInt(50000)
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.PatternDayTrader = false
+	b.LastEquity = decimal.FromInt(50000)
+	b.Lock.Unlock()
 
 	// Initialize DTBP
-	ex.InitDTBP()
+	b.InitDTBP()
 
 	// Should have 2x leverage only (non-PDT)
-	ex.Lock.RLock()
-	bodDTBP := ex.BodDTBP
-	isDayTradingTime := ex.IsDayTradingTime
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bodDTBP := b.BodDTBP
+	isDayTradingTime := b.IsDayTradingTime
+	b.Lock.RUnlock()
 
 	// Expected: $50k * 2 = $100k
 	expected := decimal.FromInt(100000)
@@ -116,23 +116,23 @@ func TestDTBP_Under25k_No4x(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	b := Brokers.Get(ds.BrokerAlpaca)
 
 	// Set $20,000 (below $25k PDT threshold)
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(20000))
-	ex.PatternDayTrader = true // Even if flagged as PDT
-	ex.LastEquity = decimal.FromInt(20000)
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(20000))
+	b.PatternDayTrader = true // Even if flagged as PDT
+	b.LastEquity = decimal.FromInt(20000)
+	b.Lock.Unlock()
 
 	// Initialize DTBP
-	ex.InitDTBP()
+	b.InitDTBP()
 
 	// Should have 2x leverage (under $25k threshold)
-	ex.Lock.RLock()
-	bodDTBP := ex.BodDTBP
-	isDayTradingTime := ex.IsDayTradingTime
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bodDTBP := b.BodDTBP
+	isDayTradingTime := b.IsDayTradingTime
+	b.Lock.RUnlock()
 
 	// Expected: $20k * 2 = $40k (no 4x because under $25k)
 	expected := decimal.FromInt(40000)
@@ -149,17 +149,17 @@ func TestDTBP_LockAtClose(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set initial balance and position
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(30000))
-	ex.PatternDayTrader = true
-	ex.LastEquity = decimal.FromInt(50000)
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(30000))
+	b.PatternDayTrader = true
+	b.LastEquity = decimal.FromInt(50000)
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
@@ -171,14 +171,14 @@ func TestDTBP_LockAtClose(t *testing.T) {
 	eq.LastPrice.Store(decimal.FromInt(200))
 
 	// Lock DTBP at close
-	ex.LockDTBP()
+	b.LockDTBP()
 
 	// Total equity = $30k cash + $20k stock = $50k
 	// Maintenance margin = 100 * 200 * 0.30 = $6,000
 	// LastEquity = $50k - $6k = $44k
-	ex.Lock.RLock()
-	lastEquity := ex.LastEquity
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	lastEquity := b.LastEquity
+	b.Lock.RUnlock()
 
 	expected := decimal.FromInt(44000)
 	if lastEquity.Cmp(expected) != 0 {
@@ -190,26 +190,26 @@ func TestDTBP_10MinBeforeClose_SwitchTo2x(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	b := Brokers.Get(ds.BrokerAlpaca)
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.PatternDayTrader = true
-	ex.LastEquity = decimal.FromInt(50000)
-	ex.IsDayTradingTime = true
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.PatternDayTrader = true
+	b.LastEquity = decimal.FromInt(50000)
+	b.IsDayTradingTime = true
+	b.Lock.Unlock()
 
 	// Verify 4x before
-	if ex.GetLeverageMultiplier() != 4 {
-		t.Errorf("expected 4x leverage before 15:50, got %dx", ex.GetLeverageMultiplier())
+	if b.GetLeverageMultiplier() != 4 {
+		t.Errorf("expected 4x leverage before 15:50, got %dx", b.GetLeverageMultiplier())
 	}
 
 	// Simulate 15:50 callback
-	ex.EndDayTradingTime()
+	b.EndDayTradingTime()
 
 	// Should be 2x after
-	if ex.GetLeverageMultiplier() != 2 {
-		t.Errorf("expected 2x leverage after 15:50, got %dx", ex.GetLeverageMultiplier())
+	if b.GetLeverageMultiplier() != 2 {
+		t.Errorf("expected 2x leverage after 15:50, got %dx", b.GetLeverageMultiplier())
 	}
 }
 
@@ -218,17 +218,17 @@ func TestDTBP_HoldingOvernight_Reduces4x(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Start with $50k cash, hold $25k in stock
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(25000))
-	ex.PatternDayTrader = true
-	ex.LastEquity = decimal.FromInt(50000) // Initial equity
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(25000))
+	b.PatternDayTrader = true
+	b.LastEquity = decimal.FromInt(50000) // Initial equity
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(250))
@@ -239,14 +239,14 @@ func TestDTBP_HoldingOvernight_Reduces4x(t *testing.T) {
 	eq.LastPrice.Store(decimal.FromInt(100)) // 250 * $100 = $25k
 
 	// Lock DTBP at EOD (holding position overnight)
-	ex.LockDTBP()
+	b.LockDTBP()
 
 	// Total equity = $25k cash + $25k stock = $50k
 	// Maintenance margin = 250 * 100 * 0.30 = $7,500
 	// LastEquity = $50k - $7.5k = $42,500
-	ex.Lock.RLock()
-	lastEquity := ex.LastEquity
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	lastEquity := b.LastEquity
+	b.Lock.RUnlock()
 
 	expected := decimal.FromInt(42500)
 	if lastEquity.Cmp(expected) != 0 {
@@ -254,12 +254,12 @@ func TestDTBP_HoldingOvernight_Reduces4x(t *testing.T) {
 	}
 
 	// Initialize next day
-	ex.InitDTBP()
+	b.InitDTBP()
 
 	// DTBP for next day = $42,500 * 4 = $170,000 (reduced from $200k)
-	ex.Lock.RLock()
-	bodDTBP := ex.BodDTBP
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bodDTBP := b.BodDTBP
+	b.Lock.RUnlock()
 
 	expectedDTBP := decimal.FromInt(170000)
 	if bodDTBP.Cmp(expectedDTBP) != 0 {
@@ -272,23 +272,23 @@ func TestDTBP_ZeroAtClose_Full4xNextDay(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	b := Brokers.Get(ds.BrokerAlpaca)
 
 	// Flat at close (no positions)
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.PatternDayTrader = true
-	ex.LastEquity = decimal.FromInt(50000)
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.PatternDayTrader = true
+	b.LastEquity = decimal.FromInt(50000)
+	b.Lock.Unlock()
 
 	// No holdings
-	ex.LockDTBP()
+	b.LockDTBP()
 
 	// Total equity = $50k cash, maintenance = 0
 	// LastEquity = $50k - 0 = $50k
-	ex.Lock.RLock()
-	lastEquity := ex.LastEquity
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	lastEquity := b.LastEquity
+	b.Lock.RUnlock()
 
 	expected := decimal.FromInt(50000)
 	if lastEquity.Cmp(expected) != 0 {
@@ -296,12 +296,12 @@ func TestDTBP_ZeroAtClose_Full4xNextDay(t *testing.T) {
 	}
 
 	// Initialize next day
-	ex.InitDTBP()
+	b.InitDTBP()
 
 	// Full 4x = $50k * 4 = $200k
-	ex.Lock.RLock()
-	bodDTBP := ex.BodDTBP
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bodDTBP := b.BodDTBP
+	b.Lock.RUnlock()
 
 	expectedDTBP := decimal.FromInt(200000)
 	if bodDTBP.Cmp(expectedDTBP) != 0 {
@@ -314,17 +314,17 @@ func TestDTBP_50PercentAtClose_Half4xNextDay(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// $25k cash, $25k in stock = 50% invested
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(25000))
-	ex.PatternDayTrader = true
-	ex.LastEquity = decimal.FromInt(50000)
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(25000))
+	b.PatternDayTrader = true
+	b.LastEquity = decimal.FromInt(50000)
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(250))
@@ -334,12 +334,12 @@ func TestDTBP_50PercentAtClose_Half4xNextDay(t *testing.T) {
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 
-	ex.LockDTBP()
-	ex.InitDTBP()
+	b.LockDTBP()
+	b.InitDTBP()
 
-	ex.Lock.RLock()
-	bodDTBP := ex.BodDTBP
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bodDTBP := b.BodDTBP
+	b.Lock.RUnlock()
 
 	// Equity = $50k, Maintenance = $7.5k
 	// Available for next day = $50k - $7.5k = $42.5k
@@ -354,12 +354,12 @@ func TestCalculateTotalMaintenanceMargin(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eqAAPL := ex.Equities.Get("AAPL")
-	eqMSFT := ex.Equities.Get("MSFT")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eqAAPL := b.Equities.Get("AAPL")
+	eqMSFT := b.Equities.Get("MSFT")
 
 	// Set up holdings
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
@@ -367,7 +367,7 @@ func TestCalculateTotalMaintenanceMargin(t *testing.T) {
 	aapl.Lots.Add(clocky.Now(), decimal.FromInt(100), decimal.FromInt(10000))
 	aapl.Lock.Unlock()
 
-	msft := ex.Holdings.Get("MSFT")
+	msft := b.Holdings.Get("MSFT")
 	msft.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	msft.Lock.Lock()
 	msft.Quantity.Store(decimal.FromInt(50))
@@ -378,7 +378,7 @@ func TestCalculateTotalMaintenanceMargin(t *testing.T) {
 	eqAAPL.LastPrice.Store(decimal.FromInt(150)) // 100 * 150 = $15k
 	eqMSFT.LastPrice.Store(decimal.FromInt(400)) // 50 * 400 = $20k
 
-	totalMargin := ex.CalculateTotalMaintenanceMargin()
+	totalMargin := b.CalculateTotalMaintenanceMargin()
 
 	// AAPL: 15000 * 0.30 = 4500
 	// MSFT: 20000 * 0.30 = 6000

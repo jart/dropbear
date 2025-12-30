@@ -44,9 +44,9 @@ func (r *report) Init() {
 	r.startTime = clocky.Now()
 	r.startEquity = GetEquityUSD()
 	r.benchmarkQuantity = decimal.Zero
-	for _, exchange := range Exchanges.All() {
-		// handle cash from exchange
-		cash := exchange.Cash.Load()
+	for _, broker := range Brokers.All() {
+		// handle cash from broker
+		cash := broker.Cash.Load()
 		if cash.IsPositive() {
 			// convert USD to benchmark shares at current price
 			if r.benchmark.LastPrice.Load().IsPositive() {
@@ -58,7 +58,7 @@ func (r *report) Init() {
 			})
 		}
 		// handle stock holdings
-		for _, holding := range exchange.Holdings.All() {
+		for _, holding := range broker.Holdings.All() {
 			quantity := holding.Quantity.Load()
 			if quantity.IsZero() {
 				continue
@@ -67,7 +67,7 @@ func (r *report) Init() {
 				r.benchmarkQuantity = r.benchmarkQuantity.Add(quantity)
 			} else {
 				// convert other holdings to USD then to benchmark shares
-				price := exchange.Equities.GetPriceUSD(holding.Symbol)
+				price := broker.Equities.GetPriceUSD(holding.Symbol)
 				quantityUSD := price.Mul(quantity)
 				if r.benchmark.LastPrice.Load().IsPositive() {
 					r.benchmarkQuantity = r.benchmarkQuantity.Add(quantityUSD.DivEven(r.benchmark.LastPrice.Load()))
@@ -111,7 +111,7 @@ func (r *report) Print() {
 	endTime := clocky.Now()
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	ex := Brokers.Get(ds.BrokerAlpaca)
 
 	// get totals
 	endEquity := GetEquityUSD()
@@ -203,8 +203,8 @@ func (r *report) Print() {
 	fmt.Printf("end.equity %s\n", endEquity.FormatThousand(2))
 
 	// print ending cash balance
-	for _, exchange := range Exchanges.All() {
-		cash := exchange.Cash.Load()
+	for _, broker := range Brokers.All() {
+		cash := broker.Cash.Load()
 		if cash.IsPositive() {
 			fmt.Printf("end.usd %s\n", cash.FormatThousand(2))
 		}
@@ -222,8 +222,8 @@ func (r *report) Print() {
 
 	// aggregate win/loss counts
 	var totalWins, totalLosses int
-	for _, exchange := range Exchanges.All() {
-		for _, holding := range exchange.Holdings.All() {
+	for _, broker := range Brokers.All() {
+		for _, holding := range broker.Holdings.All() {
 			holding.Lock.RLock()
 			totalWins += holding.WinCount
 			totalLosses += holding.LossCount
@@ -239,8 +239,8 @@ func (r *report) Print() {
 
 	// print trade counts
 	buys, sells := 0, 0
-	for _, exchange := range Exchanges.All() {
-		for _, eq := range exchange.Equities.All() {
+	for _, broker := range Brokers.All() {
+		for _, eq := range broker.Equities.All() {
 			eq.Lock.RLock()
 			buys += eq.Trades[ds.SideBuy]
 			sells += eq.Trades[ds.SideSell]

@@ -1,9 +1,9 @@
 package main
 
 import (
+	"dropbear/broker/binance"
+	"dropbear/broker/binanceusd"
 	"dropbear/decimal"
-	"dropbear/exchange/binance"
-	"dropbear/exchange/binanceusd"
 	"fmt"
 	"os"
 	"slices"

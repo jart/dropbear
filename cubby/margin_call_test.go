@@ -12,15 +12,15 @@ func TestMarginCall_TriggeredWhenEquityBelowMaintenance(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set up account with $10k cash and 100 shares of AAPL at $100
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
@@ -34,7 +34,7 @@ func TestMarginCall_TriggeredWhenEquityBelowMaintenance(t *testing.T) {
 	// Equity = $10k cash + $10k stock = $20k
 	// Maintenance = 100 * $100 * 0.30 = $3k
 	// Equity ($20k) > Maintenance ($3k), so no margin call
-	triggered := ex.CheckMarginCall()
+	triggered := b.CheckMarginCall()
 	if triggered {
 		t.Error("margin call should not be triggered with healthy margin")
 	}
@@ -49,25 +49,25 @@ func TestMarginCall_TriggeredWhenEquityBelowMaintenance(t *testing.T) {
 	// Actually for margin call to trigger, we need negative equity or
 	// positions worth more than our equity. Let's use a more extreme case.
 	// Set cash to negative (borrowed on margin)
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(-5000)) // borrowed $5k
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(-5000)) // borrowed $5k
+	b.Lock.Unlock()
 
 	// Equity = -$5k cash + $1k stock = -$4k
 	// This is a margin call situation
-	triggered = ex.CheckMarginCall()
+	triggered = b.CheckMarginCall()
 
 	// Should be triggered now
 	if !triggered {
-		equity := ex.Holdings.GetEquityUSD()
-		maint := ex.CalculateTotalMaintenanceMargin()
+		equity := b.Holdings.GetEquityUSD()
+		maint := b.CalculateTotalMaintenanceMargin()
 		t.Errorf("margin call should be triggered, equity=%s, maint=%s", equity, maint)
 	}
 
-	ex.Lock.RLock()
-	wasTriggered := ex.MarginCallTriggered
-	count := ex.MarginCallCount
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	wasTriggered := b.MarginCallTriggered
+	count := b.MarginCallCount
+	b.Lock.RUnlock()
 
 	if !wasTriggered {
 		t.Error("MarginCallTriggered flag should be true")
@@ -82,15 +82,15 @@ func TestMarginCall_AutoLiquidatesPositions(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set up account with small cash and large position
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(1000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(1000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(200))
@@ -105,9 +105,9 @@ func TestMarginCall_AutoLiquidatesPositions(t *testing.T) {
 	// Maintenance = 200 * $30 * 0.30 = $1,800
 	// Still OK, let's make it worse
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(-5000)) // Big negative
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(-5000)) // Big negative
+	b.Lock.Unlock()
 
 	// Now: Equity = -$5k + $6k = $1k
 	// Maintenance = $1,800
@@ -115,7 +115,7 @@ func TestMarginCall_AutoLiquidatesPositions(t *testing.T) {
 
 	initialQty := aapl.Quantity.Load()
 
-	ex.CheckMarginCall()
+	b.CheckMarginCall()
 
 	// After liquidation, position should be reduced
 	finalQty := aapl.Quantity.Load()
@@ -125,9 +125,9 @@ func TestMarginCall_AutoLiquidatesPositions(t *testing.T) {
 	}
 
 	// Check that LiquidatedValue was recorded
-	ex.Lock.RLock()
-	liquidated := ex.LiquidatedValue
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	liquidated := b.LiquidatedValue
+	b.Lock.RUnlock()
 
 	if !liquidated.IsPositive() {
 		t.Error("expected positive LiquidatedValue")
@@ -139,17 +139,17 @@ func TestMarginCall_LiquidatesLosersFirst(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eqAAPL := ex.Equities.Get("AAPL")
-	eqMSFT := ex.Equities.Get("MSFT")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eqAAPL := b.Equities.Get("AAPL")
+	eqMSFT := b.Equities.Get("MSFT")
 
 	// Set up negative cash (margin debt)
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(-20000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(-20000))
+	b.Lock.Unlock()
 
 	// AAPL: losing position (bought at $200, now at $100)
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
@@ -159,7 +159,7 @@ func TestMarginCall_LiquidatesLosersFirst(t *testing.T) {
 	eqAAPL.LastPrice.Store(decimal.FromInt(100)) // $100/share now
 
 	// MSFT: winning position (bought at $200, now at $300)
-	msft := ex.Holdings.Get("MSFT")
+	msft := b.Holdings.Get("MSFT")
 	msft.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	msft.Lock.Lock()
 	msft.Quantity.Store(decimal.FromInt(100))
@@ -177,15 +177,15 @@ func TestMarginCall_LiquidatesLosersFirst(t *testing.T) {
 	// Equity ($20k) > Maintenance ($12k), so no margin call yet
 
 	// Make cash more negative to trigger margin call
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(-30000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(-30000))
+	b.Lock.Unlock()
 
 	// Now: Equity = -$30k + $10k + $30k = $10k
 	// Still > $12k? Let's make it worse
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(-40000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(-40000))
+	b.Lock.Unlock()
 
 	// Now: Equity = -$40k + $10k + $30k = $0k
 	// Maintenance = $12k
@@ -194,7 +194,7 @@ func TestMarginCall_LiquidatesLosersFirst(t *testing.T) {
 	initialAAPL := aapl.Quantity.Load()
 	initialMSFT := msft.Quantity.Load()
 
-	ex.CheckMarginCall()
+	b.CheckMarginCall()
 
 	finalAAPL := aapl.Quantity.Load()
 	finalMSFT := msft.Quantity.Load()
@@ -221,15 +221,15 @@ func TestMarginCall_StopsWhenMarginRestored(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set up marginal situation
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(-5000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(-5000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
@@ -243,7 +243,7 @@ func TestMarginCall_StopsWhenMarginRestored(t *testing.T) {
 	// Maintenance = $1.5k
 	// Margin call triggered
 
-	triggered := ex.CheckMarginCall()
+	triggered := b.CheckMarginCall()
 	if !triggered {
 		t.Error("margin call should be triggered initially")
 	}
@@ -256,18 +256,18 @@ func TestMarginCall_StopsWhenMarginRestored(t *testing.T) {
 	}
 
 	// Now restore margin by adding cash
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.Lock.Unlock()
 
-	triggered = ex.CheckMarginCall()
+	triggered = b.CheckMarginCall()
 	if triggered {
 		t.Error("margin call should not be triggered after adding cash")
 	}
 
-	ex.Lock.RLock()
-	stillTriggered := ex.MarginCallTriggered
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	stillTriggered := b.MarginCallTriggered
+	b.Lock.RUnlock()
 
 	if stillTriggered {
 		t.Error("MarginCallTriggered flag should be cleared after margin restored")
@@ -279,15 +279,15 @@ func TestMarginCall_NotTriggeredAboveMaintenance(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set up healthy account
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(100000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(100000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
@@ -301,14 +301,14 @@ func TestMarginCall_NotTriggeredAboveMaintenance(t *testing.T) {
 	// Maintenance = $3k
 	// Way above maintenance
 
-	triggered := ex.CheckMarginCall()
+	triggered := b.CheckMarginCall()
 	if triggered {
 		t.Error("margin call should not be triggered with healthy margin")
 	}
 
-	ex.Lock.RLock()
-	count := ex.MarginCallCount
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	count := b.MarginCallCount
+	b.Lock.RUnlock()
 
 	if count != 0 {
 		t.Errorf("expected MarginCallCount=0, got %d", count)
@@ -320,15 +320,15 @@ func TestMarginCall_ShortPositionSqueeze(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set up short position
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(15000)) // Cash from short proceeds + initial
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(15000)) // Cash from short proceeds + initial
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(-100)) // Short 100 shares
 	aapl.Available.Store(decimal.FromInt(100))
@@ -349,10 +349,10 @@ func TestMarginCall_ShortPositionSqueeze(t *testing.T) {
 		t.Fatal("expected negative quantity for short position")
 	}
 
-	triggered := ex.CheckMarginCall()
+	triggered := b.CheckMarginCall()
 	if !triggered {
-		equity := ex.Holdings.GetEquityUSD()
-		maint := ex.CalculateTotalMaintenanceMargin()
+		equity := b.Holdings.GetEquityUSD()
+		maint := b.CalculateTotalMaintenanceMargin()
 		t.Errorf("margin call should be triggered for short squeeze, equity=%s, maint=%s",
 			equity, maint)
 	}
@@ -370,15 +370,15 @@ func TestMarginCall_PartialLiquidation(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set up position where partial liquidation is needed
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(-3000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(-3000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
@@ -395,9 +395,9 @@ func TestMarginCall_PartialLiquidation(t *testing.T) {
 	// Equity ($2k) > Maintenance ($1.5k) - OK
 
 	// Make cash more negative
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(-4000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(-4000))
+	b.Lock.Unlock()
 
 	// Equity = -$4k + $5k = $1k
 	// Maintenance = $1.5k
@@ -405,7 +405,7 @@ func TestMarginCall_PartialLiquidation(t *testing.T) {
 
 	initialQty := aapl.Quantity.Load()
 
-	ex.CheckMarginCall()
+	b.CheckMarginCall()
 
 	finalQty := aapl.Quantity.Load()
 
@@ -424,15 +424,15 @@ func TestNoMarginCall_NoPositions(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	b := Brokers.Get(ds.BrokerAlpaca)
 
 	// Just cash, no positions
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.Lock.Unlock()
 
 	// No positions means no maintenance margin needed
-	triggered := ex.CheckMarginCall()
+	triggered := b.CheckMarginCall()
 	if triggered {
 		t.Error("margin call should not be triggered with no positions")
 	}
@@ -442,11 +442,11 @@ func TestAutoLiquidate_ZeroDeficit(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	b := Brokers.Get(ds.BrokerAlpaca)
 
 	// AutoLiquidate with zero or negative deficit should do nothing
-	ex.AutoLiquidate(decimal.Zero)
-	ex.AutoLiquidate(decimal.FromInt(-1000))
+	b.AutoLiquidate(decimal.Zero)
+	b.AutoLiquidate(decimal.FromInt(-1000))
 
 	// Should not panic or cause issues
 }

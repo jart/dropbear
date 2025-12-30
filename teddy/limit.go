@@ -8,7 +8,7 @@ import (
 	"log"
 )
 
-// LimitOrder places a limit order on the exchange or simulates one in backtest mode.
+// LimitOrder places a limit order on the broker or simulates one in backtest mode.
 func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, strategy ds.OrderStrategy) (*Order, error) {
 
 	// compute notional value
@@ -53,7 +53,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	switch side {
 	case ds.SideBuy:
 		// put on hold enough cash to pay maximum cost
-		maxFee := notional.Mul(p.Exchange.TakerFee.Load())
+		maxFee := notional.Mul(p.Broker.TakerFee.Load())
 		maxCost := notional.Add(maxFee)
 		p.QuoteCurrency.Lock.Lock()
 		available := p.QuoteCurrency.Available.Load()
@@ -88,18 +88,18 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	}
 
 	// create order object
-	order := p.Exchange.Orders.create(p, ds.OrderTypeLimit, side, quantity, limitPrice, hold)
+	order := p.Broker.Orders.create(p, ds.OrderTypeLimit, side, quantity, limitPrice, hold)
 
 	// handle live trading
 	if !Paper {
-		switch p.Exchange.Exchange {
-		case ds.ExchangeCoinbase:
+		switch p.Broker.Broker {
+		case ds.BrokerCoinbase:
 			orderID, err := CoinbaseClient.LimitOrder(p.Symbol, side, quantity, limitPrice, order.ClientOrderID, strategy, GetCostBasisMethod())
 			if orderID != "" {
-				p.Exchange.Orders.lock.Lock()
+				p.Broker.Orders.lock.Lock()
 				order.OrderID = orderID
-				p.Exchange.Orders.ordersMap[orderID] = order
-				p.Exchange.Orders.lock.Unlock()
+				p.Broker.Orders.ordersMap[orderID] = order
+				p.Broker.Orders.lock.Unlock()
 			}
 			if err != nil {
 				order.kill(ds.OrderStateInvalid)
@@ -107,7 +107,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 			}
 			return order, nil
 		default:
-			loggy.Fatalf("orders not supported on %v", p.Exchange)
+			loggy.Fatalf("orders not supported on %v", p.Broker)
 		}
 	}
 
@@ -127,7 +127,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 				break
 			}
 			fillNotional := fill.Price.Mul(fill.Size)
-			filled, err := order.fill(fill.Size, fillNotional, p.Exchange.TakerFee, false)
+			filled, err := order.fill(fill.Size, fillNotional, p.Broker.TakerFee, false)
 			if unfilled := fill.Size.Sub(filled); unfilled.IsPositive() {
 				p.OrderBook.Push(side.Flip(), fill.Price, unfilled)
 			}
@@ -146,7 +146,7 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 		quantity = remaining
 	}
 
-	// in live mode the exchange tracks the order; in backtest mode we just
+	// in live mode, the broker tracks the order; in backtest mode we just
 	// track it in openOrders and let handleTick simulate fills by popping
 	// from the book when trades happen at our price level
 	return order, nil

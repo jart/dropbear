@@ -54,8 +54,8 @@ func (o *Order) Cancel() error {
 // kill transitions order to final state.
 func (order *Order) kill(state ds.OrderState) {
 	eq := order.Equity
-	exchange := eq.Exchange
-	orders := exchange.Orders
+	broker := eq.Broker
+	orders := broker.Orders
 	order.Lock.Lock()
 	order.State.Store(state)
 	hold := order.Hold.Load()
@@ -67,9 +67,9 @@ func (order *Order) kill(state ds.OrderState) {
 		// Release unused buying power back
 		releaseAmount := hold.Sub(spent)
 		if releaseAmount.IsPositive() {
-			exchange.Lock.Lock()
-			add(&exchange.DayTradingBuyingPower, releaseAmount)
-			exchange.Lock.Unlock()
+			broker.Lock.Lock()
+			add(&broker.DayTradingBuyingPower, releaseAmount)
+			broker.Lock.Unlock()
 		}
 	case ds.SideSell:
 		order.Lock.RLock()
@@ -107,8 +107,8 @@ func (order *Order) kill(state ds.OrderState) {
 // fee is the absolute fee amount to charge (can be negative for maker rebates).
 func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (decimal.Decimal, error) {
 	eq := order.Equity
-	exchange := eq.Exchange
-	orders := exchange.Orders
+	broker := eq.Broker
+	orders := broker.Orders
 	now := clocky.Now()
 
 	if !notional.IsPositive() {
@@ -188,20 +188,20 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 		}
 		eq.Shares.Lock.Unlock()
 
-		exchange.Lock.Lock()
-		sub(&exchange.Cash, total)
+		broker.Lock.Lock()
+		sub(&broker.Cash, total)
 		if releaseHold.IsPositive() {
 			order.Lock.RLock()
 			cumulativeSpent := order.Notional.Load().Add(order.Fee.Load())
 			order.Lock.RUnlock()
 			unusedHold := releaseHold.Sub(cumulativeSpent)
 			if unusedHold.IsPositive() {
-				add(&exchange.DayTradingBuyingPower, unusedHold)
+				add(&broker.DayTradingBuyingPower, unusedHold)
 			}
 		} else if holdAlreadyReleased {
-			sub(&exchange.DayTradingBuyingPower, total)
+			sub(&broker.DayTradingBuyingPower, total)
 		}
-		exchange.Lock.Unlock()
+		broker.Lock.Unlock()
 
 		// Close short position (increase quantity toward zero)
 		eq.Shares.Lock.Lock()
@@ -232,20 +232,20 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 		eq.Shares.Check()
 		eq.Shares.Lock.Unlock()
 
-		// Add proceeds to exchange cash
-		exchange.Lock.Lock()
-		add(&exchange.Cash, total)
+		// Add proceeds to broker cash
+		broker.Lock.Lock()
+		add(&broker.Cash, total)
 		// Release margin hold and restore appropriate buying power
 		if releaseHold.IsPositive() {
 			// Short sales use margin, not buying power directly
 			// The proceeds don't add to buying power the same way
 		}
-		exchange.Lock.Unlock()
+		broker.Lock.Unlock()
 
 	case order.Side == ds.SideBuy:
 		// Regular buy: deduct cash, add shares
-		exchange.Lock.Lock()
-		sub(&exchange.Cash, total)
+		broker.Lock.Lock()
+		sub(&broker.Cash, total)
 		if releaseHold.IsPositive() {
 			order.Lock.RLock()
 			cumulativeSpent := order.Notional.Load().Add(order.Fee.Load())
@@ -253,12 +253,12 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 			// Release unused buying power back
 			unusedHold := releaseHold.Sub(cumulativeSpent)
 			if unusedHold.IsPositive() {
-				add(&exchange.DayTradingBuyingPower, unusedHold)
+				add(&broker.DayTradingBuyingPower, unusedHold)
 			}
 		} else if holdAlreadyReleased {
-			sub(&exchange.DayTradingBuyingPower, total)
+			sub(&broker.DayTradingBuyingPower, total)
 		}
-		exchange.Lock.Unlock()
+		broker.Lock.Unlock()
 
 		// Add shares to holding
 		eq.Shares.Lock.Lock()
@@ -306,12 +306,12 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 		eq.Shares.Check()
 		eq.Shares.Lock.Unlock()
 
-		// Add proceeds to exchange cash
-		exchange.Lock.Lock()
-		add(&exchange.Cash, total)
+		// Add proceeds to broker cash
+		broker.Lock.Lock()
+		add(&broker.Cash, total)
 		// Restore buying power: proceeds go back to available buying power
-		add(&exchange.DayTradingBuyingPower, total)
-		exchange.Lock.Unlock()
+		add(&broker.DayTradingBuyingPower, total)
+		broker.Lock.Unlock()
 	}
 
 	if isFullyFilled {
@@ -327,9 +327,9 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 		eq.Lock.Unlock()
 	}
 
-	exchange.Lock.Lock()
-	exchange.Fees = exchange.Fees.Add(actualFee)
-	exchange.Lock.Unlock()
+	broker.Lock.Lock()
+	broker.Fees = broker.Fees.Add(actualFee)
+	broker.Lock.Unlock()
 	eq.Lock.Lock()
 	eq.Trades[order.Side]++
 	eq.Lock.Unlock()

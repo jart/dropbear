@@ -63,10 +63,10 @@ for DATASET in $(cd ~/marketdata/; ls -1); do
             continue
         fi
         if [ $CMD = arb ]; then
-            for EXCHANGE in binanceusd; do
-                if [ -d ~/marketdata/$DATASET/$EXCHANGE/ ]; then
+            for BROKER in binanceusd; do
+                if [ -d ~/marketdata/$DATASET/$BROKER/ ]; then
                     for PREDICTOR in ${COIN}USDT; do
-                        run ${COIN} -predictor ${PREDICTOR}@${EXCHANGE}
+                        run ${COIN} -predictor ${PREDICTOR}@${BROKER}
                     done
                 fi
             done

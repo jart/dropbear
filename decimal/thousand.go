@@ -18,7 +18,7 @@ func (d Decimal) FormatThousand(n int) string {
 	}
 
 	// skip the (places - n) least significant fractional digits, with rounding
-	skip := max(Places - n, 0)
+	skip := max(Places-n, 0)
 	if skip > 0 {
 		var remainder int64
 		for range skip {

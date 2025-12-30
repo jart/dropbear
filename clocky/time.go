@@ -99,8 +99,8 @@ func (d *Time) AtomicAdd(v Duration) Time {
 	return Time(atomic.AddInt64((*int64)(d), int64(v)))
 }
 
-// Exchange atomically replaces v into d.
-func (d *Time) Exchange(v Time) Time {
+// Swap atomically replaces v into d.
+func (d *Time) Swap(v Time) Time {
 	return Time(atomic.SwapInt64((*int64)(d), int64(v)))
 }
 

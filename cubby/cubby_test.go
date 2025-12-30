@@ -21,33 +21,33 @@ func resetCubby() {
 	gRateLimiter = nil
 	Paper = true
 	Live = false
-	Exchanges = &exchanges{
-		OnReady:       func() {},
-		exchangeMap:   make(map[ds.Exchange]*Exchange),
-		exchangeArray: make([]*Exchange, 0),
-		unready:       treeset.NewWith(compareExchanges),
+	Brokers = &brokers{
+		OnReady:     func() {},
+		brokerMap:   make(map[ds.Broker]*Broker),
+		brokerArray: make([]*Broker, 0),
+		unready:     treeset.NewWith(compareBrokers),
 	}
 }
 
 func TestHolding(t *testing.T) {
 	resetCubby()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	aapl := ex.Holdings.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	aapl := b.Holdings.Get("AAPL")
 
 	// Check initial state - AAPL should have zero quantity
 	if !aapl.Quantity.Load().IsZero() {
 		t.Error("AAPL should start with zero quantity")
 	}
 
-	// Set cash balance on exchange
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000)) // 4x
-	ex.Lock.Unlock()
+	// Set cash balance on broker
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000)) // 4x
+	b.Lock.Unlock()
 
-	if ex.Cash.Load().Cmp(decimal.FromInt(10000)) != 0 {
-		t.Errorf("expected 10000 USD, got %s", ex.Cash.Load())
+	if b.Cash.Load().Cmp(decimal.FromInt(10000)) != 0 {
+		t.Errorf("expected 10000 USD, got %s", b.Cash.Load())
 	}
 }
 
@@ -56,14 +56,14 @@ func TestOrder(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set initial balances
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000)) // 4x margin
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000)) // 4x margin
+	b.Lock.Unlock()
 
 	// Set a price so we can place orders
 	eq.LastPrice.Store(decimal.FromInt(100))
@@ -85,9 +85,9 @@ func TestOrder(t *testing.T) {
 	}
 
 	// Check that buying power was reserved
-	ex.Lock.RLock()
-	buyingPower := ex.DayTradingBuyingPower.Load()
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	buyingPower := b.DayTradingBuyingPower.Load()
+	b.Lock.RUnlock()
 
 	expected := decimal.FromInt(40000).Sub(decimal.FromInt(1000)) // 10 shares * $100
 	if buyingPower.Cmp(expected) != 0 {
@@ -100,16 +100,16 @@ func TestMarketOrderFill(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set initial balances
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000)) // 4x margin
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000)) // 4x margin
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 
 	// Set a price
@@ -161,16 +161,16 @@ func TestLimitOrderFill(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set initial balances
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000)) // 4x margin
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000)) // 4x margin
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 
 	// Set a price
@@ -231,16 +231,16 @@ func TestSellOrder(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set initial balances with some shares
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(5000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(20000)) // 4x margin
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(5000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(20000)) // 4x margin
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(20))
@@ -281,11 +281,11 @@ func TestSellOrder(t *testing.T) {
 	}
 
 	// Check USD increased (sold at 102, minus fees)
-	ex.Lock.RLock()
-	cash := ex.Cash.Load()
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	cash := b.Cash.Load()
+	b.Lock.RUnlock()
 	// Base amount: 5000 + 10*102 = 6020
-	// Minus fees: broker 0.025 + exchange 0.02 + CAT 0.0003 + TAF 0.002 ≈ 0.0473
+	// Minus fees: broker 0.025 + broker 0.02 + CAT 0.0003 + TAF 0.002 ≈ 0.0473
 	expectedBase := decimal.FromInt(5000).Add(decimal.FromInt(1020))
 	if cash.Cmp(expectedBase) > 0 {
 		t.Errorf("expected cash <= %s (before fees), got %s", expectedBase, cash)
@@ -301,14 +301,14 @@ func TestCancelOrder(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set initial balances
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000)) // 4x margin
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000)) // 4x margin
+	b.Lock.Unlock()
 
 	// Set a price
 	eq.LastPrice.Store(decimal.FromInt(100))
@@ -319,9 +319,9 @@ func TestCancelOrder(t *testing.T) {
 	order.OrderID = "test-order-id" // Set order ID so cancel works
 
 	// Buying power should be reduced by hold
-	ex.Lock.RLock()
-	bpBefore := ex.DayTradingBuyingPower.Load()
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bpBefore := b.DayTradingBuyingPower.Load()
+	b.Lock.RUnlock()
 
 	// Cancel the order
 	err := order.Cancel()
@@ -334,9 +334,9 @@ func TestCancelOrder(t *testing.T) {
 	}
 
 	// Buying power should be restored
-	ex.Lock.RLock()
-	bpAfter := ex.DayTradingBuyingPower.Load()
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bpAfter := b.DayTradingBuyingPower.Load()
+	b.Lock.RUnlock()
 
 	if bpAfter.Cmp(decimal.FromInt(40000)) != 0 {
 		t.Errorf("expected buying power restored to 40000, got %s (was %s before cancel)",
@@ -348,16 +348,16 @@ func TestEquityCalculation(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	// Set cash balance on exchange
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(5000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(20000)) // 4x margin
-	ex.Lock.Unlock()
+	// Set cash balance on broker
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(5000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(20000)) // 4x margin
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(50))

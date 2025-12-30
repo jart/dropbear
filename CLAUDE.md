@@ -26,9 +26,9 @@ this project does equities and cryptography trading using go.
 - `db/` use `db.Get()` to get a WAL2 SQLite singleton into `~/.dropbear.sqlite3`
 - `indicators/` has indicators similar quantconnect but better, defines candles
 - `orderbook/` uses gods v2 tree set for fast level2 order book management
-- `exchange/coinbase/` our own client library (where we currently do our trading!)
-- `exchange/binance/` our own client library (used for market data only currently)
-- `exchange/alpaca/` our own client library (that's where we trade equities)
+- `broker/coinbase/` our own client library (where we currently do our trading!)
+- `broker/binance/` our own client library (used for market data only currently)
+- `broker/alpaca/` our own client library (that's where we trade equities)
 - `auth/` lets the dropbear https server support yubikey authentication
 
 ## data locations

@@ -52,10 +52,10 @@ func (m *manager) Close() {
 	m.finished = false
 }
 
-// checkMarginCalls checks all exchanges for margin calls and triggers auto-liquidation.
+// checkMarginCalls checks all brokers for margin calls and triggers auto-liquidation.
 func (m *manager) checkMarginCalls() {
-	for _, ex := range Exchanges.All() {
-		ex.CheckMarginCall()
+	for _, b := range Brokers.All() {
+		b.CheckMarginCall()
 	}
 }
 
@@ -123,8 +123,8 @@ func (m *manager) Run() {
 	m.lock.Lock()
 	m.finished = true
 	m.lock.Unlock()
-	oldOnReady := Exchanges.OnReady
-	Exchanges.OnReady = func() {
+	oldOnReady := Brokers.OnReady
+	Brokers.OnReady = func() {
 		if oldOnReady != nil {
 			oldOnReady()
 		}

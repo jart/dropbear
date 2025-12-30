@@ -1,10 +1,10 @@
 package teddy
 
 import (
+	"dropbear/broker/coinbase"
+	"dropbear/broker/kraken"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/exchange/coinbase"
-	"dropbear/exchange/kraken"
 	"dropbear/loggy"
 	"log"
 	"strings"
@@ -17,33 +17,33 @@ var (
 	flagCoinbaseRebate   = decimal.FlagPercent("coinbase-rebate", "25", "coinbase percent rebate on fees")
 )
 
-type Exchange struct {
+type Broker struct {
 	Lock     sync.RWMutex
-	Exchange ds.Exchange
+	Broker   ds.Broker
 	Holdings *Holdings
 	Orders   *Orders
 	Pairs    *Pairs
 	MakerFee decimal.Decimal // percent of notional commission for limit orders that don't take liquidity
 	TakerFee decimal.Decimal // percent of notional commission for marketable orders that take liquidity
 	Rebate   decimal.Decimal // percent usdc rebate on fees paid (e.g. 0.25 for 25% rebate)
-	Fees     decimal.Decimal // total fees paid on this exchange since starting teddy
+	Fees     decimal.Decimal // total fees paid on this broker since starting teddy
 	OnReady  func()
 }
 
-func newExchange(exchange ds.Exchange) *Exchange {
+func newBroker(broker ds.Broker) *Broker {
 	if gRunning {
-		loggy.Fatalf("cannot create new exchange %ss while teddy is running", exchange)
+		loggy.Fatalf("cannot create new broker %ss while teddy is running", broker)
 	}
-	ex := &Exchange{
-		Exchange: exchange,
-		OnReady:  func() {},
+	ex := &Broker{
+		Broker:  broker,
+		OnReady: func() {},
 	}
-	switch exchange {
-	case ds.ExchangeCoinbase:
+	switch broker {
+	case ds.BrokerCoinbase:
 		if Live {
 			err := ex.fetchCoinbaseFeeRates()
 			if err != nil {
-				loggy.Fatalf("could not determine fee rates for %v: %v", exchange, err)
+				loggy.Fatalf("could not determine fee rates for %v: %v", broker, err)
 			}
 		} else {
 			ex.MakerFee = *flagCoinbaseMakerFee
@@ -57,32 +57,32 @@ func newExchange(exchange ds.Exchange) *Exchange {
 	return ex
 }
 
-func (ex *Exchange) String() string {
-	return ex.Exchange.String()
+func (ex *Broker) String() string {
+	return ex.Broker.String()
 }
 
-func (ex *Exchange) run() {
-	switch ex.Exchange {
-	case ds.ExchangeCoinbase:
+func (ex *Broker) run() {
+	switch ex.Broker {
+	case ds.BrokerCoinbase:
 		go coinbase.HTTPWarmupDaemon(3) // keep 3 connections warm
 		go ex.Orders.coinbaseOrderUpdateDaemon()
 		go ex.coinbaseFeeRatesDaemon()
-	case ds.ExchangeKraken:
+	case ds.BrokerKraken:
 		go kraken.HTTPWarmupDaemon(3) // keep 3 connections warm
 	}
 }
 
-func (ex *Exchange) coinbaseFeeRatesDaemon() {
+func (ex *Broker) coinbaseFeeRatesDaemon() {
 	for {
 		Hibernate()
 		err := ex.fetchCoinbaseFeeRates()
 		if err != nil {
-			log.Printf("error refreshing fee rates for %v: %v", ex.Exchange, err)
+			log.Printf("error refreshing fee rates for %v: %v", ex.Broker, err)
 		}
 	}
 }
 
-func (ex *Exchange) fetchCoinbaseFeeRates() error {
+func (ex *Broker) fetchCoinbaseFeeRates() error {
 	summary, err := CoinbaseClient.GetTransactionSummary()
 	if err != nil {
 		return err
@@ -97,11 +97,11 @@ func (ex *Exchange) fetchCoinbaseFeeRates() error {
 	return nil
 }
 
-func compareExchanges(a, b *Exchange) int {
-	if a.Exchange < b.Exchange {
+func compareBrokers(a, b *Broker) int {
+	if a.Broker < b.Broker {
 		return -1
 	}
-	if a.Exchange > b.Exchange {
+	if a.Broker > b.Broker {
 		return +1
 	}
 	return 0

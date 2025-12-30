@@ -1,10 +1,10 @@
 package main
 
 import (
+	"dropbear/broker/binance"
+	"dropbear/broker/binanceusd"
+	"dropbear/broker/coinbase"
 	"dropbear/decimal"
-	"dropbear/exchange/binance"
-	"dropbear/exchange/binanceusd"
-	"dropbear/exchange/coinbase"
 	"fmt"
 	"log"
 )

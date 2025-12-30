@@ -2,7 +2,7 @@ package alpaca
 
 import "fmt"
 
-type AssetClass int
+type AssetClass uint8
 
 const (
 	AssetClassUSEquity AssetClass = iota

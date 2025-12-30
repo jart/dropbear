@@ -22,8 +22,8 @@ var (
 )
 
 var (
-	gExchange *cubby.Exchange
-	gStock    *cubby.Equity
+	gBroker *cubby.Broker
+	gStock  *cubby.Equity
 )
 
 func main() {
@@ -31,12 +31,12 @@ func main() {
 	loggy.Init()
 	cubby.Init()
 
-	// Set up exchange and equity
-	gExchange = cubby.Exchanges.Get(ds.ExchangeAlpaca)
-	gStock = gExchange.Equities.Get(*flagSymbol)
+	// Set up broker and equity
+	gBroker = cubby.Brokers.Get(ds.BrokerAlpaca)
+	gStock = gBroker.Equities.Get(*flagSymbol)
 
 	// Set initial balance
-	cubby.SetBalance(ds.ExchangeAlpaca, "USD", *flagCash)
+	cubby.SetBalance(ds.BrokerAlpaca, "USD", *flagCash)
 	cubby.SetBenchmark(gStock)
 
 	// Register scheduling callbacks
@@ -60,7 +60,7 @@ func buy() {
 
 	// Use all available buying power
 	// Account for 10% buffer for price movement + fees
-	buyingPower := gExchange.DayTradingBuyingPower.Load()
+	buyingPower := gBroker.DayTradingBuyingPower.Load()
 	costPerShare := price.Mul(decimal.Parse("1.1"))
 	if buyingPower.Cmp(costPerShare) < 0 {
 		return // not enough for even 1 share

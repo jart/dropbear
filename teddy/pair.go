@@ -1,11 +1,11 @@
 package teddy
 
 import (
+	"dropbear/broker/binance"
+	"dropbear/broker/binanceusd"
+	"dropbear/broker/coinbase"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/exchange/binance"
-	"dropbear/exchange/binanceusd"
-	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
 	"log"
 	"strings"
@@ -17,7 +17,7 @@ import (
 type Pair struct {
 	Symbol         string
 	Lock           sync.RWMutex
-	Exchange       *Exchange
+	Broker         *Broker
 	LastPrice      decimal.Decimal
 	BaseCurrency   *Holding
 	QuoteCurrency  *Holding
@@ -39,16 +39,16 @@ type Pair struct {
 	dataLock       sync.RWMutex
 }
 
-func newPair(exchange *Exchange, symbol string) *Pair {
+func newPair(broker *Broker, symbol string) *Pair {
 	if gRunning {
-		loggy.Fatalf("cannot create new pair %s@%s while teddy is running", symbol, exchange)
+		loggy.Fatalf("cannot create new pair %s@%s while teddy is running", symbol, broker)
 	}
 	baseCurrency, quoteCurrency := splitProductID(symbol)
 	p := &Pair{
 		Symbol:         symbol,
-		Exchange:       exchange,
-		BaseCurrency:   exchange.Holdings.Get(baseCurrency),
-		QuoteCurrency:  exchange.Holdings.Get(quoteCurrency),
+		Broker:         broker,
+		BaseCurrency:   broker.Holdings.Get(baseCurrency),
+		QuoteCurrency:  broker.Holdings.Get(quoteCurrency),
 		BaseIncrement:  guessIncrement(baseCurrency),
 		QuoteIncrement: guessIncrement(quoteCurrency),
 		QuoteMinSize:   guessQuoteMinSize(quoteCurrency),
@@ -60,7 +60,7 @@ func newPair(exchange *Exchange, symbol string) *Pair {
 		OnReady:        func() {},
 		OrderBook:      ds.NewBook(),
 		openOrders:     treeset.NewWith(compareOrdersByClientOrderID),
-		repr:           symbol + "@" + exchange.Exchange.String(),
+		repr:           symbol + "@" + broker.Broker.String(),
 	}
 	if Live {
 		p.refresh()
@@ -74,15 +74,15 @@ func (p *Pair) String() string {
 
 func (p *Pair) run() {
 	go p.refreshDaemon()
-	switch p.Exchange.Exchange {
-	case ds.ExchangeBinance:
+	switch p.Broker.Broker {
+	case ds.BrokerBinance:
 		go p.liveDataDaemon(binance.MarketData(p.Symbol, BinanceClient))
-	case ds.ExchangeBinanceusd:
+	case ds.BrokerBinanceusd:
 		go p.liveDataDaemon(binanceusd.MarketData(p.Symbol, BinanceusdClient))
-	case ds.ExchangeCoinbase:
+	case ds.BrokerCoinbase:
 		go p.liveDataDaemon(coinbase.MarketData(p.Symbol, CoinbaseClient))
 	default:
-		panic("unsupported exchange")
+		panic("unsupported broker")
 	}
 }
 
@@ -133,7 +133,7 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 		}
 		p.isReady = true
 		p.OnReady()
-		p.Exchange.Pairs.markReady(p)
+		p.Broker.Pairs.markReady(p)
 	}
 
 	// simulate passive order fills BEFORE applying book updates
@@ -179,7 +179,7 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 					fillQty := fill.Size.Min(unfilled)
 					if fillQty.IsPositive() {
 						fillNotional := order.LimitPrice.Mul(fillQty)
-						filled, err := order.fill(fillQty, fillNotional, p.Exchange.MakerFee, false)
+						filled, err := order.fill(fillQty, fillNotional, p.Broker.MakerFee, false)
 						if err == nil && filled.IsPositive() {
 							leftover := fill.Size.Sub(filled)
 							if leftover.IsPositive() {
@@ -203,12 +203,12 @@ func (p *Pair) refreshDaemon() {
 }
 
 func (p *Pair) refresh() {
-	switch p.Exchange.Exchange {
-	case ds.ExchangeCoinbase:
+	switch p.Broker.Broker {
+	case ds.BrokerCoinbase:
 		p.refreshCoinbase()
-	case ds.ExchangeBinance:
+	case ds.BrokerBinance:
 		p.refreshBinance()
-	case ds.ExchangeBinanceusd:
+	case ds.BrokerBinanceusd:
 		p.refreshBinanceusd()
 	default:
 		panic("not implemented")
@@ -260,23 +260,23 @@ func (p *Pair) refreshBinanceFilter(filter *binance.Filter) {
 }
 
 var (
-	binanceusdExchangeInfoOnce sync.Once
-	binanceusdExchangeInfoSave *binanceusd.ExchangeInfo
+	binanceusdBrokerInfoOnce sync.Once
+	binanceusdBrokerInfoSave *binanceusd.ExchangeInfo
 )
 
-func getBinanceusdExchangeInfo() *binanceusd.ExchangeInfo {
-	binanceusdExchangeInfoOnce.Do(func() {
+func getBinanceusdBrokerInfo() *binanceusd.ExchangeInfo {
+	binanceusdBrokerInfoOnce.Do(func() {
 		info, err := BinanceusdClient.GetExchangeInfo()
 		if err != nil {
-			loggy.Fatalf("failed to get binanceusd exchange info: %v", err)
+			loggy.Fatalf("failed to get binanceusd broker info: %v", err)
 		}
-		binanceusdExchangeInfoSave = info
+		binanceusdBrokerInfoSave = info
 	})
-	return binanceusdExchangeInfoSave
+	return binanceusdBrokerInfoSave
 }
 
 func getBinanceusdSymbol(symbol string) *binanceusd.Symbol {
-	info := getBinanceusdExchangeInfo()
+	info := getBinanceusdBrokerInfo()
 	for _, s := range info.Symbols {
 		if s.Symbol == symbol {
 			return s
@@ -356,10 +356,10 @@ func guessBaseMaxSize(currency string) decimal.Decimal {
 }
 
 func comparePairs(p, q *Pair) int {
-	if p.Exchange.Exchange < q.Exchange.Exchange {
+	if p.Broker.Broker < q.Broker.Broker {
 		return -1
 	}
-	if p.Exchange.Exchange > q.Exchange.Exchange {
+	if p.Broker.Broker > q.Broker.Broker {
 		return +1
 	}
 	return strings.Compare(p.Symbol, q.Symbol)

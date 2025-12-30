@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//	go run ./cmd/gen.kraken > exchange/kraken/symbols.go
+//	go run ./cmd/gen.kraken > broker/kraken/symbols.go
 package main
 
 import (
@@ -122,7 +122,7 @@ func normalizeSymbol(s string, symbolMap map[string]string) string {
 	if n, ok := symbolMap[s]; ok {
 		s = n
 	}
-	// Normalize XBT to BTC for consistency with other exchanges
+	// Normalize XBT to BTC for consistency with other brokers
 	if s == "XBT" {
 		return "BTC"
 	}

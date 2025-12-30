@@ -44,7 +44,7 @@ func (m *manager) Close() {
 }
 
 func (m *manager) Register(pair *Pair) {
-	data := openRecordedMarketData(*flagBacktest, pair.Exchange.Exchange, pair.Symbol)
+	data := openRecordedMarketData(*flagBacktest, pair.Broker.Broker, pair.Symbol)
 	entry := &managerEntry{pair: pair, data: data, tick: &ds.Tick{}}
 	err := data.Read(entry.tick)
 	if err != nil {
@@ -66,8 +66,8 @@ func (m *manager) Run() {
 	m.lock.Lock()
 	m.finished = true
 	m.lock.Unlock()
-	oldOnReady := Exchanges.OnReady
-	Exchanges.OnReady = func() {
+	oldOnReady := Brokers.OnReady
+	Brokers.OnReady = func() {
 		if oldOnReady != nil {
 			oldOnReady()
 		}

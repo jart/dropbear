@@ -24,7 +24,7 @@ func (d Decimal) Format(n int) string {
 	}
 
 	// skip the (places - n) least significant fractional digits, with rounding
-	skip := max(Places - n, 0)
+	skip := max(Places-n, 0)
 	if skip > 0 {
 		// check if we need to round up
 		var remainder int64

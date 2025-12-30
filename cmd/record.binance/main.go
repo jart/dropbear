@@ -1,7 +1,7 @@
 package main
 
 import (
-	"dropbear/exchange/binance"
+	"dropbear/broker/binance"
 	"dropbear/loggy"
 	"flag"
 	"log"

@@ -1,7 +1,7 @@
 package binanceusd
 
 import (
-	"dropbear/exchange/binance"
+	"dropbear/broker/binance"
 	"encoding/json"
 	"fmt"
 	"io"

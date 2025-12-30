@@ -109,14 +109,14 @@ func TestMul(t *testing.T) {
 		a, b, want string
 	}{
 		{"2.50", "4.00", "10"},
-		{"0.001", "0.9985", "0.0009985"},              // small numbers that caused divide-by-zero
-		{"0.0001", "0.9985", "0.00009985"},            // even smaller
-		{"100", "100", "10000"},                       // large numbers
-		{"0.000000001", "1", "0"},                     // smallest representable is now 0 (truncation)
-		{"0.1876", "0.9995", "0.1875062"},             // medium fractions that caused overflow
-		{"0.5", "0.5", "0.25"},                        // simple fractions
+		{"0.001", "0.9985", "0.0009985"},             // small numbers that caused divide-by-zero
+		{"0.0001", "0.9985", "0.00009985"},           // even smaller
+		{"100", "100", "10000"},                      // large numbers
+		{"0.000000001", "1", "0"},                    // smallest representable is now 0 (truncation)
+		{"0.1876", "0.9995", "0.1875062"},            // medium fractions that caused overflow
+		{"0.5", "0.5", "0.25"},                       // simple fractions
 		{"0.999999999", "0.999999999", "0.99999998"}, // near-1 fractions (truncated input -> 0.99999999^2)
-		{"1e9", "8", "8000000000"},                    // max representable without overflow
+		{"1e9", "8", "8000000000"},                   // max representable without overflow
 	}
 	for _, tt := range tests {
 		a := Parse(tt.a)

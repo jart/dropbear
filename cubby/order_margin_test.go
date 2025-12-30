@@ -13,20 +13,20 @@ func TestOpenLimitOrder_ReservesMargin(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.IsDayTradingTime = true // Enable 4x day trading mode
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.IsDayTradingTime = true // Enable 4x day trading mode
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
 
 	// Initially no open orders
-	reserved := ex.GetMarginUsedByOpenOrders()
+	reserved := b.GetMarginUsedByOpenOrders()
 	if !reserved.IsZero() {
 		t.Errorf("expected zero reserved margin initially, got %s", reserved)
 	}
@@ -36,7 +36,7 @@ func TestOpenLimitOrder_ReservesMargin(t *testing.T) {
 
 	// Now there should be margin reserved
 	// Initial margin = max(50%, 30%) of $10,000 = $5,000
-	reserved = ex.GetMarginUsedByOpenOrders()
+	reserved = b.GetMarginUsedByOpenOrders()
 	expected := decimal.FromInt(5000) // 50% of $10k
 	if reserved.Cmp(expected) != 0 {
 		t.Errorf("expected reserved margin %s, got %s", expected, reserved)
@@ -45,7 +45,7 @@ func TestOpenLimitOrder_ReservesMargin(t *testing.T) {
 	// Net buying power should be reduced
 	// Note: LimitOrder already deducts full cost ($10k) from DayTradingBuyingPower
 	// GetMarginUsedByOpenOrders reports margin ($5k) separately for tracking
-	netBP := ex.GetNetAvailableBuyingPower()
+	netBP := b.GetNetAvailableBuyingPower()
 	// Available BP ($200k - $10k hold) - margin ($5k) = $185k
 	expectedNet := decimal.FromInt(185000)
 	if netBP.Cmp(expectedNet) != 0 {
@@ -63,7 +63,7 @@ func TestOpenLimitOrder_ReservesMargin(t *testing.T) {
 	}
 
 	// Reserved margin should be zero again
-	reserved = ex.GetMarginUsedByOpenOrders()
+	reserved = b.GetMarginUsedByOpenOrders()
 	if !reserved.IsZero() {
 		t.Errorf("expected zero reserved margin after cancel, got %s", reserved)
 	}
@@ -74,13 +74,13 @@ func TestOpenMOCOrder_ReservesMargin(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -89,7 +89,7 @@ func TestOpenMOCOrder_ReservesMargin(t *testing.T) {
 	_ = eq.MOCOrder(ds.SideBuy, 100)
 
 	// MOC uses last price for margin estimation
-	reserved := ex.GetMarginUsedByOpenOrders()
+	reserved := b.GetMarginUsedByOpenOrders()
 	expected := decimal.FromInt(5000) // 50% of $10k
 	if reserved.Cmp(expected) != 0 {
 		t.Errorf("expected reserved margin %s for MOC, got %s", expected, reserved)
@@ -101,13 +101,13 @@ func TestFilledOrder_ReleasesMargin(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -120,7 +120,7 @@ func TestFilledOrder_ReleasesMargin(t *testing.T) {
 	eq.simulateFills(candle)
 
 	// After fill, no margin should be reserved by open orders
-	reserved := ex.GetMarginUsedByOpenOrders()
+	reserved := b.GetMarginUsedByOpenOrders()
 	if !reserved.IsZero() {
 		t.Errorf("expected zero reserved margin after fill, got %s", reserved)
 	}
@@ -131,14 +131,14 @@ func TestCancelledOrder_ReleasesMargin(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.IsDayTradingTime = true
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.IsDayTradingTime = true
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -147,7 +147,7 @@ func TestCancelledOrder_ReleasesMargin(t *testing.T) {
 	order := eq.LimitOrder(ds.SideBuy, 100, decimal.FromInt(100), ds.OrderStrategyMarketable)
 
 	// Verify margin is reserved
-	reserved := ex.GetMarginUsedByOpenOrders()
+	reserved := b.GetMarginUsedByOpenOrders()
 	if reserved.IsZero() {
 		t.Error("expected margin to be reserved for open order")
 	}
@@ -163,7 +163,7 @@ func TestCancelledOrder_ReleasesMargin(t *testing.T) {
 	}
 
 	// Margin should be released
-	reserved = ex.GetMarginUsedByOpenOrders()
+	reserved = b.GetMarginUsedByOpenOrders()
 	if !reserved.IsZero() {
 		t.Errorf("expected zero reserved margin after cancel, got %s", reserved)
 	}
@@ -174,14 +174,14 @@ func TestMultipleOrders_CumulativeMargin(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eqAAPL := ex.Equities.Get("AAPL")
-	eqMSFT := ex.Equities.Get("MSFT")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eqAAPL := b.Equities.Get("AAPL")
+	eqMSFT := b.Equities.Get("MSFT")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(100000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(400000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(100000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(400000))
+	b.Lock.Unlock()
 
 	eqAAPL.LastPrice.Store(decimal.FromInt(100))
 	eqAAPL.isReady = true
@@ -193,7 +193,7 @@ func TestMultipleOrders_CumulativeMargin(t *testing.T) {
 	_ = eqMSFT.LimitOrder(ds.SideBuy, 50, decimal.FromInt(200), ds.OrderStrategyMarketable)  // $10k notional, $5k margin
 
 	// Total margin should be cumulative
-	reserved := ex.GetMarginUsedByOpenOrders()
+	reserved := b.GetMarginUsedByOpenOrders()
 	expected := decimal.FromInt(10000) // $5k + $5k
 	if reserved.Cmp(expected) != 0 {
 		t.Errorf("expected cumulative reserved margin %s, got %s", expected, reserved)
@@ -205,16 +205,16 @@ func TestClosingOrder_NoMarginReserved(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(40000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(160000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(40000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(160000))
+	b.Lock.Unlock()
 
 	// Set up existing long position
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
@@ -229,7 +229,7 @@ func TestClosingOrder_NoMarginReserved(t *testing.T) {
 	_ = eq.MarketOrder(ds.SideSell, 100)
 
 	// Sell order should NOT reserve additional margin (it's closing, not opening)
-	reserved := ex.GetMarginUsedByOpenOrders()
+	reserved := b.GetMarginUsedByOpenOrders()
 	if !reserved.IsZero() {
 		t.Errorf("expected zero margin for closing order, got %s", reserved)
 	}
@@ -240,16 +240,16 @@ func TestCoverOrder_NoMarginReserved(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.Lock.Unlock()
 
 	// Set up existing short position
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(-100))
 	aapl.Available.Store(decimal.FromInt(100))
@@ -263,7 +263,7 @@ func TestCoverOrder_NoMarginReserved(t *testing.T) {
 	_ = eq.CoverOrder(100)
 
 	// Cover order should NOT reserve additional margin (it's closing the short)
-	reserved := ex.GetMarginUsedByOpenOrders()
+	reserved := b.GetMarginUsedByOpenOrders()
 	if !reserved.IsZero() {
 		t.Errorf("expected zero margin for cover order, got %s", reserved)
 	}
@@ -274,13 +274,13 @@ func TestShortOrder_ReservesMargin(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -289,7 +289,7 @@ func TestShortOrder_ReservesMargin(t *testing.T) {
 	_ = eq.ShortOrder(100)
 
 	// Short order should reserve margin
-	reserved := ex.GetMarginUsedByOpenOrders()
+	reserved := b.GetMarginUsedByOpenOrders()
 	expected := decimal.FromInt(5000) // 50% of $10k
 	if reserved.Cmp(expected) != 0 {
 		t.Errorf("expected reserved margin %s for short order, got %s", expected, reserved)
@@ -301,20 +301,20 @@ func TestGetNetAvailableBuyingPower(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.IsDayTradingTime = true
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.IsDayTradingTime = true
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
 
 	// Initial net buying power equals available
-	netBP := ex.GetNetAvailableBuyingPower()
+	netBP := b.GetNetAvailableBuyingPower()
 	if netBP.Cmp(decimal.FromInt(200000)) != 0 {
 		t.Errorf("expected initial net BP of $200k, got %s", netBP)
 	}
@@ -324,7 +324,7 @@ func TestGetNetAvailableBuyingPower(t *testing.T) {
 
 	// Net BP should be reduced
 	// LimitOrder deducted $10k from DTBP, GetNetAvailableBuyingPower subtracts $5k margin
-	netBP = ex.GetNetAvailableBuyingPower()
+	netBP = b.GetNetAvailableBuyingPower()
 	expected := decimal.FromInt(185000) // $200k - $10k hold - $5k margin reservation
 	if netBP.Cmp(expected) != 0 {
 		t.Errorf("expected net BP %s after order, got %s", expected, netBP)
@@ -335,8 +335,8 @@ func TestIsOpeningOrder_BuyNoPosition(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 	eq.isReady = true
 
 	// Buy with no existing position is opening
@@ -349,11 +349,11 @@ func TestIsOpeningOrder_BuyLongPosition(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set up long position
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
 	aapl.Lock.Unlock()
@@ -368,11 +368,11 @@ func TestIsOpeningOrder_SellLongPosition(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set up long position
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
 	aapl.Lock.Unlock()
@@ -387,8 +387,8 @@ func TestIsOpeningOrder_ShortSale(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Short sale is always opening
 	if !isOpeningOrder(ds.SideSell, true, false, eq) {
@@ -400,11 +400,11 @@ func TestIsOpeningOrder_Cover(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set up short position
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(-100))
 	aapl.Lock.Unlock()

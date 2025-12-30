@@ -7,11 +7,11 @@ import (
 	"sync"
 )
 
-// Holding represents a stock position (not cash - cash is on Exchange).
+// Holding represents a stock position (not cash - cash is on Broker).
 // Quantity is positive for long positions, negative for short positions.
 type Holding struct {
 	Lock       sync.RWMutex
-	Exchange   *Exchange
+	Broker     *Broker
 	Symbol     string // e.g. AAPL, TSLA (not USD)
 	Quantity   decimal.Decimal
 	Available  decimal.Decimal // shares not reserved for pending sell/cover orders
@@ -24,9 +24,9 @@ type Holding struct {
 	ShortLots  *ds.Lots // short position cost basis (FIFO) - tracks proceeds from shorts
 }
 
-func newHolding(exchange *Exchange, symbol string) *Holding {
+func newHolding(broker *Broker, symbol string) *Holding {
 	h := &Holding{
-		Exchange:  exchange,
+		Broker:    broker,
 		Symbol:    symbol,
 		Lots:      ds.NewLots(ds.CostBasisMethodFIFO),
 		ShortLots: ds.NewLots(ds.CostBasisMethodFIFO),

@@ -1,10 +1,10 @@
 package cubby
 
 import (
+	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/exchange/alpaca"
 	"dropbear/loggy"
 	"flag"
 	"log"
@@ -63,23 +63,23 @@ func Init() {
 	// Register DTBP lifecycle callbacks
 	// These fire at specific market times to manage day trading buying power
 	AfterOpen(func() {
-		for _, ex := range Exchanges.All() {
-			ex.InitDTBP()
+		for _, b := range Brokers.All() {
+			b.InitDTBP()
 		}
 	})
 	BeforeCloseEarly(func() {
-		for _, ex := range Exchanges.All() {
-			ex.EndDayTradingTime()
+		for _, b := range Brokers.All() {
+			b.EndDayTradingTime()
 		}
 	})
 	AfterClose(func() {
-		for _, ex := range Exchanges.All() {
-			ex.LockDTBP()
+		for _, b := range Brokers.All() {
+			b.LockDTBP()
 			// Charge margin interest on negative cash balance
-			if ex.MarginInterest != nil {
-				charge := ex.MarginInterest.ChargeDaily(clocky.Now(), ex.Cash.Load())
+			if b.MarginInterest != nil {
+				charge := b.MarginInterest.ChargeDaily(clocky.Now(), b.Cash.Load())
 				if charge.IsPositive() {
-					sub(&ex.Cash, charge)
+					sub(&b.Cash, charge)
 				}
 			}
 		}
@@ -96,40 +96,40 @@ func EndTime() clocky.Time {
 	return *flagEnd
 }
 
-// SetBalance sets the simulated balance for the given exchange and symbol.
-// For USD, this sets the cash balance on the Exchange.
+// SetBalance sets the simulated balance for the given broker and symbol.
+// For USD, this sets the cash balance on the Broker.
 // For stocks, this sets the position quantity on the Holding.
-func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
+func SetBalance(broker ds.Broker, symbol string, quantity decimal.Decimal) {
 	if quantity.IsNegative() {
 		panic("cannot set negative balance")
 	}
 	if Live {
 		return
 	}
-	ex := Exchanges.Get(exchange)
+	b := Brokers.Get(broker)
 	if symbol == "USD" {
-		ex.Lock.Lock()
-		ex.Cash.Store(quantity)
+		b.Lock.Lock()
+		b.Cash.Store(quantity)
 		// Set PDT mode from flag
-		ex.PatternDayTrader = *flagPDT
+		b.PatternDayTrader = *flagPDT
 		// Set buying power based on margin flag
-		ex.RegTBuyingPower.Store(quantity.MulInt(2))
+		b.RegTBuyingPower.Store(quantity.MulInt(2))
 		if *flagPDT {
-			ex.DayTradingBuyingPower.Store(quantity.MulInt(4))
-			ex.BodDTBP = quantity.MulInt(4)
-			ex.IsDayTradingTime = true
+			b.DayTradingBuyingPower.Store(quantity.MulInt(4))
+			b.BodDTBP = quantity.MulInt(4)
+			b.IsDayTradingTime = true
 		} else {
-			ex.DayTradingBuyingPower.Store(quantity.MulInt(*flagMargin))
-			ex.BodDTBP = quantity.MulInt(2)
+			b.DayTradingBuyingPower.Store(quantity.MulInt(*flagMargin))
+			b.BodDTBP = quantity.MulInt(2)
 		}
 		// Initialize LastEquity for DTBP lifecycle
-		ex.LastEquity = quantity
-		ex.Lock.Unlock()
+		b.LastEquity = quantity
+		b.Lock.Unlock()
 	} else {
 		if quantity.IsZero() {
 			return
 		}
-		ho := ex.Holdings.Get(symbol)
+		ho := b.Holdings.Get(symbol)
 		ho.Lock.Lock()
 		ho.Quantity.Store(quantity)
 		ho.Available.Store(quantity)
@@ -159,9 +159,9 @@ func Run() {
 		sampler := newSamplerDaemon(*flagQuantum, report)
 		defer sampler.Close()
 		sampler.Run()
-		for _, exchange := range Exchanges.All() {
-			exchange.run()
-			for _, eq := range exchange.Equities.All() {
+		for _, broker := range Brokers.All() {
+			broker.run()
+			for _, eq := range broker.Equities.All() {
 				eq.run()
 			}
 		}
@@ -175,8 +175,8 @@ func Run() {
 		log.Printf("goodbye")
 	} else {
 		manager := newManager(report)
-		for _, exchange := range Exchanges.All() {
-			for _, eq := range exchange.Equities.All() {
+		for _, broker := range Brokers.All() {
+			for _, eq := range broker.Equities.All() {
 				manager.Register(eq)
 			}
 		}
@@ -196,11 +196,11 @@ func Run() {
 	report.Print()
 }
 
-// GetEquityUSD returns value of all holdings in USD across all exchanges.
+// GetEquityUSD returns value of all holdings in USD across all brokers.
 func GetEquityUSD() decimal.Decimal {
 	equity := decimal.Zero
-	for _, exchange := range Exchanges.All() {
-		equity = equity.Add(exchange.Holdings.GetEquityUSD())
+	for _, broker := range Brokers.All() {
+		equity = equity.Add(broker.Holdings.GetEquityUSD())
 	}
 	return equity
 }
@@ -208,8 +208,8 @@ func GetEquityUSD() decimal.Decimal {
 // GetInvestedUSD returns value of all non-cash holdings in USD.
 func GetInvestedUSD() decimal.Decimal {
 	equity := decimal.Zero
-	for _, exchange := range Exchanges.All() {
-		equity = equity.Add(exchange.Holdings.GetInvestedUSD())
+	for _, broker := range Brokers.All() {
+		equity = equity.Add(broker.Holdings.GetInvestedUSD())
 	}
 	return equity
 }
@@ -222,12 +222,12 @@ func GetRiskFreeRate() decimal.Decimal {
 // cancelAllOpenOrders cancels all open orders.
 func cancelAllOpenOrders() {
 	if !Paper {
-		for _, exchange := range Exchanges.exchangeArray {
-			for _, order := range exchange.Orders.openOrders.Values() {
+		for _, broker := range Brokers.brokerArray {
+			for _, order := range broker.Orders.openOrders.Values() {
 				if order.OrderID != "" {
-					log.Printf("canceling order %s on %s", order.OrderID, exchange)
+					log.Printf("canceling order %s on %s", order.OrderID, broker)
 					if err := AlpacaClient.CancelOrder(order.OrderID); err != nil {
-						log.Printf("error canceling order %s on %s: %v", order.OrderID, exchange, err)
+						log.Printf("error canceling order %s on %s: %v", order.OrderID, broker, err)
 					}
 				}
 			}

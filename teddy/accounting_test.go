@@ -14,30 +14,30 @@ func init() {
 	clocky.Now = clocky.FakeNow
 }
 
-// setupTestExchange creates a minimal exchange for testing accounting logic.
-func setupTestExchange(t *testing.T) (*Exchange, *Pair, *Holding, *Holding) {
+// setupTestBroker creates a minimal broker for testing accounting logic.
+func setupTestBroker(t *testing.T) (*Broker, *Pair, *Holding, *Holding) {
 	t.Helper()
 
-	// Create exchange with zero fees for simpler math
-	ex := &Exchange{
-		Exchange: ds.ExchangeCoinbase,
+	// Create broker with zero fees for simpler math
+	ex := &Broker{
+		Broker:   ds.BrokerCoinbase,
 		MakerFee: decimal.Zero,
 		TakerFee: decimal.Zero,
 		Rebate:   decimal.Zero,
 	}
 	ex.Holdings = &Holdings{
-		exchange:    ex,
+		broker:      ex,
 		holdingsMap: make(map[string]*Holding),
 	}
 	ex.Orders = &Orders{
-		Exchange:    ex,
+		Broker:      ex,
 		ordersMap:   make(map[string]*Order),
 		ordersArray: make([]*Order, 0),
 	}
 	noop := func(*Order) {}
 	ex.Orders.OnOrderEvent.Store(&noop)
 	ex.Pairs = &Pairs{
-		exchange: ex,
+		broker:   ex,
 		pairsMap: make(map[string]*Pair),
 	}
 
@@ -50,7 +50,7 @@ func setupTestExchange(t *testing.T) (*Exchange, *Pair, *Holding, *Holding) {
 
 	// Create pair
 	pair := &Pair{
-		Exchange:       ex,
+		Broker:         ex,
 		BaseCurrency:   btcHolding,
 		QuoteCurrency:  usdHolding,
 		BaseIncrement:  decimal.Satoshi,
@@ -80,7 +80,7 @@ func setupOrderBook(pair *Pair, bidPrice, askPrice, size decimal.Decimal) {
 // TestAvailableNeverExceedsQuantity verifies the core invariant that
 // Available should never exceed Quantity for any holding.
 func TestAvailableNeverExceedsQuantity(t *testing.T) {
-	_, pair, usdHolding, btcHolding := setupTestExchange(t)
+	_, pair, usdHolding, btcHolding := setupTestBroker(t)
 
 	// Set initial balance: $1000 USD
 	initialUSD := decimal.FromInt(1000)
@@ -138,7 +138,7 @@ func TestAvailableNeverExceedsQuantity(t *testing.T) {
 
 // TestCorrectHoldRelease verifies the fix: only release unused hold.
 func TestCorrectHoldRelease(t *testing.T) {
-	_, pair, usdHolding, btcHolding := setupTestExchange(t)
+	_, pair, usdHolding, btcHolding := setupTestBroker(t)
 
 	// Set initial balance: $1000 USD
 	initialUSD := decimal.FromInt(1000)
@@ -195,7 +195,7 @@ func TestCorrectHoldRelease(t *testing.T) {
 // TestMultipleBuysNeverExceedBalance simulates multiple buy orders
 // and verifies total invested never exceeds initial balance.
 func TestMultipleBuysNeverExceedBalance(t *testing.T) {
-	_, pair, usdHolding, btcHolding := setupTestExchange(t)
+	_, pair, usdHolding, btcHolding := setupTestBroker(t)
 
 	initialUSD := decimal.FromInt(1000)
 	usdHolding.Quantity = initialUSD
@@ -245,7 +245,7 @@ func TestMultipleBuysNeverExceedBalance(t *testing.T) {
 // TestInvestedCannotExceedInitialBalance is the specific test for the
 // $26k invested on $20k balance bug.
 func TestInvestedCannotExceedInitialBalance(t *testing.T) {
-	ex, pair, usdHolding, btcHolding := setupTestExchange(t)
+	ex, pair, usdHolding, btcHolding := setupTestBroker(t)
 
 	// Simulate the exact scenario: $20,000 initial balance
 	initialUSD := decimal.FromInt(20000)
@@ -297,7 +297,7 @@ func TestInvestedCannotExceedInitialBalance(t *testing.T) {
 
 // TestHoldingInvariantsWithFees tests that invariants hold even with fees.
 func TestHoldingInvariantsWithFees(t *testing.T) {
-	ex, pair, usdHolding, btcHolding := setupTestExchange(t)
+	ex, pair, usdHolding, btcHolding := setupTestBroker(t)
 
 	// Set realistic fee rate
 	ex.TakerFee = decimal.Parse("0.0065") // 0.65%
@@ -353,7 +353,7 @@ func TestHoldingInvariantsWithFees(t *testing.T) {
 // TestFillWithFee tests the shared accounting code used by live trading.
 // This simulates the live trading path where Coinbase provides the actual fee.
 func TestFillWithFee(t *testing.T) {
-	_, pair, usdHolding, btcHolding := setupTestExchange(t)
+	_, pair, usdHolding, btcHolding := setupTestBroker(t)
 
 	initialUSD := decimal.FromInt(1000)
 	usdHolding.Quantity = initialUSD
@@ -402,7 +402,7 @@ func TestFillWithFee(t *testing.T) {
 
 // TestMultipleFillsWithDifferentFees tests multiple fills with varying fees.
 func TestMultipleFillsWithDifferentFees(t *testing.T) {
-	_, pair, usdHolding, btcHolding := setupTestExchange(t)
+	_, pair, usdHolding, btcHolding := setupTestBroker(t)
 
 	initialUSD := decimal.FromInt(1000)
 	usdHolding.Quantity = initialUSD
@@ -456,7 +456,7 @@ func TestMultipleFillsWithDifferentFees(t *testing.T) {
 // TestFeeHigherThanEstimated tests when Coinbase charges more fees than we estimated.
 // This can happen if fee tier changes or we under-estimated the hold.
 func TestFeeHigherThanEstimated(t *testing.T) {
-	_, pair, usdHolding, btcHolding := setupTestExchange(t)
+	_, pair, usdHolding, btcHolding := setupTestBroker(t)
 
 	initialUSD := decimal.FromInt(1000)
 	usdHolding.Quantity = initialUSD
@@ -509,7 +509,7 @@ func TestFeeHigherThanEstimated(t *testing.T) {
 // 3. fill() is called with force=true (delayed Coinbase update), must also debit Available
 // Without the fix, Available would exceed Quantity after step 3.
 func TestKillThenFillRaceCondition(t *testing.T) {
-	ex, pair, usdHolding, btcHolding := setupTestExchange(t)
+	ex, pair, usdHolding, btcHolding := setupTestBroker(t)
 
 	// Create open orders tree for the test
 	pair.openOrders = treeset.NewWith(compareOrdersByClientOrderID)
@@ -611,7 +611,7 @@ func TestKillThenFillRaceCondition(t *testing.T) {
 
 // TestKillThenFillRaceConditionSell tests the same race condition for sell orders.
 func TestKillThenFillRaceConditionSell(t *testing.T) {
-	ex, pair, usdHolding, btcHolding := setupTestExchange(t)
+	ex, pair, usdHolding, btcHolding := setupTestBroker(t)
 
 	// Create open orders tree for the test
 	pair.openOrders = treeset.NewWith(compareOrdersByClientOrderID)

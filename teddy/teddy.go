@@ -1,12 +1,12 @@
 package teddy
 
 import (
+	"dropbear/broker/binance"
+	"dropbear/broker/binanceusd"
+	"dropbear/broker/coinbase"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/exchange/binance"
-	"dropbear/exchange/binanceusd"
-	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
 	"flag"
 	"log"
@@ -63,8 +63,8 @@ func Init() {
 	}
 }
 
-// SetBalance sets the simulated balance for the given exchange and symbol in backtest mode.
-func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
+// SetBalance sets the simulated balance for the given broker and symbol in backtest mode.
+func SetBalance(broker ds.Broker, symbol string, quantity decimal.Decimal) {
 	if quantity.IsNegative() {
 		panic("cannot set negative balance")
 	}
@@ -72,7 +72,7 @@ func SetBalance(exchange ds.Exchange, symbol string, quantity decimal.Decimal) {
 		return
 	}
 	if !Live {
-		ex := Exchanges.Get(exchange)
+		ex := Brokers.Get(broker)
 		ho := ex.Holdings.Get(symbol)
 		ho.Lock.Lock()
 		defer ho.Lock.Unlock()
@@ -106,9 +106,9 @@ func Run() {
 		sampler := newSamplerDaemon(*flagQuantum, report)
 		defer sampler.Close()
 		sampler.Run()
-		for _, exchange := range Exchanges.All() {
-			exchange.run()
-			for _, pair := range exchange.Pairs.All() {
+		for _, broker := range Brokers.All() {
+			broker.run()
+			for _, pair := range broker.Pairs.All() {
 				pair.run()
 			}
 		}
@@ -122,8 +122,8 @@ func Run() {
 		log.Printf("goodbye")
 	} else {
 		manager := newManager(report)
-		for _, exchange := range Exchanges.All() {
-			for _, pair := range exchange.Pairs.All() {
+		for _, broker := range Brokers.All() {
+			for _, pair := range broker.Pairs.All() {
 				manager.Register(pair)
 			}
 		}
@@ -152,20 +152,20 @@ func Spawn(f func()) {
 	}
 }
 
-// GetEquityUSD returns value of all holdings in USD across all exchanges.
+// GetEquityUSD returns value of all holdings in USD across all brokers.
 func GetEquityUSD() decimal.Decimal {
 	equity := decimal.Zero
-	for _, exchange := range Exchanges.All() {
-		equity = equity.Add(exchange.Holdings.GetEquityUSD())
+	for _, broker := range Brokers.All() {
+		equity = equity.Add(broker.Holdings.GetEquityUSD())
 	}
 	return equity
 }
 
-// GetInvestedUSD returns value of all non-cash holdings in USD across all exchanges.
+// GetInvestedUSD returns value of all non-cash holdings in USD across all brokers.
 func GetInvestedUSD() decimal.Decimal {
 	equity := decimal.Zero
-	for _, exchange := range Exchanges.All() {
-		equity = equity.Add(exchange.Holdings.GetInvestedUSD())
+	for _, broker := range Brokers.All() {
+		equity = equity.Add(broker.Holdings.GetInvestedUSD())
 	}
 	return equity
 }
@@ -176,25 +176,25 @@ func GetRiskFreeRate() decimal.Decimal {
 	return *flagRFR
 }
 
-// cancelAllOpenOrders cancels all open orders across all exchanges.
+// cancelAllOpenOrders cancels all open orders across all brokers.
 // This is implemented to bypass the framework so it can happen on panic.
 func cancelAllOpenOrders() {
 	if Paper {
 		return
 	}
-	for _, exchange := range Exchanges.exchangeArray {
-		switch exchange.Exchange {
-		case ds.ExchangeCoinbase:
+	for _, broker := range Brokers.brokerArray {
+		switch broker.Broker {
+		case ds.BrokerCoinbase:
 			var orderIDs []string
-			for _, order := range exchange.Orders.openOrders.Values() {
+			for _, order := range broker.Orders.openOrders.Values() {
 				if order.OrderID != "" {
 					orderIDs = append(orderIDs, order.OrderID)
-					log.Printf("canceling order %s on %s", order.OrderID, exchange)
+					log.Printf("canceling order %s on %s", order.OrderID, broker)
 				}
 			}
 			if len(orderIDs) > 0 {
 				if err := CoinbaseClient.CancelOrders(orderIDs); err != nil {
-					log.Printf("error canceling orders on %s: %v", exchange, err)
+					log.Printf("error canceling orders on %s: %v", broker, err)
 				}
 			}
 		default:

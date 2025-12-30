@@ -29,7 +29,7 @@ var (
 	flagLevel2    = flag.Bool("level2", false, "order book prediction")
 	flagVerbose   = flag.Bool("verbose", false, "enable verbose logging")
 	flagSymbol    = flag.String("symbol", "BTC", "coinbase currency to trade")
-	flagPredictor = flag.String("predictor", "BTCFDUSD@binance", "predictor symbol@exchange")
+	flagPredictor = flag.String("predictor", "BTCFDUSD@binance", "predictor symbol@broker")
 	flagPricer    = flag.String("pricer", "", "currency to usd pair, e.g. FDUSDUSDT@binance")
 	flagDepth     = decimal.Flag("depth", "1", "order book depth for determining bid/ask")
 	flagUSD       = decimal.Flag("usd", "50000", "coinbase usd balance")
@@ -44,7 +44,7 @@ var (
 var (
 	gCash          *teddy.Holding
 	gHolding       *teddy.Holding
-	gCoinbase      *teddy.Exchange
+	gCoinbase      *teddy.Broker
 	gCoinbasePair  *teddy.Pair
 	gPredictorPair *teddy.Pair
 	gPricerPair    *teddy.Pair
@@ -74,29 +74,29 @@ func main() {
 	gSpreadEMA = indicators.NewWWMA(*flagSamples)
 
 	// setup coinbase (where we trade)
-	gCoinbase = teddy.Exchanges.Get(ds.ExchangeCoinbase)
+	gCoinbase = teddy.Brokers.Get(ds.BrokerCoinbase)
 	gCoinbasePair = gCoinbase.Pairs.Get(*flagSymbol + "-USD")
 	gHolding = gCoinbase.Holdings.Get(*flagSymbol)
 	gCash = gCoinbase.Holdings.Get("USD")
 
 	// setup predictor (where we watch)
-	predictorExchange, predictorSymbol := parsePredictor(*flagPredictor)
-	predictor := teddy.Exchanges.Get(predictorExchange)
+	predictorBroker, predictorSymbol := parsePredictor(*flagPredictor)
+	predictor := teddy.Brokers.Get(predictorBroker)
 	gPredictorPair = predictor.Pairs.Get(predictorSymbol)
 
 	// setup pricer (optional currency to usd pair)
 	if *flagPricer != "" {
-		pricerExchange, pricerSymbol := parsePredictor(*flagPricer)
-		pricer := teddy.Exchanges.Get(pricerExchange)
+		pricerBroker, pricerSymbol := parsePredictor(*flagPricer)
+		pricer := teddy.Brokers.Get(pricerBroker)
 		gPricerPair = pricer.Pairs.Get(pricerSymbol)
 		gPricerPair.OnTick = onPricerTick
 	}
 
 	// prepare for arbitrage
 	gPricerPrice = decimal.One
-	teddy.Exchanges.OnReady = onReady
-	teddy.SetBalance(ds.ExchangeCoinbase, *flagSymbol, *flagCoin)
-	teddy.SetBalance(ds.ExchangeCoinbase, "USD", *flagUSD)
+	teddy.Brokers.OnReady = onReady
+	teddy.SetBalance(ds.BrokerCoinbase, *flagSymbol, *flagCoin)
+	teddy.SetBalance(ds.BrokerCoinbase, "USD", *flagUSD)
 	teddy.SetBenchmark(gCoinbasePair)
 	teddy.Run()
 }
@@ -190,7 +190,7 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	// let's say btc on coinbase usually costs 99, and on binance it's usually 100.
 	// in that case, m=99, P=100, and b=-0.01. suddenly the price on binance shoots
 	// up to 102 but market makers on coinbase are still offering to buy / sell btc
-	// for 99. this is an abnormal price difference between the two exchanges, plus
+	// for 99. this is an abnormal price difference between the two brokers, plus
 	// we know from statistical analysis that where binance goes, coinbase follows.
 	//
 	// so right now
@@ -230,7 +230,7 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	//
 	//     100.93079623683455 * (1 + 0.0004875) = 100.98
 	//
-	// however the exchange will reject that limit price because it's not rounded
+	// however the broker will reject that limit price because it's not rounded
 	// to the nearest penny. so which direction do we round? for buys, we want to
 	// round down, because buying low is good. whereas sells we want to round up.
 
@@ -367,12 +367,12 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	}
 }
 
-func parsePredictor(s string) (ds.Exchange, string) {
+func parsePredictor(s string) (ds.Broker, string) {
 	parts := strings.Split(s, "@")
 	if len(parts) != 2 {
-		loggy.Fatalf("invalid predictor format: %s (expected SYMBOL@exchange)", s)
+		loggy.Fatalf("invalid predictor format: %s (expected SYMBOL@broker)", s)
 	}
-	return ds.MustParseExchange(parts[1]), parts[0]
+	return ds.MustParseBroker(parts[1]), parts[0]
 }
 
 func launchBrowser(url string) {

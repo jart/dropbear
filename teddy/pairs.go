@@ -11,15 +11,15 @@ import (
 
 type Pairs struct {
 	lock       sync.RWMutex
-	exchange   *Exchange
+	broker     *Broker
 	pairsMap   map[string]*Pair
 	unready    *treeset.Set[*Pair]
 	pairsArray []*Pair
 }
 
-func newPairs(exchange *Exchange) *Pairs {
+func newPairs(broker *Broker) *Pairs {
 	return &Pairs{
-		exchange:   exchange,
+		broker:     broker,
 		pairsMap:   make(map[string]*Pair),
 		pairsArray: make([]*Pair, 0),
 		unready:    treeset.NewWith(comparePairs),
@@ -42,7 +42,7 @@ func (ps *Pairs) Get(productID string) *Pair {
 		ps.lock.Lock()
 		pair = ps.pairsMap[productID]
 		if pair == nil {
-			pair = newPair(ps.exchange, productID)
+			pair = newPair(ps.broker, productID)
 			ps.unready.Add(pair)
 			ps.pairsMap[productID] = pair
 			ps.pairsArray = append(ps.pairsArray, pair)
@@ -63,7 +63,7 @@ func (ps *Pairs) All() []*Pair {
 	return result
 }
 
-// GetPriceUSD returns the price of the given symbol in USD on this exchange.
+// GetPriceUSD returns the price of the given symbol in USD on this broker.
 func (ps *Pairs) GetPriceUSD(symbol string) decimal.Decimal {
 	switch symbol {
 	case "USD", "USDT", "USDC", "FDUSD":
@@ -86,7 +86,7 @@ func (ps *Pairs) GetPriceUSD(symbol string) decimal.Decimal {
 							if pair == nil {
 								pair = ps.pairsMap[symbol+"FDUSD"]
 								if pair == nil {
-									loggy.Fatalf("don't know to determine USD value of %s on %s", symbol, ps.exchange)
+									loggy.Fatalf("don't know to determine USD value of %s on %s", symbol, ps.broker)
 								}
 							}
 						}
@@ -106,9 +106,9 @@ func (ps *Pairs) markReady(pair *Pair) {
 	ps.lock.Unlock()
 	if isReady {
 		if *flagVerbose {
-			log.Printf("[teddy] %s exchange ready", ps.exchange)
+			log.Printf("[teddy] %s broker ready", ps.broker)
 		}
-		ps.exchange.OnReady()
-		Exchanges.markReady(ps.exchange)
+		ps.broker.OnReady()
+		Brokers.markReady(ps.broker)
 	}
 }

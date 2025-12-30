@@ -13,13 +13,13 @@ func TestShortOrder_CreateShortPosition(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -52,7 +52,7 @@ func TestShortOrder_CreateShortPosition(t *testing.T) {
 	}
 
 	// Check holding - should be negative (short)
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.RLock()
 	qty := aapl.Quantity.Load()
 	aapl.Lock.RUnlock()
@@ -79,14 +79,14 @@ func TestShortOrder_MarginRequired(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Start with limited margin
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(5000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(20000)) // 4x of $5k
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(5000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(20000)) // 4x of $5k
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -96,9 +96,9 @@ func TestShortOrder_MarginRequired(t *testing.T) {
 
 	// Margin required for short: 100 * $100 * 50% = $5,000
 	// Buying power should be reduced
-	ex.Lock.RLock()
-	bp := ex.DayTradingBuyingPower.Load()
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bp := b.DayTradingBuyingPower.Load()
+	b.Lock.RUnlock()
 
 	// Original $20k - $5k margin = $15k remaining
 	expected := decimal.FromInt(15000)
@@ -112,16 +112,16 @@ func TestCoverOrder_CloseShort(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(60000)) // Include proceeds from short
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(60000)) // Include proceeds from short
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.Lock.Unlock()
 
 	// Set up existing short position
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(-100))                                     // Short 100 shares
 	aapl.Available.Store(decimal.FromInt(100))                                     // Available to cover
@@ -178,14 +178,14 @@ func TestShortPnL_ProfitOnPriceDrop(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	initialCash := decimal.FromInt(50000)
-	ex.Lock.Lock()
-	ex.Cash.Store(initialCash)
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(initialCash)
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -203,9 +203,9 @@ func TestShortPnL_ProfitOnPriceDrop(t *testing.T) {
 	eq.simulateFills(candleShort)
 
 	// Cash should have increased by short proceeds ($10,000 minus fees)
-	ex.Lock.RLock()
-	cashAfterShort := ex.Cash.Load()
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	cashAfterShort := b.Cash.Load()
+	b.Lock.RUnlock()
 
 	// Should be roughly $60,000 (+ $10k proceeds - small fees)
 	if cashAfterShort.Cmp(decimal.FromInt(59900)) < 0 {
@@ -213,7 +213,7 @@ func TestShortPnL_ProfitOnPriceDrop(t *testing.T) {
 	}
 
 	// Cover at $90 (price dropped = profit)
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.Lock()
 	aapl.Available.Store(decimal.FromInt(100))
 	aapl.Lock.Unlock()
@@ -231,9 +231,9 @@ func TestShortPnL_ProfitOnPriceDrop(t *testing.T) {
 	eq.simulateFills(candleCover)
 
 	// Should have profit: sold at 100, bought back at 90 = $10 * 100 = $1000 profit
-	ex.Lock.RLock()
-	cashAfterCover := ex.Cash.Load()
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	cashAfterCover := b.Cash.Load()
+	b.Lock.RUnlock()
 
 	// Net gain should be ~$1000 (minus fees)
 	netGain := cashAfterCover.Sub(initialCash)
@@ -255,14 +255,14 @@ func TestShortPnL_LossOnPriceRise(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	initialCash := decimal.FromInt(50000)
-	ex.Lock.Lock()
-	ex.Cash.Store(initialCash)
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(initialCash)
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -280,7 +280,7 @@ func TestShortPnL_LossOnPriceRise(t *testing.T) {
 	eq.simulateFills(candleShort)
 
 	// Cover at $110 (price rose = loss)
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.Lock()
 	aapl.Available.Store(decimal.FromInt(100))
 	aapl.Lock.Unlock()
@@ -298,9 +298,9 @@ func TestShortPnL_LossOnPriceRise(t *testing.T) {
 	eq.simulateFills(candleCover)
 
 	// Should have loss: sold at 100, bought back at 110 = -$10 * 100 = -$1000 loss
-	ex.Lock.RLock()
-	cashAfterCover := ex.Cash.Load()
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	cashAfterCover := b.Cash.Load()
+	b.Lock.RUnlock()
 
 	netLoss := initialCash.Sub(cashAfterCover)
 	if netLoss.Cmp(decimal.FromInt(900)) < 0 {
@@ -320,9 +320,9 @@ func TestHolding_ShortPosition_Check(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	b := Brokers.Get(ds.BrokerAlpaca)
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(-100)) // Short 100 shares
 	aapl.Available.Store(decimal.FromInt(100)) // 100 available to cover
@@ -339,11 +339,11 @@ func TestHolding_ShortPosition_InvalidCheck(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
+	b := Brokers.Get(ds.BrokerAlpaca)
 
 	// Test that Check() catches invariant violations
 	// We can't easily test panics, but we can verify the helpers work
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(-100))
 	aapl.Available.Store(decimal.FromInt(100))
@@ -380,12 +380,12 @@ func TestCalculateTotalMaintenanceMargin_WithShort(t *testing.T) {
 	resetCubby()
 	Paper = true
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eqAAPL := ex.Equities.Get("AAPL")
-	eqMSFT := ex.Equities.Get("MSFT")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eqAAPL := b.Equities.Get("AAPL")
+	eqMSFT := b.Equities.Get("MSFT")
 
 	// Long AAPL
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(100))
@@ -394,7 +394,7 @@ func TestCalculateTotalMaintenanceMargin_WithShort(t *testing.T) {
 	aapl.Lock.Unlock()
 
 	// Short MSFT
-	msft := ex.Holdings.Get("MSFT")
+	msft := b.Holdings.Get("MSFT")
 	msft.Lock.Lock()
 	msft.Quantity.Store(decimal.FromInt(-50)) // Short
 	msft.Available.Store(decimal.FromInt(50))
@@ -404,7 +404,7 @@ func TestCalculateTotalMaintenanceMargin_WithShort(t *testing.T) {
 	eqAAPL.LastPrice.Store(decimal.FromInt(100)) // 100 * 100 = $10k long
 	eqMSFT.LastPrice.Store(decimal.FromInt(200)) // 50 * 200 = $10k short
 
-	totalMargin := ex.CalculateTotalMaintenanceMargin()
+	totalMargin := b.CalculateTotalMaintenanceMargin()
 
 	// AAPL long: 10000 * 0.30 = 3000
 	// MSFT short: max(10000 * 0.30, 50 * 5) = max(3000, 250) = 3000

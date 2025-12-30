@@ -9,7 +9,7 @@ import (
 
 type Holding struct {
 	Lock       sync.RWMutex
-	Exchange   *Exchange
+	Broker     *Broker
 	Symbol     string // e.g. USD, BTC
 	Quantity   decimal.Decimal
 	Available  decimal.Decimal
@@ -23,17 +23,17 @@ type Holding struct {
 	IsCash     bool
 }
 
-func newHolding(exchange *Exchange, symbol string) *Holding {
+func newHolding(broker *Broker, symbol string) *Holding {
 	h := &Holding{
-		Exchange: exchange,
-		Symbol:   symbol,
-		IsFiat:   looksLikeFiatSymbol(symbol),
-		IsCash:   looksLikeCashSymbol(symbol),
-		Lots:     ds.NewLots(GetCostBasisMethod()),
+		Broker: broker,
+		Symbol: symbol,
+		IsFiat: looksLikeFiatSymbol(symbol),
+		IsCash: looksLikeCashSymbol(symbol),
+		Lots:   ds.NewLots(GetCostBasisMethod()),
 	}
 	if Live {
-		switch h.Exchange.Exchange {
-		case ds.ExchangeCoinbase:
+		switch h.Broker.Broker {
+		case ds.BrokerCoinbase:
 			h.fetchCoinbaseHolding()
 		}
 	}

@@ -2,9 +2,9 @@
 package main
 
 import (
+	"dropbear/broker/coinbase"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
 	"flag"
 	"io"

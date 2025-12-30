@@ -1,22 +1,22 @@
 package teddy
 
 import (
+	"dropbear/broker/coinbase"
 	"dropbear/decimal"
-	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
 	"sync"
 )
 
 type Holdings struct {
 	lock          sync.RWMutex
-	exchange      *Exchange
+	broker        *Broker
 	holdingsMap   map[string]*Holding
 	holdingsArray []*Holding
 }
 
-func newHoldings(exchange *Exchange) *Holdings {
+func newHoldings(broker *Broker) *Holdings {
 	hs := &Holdings{
-		exchange:      exchange,
+		broker:        broker,
 		holdingsMap:   make(map[string]*Holding),
 		holdingsArray: make([]*Holding, 0),
 	}
@@ -36,7 +36,7 @@ func (hs *Holdings) Get(symbol string) *Holding {
 		hs.lock.Lock()
 		ho = hs.holdingsMap[symbol]
 		if ho == nil {
-			ho = newHolding(hs.exchange, symbol)
+			ho = newHolding(hs.broker, symbol)
 			hs.holdingsMap[symbol] = ho
 			hs.holdingsArray = append(hs.holdingsArray, ho)
 		}
@@ -56,11 +56,11 @@ func (hs *Holdings) All() []*Holding {
 	return result
 }
 
-// GetEquityUSD returns the total equity of all holdings in USD on this exchange.
+// GetEquityUSD returns the total equity of all holdings in USD on this broker.
 func (hs *Holdings) GetEquityUSD() decimal.Decimal {
 	total := decimal.Zero
 	for _, holding := range hs.All() {
-		price := holding.Exchange.Pairs.GetPriceUSD(holding.Symbol)
+		price := holding.Broker.Pairs.GetPriceUSD(holding.Symbol)
 		holding.Lock.RLock()
 		value := holding.Quantity.Mul(price)
 		holding.Lock.RUnlock()
@@ -69,14 +69,14 @@ func (hs *Holdings) GetEquityUSD() decimal.Decimal {
 	return total
 }
 
-// GetInvestedUSD returns the total invested (non-cash) equity of all holdings in USD on this exchange.
+// GetInvestedUSD returns the total invested (non-cash) equity of all holdings in USD on this broker.
 func (hs *Holdings) GetInvestedUSD() decimal.Decimal {
 	total := decimal.Zero
 	for _, holding := range hs.All() {
 		if holding.IsCash {
 			continue
 		}
-		price := holding.Exchange.Pairs.GetPriceUSD(holding.Symbol)
+		price := holding.Broker.Pairs.GetPriceUSD(holding.Symbol)
 		holding.Lock.RLock()
 		value := holding.Quantity.Mul(price)
 		holding.Lock.RUnlock()

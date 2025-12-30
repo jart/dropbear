@@ -13,7 +13,7 @@ var flagRatelimitStudy = flag.Bool("ratelimit-study", false, "run alpaca rate li
 // TestRatelimitStudy analyzes Alpaca's rate limiting behavior to determine
 // optimal TokenBucket configuration.
 //
-// Run with: go test ./exchange/alpaca -v -ratelimit-study
+// Run with: go test ./broker/alpaca -v -ratelimit-study
 //
 // Alpaca rate limits (per docs):
 //   - Free tier: 200 calls/min

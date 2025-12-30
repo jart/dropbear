@@ -1,8 +1,8 @@
 package main
 
 import (
+	"dropbear/broker/binanceusd"
 	"dropbear/clocky"
-	"dropbear/exchange/binanceusd"
 	"fmt"
 )
 

@@ -25,8 +25,8 @@ func (sd *samplerDaemon) Close() {
 }
 
 func (sd *samplerDaemon) Run() {
-	oldOnReady := Exchanges.OnReady
-	Exchanges.OnReady = func() {
+	oldOnReady := Brokers.OnReady
+	Brokers.OnReady = func() {
 		if oldOnReady != nil {
 			oldOnReady()
 		}

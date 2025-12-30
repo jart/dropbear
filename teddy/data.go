@@ -13,9 +13,9 @@ type recordedMarketData struct {
 	reader *zstd.Decoder
 }
 
-func openRecordedMarketData(name string, exchange ds.Exchange, symbol string) *recordedMarketData {
+func openRecordedMarketData(name string, broker ds.Broker, symbol string) *recordedMarketData {
 	home := os.Getenv("HOME")
-	path := home + "/marketdata/" + name + "/" + exchange.String() + "/" + symbol
+	path := home + "/marketdata/" + name + "/" + broker.String() + "/" + symbol
 	file, err := os.Open(path)
 	if err != nil {
 		loggy.Fatalf("failed to open market data file: %s: %v", path, err)

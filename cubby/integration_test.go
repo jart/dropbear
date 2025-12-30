@@ -16,27 +16,27 @@ func TestIntegration_DayTradingWithMargin(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Set up PDT account with $50k
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.PatternDayTrader = true
-	ex.LastEquity = decimal.FromInt(50000)
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.PatternDayTrader = true
+	b.LastEquity = decimal.FromInt(50000)
+	b.Lock.Unlock()
 
 	// Initialize DTBP (simulates market open)
-	ex.InitDTBP()
+	b.InitDTBP()
 
 	// Verify 4x leverage available
-	if ex.GetLeverageMultiplier() != 4 {
-		t.Fatalf("expected 4x leverage, got %dx", ex.GetLeverageMultiplier())
+	if b.GetLeverageMultiplier() != 4 {
+		t.Fatalf("expected 4x leverage, got %dx", b.GetLeverageMultiplier())
 	}
 
-	ex.Lock.RLock()
-	bodDTBP := ex.BodDTBP
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bodDTBP := b.BodDTBP
+	b.Lock.RUnlock()
 	if bodDTBP.Cmp(decimal.FromInt(200000)) != 0 {
 		t.Fatalf("expected $200k DTBP, got %s", bodDTBP)
 	}
@@ -61,7 +61,7 @@ func TestIntegration_DayTradingWithMargin(t *testing.T) {
 	}
 
 	// Verify we have the position
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	if aapl.Quantity.Load().Cmp(decimal.FromInt(100)) != 0 {
 		t.Fatalf("expected 100 shares, got %s", aapl.Quantity.Load())
 	}
@@ -108,17 +108,17 @@ func TestIntegration_OvernightPosition(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Start with $50k
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.PatternDayTrader = true
-	ex.LastEquity = decimal.FromInt(50000)
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.PatternDayTrader = true
+	b.LastEquity = decimal.FromInt(50000)
+	b.Lock.Unlock()
 
-	ex.InitDTBP()
+	b.InitDTBP()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -140,23 +140,23 @@ func TestIntegration_OvernightPosition(t *testing.T) {
 	}
 
 	// End day trading time (15:50)
-	ex.EndDayTradingTime()
+	b.EndDayTradingTime()
 
 	// Verify 2x leverage now
-	if ex.GetLeverageMultiplier() != 2 {
-		t.Errorf("expected 2x leverage after 15:50, got %dx", ex.GetLeverageMultiplier())
+	if b.GetLeverageMultiplier() != 2 {
+		t.Errorf("expected 2x leverage after 15:50, got %dx", b.GetLeverageMultiplier())
 	}
 
 	// Lock DTBP at close
-	ex.LockDTBP()
+	b.LockDTBP()
 
 	// LastEquity should be reduced by maintenance margin
 	// Position: 200 * $100 = $20k (using fill price estimate)
 	// Maintenance: $20k * 30% = $6k
 	// Expected LastEquity: ~$50k - $6k = $44k (approximately, fees affect this)
-	ex.Lock.RLock()
-	lastEquity := ex.LastEquity
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	lastEquity := b.LastEquity
+	b.Lock.RUnlock()
 
 	// Just verify it's less than starting equity due to maintenance margin
 	if lastEquity.Cmp(decimal.FromInt(50000)) >= 0 {
@@ -164,12 +164,12 @@ func TestIntegration_OvernightPosition(t *testing.T) {
 	}
 
 	// Initialize next day
-	ex.InitDTBP()
+	b.InitDTBP()
 
 	// Verify reduced DTBP due to overnight position
-	ex.Lock.RLock()
-	newBodDTBP := ex.BodDTBP
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	newBodDTBP := b.BodDTBP
+	b.Lock.RUnlock()
 
 	// Should be less than $200k
 	if newBodDTBP.Cmp(decimal.FromInt(200000)) >= 0 {
@@ -183,15 +183,15 @@ func TestIntegration_ShortSellingProfitable(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Start with $50k
 	initialCash := decimal.FromInt(50000)
-	ex.Lock.Lock()
-	ex.Cash.Store(initialCash)
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(initialCash)
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -213,7 +213,7 @@ func TestIntegration_ShortSellingProfitable(t *testing.T) {
 	}
 
 	// Verify short position
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	if !aapl.IsShort() {
 		t.Fatalf("should have short position")
 	}
@@ -246,9 +246,9 @@ func TestIntegration_ShortSellingProfitable(t *testing.T) {
 	}
 
 	// Should have profit
-	ex.Lock.RLock()
-	finalCash := ex.Cash.Load()
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	finalCash := b.Cash.Load()
+	b.Lock.RUnlock()
 
 	profit := finalCash.Sub(initialCash)
 	if !profit.IsPositive() {
@@ -270,13 +270,13 @@ func TestIntegration_MOCOrderExecution(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(50000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(200000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(50000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(200000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -329,18 +329,18 @@ func TestIntegration_MarginCallRecovery(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
 	// Start with cash and a large leveraged position
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(20000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(80000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(20000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(80000))
+	b.Lock.Unlock()
 
 	// Set up leveraged position: 400 shares at $100 = $40k
 	// This uses $20k cash + $20k margin
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(400))
@@ -352,15 +352,15 @@ func TestIntegration_MarginCallRecovery(t *testing.T) {
 	eq.isReady = true
 
 	// Now cash should be negative due to margin usage
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(-20000)) // Borrowed $20k
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(-20000)) // Borrowed $20k
+	b.Lock.Unlock()
 
 	// Initial state: Equity = -$20k + $40k = $20k
 	// Maintenance = 400 * $100 * 0.30 = $12k
 	// Equity > Maintenance, so no margin call yet
 
-	triggered := ex.CheckMarginCall()
+	triggered := b.CheckMarginCall()
 	if triggered {
 		t.Error("should not trigger margin call initially")
 	}
@@ -372,18 +372,18 @@ func TestIntegration_MarginCallRecovery(t *testing.T) {
 	// Maintenance = 400 * $35 * 0.30 = $4.2k
 	// Equity (-$6k) < Maintenance ($4.2k) - MARGIN CALL!
 
-	triggered = ex.CheckMarginCall()
+	triggered = b.CheckMarginCall()
 	if !triggered {
-		equity := ex.Holdings.GetEquityUSD()
-		maint := ex.CalculateTotalMaintenanceMargin()
+		equity := b.Holdings.GetEquityUSD()
+		maint := b.CalculateTotalMaintenanceMargin()
 		t.Errorf("should trigger margin call, equity=%s, maint=%s", equity, maint)
 	}
 
 	// Verify margin call was recorded
-	ex.Lock.RLock()
-	calls := ex.MarginCallCount
-	liquidated := ex.LiquidatedValue
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	calls := b.MarginCallCount
+	liquidated := b.LiquidatedValue
+	b.Lock.RUnlock()
 
 	if calls == 0 {
 		t.Error("MarginCallCount should be > 0")
@@ -405,23 +405,23 @@ func TestIntegration_CompleteScenario(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eqAAPL := ex.Equities.Get("AAPL")
-	eqMSFT := ex.Equities.Get("MSFT")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eqAAPL := b.Equities.Get("AAPL")
+	eqMSFT := b.Equities.Get("MSFT")
 
 	// Start of day: $100k cash, PDT account
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(100000))
-	ex.PatternDayTrader = true
-	ex.LastEquity = decimal.FromInt(100000)
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(100000))
+	b.PatternDayTrader = true
+	b.LastEquity = decimal.FromInt(100000)
+	b.Lock.Unlock()
 
-	ex.InitDTBP()
+	b.InitDTBP()
 
 	// Should have $400k DTBP
-	ex.Lock.RLock()
-	bodDTBP := ex.BodDTBP
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	bodDTBP := b.BodDTBP
+	b.Lock.RUnlock()
 	if bodDTBP.Cmp(decimal.FromInt(400000)) != 0 {
 		t.Fatalf("expected $400k DTBP, got %s", bodDTBP)
 	}
@@ -464,8 +464,8 @@ func TestIntegration_CompleteScenario(t *testing.T) {
 	}
 
 	// Verify positions
-	aapl := ex.Holdings.Get("AAPL")
-	msft := ex.Holdings.Get("MSFT")
+	aapl := b.Holdings.Get("AAPL")
+	msft := b.Holdings.Get("MSFT")
 
 	if !aapl.IsLong() {
 		t.Error("should have long AAPL position")
@@ -475,25 +475,25 @@ func TestIntegration_CompleteScenario(t *testing.T) {
 	}
 
 	// Check maintenance margin is being calculated
-	margin := ex.CalculateTotalMaintenanceMargin()
+	margin := b.CalculateTotalMaintenanceMargin()
 	if margin.IsZero() {
 		t.Error("should have maintenance margin for positions")
 	}
 
 	// End day trading time
-	ex.EndDayTradingTime()
+	b.EndDayTradingTime()
 
 	// Verify 2x leverage
-	if ex.GetLeverageMultiplier() != 2 {
-		t.Errorf("expected 2x leverage after close, got %dx", ex.GetLeverageMultiplier())
+	if b.GetLeverageMultiplier() != 2 {
+		t.Errorf("expected 2x leverage after close, got %dx", b.GetLeverageMultiplier())
 	}
 
 	// Lock DTBP for next day
-	ex.LockDTBP()
+	b.LockDTBP()
 
-	ex.Lock.RLock()
-	lastEquity := ex.LastEquity
-	ex.Lock.RUnlock()
+	b.Lock.RLock()
+	lastEquity := b.LastEquity
+	b.Lock.RUnlock()
 
 	// LastEquity should be reduced by maintenance margin
 	if lastEquity.Cmp(decimal.FromInt(100000)) >= 0 {

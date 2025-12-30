@@ -16,7 +16,7 @@ import (
 type Equity struct {
 	Symbol     string
 	Lock       sync.RWMutex
-	Exchange   *Exchange
+	Broker     *Broker
 	LastPrice  decimal.Decimal
 	Shares     *Holding // the stock holding (e.g., AAPL shares)
 	Trades     map[ds.Side]int
@@ -27,14 +27,14 @@ type Equity struct {
 	openOrders *treeset.Set[*Order]
 }
 
-func newEquity(exchange *Exchange, symbol string) *Equity {
+func newEquity(broker *Broker, symbol string) *Equity {
 	if gRunning {
 		loggy.Fatalf("cannot create new equity %s while cubby is running", symbol)
 	}
 	return &Equity{
 		Symbol:     symbol,
-		Exchange:   exchange,
-		Shares:     exchange.Holdings.Get(symbol),
+		Broker:     broker,
+		Shares:     broker.Holdings.Get(symbol),
 		Trades:     make(map[ds.Side]int),
 		OnCandle:   func(*indicators.Candle) {},
 		OnReady:    func() {},
@@ -68,7 +68,7 @@ func (e *Equity) handleCandle(candle *indicators.Candle) {
 		}
 		e.isReady = true
 		e.OnReady()
-		e.Exchange.Equities.markReady(e)
+		e.Broker.Equities.markReady(e)
 	}
 
 	// Simulate order fills based on candle OHLC
@@ -90,7 +90,7 @@ func (e *Equity) simulateFills(candle *indicators.Candle) {
 	isCloseCandle := IsMarketCloseCandle(candle.Start)
 
 	for _, order := range orders {
-		if order.State.IsFinal() {
+		if order.State.Load().IsFinal() {
 			continue
 		}
 
@@ -184,7 +184,7 @@ func (e *Equity) simulateFills(candle *indicators.Candle) {
 
 			if unfilled.IsPositive() {
 				fillNotional := fillPrice.Mul(unfilled)
-				fee := e.Exchange.FeeCalculator.Calculate(clocky.Now(), unfilled.Int(), isMarketOrder)
+				fee := e.Broker.FeeCalculator.Calculate(clocky.Now(), unfilled.Int(), isMarketOrder)
 				_, err := order.fill(unfilled, fillNotional, fee, false)
 				if err != nil && *flagVerbose {
 					log.Printf("[cubby] fill error for %s: %v", order.ClientOrderID, err)
@@ -208,7 +208,7 @@ func (e *Equity) MarketOrder(side ds.Side, quantity int) *Order {
 		Type:          ds.OrderTypeMarket,
 		State:         ds.OrderStateNew,
 		Quantity:      qty,
-		PlacedTime:    e.Exchange.Now(),
+		PlacedTime:    e.Broker.Now(),
 		onClose:       make(chan struct{}),
 	}
 
@@ -217,16 +217,16 @@ func (e *Equity) MarketOrder(side ds.Side, quantity int) *Order {
 	case ds.SideBuy:
 		// Reserve buying power - estimate with current price + 5% buffer
 		estimatedCost := e.LastPrice.Load().Mul(decimal.Parse("1.05")).Mul(qty)
-		e.Exchange.Lock.Lock()
-		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		e.Broker.Lock.Lock()
+		buyingPower := e.Broker.DayTradingBuyingPower.Load()
 		if buyingPower.Cmp(estimatedCost) < 0 {
-			e.Exchange.Lock.Unlock()
+			e.Broker.Lock.Unlock()
 			loggy.Fatalf("insufficient buying power: have %s, need %s",
 				buyingPower, estimatedCost)
 		}
 		// Reserve the buying power
-		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
-		e.Exchange.Lock.Unlock()
+		sub(&e.Broker.DayTradingBuyingPower, estimatedCost)
+		e.Broker.Lock.Unlock()
 		order.Hold.Store(estimatedCost)
 
 	case ds.SideSell:
@@ -243,9 +243,9 @@ func (e *Equity) MarketOrder(side ds.Side, quantity int) *Order {
 	}
 
 	// Register order
-	e.Exchange.Orders.lock.Lock()
-	e.Exchange.Orders.Add(order)
-	e.Exchange.Orders.lock.Unlock()
+	e.Broker.Orders.lock.Lock()
+	e.Broker.Orders.Add(order)
+	e.Broker.Orders.lock.Unlock()
 
 	e.Lock.Lock()
 	e.openOrders.Add(order)
@@ -274,7 +274,7 @@ func (e *Equity) LimitOrder(side ds.Side, quantity int, limitPrice decimal.Decim
 		State:         ds.OrderStateNew,
 		LimitPrice:    limitPrice,
 		Quantity:      qty,
-		PlacedTime:    e.Exchange.Now(),
+		PlacedTime:    e.Broker.Now(),
 		onClose:       make(chan struct{}),
 	}
 
@@ -283,15 +283,15 @@ func (e *Equity) LimitOrder(side ds.Side, quantity int, limitPrice decimal.Decim
 	case ds.SideBuy:
 		// Reserve buying power for purchase
 		estimatedCost := limitPrice.Mul(qty)
-		e.Exchange.Lock.Lock()
-		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		e.Broker.Lock.Lock()
+		buyingPower := e.Broker.DayTradingBuyingPower.Load()
 		if buyingPower.Cmp(estimatedCost) < 0 {
-			e.Exchange.Lock.Unlock()
+			e.Broker.Lock.Unlock()
 			loggy.Fatalf("insufficient buying power: have %s, need %s",
 				buyingPower, estimatedCost)
 		}
-		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
-		e.Exchange.Lock.Unlock()
+		sub(&e.Broker.DayTradingBuyingPower, estimatedCost)
+		e.Broker.Lock.Unlock()
 		order.Hold.Store(estimatedCost)
 
 	case ds.SideSell:
@@ -309,9 +309,9 @@ func (e *Equity) LimitOrder(side ds.Side, quantity int, limitPrice decimal.Decim
 	}
 
 	// Register order
-	e.Exchange.Orders.lock.Lock()
-	e.Exchange.Orders.Add(order)
-	e.Exchange.Orders.lock.Unlock()
+	e.Broker.Orders.lock.Lock()
+	e.Broker.Orders.Add(order)
+	e.Broker.Orders.lock.Unlock()
 
 	e.Lock.Lock()
 	e.openOrders.Add(order)
@@ -345,7 +345,7 @@ func (e *Equity) MOOOrder(side ds.Side, quantity int) *Order {
 		Type:          ds.OrderTypeMOO,
 		State:         ds.OrderStateNew,
 		Quantity:      qty,
-		PlacedTime:    e.Exchange.Now(),
+		PlacedTime:    e.Broker.Now(),
 		onClose:       make(chan struct{}),
 	}
 
@@ -353,15 +353,15 @@ func (e *Equity) MOOOrder(side ds.Side, quantity int) *Order {
 	case ds.SideBuy:
 		// Reserve buying power - estimate with current price + 5% buffer
 		estimatedCost := e.LastPrice.Load().Mul(decimal.Parse("1.05")).Mul(qty)
-		e.Exchange.Lock.Lock()
-		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		e.Broker.Lock.Lock()
+		buyingPower := e.Broker.DayTradingBuyingPower.Load()
 		if buyingPower.Cmp(estimatedCost) < 0 {
-			e.Exchange.Lock.Unlock()
+			e.Broker.Lock.Unlock()
 			loggy.Fatalf("insufficient buying power: have %s, need %s",
 				buyingPower, estimatedCost)
 		}
-		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
-		e.Exchange.Lock.Unlock()
+		sub(&e.Broker.DayTradingBuyingPower, estimatedCost)
+		e.Broker.Lock.Unlock()
 		order.Hold.Store(estimatedCost)
 
 	case ds.SideSell:
@@ -377,9 +377,9 @@ func (e *Equity) MOOOrder(side ds.Side, quantity int) *Order {
 		order.Hold.Store(qty)
 	}
 
-	e.Exchange.Orders.lock.Lock()
-	e.Exchange.Orders.Add(order)
-	e.Exchange.Orders.lock.Unlock()
+	e.Broker.Orders.lock.Lock()
+	e.Broker.Orders.Add(order)
+	e.Broker.Orders.lock.Unlock()
 
 	e.Lock.Lock()
 	e.openOrders.Add(order)
@@ -407,22 +407,22 @@ func (e *Equity) MOCOrder(side ds.Side, quantity int) *Order {
 		Type:          ds.OrderTypeMOC,
 		State:         ds.OrderStateNew,
 		Quantity:      qty,
-		PlacedTime:    e.Exchange.Now(),
+		PlacedTime:    e.Broker.Now(),
 		onClose:       make(chan struct{}),
 	}
 
 	switch side {
 	case ds.SideBuy:
 		estimatedCost := e.LastPrice.Load().Mul(decimal.Parse("1.05")).Mul(qty)
-		e.Exchange.Lock.Lock()
-		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		e.Broker.Lock.Lock()
+		buyingPower := e.Broker.DayTradingBuyingPower.Load()
 		if buyingPower.Cmp(estimatedCost) < 0 {
-			e.Exchange.Lock.Unlock()
+			e.Broker.Lock.Unlock()
 			loggy.Fatalf("insufficient buying power: have %s, need %s",
 				buyingPower, estimatedCost)
 		}
-		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
-		e.Exchange.Lock.Unlock()
+		sub(&e.Broker.DayTradingBuyingPower, estimatedCost)
+		e.Broker.Lock.Unlock()
 		order.Hold.Store(estimatedCost)
 
 	case ds.SideSell:
@@ -438,9 +438,9 @@ func (e *Equity) MOCOrder(side ds.Side, quantity int) *Order {
 		order.Hold.Store(qty)
 	}
 
-	e.Exchange.Orders.lock.Lock()
-	e.Exchange.Orders.Add(order)
-	e.Exchange.Orders.lock.Unlock()
+	e.Broker.Orders.lock.Lock()
+	e.Broker.Orders.Add(order)
+	e.Broker.Orders.lock.Unlock()
 
 	e.Lock.Lock()
 	e.openOrders.Add(order)
@@ -469,22 +469,22 @@ func (e *Equity) LOOOrder(side ds.Side, quantity int, limitPrice decimal.Decimal
 		State:         ds.OrderStateNew,
 		LimitPrice:    limitPrice,
 		Quantity:      qty,
-		PlacedTime:    e.Exchange.Now(),
+		PlacedTime:    e.Broker.Now(),
 		onClose:       make(chan struct{}),
 	}
 
 	switch side {
 	case ds.SideBuy:
 		estimatedCost := limitPrice.Mul(qty)
-		e.Exchange.Lock.Lock()
-		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		e.Broker.Lock.Lock()
+		buyingPower := e.Broker.DayTradingBuyingPower.Load()
 		if buyingPower.Cmp(estimatedCost) < 0 {
-			e.Exchange.Lock.Unlock()
+			e.Broker.Lock.Unlock()
 			loggy.Fatalf("insufficient buying power: have %s, need %s",
 				buyingPower, estimatedCost)
 		}
-		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
-		e.Exchange.Lock.Unlock()
+		sub(&e.Broker.DayTradingBuyingPower, estimatedCost)
+		e.Broker.Lock.Unlock()
 		order.Hold.Store(estimatedCost)
 
 	case ds.SideSell:
@@ -500,9 +500,9 @@ func (e *Equity) LOOOrder(side ds.Side, quantity int, limitPrice decimal.Decimal
 		order.Hold.Store(qty)
 	}
 
-	e.Exchange.Orders.lock.Lock()
-	e.Exchange.Orders.Add(order)
-	e.Exchange.Orders.lock.Unlock()
+	e.Broker.Orders.lock.Lock()
+	e.Broker.Orders.Add(order)
+	e.Broker.Orders.lock.Unlock()
 
 	e.Lock.Lock()
 	e.openOrders.Add(order)
@@ -531,22 +531,22 @@ func (e *Equity) LOCOrder(side ds.Side, quantity int, limitPrice decimal.Decimal
 		State:         ds.OrderStateNew,
 		LimitPrice:    limitPrice,
 		Quantity:      qty,
-		PlacedTime:    e.Exchange.Now(),
+		PlacedTime:    e.Broker.Now(),
 		onClose:       make(chan struct{}),
 	}
 
 	switch side {
 	case ds.SideBuy:
 		estimatedCost := limitPrice.Mul(qty)
-		e.Exchange.Lock.Lock()
-		buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+		e.Broker.Lock.Lock()
+		buyingPower := e.Broker.DayTradingBuyingPower.Load()
 		if buyingPower.Cmp(estimatedCost) < 0 {
-			e.Exchange.Lock.Unlock()
+			e.Broker.Lock.Unlock()
 			loggy.Fatalf("insufficient buying power: have %s, need %s",
 				buyingPower, estimatedCost)
 		}
-		sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
-		e.Exchange.Lock.Unlock()
+		sub(&e.Broker.DayTradingBuyingPower, estimatedCost)
+		e.Broker.Lock.Unlock()
 		order.Hold.Store(estimatedCost)
 
 	case ds.SideSell:
@@ -562,9 +562,9 @@ func (e *Equity) LOCOrder(side ds.Side, quantity int, limitPrice decimal.Decimal
 		order.Hold.Store(qty)
 	}
 
-	e.Exchange.Orders.lock.Lock()
-	e.Exchange.Orders.Add(order)
-	e.Exchange.Orders.lock.Unlock()
+	e.Broker.Orders.lock.Lock()
+	e.Broker.Orders.Add(order)
+	e.Broker.Orders.lock.Unlock()
 
 	e.Lock.Lock()
 	e.openOrders.Add(order)
@@ -599,7 +599,7 @@ func (e *Equity) ShortOrder(quantity int) *Order {
 		Type:          ds.OrderTypeMarket,
 		State:         ds.OrderStateNew,
 		Quantity:      qty,
-		PlacedTime:    e.Exchange.Now(),
+		PlacedTime:    e.Broker.Now(),
 		onClose:       make(chan struct{}),
 		IsShortSale:   true,
 	}
@@ -608,15 +608,15 @@ func (e *Equity) ShortOrder(quantity int) *Order {
 	// Initial margin is typically 50% for shorts
 	marginRequired := InitialMargin(e.Symbol, qty.Neg(), e.LastPrice.Load())
 
-	e.Exchange.Lock.Lock()
-	buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+	e.Broker.Lock.Lock()
+	buyingPower := e.Broker.DayTradingBuyingPower.Load()
 	if buyingPower.Cmp(marginRequired) < 0 {
-		e.Exchange.Lock.Unlock()
+		e.Broker.Lock.Unlock()
 		loggy.Fatalf("insufficient margin for short: have %s, need %s",
 			buyingPower, marginRequired)
 	}
-	sub(&e.Exchange.DayTradingBuyingPower, marginRequired)
-	e.Exchange.Lock.Unlock()
+	sub(&e.Broker.DayTradingBuyingPower, marginRequired)
+	e.Broker.Lock.Unlock()
 	order.Hold.Store(marginRequired)
 
 	// Track available for cover
@@ -625,9 +625,9 @@ func (e *Equity) ShortOrder(quantity int) *Order {
 	e.Shares.Lock.Unlock()
 
 	// Register order
-	e.Exchange.Orders.lock.Lock()
-	e.Exchange.Orders.Add(order)
-	e.Exchange.Orders.lock.Unlock()
+	e.Broker.Orders.lock.Lock()
+	e.Broker.Orders.Add(order)
+	e.Broker.Orders.lock.Unlock()
 
 	e.Lock.Lock()
 	e.openOrders.Add(order)
@@ -673,17 +673,17 @@ func (e *Equity) CoverOrder(quantity int) *Order {
 		Type:          ds.OrderTypeMarket,
 		State:         ds.OrderStateNew,
 		Quantity:      qty,
-		PlacedTime:    e.Exchange.Now(),
+		PlacedTime:    e.Broker.Now(),
 		onClose:       make(chan struct{}),
 		IsCover:       true,
 	}
 
 	// Reserve buying power to cover
 	estimatedCost := e.LastPrice.Load().Mul(decimal.Parse("1.05")).Mul(qty)
-	e.Exchange.Lock.Lock()
-	buyingPower := e.Exchange.DayTradingBuyingPower.Load()
+	e.Broker.Lock.Lock()
+	buyingPower := e.Broker.DayTradingBuyingPower.Load()
 	if buyingPower.Cmp(estimatedCost) < 0 {
-		e.Exchange.Lock.Unlock()
+		e.Broker.Lock.Unlock()
 		// Restore available
 		e.Shares.Lock.Lock()
 		add(&e.Shares.Available, qty)
@@ -691,14 +691,14 @@ func (e *Equity) CoverOrder(quantity int) *Order {
 		loggy.Fatalf("insufficient buying power to cover: have %s, need %s",
 			buyingPower, estimatedCost)
 	}
-	sub(&e.Exchange.DayTradingBuyingPower, estimatedCost)
-	e.Exchange.Lock.Unlock()
+	sub(&e.Broker.DayTradingBuyingPower, estimatedCost)
+	e.Broker.Lock.Unlock()
 	order.Hold.Store(estimatedCost)
 
 	// Register order
-	e.Exchange.Orders.lock.Lock()
-	e.Exchange.Orders.Add(order)
-	e.Exchange.Orders.lock.Unlock()
+	e.Broker.Orders.lock.Lock()
+	e.Broker.Orders.Add(order)
+	e.Broker.Orders.lock.Unlock()
 
 	e.Lock.Lock()
 	e.openOrders.Add(order)
@@ -713,10 +713,10 @@ func (e *Equity) CoverOrder(quantity int) *Order {
 }
 
 func compareEquities(a, b *Equity) int {
-	if a.Exchange.Exchange < b.Exchange.Exchange {
+	if a.Broker.Broker < b.Broker.Broker {
 		return -1
 	}
-	if a.Exchange.Exchange > b.Exchange.Exchange {
+	if a.Broker.Broker > b.Broker.Broker {
 		return +1
 	}
 	if a.Symbol < b.Symbol {

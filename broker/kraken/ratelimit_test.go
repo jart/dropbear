@@ -17,12 +17,12 @@ import (
 // They require valid API credentials in kraken.json.
 //
 // Run with:
-//   go test -v ./exchange/kraken -run TestProbe -kraken-key=kraken.json
+//   go test -v ./broker/kraken -run TestProbe -kraken-key=kraken.json
 //
 // Individual probes:
-//   go test -v ./exchange/kraken -run TestProbeRESTRateLimit
-//   go test -v ./exchange/kraken -run TestProbeTradingRateLimit
-//   go test -v ./exchange/kraken -run TestProbePublicLatency
+//   go test -v ./broker/kraken -run TestProbeRESTRateLimit
+//   go test -v ./broker/kraken -run TestProbeTradingRateLimit
+//   go test -v ./broker/kraken -run TestProbePublicLatency
 
 var probeFlag = flag.Bool("probe", false, "run live rate limit probing tests")
 

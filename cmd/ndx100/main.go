@@ -29,7 +29,7 @@ var (
 )
 
 var (
-	gExchange      *cubby.Exchange
+	gBroker        *cubby.Broker
 	gBenchmark     *cubby.Equity
 	gEquities      []*cubby.Equity
 	gLastRebalance clocky.Time
@@ -46,23 +46,23 @@ func main() {
 		loggy.Fatalf("no symbols loaded from %s", *flagSymbols)
 	}
 
-	// Set up exchange and equities
-	gExchange = cubby.Exchanges.Get(ds.ExchangeAlpaca)
-	gBenchmark = gExchange.Equities.Get(*flagBenchmark)
+	// Set up broker and equities
+	gBroker = cubby.Brokers.Get(ds.BrokerAlpaca)
+	gBenchmark = gBroker.Equities.Get(*flagBenchmark)
 
 	// Register all equities
 	for _, sym := range symbols {
-		eq := gExchange.Equities.Get(sym)
+		eq := gBroker.Equities.Get(sym)
 		eq.OnCandle = makeOnCandle(eq)
 		gEquities = append(gEquities, eq)
 	}
 
 	// Set initial balance and benchmark
-	cubby.SetBalance(ds.ExchangeAlpaca, "USD", *flagCash)
+	cubby.SetBalance(ds.BrokerAlpaca, "USD", *flagCash)
 	cubby.SetBenchmark(gBenchmark)
 
 	// Set up global ready callback for initial allocation
-	cubby.Exchanges.OnReady = onReady
+	cubby.Brokers.OnReady = onReady
 
 	// Run the framework
 	cubby.Run()
@@ -174,7 +174,7 @@ func rebalance() {
 		// Buy if underweight
 		if diff.IsPositive() && diff.Cmp(threshold) >= 0 {
 			// Read fresh buying power each time (cubby decrements on order)
-			buyingPower := eq.Exchange.DayTradingBuyingPower.Load()
+			buyingPower := eq.Broker.DayTradingBuyingPower.Load()
 			// MarketOrder adds 5% buffer + fees, so use 10% margin
 			costPerShare := price.MulInt(110).DivInt(100)
 			if buyingPower.Cmp(costPerShare) < 0 {

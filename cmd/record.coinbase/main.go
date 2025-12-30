@@ -1,7 +1,7 @@
 package main
 
 import (
-	"dropbear/exchange/coinbase"
+	"dropbear/broker/coinbase"
 	"dropbear/loggy"
 	"flag"
 	"log"

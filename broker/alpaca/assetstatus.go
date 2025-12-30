@@ -2,7 +2,7 @@ package alpaca
 
 import "fmt"
 
-type AssetStatus int
+type AssetStatus uint8
 
 const (
 	AssetStatusActive AssetStatus = iota

@@ -8,10 +8,10 @@
 package main
 
 import (
+	"dropbear/broker/coinbase"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/exchange/coinbase"
 	"dropbear/indicators"
 	"dropbear/loggy"
 	"dropbear/teddy"
@@ -44,8 +44,8 @@ var (
 )
 
 var (
-	gCoinbase      *teddy.Exchange
-	gBinance       *teddy.Exchange
+	gCoinbase      *teddy.Broker
+	gBinance       *teddy.Broker
 	gHolding       *teddy.Holding
 	gCoinbasePair  *teddy.Pair
 	gBinancePair   *teddy.Pair
@@ -87,12 +87,12 @@ func main() {
 		gIntensity = indicators.NewIntensity(*flagIntensity)
 	}
 
-	gCoinbase = teddy.Exchanges.Get(ds.ExchangeCoinbase)
+	gCoinbase = teddy.Brokers.Get(ds.BrokerCoinbase)
 	gHolding = gCoinbase.Holdings.Get(*flagSymbol)
 	gCoinbasePair = gCoinbase.Pairs.Get(*flagSymbol + "-USD")
 	gCoinbasePair.OnTick = onCoinbaseTick
 
-	gBinance = teddy.Exchanges.Get(ds.ExchangeBinance)
+	gBinance = teddy.Brokers.Get(ds.BrokerBinance)
 	if *flagSymbol == "ZEC" {
 		gBinancePair = gBinance.Pairs.Get(*flagSymbol + "USDT")
 	} else {
@@ -112,7 +112,7 @@ func main() {
 		}
 	}
 
-	teddy.SetBalance(ds.ExchangeCoinbase, "USD", *flagUSD)
+	teddy.SetBalance(ds.BrokerCoinbase, "USD", *flagUSD)
 	teddy.SetBenchmark(gCoinbasePair)
 	teddy.Run()
 }

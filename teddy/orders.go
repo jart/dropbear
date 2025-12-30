@@ -1,10 +1,10 @@
 package teddy
 
 import (
+	"dropbear/broker/coinbase"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/exchange/coinbase"
 	"dropbear/loggy"
 	"strings"
 	"sync"
@@ -14,7 +14,7 @@ import (
 )
 
 type Orders struct {
-	Exchange     *Exchange
+	Broker       *Broker
 	lock         sync.RWMutex
 	ordersArray  []*Order
 	ordersMap    map[string]*Order // by clientOrderID or orderID
@@ -51,9 +51,9 @@ func (os *Orders) Open() []*Order {
 	return result
 }
 
-func newOrders(ex *Exchange) *Orders {
+func newOrders(ex *Broker) *Orders {
 	return &Orders{
-		Exchange:    ex,
+		Broker:      ex,
 		ordersArray: make([]*Order, 0),
 		ordersMap:   make(map[string]*Order),
 		openOrders:  treeset.NewWith(compareOrdersByClientOrderID),

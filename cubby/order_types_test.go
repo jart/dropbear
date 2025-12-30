@@ -47,15 +47,15 @@ func TestMOOOrder_FillsAtOpen(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 
 	eq.LastPrice.Store(decimal.FromInt(100))
@@ -94,15 +94,15 @@ func TestMOCOrder_FillsAtClose(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 
 	eq.LastPrice.Store(decimal.FromInt(100))
@@ -133,15 +133,15 @@ func TestLOOOrder_LimitHonored(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 
 	eq.LastPrice.Store(decimal.FromInt(100))
@@ -172,15 +172,15 @@ func TestLOCOrder_LimitHonored(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 
 	eq.LastPrice.Store(decimal.FromInt(100))
@@ -211,13 +211,13 @@ func TestMOOOrder_DoesNotFillMidDay(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -240,13 +240,13 @@ func TestMOCOrder_DoesNotFillMidDay(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -269,13 +269,13 @@ func TestLOOOrder_NoFillIfGapAboveLimit(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -298,13 +298,13 @@ func TestLOCOrder_NoFillIfCloseAboveLimit(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(10000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(40000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(10000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(40000))
+	b.Lock.Unlock()
 
 	eq.LastPrice.Store(decimal.FromInt(100))
 	eq.isReady = true
@@ -327,15 +327,15 @@ func TestMOOSellOrder_FillsAtOpen(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(5000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(20000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(5000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(20000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(20))
@@ -375,15 +375,15 @@ func TestLOOSellOrder_FillsWhenLimitMet(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(5000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(20000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(5000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(20000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(20))
@@ -415,15 +415,15 @@ func TestLOOSellOrder_NoFillWhenOpenBelowLimit(t *testing.T) {
 	Paper = true
 	gRateLimiter = newRateLimiter()
 
-	ex := Exchanges.Get(ds.ExchangeAlpaca)
-	eq := ex.Equities.Get("AAPL")
+	b := Brokers.Get(ds.BrokerAlpaca)
+	eq := b.Equities.Get("AAPL")
 
-	ex.Lock.Lock()
-	ex.Cash.Store(decimal.FromInt(5000))
-	ex.DayTradingBuyingPower.Store(decimal.FromInt(20000))
-	ex.Lock.Unlock()
+	b.Lock.Lock()
+	b.Cash.Store(decimal.FromInt(5000))
+	b.DayTradingBuyingPower.Store(decimal.FromInt(20000))
+	b.Lock.Unlock()
 
-	aapl := ex.Holdings.Get("AAPL")
+	aapl := b.Holdings.Get("AAPL")
 	aapl.Lots = ds.NewLots(ds.CostBasisMethodLIFO)
 	aapl.Lock.Lock()
 	aapl.Quantity.Store(decimal.FromInt(20))

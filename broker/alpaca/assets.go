@@ -16,11 +16,11 @@ import (
 
 type Asset struct {
 	Symbol                 string          // e.g. GOOG, BRK.B, BTC/USD
-	Class                  AssetClass      // e.g. AssetClassUSEquity, AssetClassCrypto
 	Exchange               Exchange        // e.g. ExchangeNYSE, ExchangeNASDAQ, ExchangeCrypto
-	Status                 AssetStatus     // e.g. AssetStatusActive, AssetStatusInactive
 	Name                   string          // e.g. Alphabet Inc. Class C Capital Stock, Bitcoin / US Dollar
 	ID                     string          // e.g. 60d10d62-7876-415d-9feb-c92cd87076da
+	Class                  AssetClass      // e.g. AssetClassUSEquity, AssetClassCrypto
+	Status                 AssetStatus     // e.g. AssetStatusActive, AssetStatusInactive
 	IPO                    bool            // currently in initial public offering phase (limit orders only)
 	Tradable               bool            // can be bought or sold on Alpaca
 	Marginable             bool            // can be purchased with borrowed funds (margin)

@@ -24,7 +24,7 @@ var (
 )
 
 var (
-	gExchange  *cubby.Exchange
+	gBroker    *cubby.Broker
 	gEquity    *cubby.Equity
 	gBenchmark *cubby.Equity
 	gSMA       *indicators.SMA
@@ -38,13 +38,13 @@ func main() {
 	loggy.Init()
 	cubby.Init()
 
-	// Set up exchange and equities
-	gExchange = cubby.Exchanges.Get(ds.ExchangeAlpaca)
-	gEquity = gExchange.Equities.Get(*flagSymbol)
-	gBenchmark = gExchange.Equities.Get(*flagBenchmark)
+	// Set up broker and equities
+	gBroker = cubby.Brokers.Get(ds.BrokerAlpaca)
+	gEquity = gBroker.Equities.Get(*flagSymbol)
+	gBenchmark = gBroker.Equities.Get(*flagBenchmark)
 
 	// Set initial balance and benchmark
-	cubby.SetBalance(ds.ExchangeAlpaca, "USD", *flagCash)
+	cubby.SetBalance(ds.BrokerAlpaca, "USD", *flagCash)
 	cubby.SetBenchmark(gBenchmark)
 
 	// Initialize SMA indicator (convert days to minutes)
@@ -80,7 +80,7 @@ func onCandle(c *indicators.Candle) {
 	// Current position
 	shares := gEquity.Shares.Quantity.Load()
 	hasPosition := shares.IsPositive()
-	buyingPower := gEquity.Exchange.DayTradingBuyingPower.Load()
+	buyingPower := gEquity.Broker.DayTradingBuyingPower.Load()
 
 	switch {
 	case bullish && !hasPosition && buyingPower.IsPositive():

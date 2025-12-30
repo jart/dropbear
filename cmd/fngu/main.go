@@ -48,7 +48,7 @@ var (
 )
 
 var (
-	gExchange  *cubby.Exchange
+	gBroker    *cubby.Broker
 	gEquity    *cubby.Equity
 	gHodl      *cubby.Equity // symbol to hold when not trading (for yield)
 	gBenchmark *cubby.Equity
@@ -83,12 +83,12 @@ func main() {
 	loggy.Init()
 	cubby.Init()
 
-	// Set up exchange and equities
-	gExchange = cubby.Exchanges.Get(ds.ExchangeAlpaca)
-	gEquity = gExchange.Equities.Get(*flagSymbol)
-	gBenchmark = gExchange.Equities.Get(*flagBenchmark)
+	// Set up broker and equities
+	gBroker = cubby.Brokers.Get(ds.BrokerAlpaca)
+	gEquity = gBroker.Equities.Get(*flagSymbol)
+	gBenchmark = gBroker.Equities.Get(*flagBenchmark)
 	if *flagHodl != "" {
-		gHodl = gExchange.Equities.Get(*flagHodl)
+		gHodl = gBroker.Equities.Get(*flagHodl)
 		gHodl.OnCandle = func(*indicators.Candle) {} // just need price tracking
 	}
 
@@ -97,11 +97,11 @@ func main() {
 	gBenchmark.OnCandle = func(*indicators.Candle) {} // just for benchmark tracking
 
 	// Set initial balance and benchmark
-	cubby.SetBalance(ds.ExchangeAlpaca, "USD", *flagCash)
+	cubby.SetBalance(ds.BrokerAlpaca, "USD", *flagCash)
 	cubby.SetBenchmark(gBenchmark)
 
 	// Set up ready callback
-	cubby.Exchanges.OnReady = onReady
+	cubby.Brokers.OnReady = onReady
 
 	log.Printf("FNGU Day Trading Strategy")
 	log.Printf("  Symbol: %s", *flagSymbol)
@@ -237,7 +237,7 @@ func checkBreakoutEntry(c *indicators.Candle, now time.Time) {
 	// Cap max position to $1B to avoid decimal overflow on sale proceeds
 	// (with 40x leverage and big gains, selling can produce multi-billion proceeds)
 	maxPosition := decimal.FromInt(1000000000)
-	buyingPower := gEquity.Exchange.DayTradingBuyingPower.Load()
+	buyingPower := gEquity.Broker.DayTradingBuyingPower.Load()
 	// Cap buying power to avoid overflow
 	if buyingPower.Cmp(maxPosition) > 0 {
 		buyingPower = maxPosition
@@ -350,7 +350,7 @@ func buyHodl() {
 	if price.IsZero() {
 		return
 	}
-	cash := gExchange.Cash.Load()
+	cash := gBroker.Cash.Load()
 	if !cash.IsPositive() {
 		return
 	}

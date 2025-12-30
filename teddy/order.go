@@ -24,7 +24,7 @@ type Order struct {
 	Hold          decimal.Decimal
 	Fee           decimal.Decimal
 	PlacedTime    clocky.Time     // when we created the object
-	CreatedTime   clocky.Time     // when exchange says it was created
+	CreatedTime   clocky.Time     // when broker says it was created
 	LastFillTime  clocky.Time     // when last fill occurred
 	lastFees      decimal.Decimal // used for coinbase fee tracking
 	onClose       chan struct{}
@@ -40,13 +40,13 @@ func (o *Order) Cancel() error {
 		return ds.ErrOrderNotFound
 	}
 	if !Paper {
-		switch o.Pair.Exchange.Exchange {
-		case ds.ExchangeCoinbase:
+		switch o.Pair.Broker.Broker {
+		case ds.BrokerCoinbase:
 			if err := CoinbaseClient.CancelOrder(o.OrderID); err != nil {
 				return err
 			}
 		default:
-			panic("unsupported exchange")
+			panic("unsupported broker")
 		}
 	}
 	o.kill(ds.OrderStateCanceled)
@@ -56,7 +56,7 @@ func (o *Order) Cancel() error {
 // kill transitions order to final state.
 func (order *Order) kill(state ds.OrderState) {
 	pair := order.Pair
-	orders := pair.Exchange.Orders
+	orders := pair.Broker.Orders
 	order.Lock.Lock()
 	order.State.Store(state)
 	hold := order.Hold.Load()
@@ -107,13 +107,13 @@ func (order *Order) kill(state ds.OrderState) {
 	}
 }
 
-// fill accounts for a fill on an order, computing fee from exchange taker rate.
+// fill accounts for a fill on an order, computing fee from broker taker rate.
 // Returns the actual filled quantity (may be less than requested if order nearly full)
 // and an error if the order cannot accept any more fills.
 func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) (decimal.Decimal, error) {
 	pair := order.Pair
-	exchange := pair.Exchange
-	orders := exchange.Orders
+	broker := pair.Broker
+	orders := broker.Orders
 	now := clocky.Now()
 
 	// perform sanity checks
@@ -142,7 +142,7 @@ func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) 
 	fee := actualNotional.Mul(feeRate)
 	dir := decimal.Decimal(order.Side)
 	total := actualNotional.Add(fee.Mul(dir))
-	rebate := fee.Mul(exchange.Rebate.Load())
+	rebate := fee.Mul(broker.Rebate.Load())
 
 	// detect if kill() already ran and released the hold
 	// this happens when a fill update arrives after we locally cancelled
@@ -232,7 +232,7 @@ func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) 
 	}
 
 	// credit usdc holding with commission rebate
-	usdcHolding := exchange.Holdings.Get("USDC")
+	usdcHolding := broker.Holdings.Get("USDC")
 	usdcHolding.Lock.Lock()
 	add(&usdcHolding.Quantity, rebate)
 	add(&usdcHolding.Available, rebate)
@@ -254,9 +254,9 @@ func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) 
 	}
 
 	// track additional metrics
-	exchange.Lock.Lock()
-	exchange.Fees = exchange.Fees.Add(fee)
-	exchange.Lock.Unlock()
+	broker.Lock.Lock()
+	broker.Fees = broker.Fees.Add(fee)
+	broker.Lock.Unlock()
 	pair.Lock.Lock()
 	pair.Trades[order.Side]++
 	pair.Lock.Unlock()
