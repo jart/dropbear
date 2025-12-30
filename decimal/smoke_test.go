@@ -38,7 +38,7 @@ func randomCryptoValueImpl(rng *rand.Rand) float64 {
 	return rng.Float64()
 }
 
-// bigScale is 10^9 as a big.Int for exact arithmetic
+// bigScale is Scale as a big.Int for exact arithmetic
 var bigScale = big.NewInt(Scale)
 
 // exactAdd returns a+b if it fits in int64, or (0, false) if it overflows.
@@ -206,9 +206,9 @@ func TestSmokeFloat64Conversion(t *testing.T) {
 			absF = -absF
 		}
 
-		// Tolerance: max of (1e-9 absolute, 1e-7 relative to magnitude)
+		// Tolerance: max of (1e-8 absolute, 1e-7 relative to magnitude)
 		// The 1e-7 relative accounts for float64 having ~16 significant digits
-		tolerance := 1e-9
+		tolerance := 1e-8
 		if rel := absF * 1e-7; rel > tolerance {
 			tolerance = rel
 		}

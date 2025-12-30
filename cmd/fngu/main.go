@@ -1,7 +1,13 @@
 // Command fngu implements a day trading strategy for FNGU (3x FANG+ ETN).
 //
-// FNGU has 30% maintenance margin instead of proper 75%, enabling
-// 40x effective day trading leverage (4x buying power / 30% × 3x).
+// Leverage breakdown:
+//   - Reg-T initial margin: 50% = 2x overnight buying power
+//   - PDT intraday margin: 25% = 4x day trading buying power
+//   - FNGU is 3x leveraged ETN
+//   - Effective leverage: 4x (PDT) × 3x (ETN) = 12x intraday
+//
+// The 30% maintenance margin (vs 75% for normal leveraged ETFs) just means
+// less chance of margin calls overnight, not more buying power.
 //
 // Strategy: Intraday momentum breakout
 //   - Enter long when price breaks above N-minute high

@@ -28,7 +28,7 @@ func (b *BOP) Add(c *Candle) {
 	if rang.IsZero() {
 		return
 	}
-	bop := c.Close.Sub(c.Open).Div(rang)
+	bop := c.Close.Sub(c.Open).DivEven(rang)
 	b.wwma.Add(bop)
 	b.Value = b.wwma.Value
 }

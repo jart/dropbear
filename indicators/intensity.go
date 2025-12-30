@@ -159,7 +159,7 @@ func (ti *Intensity) OptimalSpread() decimal.Decimal {
 	if ti.Kappa.IsZero() {
 		return decimal.Zero
 	}
-	return decimal.One.Div(ti.Kappa)
+	return decimal.One.DivEven(ti.Kappa)
 }
 
 func (ti *Intensity) hasVolume(v float64) bool {

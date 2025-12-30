@@ -107,7 +107,7 @@ func Parse(str string) Decimal {
 				}
 				mul := pow10[shift]
 				if x > math.MaxInt64/mul || x < math.MinInt64/mul {
-					panic("exponent overflow")
+					panic("toasted number")
 				}
 				x *= mul
 				exp -= shift

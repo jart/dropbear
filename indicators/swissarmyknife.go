@@ -165,5 +165,5 @@ func (s *SwissArmyKnife) Add(price decimal.Decimal) {
 	s.filt[1] = s.filt[0]
 	s.filt[0] = output
 
-	s.Value = decimal.Decimal(int64(output * 1e9))
+	s.Value = decimal.Decimal(int64(output * 1e8))
 }

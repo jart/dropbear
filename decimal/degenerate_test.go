@@ -81,7 +81,6 @@ func TestQuantizeZero(t *testing.T) {
 		name string
 		fn   func() Decimal
 	}{
-		{"Quantize", func() Decimal { return d.QuantizeTruncate(Zero) }},
 		{"QuantizeTruncate", func() Decimal { return d.QuantizeTruncate(Zero) }},
 		{"QuantizeAway", func() Decimal { return d.QuantizeAway(Zero) }},
 		{"QuantizeFloor", func() Decimal { return d.QuantizeFloor(Zero) }},

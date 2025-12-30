@@ -16,8 +16,8 @@ func (d Decimal) DivIntEven(n int) Decimal {
 	rem := x % y
 
 	if rem != 0 {
-		// Use uint64 for safe magnitude comparison to handle MinInt64 correctly.
-		// (math.MinInt64 has no positive counterpart in int64).
+		// use uint64 for safe magnitude comparison, to handle MinInt64
+		// correctly math.MinInt64 has no positive counterpart in int64
 		absRem := uint64(rem)
 		if rem < 0 {
 			absRem = uint64(-rem)
@@ -27,21 +27,21 @@ func (d Decimal) DivIntEven(n int) Decimal {
 			absY = uint64(-y)
 		}
 
-		// Determine the halfway point.
+		// determine halfway point
 		half := absY / 2
 		roundAway := false
 
 		if absRem > half {
-			// Remainder is strictly greater than half: always round away.
+			// remainder is strictly greater than half: always round away
 			roundAway = true
 		} else if absRem == half {
-			// Exact tie (remainder is exactly half of divisor).
-			// This can only happen if absY is even.
-			// If absY is odd, half = floor(y/2), so absRem == half implies absRem < y/2.
+			// exact tie (remainder is exactly half of divisor)
+			// this can only happen if absY is even
+			// if absY is odd, half = floor(y/2), so absRem == half implies absRem < y/2
 			if absY&1 == 0 {
-				// Banker's Rounding: Round to the nearest EVEN integer.
-				// If current quo is odd, adding 1 (magnitude) makes it even.
-				// If current quo is even, we leave it alone.
+				// banksters' rounding: rounds to the nearest *even* integer
+				// if current quo is odd, adding 1 (magnitude) makes it even
+				// if current quo is even, we leave it alone
 				if quo&1 != 0 {
 					roundAway = true
 				}

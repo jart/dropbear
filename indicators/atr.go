@@ -23,7 +23,7 @@ type ATR struct {
 func NewATR(period int) *ATR {
 	return &ATR{
 		period: period,
-		k:      decimal.One.Div(decimal.FromInt(period)),
+		k:      decimal.One.DivIntEven(period),
 	}
 }
 
@@ -52,7 +52,7 @@ func (a *ATR) Add(c *Candle) {
 	// during warmup, use simple moving average
 	if a.samples <= a.period {
 		a.smaSum = a.smaSum.Add(tr)
-		a.Value = a.smaSum.Div(decimal.FromInt(a.samples))
+		a.Value = a.smaSum.DivIntEven(a.samples)
 		return
 	}
 

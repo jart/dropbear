@@ -31,7 +31,7 @@ func newEquity(exchange *Exchange, symbol string) *Equity {
 	if gRunning {
 		loggy.Fatalf("cannot create new equity %s while cubby is running", symbol)
 	}
-	e := &Equity{
+	return &Equity{
 		Symbol:     symbol,
 		Exchange:   exchange,
 		Shares:     exchange.Holdings.Get(symbol),
@@ -41,7 +41,6 @@ func newEquity(exchange *Exchange, symbol string) *Equity {
 		openOrders: treeset.NewWith(compareOrdersByClientOrderID),
 		repr:       symbol,
 	}
-	return e
 }
 
 func (e *Equity) String() string {
@@ -185,7 +184,6 @@ func (e *Equity) simulateFills(candle *indicators.Candle) {
 
 			if unfilled.IsPositive() {
 				fillNotional := fillPrice.Mul(unfilled)
-				// Calculate Alpaca Elite fees
 				fee := e.Exchange.FeeCalculator.Calculate(clocky.Now(), unfilled.Int(), isMarketOrder)
 				_, err := order.fill(unfilled, fillNotional, fee, false)
 				if err != nil && *flagVerbose {

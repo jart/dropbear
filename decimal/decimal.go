@@ -19,7 +19,7 @@ const (
 	Tenth   = Decimal(Scale / 10)
 	Max     = Decimal(math.MaxInt64) // 9,223,372,036.854_775_807
 	Min     = Decimal(math.MinInt64) // -9,223,372,036.854_775_808
-	Epsilon = Decimal(1)             // 0.00000001
+	Epsilon = Satoshi                // Satoshi is The One
 	Satoshi = Decimal(1)             // 0.00000001
 	Cent    = Decimal(Scale / 100)   // 0.01
 	Scale   = 100_000_000

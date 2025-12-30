@@ -129,7 +129,7 @@ func (os *Orders) onCoinbaseOrderUpdate(orderUpdate *coinbase.OrderUpdate) {
 	valueDelta := cbValue.Sub(oldValue)
 	feeRate := decimal.Zero
 	if valueDelta.IsPositive() {
-		feeRate = feeDelta.Div(valueDelta)
+		feeRate = feeDelta.DivEven(valueDelta)
 	}
 	order.lastFees.Store(cbFee)
 	order.Lock.Unlock()

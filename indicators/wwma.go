@@ -15,7 +15,7 @@ type WWMA struct {
 func NewWWMA(count int) *WWMA {
 	return &WWMA{
 		count: count,
-		k:     decimal.One.Div(decimal.FromInt(count)),
+		k:     decimal.One.DivIntEven(count),
 	}
 }
 
@@ -40,7 +40,7 @@ func (w *WWMA) Add(value decimal.Decimal) {
 	// during warmup, use simple moving average
 	if w.samples <= w.count {
 		w.smaSum = w.smaSum.Add(value)
-		w.Value = w.smaSum.Div(decimal.FromInt(w.samples))
+		w.Value = w.smaSum.DivIntEven(w.samples)
 		return
 	}
 

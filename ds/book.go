@@ -64,7 +64,7 @@ func (b *Book) Staleness() time.Duration {
 // MidPrice returns the market price.
 func (b *Book) MidPrice() decimal.Decimal {
 	bid, ask := b.BestBidAsk()
-	return bid.Add(ask).DivInt(2)
+	return bid.Add(ask).DivIntEven(2)
 }
 
 // BestBidAsk returns the national best bid and ask prices.
@@ -384,7 +384,7 @@ func (b *Book) MidPriceAtDepth(valueDepth decimal.Decimal) decimal.Decimal {
 	if bid.IsZero() || ask.IsZero() {
 		return decimal.Zero
 	}
-	return bid.Add(ask).DivInt(2)
+	return bid.Add(ask).DivIntEven(2)
 }
 
 // Buy helps fill an IOC (immediate-or-cancel) market buy order.
@@ -406,7 +406,7 @@ func (b *Book) Buy(quantity, buyingPower decimal.Decimal) (decimal.Decimal, []Le
 			break
 		}
 		// How much can we afford at this price?
-		affordable := budget.Div(price)
+		affordable := budget.DivEven(price)
 		// Take the minimum of: what we want, what's available, what we can afford
 		fillSize := remaining
 		if size.Cmp(fillSize) < 0 {

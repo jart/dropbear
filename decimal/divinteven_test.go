@@ -141,3 +141,52 @@ func TestDivIntEven_Panics(t *testing.T) {
 		})
 	}
 }
+
+// TestDivIntEven_ReducesBias demonstrates that banker's rounding reduces
+// systematic bias compared to always rounding away from zero.
+// Over many tie-breaking operations, DivIntEven rounds half up and half down,
+// keeping cumulative error near zero.
+func TestDivIntEven_ReducesBias(t *testing.T) {
+	// Show individual rounding behavior for ties (odd nano-units / 2)
+	// Decimal(1) = 0.000000001, Decimal(3) = 0.000000003, etc.
+	t.Log("Individual tie-breaking (odd nano-units / 2):")
+	for i := 1; i <= 10; i++ {
+		v := Decimal(2*i - 1) // raw nano-units: 1, 3, 5, ...
+		even := v.DivIntEven(2)
+		reg := v.DivInt(2)
+		t.Logf("  %d/2: DivIntEven=%d, DivInt=%d", 2*i-1, int64(even), int64(reg))
+	}
+
+	// Create 1000 values that produce exact ties when divided by 2
+	var bankerSum, halfUpSum int64
+	var trueSum int64
+
+	for i := 1; i <= 1000; i++ {
+		v := Decimal(2*i - 1) // odd values: 1, 3, 5, ...
+		trueSum += int64(v)
+		bankerSum += int64(v.DivIntEven(2))
+		halfUpSum += int64(v.DivInt(2))
+	}
+
+	trueHalf := trueSum / 2 // exact since sum of odds is even
+
+	bankerError := abs64(bankerSum - trueHalf)
+	halfUpError := abs64(halfUpSum - trueHalf)
+
+	t.Logf("true sum/2:      %d", trueHalf)
+	t.Logf("banker sum:      %d (error: %d)", bankerSum, bankerError)
+	t.Logf("half-up sum:     %d (error: %d)", halfUpSum, halfUpError)
+
+	// Banker's rounding should have less cumulative error
+	if bankerError >= halfUpError {
+		t.Errorf("banker's rounding should have less bias: banker=%d, halfUp=%d",
+			bankerError, halfUpError)
+	}
+}
+
+func abs64(x int64) int64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}

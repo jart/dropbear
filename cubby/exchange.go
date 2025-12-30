@@ -302,7 +302,7 @@ func (ex *Exchange) CheckMarginCall() bool {
 	ex.Lock.Unlock()
 
 	// Calculate deficit: how much we need to sell to restore margin + 10% buffer
-	buffer := equity.MulInt(10).DivInt(100) // 10% buffer
+	buffer := equity.MulInt(10).DivIntEven(100) // 10% buffer
 	deficit := maintMargin.Sub(equity).Add(buffer)
 
 	if deficit.IsPositive() {
@@ -392,7 +392,7 @@ func (ex *Exchange) AutoLiquidate(deficit decimal.Decimal) {
 		// Determine how much to liquidate from this position
 		liquidateValue := remaining.Min(pos.marketValue)
 		price := pos.equity.LastPrice.Load()
-		liquidateQty := liquidateValue.Div(price).Truncate()
+		liquidateQty := liquidateValue.DivEven(price).Truncate()
 
 		if liquidateQty.IsZero() {
 			continue

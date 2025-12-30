@@ -58,7 +58,7 @@ func (m *Equity) Sharpe(riskFreeRate decimal.Decimal) decimal.Decimal {
 		return decimal.Zero
 	}
 	decPeriods := decimal.FromInt(int(periodsPerYear))
-	riskFreePerPeriod := riskFreeRate.Div(decPeriods)
+	riskFreePerPeriod := riskFreeRate.DivEven(decPeriods)
 
 	// compute mean and variance using Welford's algorithm (running method)
 	// This avoids accumulating a massive sum that could overflow
@@ -79,7 +79,7 @@ func (m *Equity) Sharpe(riskFreeRate decimal.Decimal) decimal.Decimal {
 		curr := m.samples[i]
 
 		// assetReturn = (curr - prev) / prev
-		assetReturn := curr.Sub(prev).Div(prev)
+		assetReturn := curr.Sub(prev).DivEven(prev)
 		excessReturn := assetReturn.Sub(riskFreePerPeriod)
 
 		// Welford's Update
@@ -87,7 +87,7 @@ func (m *Equity) Sharpe(riskFreeRate decimal.Decimal) decimal.Decimal {
 		delta := excessReturn.Sub(meanExcess)
 
 		// mean += delta / n
-		meanExcess = meanExcess.Add(delta.DivInt(n))
+		meanExcess = meanExcess.Add(delta.DivIntEven(n))
 
 		// delta2 = x - mean (using the NEW mean)
 		delta2 := excessReturn.Sub(meanExcess)
@@ -97,7 +97,7 @@ func (m *Equity) Sharpe(riskFreeRate decimal.Decimal) decimal.Decimal {
 	}
 
 	// variance = m2 / (n - 1)
-	variance := m2.DivInt(n - 1)
+	variance := m2.DivIntEven(n - 1)
 	stdDev := variance.Sqrt()
 
 	// the final calculation
@@ -107,7 +107,7 @@ func (m *Equity) Sharpe(riskFreeRate decimal.Decimal) decimal.Decimal {
 
 	// Sharpe = Mean * Sqrt(Periods) / StdDev
 	annualizedFactor := decPeriods.Sqrt()
-	return meanExcess.Mul(annualizedFactor).Div(stdDev)
+	return meanExcess.Mul(annualizedFactor).DivEven(stdDev)
 }
 
 // MaxDrawdown calculates the maximum peak-to-trough decline.
@@ -123,7 +123,7 @@ func (m *Equity) MaxDrawdown() decimal.Decimal {
 		}
 		if peak.IsPositive() {
 			// dd = (peak - sample) / peak
-			dd := peak.Sub(sample).Div(peak)
+			dd := peak.Sub(sample).DivEven(peak)
 			if dd.Cmp(maxDD) > 0 {
 				maxDD = dd
 			}

@@ -106,3 +106,26 @@ func assertDecimalClose(t *testing.T, name string, got, want decimal.Decimal) {
 		t.Errorf("%s: got %s, want %s (diff %s)", name, got.String(), want.String(), diff.String())
 	}
 }
+
+func BenchmarkWWMA(b *testing.B) {
+	w := NewWWMA(14)
+	v := decimal.Parse("123.456789")
+	for i := 0; i < b.N; i++ {
+		w.Add(v)
+	}
+}
+
+func BenchmarkWWMA_DivIntEven(b *testing.B) {
+	v := decimal.Parse("123.456789")
+	for i := 0; i < b.N; i++ {
+		_ = v.DivIntEven(14)
+	}
+}
+
+func BenchmarkWWMA_DivFromInt(b *testing.B) {
+	v := decimal.Parse("123.456789")
+	d := decimal.FromInt(14)
+	for i := 0; i < b.N; i++ {
+		_ = v.Div(d)
+	}
+}

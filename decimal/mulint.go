@@ -6,7 +6,6 @@ import (
 )
 
 // MulInt multiplies d by n, panicking on overflow.
-// Optimized: Uses 128-bit math to avoid the expensive 'div' instruction in overflow check.
 func (d Decimal) MulInt(n int) Decimal {
 	x, y := int64(d), int64(n)
 
