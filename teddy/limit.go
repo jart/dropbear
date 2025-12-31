@@ -55,7 +55,9 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 		// put on hold enough cash to pay maximum cost
 		maxFee := notional.Mul(p.Broker.TakerFee.Load())
 		maxCost := notional.Add(maxFee)
-		p.QuoteCurrency.Lock.Lock()
+		if !p.QuoteCurrency.Lock.TryLock() {
+			return nil, ds.ErrBusy
+		}
 		available := p.QuoteCurrency.Available.Load()
 		if maxCost.Cmp(available) > 0 {
 			p.QuoteCurrency.Lock.Unlock()
@@ -71,7 +73,9 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 		hold = maxCost
 	case ds.SideSell:
 		// put on hold enough coin to fill order
-		p.BaseCurrency.Lock.Lock()
+		if !p.BaseCurrency.Lock.TryLock() {
+			return nil, ds.ErrBusy
+		}
 		available := p.BaseCurrency.Available.Load()
 		if quantity.Cmp(available) > 0 {
 			p.BaseCurrency.Lock.Unlock()
@@ -153,7 +157,9 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 }
 
 func (p *Pair) checkLimitOrderParams(side ds.Side, quantity, limitPrice, notional decimal.Decimal) error {
-	p.Lock.RLock()
+	if !p.Lock.TryRLock() {
+		return ds.ErrBusy
+	}
 	defer p.Lock.RUnlock()
 
 	// check quantity

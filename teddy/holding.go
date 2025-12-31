@@ -35,6 +35,7 @@ func newHolding(broker *Broker, symbol string) *Holding {
 		switch h.Broker.Broker {
 		case ds.BrokerCoinbase:
 			h.fetchCoinbaseHolding()
+			go h.fetchCoinbaseHoldingDaemon()
 		}
 	}
 	return h
@@ -65,10 +66,22 @@ func (h *Holding) Check() {
 	}
 }
 
+func (h *Holding) fetchCoinbaseHoldingDaemon() {
+	for {
+		Hibernate()
+		h.fetchCoinbaseHolding()
+	}
+}
+
 func (h *Holding) fetchCoinbaseHolding() {
-	for _, account := range getCoinbaseAccounts() {
+	h.Lock.Lock()
+	defer h.Lock.Unlock()
+	accounts, err := CoinbaseClient.GetAccounts()
+	if err != nil {
+		loggy.Fatalf("getting coinbase accounts: %v", err)
+	}
+	for _, account := range accounts {
 		if account.Currency == h.Symbol {
-			h.Lock.Lock()
 			h.IsFiat = account.Type == "ACCOUNT_TYPE_FIAT"
 			h.IsCash = h.IsFiat || looksLikeCashSymbol(h.Symbol)
 			quantity := decimal.Parse(account.AvailableBalance.Value)
@@ -86,7 +99,6 @@ func (h *Holding) fetchCoinbaseHolding() {
 				}
 			}
 			h.Check()
-			h.Lock.Unlock()
 			return
 		}
 	}

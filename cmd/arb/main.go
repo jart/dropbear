@@ -49,10 +49,8 @@ var (
 	gPredictorPair *teddy.Pair
 	gPricerPair    *teddy.Pair
 	gLastCoinbase  clocky.Time
-	gOrderBackoff  clocky.Duration
 	gPricerPrice   decimal.Decimal
 	gLastOrder     clocky.Time
-	gNextOrder     clocky.Time
 	gOrderLock     sync.Mutex
 	gSpreadEMA     *indicators.WWMA
 	gSpreadLock    sync.Mutex
@@ -128,7 +126,7 @@ func onPredictorTick(tick *ds.Tick) {
 			if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
 				bid := gPredictorPair.OrderBook.PickBidByValue(*flagDepth)
 				ask := gPredictorPair.OrderBook.PickAskByValue(*flagDepth)
-				mid := bid.Add(ask).DivInt(2).Mul(gPricerPrice.Load())
+				mid := bid.Add(ask).DivIntEven(2).Mul(gPricerPrice.Load())
 				if !mid.IsPositive() {
 					log.Printf("[error] somehow have non-positive predictor midpoint price %s", mid)
 					return
@@ -156,12 +154,12 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	// calculate spread between coinbase and predictor
 	// spread = (midpoint - prediction) / prediction
 	bid, ask := gCoinbasePair.OrderBook.BestBidAsk()
-	mid := bid.Add(ask).DivInt(2)
+	mid := bid.Add(ask).DivIntEven(2)
 	if !mid.IsPositive() {
 		log.Printf("[error] somehow have non-positive midpoint price %s", mid)
 		return
 	}
-	spread := mid.Sub(predictorPrice).Div(predictorPrice)
+	spread := mid.Sub(predictorPrice).DivEven(predictorPrice)
 
 	// determine how much spread differs from what it normally is
 	gSpreadLock.Lock()
@@ -237,23 +235,23 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	var side ds.Side
 	var size, limi decimal.Decimal
 	predictedPrice := predictorPrice.Mul(decimal.One.Add(baseline))
-	move := predictedPrice.Sub(mid).Div(mid)
+	move := predictedPrice.Sub(mid).DivEven(mid)
 
 	if predictedPrice.Cmp(mid) > 0 {
 		side = ds.SideBuy
-		size = gCash.Available.Mul(decimal.One.Sub(*flagBuffer)).Div(predictedPrice)
-		size = size.QuantizeTruncate(gCoinbasePair.BaseIncrement)
-		limi = predictedPrice.Div(decimal.One.Add(*flagThreshold))
-		limi = limi.QuantizeTruncate(gCoinbasePair.QuoteIncrement)
+		size = gCash.Available.Load().Mul(decimal.One.Sub(*flagBuffer)).DivEven(predictedPrice)
+		size = size.QuantizeTruncate(gCoinbasePair.BaseIncrement.Load())
+		limi = predictedPrice.DivEven(decimal.One.Add(*flagThreshold))
+		limi = limi.QuantizeTruncate(gCoinbasePair.QuoteIncrement.Load())
 		if limi.Cmp(ask) < 0 {
 			return
 		}
 	} else {
 		side = ds.SideSell
-		size = gHolding.Available.Mul(decimal.One.Sub(*flagBuffer))
-		size = size.QuantizeTruncate(gCoinbasePair.BaseIncrement)
+		size = gHolding.Available.Load().Mul(decimal.One.Sub(*flagBuffer))
+		size = size.QuantizeTruncate(gCoinbasePair.BaseIncrement.Load())
 		limi = predictedPrice.Mul(decimal.One.Add(*flagThreshold))
-		limi = limi.QuantizeAway(gCoinbasePair.QuoteIncrement)
+		limi = limi.QuantizeAway(gCoinbasePair.QuoteIncrement.Load())
 		if limi.Cmp(bid) > 0 {
 			return
 		}
@@ -264,9 +262,9 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 			var edge decimal.Decimal
 			switch side {
 			case ds.SideBuy:
-				edge = ask.Sub(limi).Div(limi)
+				edge = ask.Sub(limi).DivEven(limi)
 			case ds.SideSell:
-				edge = limi.Sub(bid).Div(bid)
+				edge = limi.Sub(bid).DivEven(bid)
 			}
 			log.Printf("[signal] %s spread=%s baseline=%s deviation=%s move=%s edge=%s mid=%s predictor=%s predicted=%s limit=%s",
 				side, spread.BPS().Format(3), baseline.BPS().Format(3), deviation.BPS().Format(3), move.BPS().Format(3),
@@ -274,9 +272,7 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 		}
 	}
 
-	// rate limit orders by a small amount
-	// send overlapping orders with exponential backoff
-	// only overlap orders if they claim uncharted territory
+	// make sure it's a good time to trade
 	gOrderLock.Lock()
 	openOrders := gCoinbase.Orders.Open()
 	for _, order := range openOrders {
@@ -299,22 +295,6 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 		}
 	}
 	orderTime := clocky.Now()
-	if orderTime < gNextOrder {
-		lastOrder := gLastOrder
-		nextOrder := gNextOrder
-		orderBackoff := gOrderBackoff
-		gOrderLock.Unlock()
-		if *flagVerbose {
-			logDecision()
-			log.Printf("[skip] we placed an order %s ago and have to wait %s because backoff is %s",
-				orderTime.Sub(lastOrder), nextOrder.Sub(orderTime), orderBackoff)
-		}
-		return
-	}
-	if len(openOrders) == 0 {
-		gOrderBackoff = 0
-		gNextOrder = 0
-	}
 	lastCoinbase := gLastCoinbase.Load()
 	if orderTime.Sub(lastCoinbase) > *flagFreshness {
 		gOrderLock.Unlock()
@@ -330,14 +310,6 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 			orderTime.Sub(tradeTime), orderTime.Sub(receivedTime))
 		return
 	}
-	if gOrderBackoff == 0 {
-		gOrderBackoff = *flagCooldown
-		gNextOrder = orderTime
-	} else {
-		gOrderBackoff *= 2
-	}
-	gLastOrder = orderTime
-	gNextOrder = gNextOrder.Add(gOrderBackoff)
 	gOrderLock.Unlock()
 
 	// place immediate-or-cancel limit order

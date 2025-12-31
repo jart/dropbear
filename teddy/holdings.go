@@ -1,9 +1,7 @@
 package teddy
 
 import (
-	"dropbear/broker/coinbase"
 	"dropbear/decimal"
-	"dropbear/loggy"
 	"sync"
 )
 
@@ -83,20 +81,4 @@ func (hs *Holdings) GetInvestedUSD() decimal.Decimal {
 		total = total.Add(value)
 	}
 	return total
-}
-
-var (
-	coinbaseAccountsOnce sync.Once
-	coinbaseAccountsSave []*coinbase.Account
-)
-
-func getCoinbaseAccounts() []*coinbase.Account {
-	coinbaseAccountsOnce.Do(func() {
-		accounts, err := CoinbaseClient.GetAccounts()
-		if err != nil {
-			loggy.Fatalf("getting coinbase accounts: %v", err)
-		}
-		coinbaseAccountsSave = accounts
-	})
-	return coinbaseAccountsSave
 }

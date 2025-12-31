@@ -12,4 +12,5 @@ var (
 	ErrRFQCannotEdit       = errors.New("rfq orders cannot be edited")
 	ErrInsufficientFunds   = errors.New("we require more vespene gas")
 	ErrTooManyRequests     = errors.New("too many requests")
+	ErrBusy                = errors.New("resource busy")
 )
