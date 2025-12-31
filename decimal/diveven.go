@@ -26,15 +26,15 @@ func (d Decimal) DivEven(o Decimal) Decimal {
 	// 128-bit Mul
 	hi, lo := bits.Mul64(uD, uint64(Scale))
 
-	// Check for multiplication overflow (result > 2^64)
+	// check for multiplication overflow (result > 2^64)
 	if hi >= uint64(Scale) {
 		panicOverflow()
 	}
 
-	// Division: quo = result, rem = remainder
+	// division: quo = result, rem = remainder
 	quo, rem := bits.Div64(hi, lo, uO)
 
-	// Efficient half comparison using threshold similar to DivInt fix
+	// efficient half comparison using threshold similar to DivInt fix
 	// threshold = ceil(uO / 2)
 	threshold := (uO >> 1) + (uO & 1)
 
@@ -42,18 +42,18 @@ func (d Decimal) DivEven(o Decimal) Decimal {
 	if rem > threshold {
 		comp = 1
 	} else if rem == threshold {
-		// If uO is odd, threshold is slightly > uO/2.
-		// e.g. uO=5, threshold=3. rem=3 -> 6 > 5. strict greater.
-		// If uO is even, threshold is exactly uO/2.
+		// if uO is odd, threshold is slightly > uO/2
+		// e.g. uO=5, threshold=3. rem=3 -> 6 > 5. strict greater
+		// if uO is even, threshold is exactly uO/2
 		if uO&1 == 1 {
-			comp = 1 // Odd divisor means rem can't be exactly half
+			comp = 1 // odd divisor means rem can't be exactly half
 		} else {
-			comp = 0 // Exact half
+			comp = 0 // exact half
 		}
 	} else {
-		// rem < threshold.
-		// If uO is odd (5), threshold is 3. rem=2. 2 < 2.5. Less.
-		// If uO is even (4), threshold is 2. rem=1. 1 < 2. Less.
+		// rem < threshold
+		// if uO is odd (5), threshold is 3. rem=2. 2 < 2.5. Less
+		// if uO is even (4), threshold is 2. rem=1. 1 < 2. Less
 		comp = -1
 	}
 

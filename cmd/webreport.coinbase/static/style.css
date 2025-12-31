@@ -1,0 +1,312 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Paul Tol's colorblind-friendly blue for links */
+a {
+    color: #4477AA;
+    text-decoration: none;
+}
+
+a:hover {
+    color: #66CCEE;
+    text-decoration: underline;
+}
+
+a:visited {
+    color: #4477AA;
+}
+
+@font-face {
+    font-family: 'Helvetica Neue';
+    src: url('https://justinestreet.capital/webfonts/NeueHelveticaPro45Light/font.woff2') format('woff2'),
+         url('https://justinestreet.capital/webfonts/NeueHelveticaPro45Light/font.woff') format('woff');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Helvetica Neue';
+    src: url('https://justinestreet.capital/webfonts/NeueHelveticaPro55Roman/font.woff2') format('woff2'),
+         url('https://justinestreet.capital/webfonts/NeueHelveticaPro55Roman/font.woff') format('woff');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+body {
+    font-family: "Helvetica Neue", "Segoe UI", Helvetica, Arial, sans-serif;
+    background-color: #0a0a0a;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 4rem 2rem;
+}
+
+.container {
+    max-width: 1400px;
+    width: 100%;
+    text-align: center;
+}
+
+h1 {
+    font-size: 2rem;
+    font-weight: 300;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    color: #ffffff;
+}
+
+h2 {
+    font-size: 1rem;
+    font-weight: 300;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+    color: #ffffff;
+}
+
+.tagline {
+    font-size: 1rem;
+    font-weight: 400;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 3rem;
+}
+
+section {
+    margin-bottom: 4rem;
+}
+
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 2rem;
+    margin-bottom: 3rem;
+}
+
+.metrics.horizontal {
+    display: flex;
+    justify-content: center;
+    gap: 3rem;
+    flex-wrap: wrap;
+}
+
+.metric {
+    text-align: center;
+}
+
+.metric .label {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 0.5rem;
+}
+
+.metric .value {
+    display: block;
+    font-size: 1.8rem;
+    font-weight: 300;
+    color: #fff;
+}
+
+/* Paul Tol's colorblind-friendly bright scheme */
+.metric .value.positive {
+    color: #228833;
+}
+
+.metric .value.negative {
+    color: #EE6677;
+}
+
+.chart-section {
+    margin: 3rem 0;
+}
+
+#chart {
+    width: 100%;
+    height: 400px;
+    margin-bottom: 1rem;
+}
+
+.legend {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.legend-color {
+    width: 12px;
+    height: 3px;
+}
+
+.legend-color.strategy {
+    background: #00d4ff;
+}
+
+.legend-color.benchmark {
+    background: #666;
+}
+
+.portfolio-value {
+    font-size: 3rem;
+    font-weight: 300;
+    color: #fff;
+    letter-spacing: 0.05em;
+}
+
+.holdings {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    font-size: 0.9rem;
+    color: #888;
+}
+
+.holding {
+    font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
+}
+
+.deposit {
+    text-align: center;
+}
+
+.deposit .network {
+    font-size: 0.8rem;
+    color: #666;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+}
+
+.address {
+    display: inline-block;
+    background: #151515;
+    padding: 1rem 1.5rem;
+    border-radius: 4px;
+    font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
+    font-size: 0.85rem;
+    color: #e0e0e0;
+    word-break: break-all;
+    max-width: 100%;
+    letter-spacing: 0.02em;
+}
+
+.disclaimer {
+    margin-top: 1.75rem;
+    font-size: 0.9rem;
+    color: #777;
+    line-height: 1.7;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: justify;
+}
+
+.disclaimer strong {
+    color: #888;
+}
+
+.benchmark {
+    background: #111;
+    padding: 2rem;
+    border-radius: 4px;
+}
+
+.transactions table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.transactions th {
+    font-size: 0.7rem;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #666;
+    padding: 1rem 0.5rem;
+    border-bottom: 1px solid #222;
+}
+
+.transactions td {
+    font-size: 0.85rem;
+    padding: 0.75rem 0.5rem;
+    border-bottom: 1px solid #1a1a1a;
+    color: #999;
+}
+
+.transactions th.num,
+.transactions td.num {
+    text-align: right;
+}
+
+.transactions td.positive {
+    color: #228833;
+}
+
+.transactions td.negative {
+    color: #EE6677;
+}
+
+.transactions tr:hover td {
+    background: #111;
+}
+
+.transactions .no-data {
+    text-align: center;
+    color: #444;
+    padding: 2rem;
+}
+
+footer {
+    margin-top: 6rem;
+    font-size: 0.75rem;
+    color: #444;
+    letter-spacing: 0.05em;
+}
+
+@media (max-width: 600px) {
+    body {
+        padding: 2rem 1rem;
+    }
+
+    h1 {
+        font-size: 1.5rem;
+    }
+
+    .metric .value {
+        font-size: 1.4rem;
+    }
+
+    .portfolio-value {
+        font-size: 2rem;
+    }
+
+    #chart {
+        height: 300px;
+    }
+
+    .metrics.horizontal {
+        gap: 1.5rem;
+    }
+}

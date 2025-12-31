@@ -44,3 +44,9 @@ CREATE INDEX IF NOT EXISTS idx_coinbase_transactions_currency ON coinbase_transa
 CREATE INDEX IF NOT EXISTS idx_coinbase_transactions_created_at ON coinbase_transactions(created_at);
 CREATE INDEX IF NOT EXISTS idx_coinbase_transactions_type ON coinbase_transactions(type);
 CREATE INDEX IF NOT EXISTS idx_coinbase_transactions_account_id ON coinbase_transactions(account_id);
+
+-- Partial index for efficiently finding unconfirmed on-chain transactions
+-- Used by SyncTransactions to re-sync transactions that may have updated
+CREATE INDEX IF NOT EXISTS idx_coinbase_transactions_unconfirmed_network
+ON coinbase_transactions(account_id, created_at)
+WHERE network_hash IS NOT NULL AND network_hash != '' AND status != 'completed';

@@ -68,15 +68,9 @@ func (h *Holding) Check() {
 func (h *Holding) fetchCoinbaseHolding() {
 	for _, account := range getCoinbaseAccounts() {
 		if account.Currency == h.Symbol {
+			h.Lock.Lock()
 			h.IsFiat = account.Type == "ACCOUNT_TYPE_FIAT"
 			h.IsCash = h.IsFiat || looksLikeCashSymbol(h.Symbol)
-			if !h.IsFiat {
-				err := CoinbaseClient.SyncTransactions(h.Symbol)
-				if err != nil {
-					loggy.Fatalf("coinbase: error syncing transactions for asset %s: %v", h.Symbol, err)
-				}
-			}
-			h.Lock.Lock()
 			quantity := decimal.Parse(account.AvailableBalance.Value)
 			hold := decimal.Parse(account.Hold.Value)
 			h.Quantity.Store(quantity)
@@ -84,11 +78,11 @@ func (h *Holding) fetchCoinbaseHolding() {
 			if !h.IsFiat {
 				err := CoinbaseClient.SyncTransactions(h.Symbol)
 				if err != nil {
-					loggy.Fatalf("coinbase: error syncing transactions for asset %s: %v", h.Symbol, err)
+					loggy.Fatalf("[coinbase] error syncing transactions for asset %s: %v", h.Symbol, err)
 				}
 				h.Lots, err = CoinbaseClient.GetLots(h.Symbol, GetCostBasisMethod())
 				if err != nil {
-					loggy.Fatalf("coinbase: error fetching lots for asset %s: %v", h.Symbol, err)
+					loggy.Fatalf("[coinbase] error fetching lots for asset %s: %v", h.Symbol, err)
 				}
 			}
 			h.Check()

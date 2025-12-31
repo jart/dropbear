@@ -247,17 +247,46 @@ func (c *Client) SyncTransactions(currency string) error {
 		return fmt.Errorf("getting account for %s: %w", currency, err)
 	}
 
-	// Get cursor for incremental sync (last transaction ID)
+	// Get cursor for incremental sync.
+	// We start from the 10th most recent transaction to catch any that Coinbase
+	// may have committed out of order. We also check for any unconfirmed on-chain
+	// transactions and start from whichever is earlier, to ensure we re-sync
+	// transactions that may have updated (e.g., confirmations).
 	var cursor string
+	var cursorCreatedAt int64
+
+	// Get 10th most recent transaction
 	err = database.QueryRow(`
-		SELECT COALESCE(id, '')
+		SELECT COALESCE(id, ''), COALESCE(created_at, 0)
 		FROM coinbase_transactions
 		WHERE account_id = :account_id
 		ORDER BY created_at DESC
-		LIMIT 1
-	`, sql.Named("account_id", account.ID)).Scan(&cursor)
+		LIMIT 1 OFFSET 9
+	`, sql.Named("account_id", account.ID)).Scan(&cursor, &cursorCreatedAt)
 	if err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("getting last transaction: %w", err)
+		return fmt.Errorf("getting recent transaction: %w", err)
+	}
+
+	// Check for earliest unconfirmed on-chain transaction
+	var unconfirmedCursor string
+	var unconfirmedCreatedAt int64
+	err = database.QueryRow(`
+		SELECT id, created_at
+		FROM coinbase_transactions
+		WHERE account_id = :account_id
+		  AND network_hash IS NOT NULL
+		  AND network_hash != ''
+		  AND status != 'completed'
+		ORDER BY created_at ASC
+		LIMIT 1
+	`, sql.Named("account_id", account.ID)).Scan(&unconfirmedCursor, &unconfirmedCreatedAt)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("getting unconfirmed transaction: %w", err)
+	}
+
+	// Use whichever cursor is earlier
+	if unconfirmedCursor != "" && (cursor == "" || unconfirmedCreatedAt < cursorCreatedAt) {
+		cursor = unconfirmedCursor
 	}
 
 	// Start transaction for atomic insert
@@ -269,7 +298,7 @@ func (c *Client) SyncTransactions(currency string) error {
 
 	// Prepare insert statement with named parameters
 	stmt, err := tx.Prepare(`
-		INSERT OR IGNORE INTO coinbase_transactions (
+		INSERT OR REPLACE INTO coinbase_transactions (
 			id, account_id, type, status, created_at, updated_at,
 			amount, currency, native_amount, native_currency,
 			fill_order_id, fill_product_id, fill_side, fill_price, fill_commission, idem,
