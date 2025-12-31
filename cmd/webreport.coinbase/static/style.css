@@ -147,6 +147,27 @@ section {
     color: #EE6677;
 }
 
+/* Fee toggle button */
+.metric.fee-toggle {
+    cursor: pointer;
+    padding: 0.5rem;
+    margin: -0.5rem;
+    border-radius: 4px;
+    transition: background-color 0.2s, opacity 0.2s;
+}
+
+.metric.fee-toggle:hover {
+    background-color: #1a1a1a;
+}
+
+.metric.fee-toggle.toggled {
+    opacity: 0.5;
+}
+
+.metric.fee-toggle.toggled .value {
+    text-decoration: line-through;
+}
+
 .chart-section {
     margin: 3rem 0;
 }

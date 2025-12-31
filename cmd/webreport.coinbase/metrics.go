@@ -34,6 +34,139 @@ type PortfolioSnapshot struct {
 	Time           clocky.Time
 	StrategyValue  decimal.Decimal
 	BenchmarkValue decimal.Decimal
+	CumulativeFees decimal.Decimal // fees paid up to this point
+}
+
+// CashFlow represents a deposit or withdrawal.
+type CashFlow struct {
+	Time   clocky.Time
+	Amount decimal.Decimal // positive = deposit, negative = withdrawal
+}
+
+// calculateTWRSeries computes cumulative TWR at each snapshot point.
+// Returns TWR-indexed values: startValue * (1 + cumulative_TWR) at each point.
+// This shows what the portfolio would be worth from trading alone, without deposit effects.
+func calculateTWRSeries(snapshots []PortfolioSnapshot, cashFlows []CashFlow, useStrategy bool) []float64 {
+	if len(snapshots) < 1 {
+		return nil
+	}
+
+	// Build a map of cash flows by time for quick lookup
+	cfByTime := make(map[clocky.Time]decimal.Decimal)
+	for _, cf := range cashFlows {
+		cfByTime[cf.Time] = cfByTime[cf.Time].Add(cf.Amount)
+	}
+
+	// Get starting value
+	var startVal float64
+	if useStrategy {
+		startVal = snapshots[0].StrategyValue.Float64()
+	} else {
+		startVal = snapshots[0].BenchmarkValue.Float64()
+	}
+
+	result := make([]float64, len(snapshots))
+	result[0] = startVal
+
+	// Calculate cumulative TWR at each point
+	cumulativeTWR := 1.0
+	for i := 1; i < len(snapshots); i++ {
+		var prevVal, currVal float64
+		if useStrategy {
+			prevVal = snapshots[i-1].StrategyValue.Float64()
+			currVal = snapshots[i].StrategyValue.Float64()
+		} else {
+			prevVal = snapshots[i-1].BenchmarkValue.Float64()
+			currVal = snapshots[i].BenchmarkValue.Float64()
+		}
+
+		// Subtract any cash flows that happened in this period
+		var periodCashFlow float64
+		for t, amt := range cfByTime {
+			if t > snapshots[i-1].Time && t <= snapshots[i].Time {
+				periodCashFlow += amt.Float64()
+			}
+		}
+
+		// Calculate sub-period return and accumulate
+		adjustedEnd := currVal - periodCashFlow
+		if prevVal > 0 {
+			subPeriodReturn := adjustedEnd / prevVal
+			cumulativeTWR *= subPeriodReturn
+		}
+
+		// TWR-indexed value: what would portfolio be worth from trading alone
+		result[i] = startVal * cumulativeTWR
+	}
+
+	return result
+}
+
+// calculateTWR computes total Time-Weighted Return from snapshots and cash flows.
+func calculateTWR(snapshots []PortfolioSnapshot, cashFlows []CashFlow, useStrategy bool) float64 {
+	series := calculateTWRSeries(snapshots, cashFlows, useStrategy)
+	if len(series) < 2 {
+		return 0
+	}
+	return (series[len(series)-1] / series[0]) - 1.0
+}
+
+// calculateTWRSeriesNoFees computes TWR series with fees added back.
+// This shows what performance would be if no fees were charged.
+func calculateTWRSeriesNoFees(snapshots []PortfolioSnapshot, cashFlows []CashFlow, useStrategy bool) []float64 {
+	if len(snapshots) < 1 {
+		return nil
+	}
+
+	// Build a map of cash flows by time for quick lookup
+	cfByTime := make(map[clocky.Time]decimal.Decimal)
+	for _, cf := range cashFlows {
+		cfByTime[cf.Time] = cfByTime[cf.Time].Add(cf.Amount)
+	}
+
+	// Get starting value with fees added back
+	var startVal float64
+	if useStrategy {
+		startVal = snapshots[0].StrategyValue.Add(snapshots[0].CumulativeFees).Float64()
+	} else {
+		startVal = snapshots[0].BenchmarkValue.Float64() // benchmark doesn't pay fees
+	}
+
+	result := make([]float64, len(snapshots))
+	result[0] = startVal
+
+	// Calculate cumulative TWR at each point with fees added back
+	cumulativeTWR := 1.0
+	for i := 1; i < len(snapshots); i++ {
+		var prevVal, currVal float64
+		if useStrategy {
+			// Add cumulative fees back to portfolio value
+			prevVal = snapshots[i-1].StrategyValue.Add(snapshots[i-1].CumulativeFees).Float64()
+			currVal = snapshots[i].StrategyValue.Add(snapshots[i].CumulativeFees).Float64()
+		} else {
+			prevVal = snapshots[i-1].BenchmarkValue.Float64()
+			currVal = snapshots[i].BenchmarkValue.Float64()
+		}
+
+		// Subtract any cash flows that happened in this period
+		var periodCashFlow float64
+		for t, amt := range cfByTime {
+			if t > snapshots[i-1].Time && t <= snapshots[i].Time {
+				periodCashFlow += amt.Float64()
+			}
+		}
+
+		// Calculate sub-period return and accumulate
+		adjustedEnd := currVal - periodCashFlow
+		if prevVal > 0 {
+			subPeriodReturn := adjustedEnd / prevVal
+			cumulativeTWR *= subPeriodReturn
+		}
+
+		result[i] = startVal * cumulativeTWR
+	}
+
+	return result
 }
 
 // Holding represents a single asset holding.
@@ -209,16 +342,17 @@ func fetchAllCandles(client *coinbase.Client, productID string, genesis clocky.T
 // calculateMetrics computes portfolio value over time and performance metrics.
 // benchmarkAsset is used for benchmark comparison (hold that asset).
 // Portfolio value includes ALL assets.
+// Returns snapshots, cash flows (for TWR chart), and metrics.
 func calculateMetrics(
 	client *coinbase.Client,
 	benchmarkAsset string,
 	genesis clocky.Time,
 	quantum clocky.Duration,
-) ([]PortfolioSnapshot, *ReportMetrics, error) {
+) ([]PortfolioSnapshot, []CashFlow, *ReportMetrics, error) {
 	// get all accounts and sync transactions for each
 	accounts, err := client.GetAccounts()
 	if err != nil {
-		return nil, nil, fmt.Errorf("getting accounts: %w", err)
+		return nil, nil, nil, fmt.Errorf("getting accounts: %w", err)
 	}
 
 	// sync transactions for all currencies with non-zero balance
@@ -239,7 +373,7 @@ func calculateMetrics(
 	// fetch ALL transactions from database
 	transactions, err := fetchTransactions("", genesis)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	log.Printf("loaded %d transactions since %s", len(transactions), genesis)
 
@@ -268,7 +402,7 @@ func calculateMetrics(
 
 	// ensure we have price data for benchmark asset
 	if _, ok := priceCaches[benchmarkAsset]; !ok {
-		return nil, nil, fmt.Errorf("no price data available for benchmark asset %s-USD", benchmarkAsset)
+		return nil, nil, nil, fmt.Errorf("no price data available for benchmark asset %s-USD", benchmarkAsset)
 	}
 
 	// helper to get price for any currency at a time
@@ -321,17 +455,13 @@ func calculateMetrics(
 	genesisPrice := getPrice(benchmarkAsset, genesis)
 
 	if !genesisValue.IsPositive() {
-		return nil, nil, fmt.Errorf("genesis portfolio value is not positive: %s", genesisValue)
+		return nil, nil, nil, fmt.Errorf("genesis portfolio value is not positive: %s", genesisValue)
 	}
 
 	log.Printf("genesis portfolio value: %s USD", genesisValue)
 
 	// initialize benchmark: buy and hold benchmarkAsset from genesis
 	benchmarkQty := genesisValue.Div(genesisPrice)
-
-	// create equity trackers
-	strategyEquity := metrics.NewEquity(quantum)
-	benchmarkEquity := metrics.NewEquity(quantum)
 
 	// reset to genesis state for forward replay
 	for k, v := range genesisBalances {
@@ -340,6 +470,7 @@ func calculateMetrics(
 
 	// sample at each quantum from genesis to now
 	var snapshots []PortfolioSnapshot
+	var cashFlows []CashFlow // track deposits/withdrawals for TWR
 	now := clocky.Now()
 	txIdx := 0
 	totalFees := decimal.Zero
@@ -363,18 +494,28 @@ func calculateMetrics(
 
 			switch tx.Type {
 			case "send":
+				depositValue := tx.Amount.Mul(getPrice(tx.Currency, tx.CreatedAt))
+				price := getPrice(benchmarkAsset, tx.CreatedAt)
 				if tx.Amount.IsPositive() {
 					// receiving crypto = deposit
-					depositValue := tx.Amount.Mul(getPrice(tx.Currency, tx.CreatedAt))
-					// adjust benchmark for deposits of benchmark asset
 					if tx.Currency == benchmarkAsset {
 						benchmarkQty = benchmarkQty.Add(tx.Amount)
 						lots.Add(tx.CreatedAt, tx.Amount, depositValue)
-					} else {
-						// for other assets, add equivalent benchmark qty
-						benchmarkQty = benchmarkQty.Add(depositValue.Div(getPrice(benchmarkAsset, tx.CreatedAt)))
+					} else if price.IsPositive() {
+						benchmarkQty = benchmarkQty.Add(depositValue.Div(price))
 					}
-					log.Printf("deposit detected: %s %s (~%s USD)", tx.Amount, tx.Currency, depositValue)
+					cashFlows = append(cashFlows, CashFlow{tx.CreatedAt, depositValue})
+					log.Printf("send deposit: %s %s (~%s USD)", tx.Amount, tx.Currency, depositValue)
+				} else if tx.Amount.IsNegative() {
+					// sending crypto = withdrawal
+					withdrawalValue := depositValue.Neg()
+					if tx.Currency == benchmarkAsset {
+						benchmarkQty = benchmarkQty.Sub(tx.Amount.Neg())
+					} else if price.IsPositive() {
+						benchmarkQty = benchmarkQty.Sub(withdrawalValue.Div(price))
+					}
+					cashFlows = append(cashFlows, CashFlow{tx.CreatedAt, withdrawalValue.Neg()})
+					log.Printf("send withdrawal: %s %s (~%s USD)", tx.Amount.Neg(), tx.Currency, withdrawalValue)
 				}
 				balances[tx.Currency] = balances[tx.Currency].Add(tx.Amount)
 
@@ -385,11 +526,34 @@ func calculateMetrics(
 					if tx.Type == "fiat_deposit" {
 						benchmarkQty = benchmarkQty.Add(usdAmount.Div(price))
 						balances["USD"] = balances["USD"].Add(usdAmount)
+						cashFlows = append(cashFlows, CashFlow{tx.CreatedAt, usdAmount})
+						log.Printf("fiat deposit: %s USD", usdAmount)
 					} else {
 						benchmarkQty = benchmarkQty.Sub(usdAmount.Div(price))
 						balances["USD"] = balances["USD"].Sub(usdAmount)
+						cashFlows = append(cashFlows, CashFlow{tx.CreatedAt, usdAmount.Neg()})
+						log.Printf("fiat withdrawal: %s USD", usdAmount)
 					}
 				}
+
+			case "tx":
+				// Generic transaction - can be deposit/withdrawal of any currency
+				usdValue := tx.NativeAmount.Abs()
+				price := getPrice(benchmarkAsset, tx.CreatedAt)
+				if price.IsPositive() && !usdValue.IsZero() {
+					if tx.Amount.IsPositive() {
+						// Deposit
+						benchmarkQty = benchmarkQty.Add(usdValue.Div(price))
+						cashFlows = append(cashFlows, CashFlow{tx.CreatedAt, usdValue})
+						log.Printf("tx deposit: %s %s (~%s USD)", tx.Amount, tx.Currency, usdValue)
+					} else if tx.Amount.IsNegative() {
+						// Withdrawal
+						benchmarkQty = benchmarkQty.Sub(usdValue.Div(price))
+						cashFlows = append(cashFlows, CashFlow{tx.CreatedAt, usdValue.Neg()})
+						log.Printf("tx withdrawal: %s %s (~%s USD)", tx.Amount.Neg(), tx.Currency, usdValue)
+					}
+				}
+				balances[tx.Currency] = balances[tx.Currency].Add(tx.Amount)
 
 			case "advanced_trade_fill", "buy", "sell", "trade":
 				balances[tx.Currency] = balances[tx.Currency].Add(tx.Amount)
@@ -434,20 +598,18 @@ func calculateMetrics(
 		strategyValue := calcPortfolioValue(balances, t)
 		benchmarkValue := benchmarkQty.Mul(getPrice(benchmarkAsset, t))
 
-		if strategyEquity.ShouldSample(t) && strategyValue.IsPositive() && benchmarkValue.IsPositive() {
-			strategyEquity.Sample(t, strategyValue)
-			benchmarkEquity.Sample(t, benchmarkValue)
-
+		if strategyValue.IsPositive() && benchmarkValue.IsPositive() {
 			snapshots = append(snapshots, PortfolioSnapshot{
 				Time:           t,
 				StrategyValue:  strategyValue,
 				BenchmarkValue: benchmarkValue,
+				CumulativeFees: totalFees,
 			})
 		}
 	}
 
 	if len(snapshots) < 2 {
-		return nil, nil, fmt.Errorf("not enough data points for metrics calculation")
+		return nil, nil, nil, fmt.Errorf("not enough data points for metrics calculation")
 	}
 
 	// build holdings list
@@ -473,8 +635,6 @@ func calculateMetrics(
 	finalSnapshot := snapshots[len(snapshots)-1]
 	startValue := snapshots[0].StrategyValue
 	endValue := finalSnapshot.StrategyValue
-	benchmarkStart := snapshots[0].BenchmarkValue
-	benchmarkEnd := finalSnapshot.BenchmarkValue
 	currentPrice := getPrice(benchmarkAsset, now)
 
 	// calculate unrealized P/L for benchmark asset
@@ -482,11 +642,29 @@ func calculateMetrics(
 	remainingCostBasis := lots.GetCostBasis(balances[benchmarkAsset], currentPrice)
 	totalUnrealized := currentMarketValue.Sub(remainingCostBasis)
 
-	totalReturn := endValue.Sub(startValue).Div(startValue).Float64() * 100
-	benchmarkReturn := benchmarkEnd.Sub(benchmarkStart).Div(benchmarkStart).Float64() * 100
+	// Calculate TWR series for Sharpe/MaxDD (removes deposit distortion)
+	strategySeries := calculateTWRSeries(snapshots, cashFlows, true)
+	benchmarkSeries := calculateTWRSeries(snapshots, cashFlows, false)
+
+	// Use Time-Weighted Return to eliminate impact of deposits/withdrawals
+	totalReturn := (strategySeries[len(strategySeries)-1]/strategySeries[0] - 1) * 100
+	benchmarkReturn := (benchmarkSeries[len(benchmarkSeries)-1]/benchmarkSeries[0] - 1) * 100
+
+	log.Printf("TWR calculation: %d cash flows, strategy=%.2f%%, benchmark=%.2f%%",
+		len(cashFlows), totalReturn, benchmarkReturn)
 
 	duration := finalSnapshot.Time.Sub(genesis)
 	yearsElapsed := float64(duration) / float64(360*clocky.Day)
+
+	// Feed TWR-indexed values to equity trackers for Sharpe/MaxDD
+	strategyEquity := metrics.NewEquity(quantum)
+	benchmarkEquity := metrics.NewEquity(quantum)
+	for i, s := range snapshots {
+		if strategyEquity.ShouldSample(s.Time) {
+			strategyEquity.Sample(s.Time, decimal.FromFloat64(strategySeries[i]))
+			benchmarkEquity.Sample(s.Time, decimal.FromFloat64(benchmarkSeries[i]))
+		}
+	}
 
 	result := &ReportMetrics{
 		TotalReturn:     totalReturn,
@@ -502,13 +680,16 @@ func calculateMetrics(
 	}
 
 	if yearsElapsed > 0 {
-		result.CAGR = (math.Pow(endValue.Float64()/startValue.Float64(), 1/yearsElapsed) - 1) * 100
+		// CAGR from TWR: (1 + TWR)^(1/years) - 1
+		strategyTWR := totalReturn / 100 // convert back to decimal
+		benchmarkTWR := benchmarkReturn / 100
+		result.CAGR = (math.Pow(1+strategyTWR, 1/yearsElapsed) - 1) * 100
 		result.Sharpe = strategyEquity.Sharpe(0.0487)
 		result.MaxDrawdown = strategyEquity.MaxDrawdown() * 100
-		result.BenchmarkCAGR = (math.Pow(benchmarkEnd.Float64()/benchmarkStart.Float64(), 1/yearsElapsed) - 1) * 100
+		result.BenchmarkCAGR = (math.Pow(1+benchmarkTWR, 1/yearsElapsed) - 1) * 100
 		result.BenchmarkSharpe = benchmarkEquity.Sharpe(0.0487)
 		result.BenchmarkMaxDD = benchmarkEquity.MaxDrawdown() * 100
 	}
 
-	return snapshots, result, nil
+	return snapshots, cashFlows, result, nil
 }

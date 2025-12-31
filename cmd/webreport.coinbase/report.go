@@ -9,11 +9,13 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/loggy"
+	"dropbear/teddy/metrics"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"html"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,13 +28,25 @@ var staticFiles embed.FS
 type ChartData struct {
 	Strategy  []ChartPoint `json:"strategy"`
 	Benchmark []ChartPoint `json:"benchmark"`
-	Metrics   struct {
+	// Fee-free versions for toggle comparison
+	StrategyNoFees  []ChartPoint `json:"strategyNoFees"`
+	BenchmarkNoFees []ChartPoint `json:"benchmarkNoFees"`
+	Metrics         struct {
 		TotalReturn     float64 `json:"totalReturn"`
 		CAGR            float64 `json:"cagr"`
 		Sharpe          float64 `json:"sharpe"`
 		MaxDrawdown     float64 `json:"maxDrawdown"`
 		BenchmarkReturn float64 `json:"benchmarkReturn"`
 	} `json:"metrics"`
+	// Fee-free metrics
+	MetricsNoFees struct {
+		TotalReturn     float64 `json:"totalReturn"`
+		CAGR            float64 `json:"cagr"`
+		Sharpe          float64 `json:"sharpe"`
+		MaxDrawdown     float64 `json:"maxDrawdown"`
+		BenchmarkReturn float64 `json:"benchmarkReturn"`
+	} `json:"metricsNoFees"`
+	FeesPaid float64 `json:"feesPaid"`
 }
 
 // ChartPoint is a single data point for the chart.
@@ -62,7 +76,7 @@ func generateReport(client *coinbase.Client, asset, algorithm string, genesis cl
 	log.Printf("generating report for %s since %s with quantum %s", asset, genesis, quantum)
 
 	// calculate metrics and get snapshots
-	snapshots, metrics, err := calculateMetrics(client, asset, genesis, quantum)
+	snapshots, cashFlows, metrics, err := calculateMetrics(client, asset, genesis, quantum)
 	if err != nil {
 		return fmt.Errorf("calculating metrics: %w", err)
 	}
@@ -82,8 +96,8 @@ func generateReport(client *coinbase.Client, asset, algorithm string, genesis cl
 	// calculate duration since genesis
 	duration := clocky.Now().Sub(genesis)
 
-	// build chart data JSON
-	chartData := buildChartData(snapshots, metrics)
+	// build chart data JSON using TWR-indexed values (removes deposit jumps)
+	chartData := buildChartData(snapshots, cashFlows, metrics, quantum)
 	chartJSON, err := json.MarshalIndent(chartData, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshaling chart data: %w", err)
@@ -224,13 +238,14 @@ func fetchTransactionsForDisplay(_ *coinbase.Client, benchmarkAsset string, gene
 	}
 
 	// Second pass: fetch all transactions for display (DESC order)
-	// Exclude USD transactions as they're confusing (mirror of crypto trades)
+	// Exclude USD records for advanced_trade_fill (they mirror crypto trades)
+	// But include USD records for tx/fiat_deposit/fiat_withdrawal (actual deposits)
 	rows, err := database.Query(`
 		SELECT id, type, status, created_at, amount, native_amount, currency,
 		       COALESCE(fill_side, ''), COALESCE(fill_price, ''), COALESCE(fill_commission, '')
 		FROM coinbase_transactions
 		WHERE created_at >= :genesis
-		  AND currency != 'USD'
+		  AND NOT (currency = 'USD' AND type = 'advanced_trade_fill')
 		ORDER BY created_at DESC
 		LIMIT 10000
 	`, sql.Named("genesis", int64(genesis)))
@@ -258,9 +273,19 @@ func fetchTransactionsForDisplay(_ *coinbase.Client, benchmarkAsset string, gene
 			fillPrice = decimal.Parse(fillPriceStr)
 		}
 
+		// Determine display type - tx type needs special handling based on amount sign
+		displayType := formatTxType(txType)
+		if txType == "tx" {
+			if amount.IsPositive() {
+				displayType = "Deposit"
+			} else {
+				displayType = "Withdrawal"
+			}
+		}
+
 		row := TransactionRow{
 			Date:     t.String()[:19], // trim microseconds
-			Type:     formatTxType(txType),
+			Type:     displayType,
 			Currency: currency,
 			Amount:   formatAmount(amount, currency, 8),
 			Notional: formatAmount(native.Neg(), "USD", 2), // flip sign: sells positive, buys negative
@@ -325,27 +350,73 @@ func formatAmount(d decimal.Decimal, currency string, places int) string {
 	}
 }
 
-// buildChartData creates the chart data structure.
-func buildChartData(snapshots []PortfolioSnapshot, m *ReportMetrics) ChartData {
+// buildChartData creates the chart data structure using TWR-indexed values.
+// This removes the visual effect of deposits/withdrawals from the chart,
+// showing only the trading performance (what the portfolio would be worth
+// if there were no external cash flows).
+// Also includes fee-free versions for toggle comparison.
+func buildChartData(snapshots []PortfolioSnapshot, cashFlows []CashFlow, m *ReportMetrics, quantum clocky.Duration) ChartData {
 	data := ChartData{}
 	data.Metrics.TotalReturn = m.TotalReturn
 	data.Metrics.CAGR = m.CAGR
 	data.Metrics.Sharpe = m.Sharpe
 	data.Metrics.MaxDrawdown = m.MaxDrawdown
 	data.Metrics.BenchmarkReturn = m.BenchmarkReturn
+	data.FeesPaid = m.FeesPaid.Float64()
 
-	for _, s := range snapshots {
-		// use Unix seconds for lightweight charts
+	// Calculate TWR-indexed values for chart (removes deposit jumps)
+	strategySeries := calculateTWRSeries(snapshots, cashFlows, true)
+	benchmarkSeries := calculateTWRSeries(snapshots, cashFlows, false)
+
+	// Calculate fee-free series (what performance would be without fees)
+	strategyNoFeesSeries := calculateTWRSeriesNoFees(snapshots, cashFlows, true)
+	benchmarkNoFeesSeries := calculateTWRSeriesNoFees(snapshots, cashFlows, false)
+
+	for i, s := range snapshots {
 		unixSec := s.Time.Unix()
 		data.Strategy = append(data.Strategy, ChartPoint{
 			Time:  unixSec,
-			Value: s.StrategyValue.Float64(),
+			Value: strategySeries[i],
 		})
 		data.Benchmark = append(data.Benchmark, ChartPoint{
 			Time:  unixSec,
-			Value: s.BenchmarkValue.Float64(),
+			Value: benchmarkSeries[i],
+		})
+		data.StrategyNoFees = append(data.StrategyNoFees, ChartPoint{
+			Time:  unixSec,
+			Value: strategyNoFeesSeries[i],
+		})
+		data.BenchmarkNoFees = append(data.BenchmarkNoFees, ChartPoint{
+			Time:  unixSec,
+			Value: benchmarkNoFeesSeries[i],
 		})
 	}
+
+	// Calculate fee-free metrics
+	if len(strategyNoFeesSeries) >= 2 {
+		noFeesReturn := (strategyNoFeesSeries[len(strategyNoFeesSeries)-1]/strategyNoFeesSeries[0] - 1) * 100
+		benchNoFeesReturn := (benchmarkNoFeesSeries[len(benchmarkNoFeesSeries)-1]/benchmarkNoFeesSeries[0] - 1) * 100
+		data.MetricsNoFees.TotalReturn = noFeesReturn
+		data.MetricsNoFees.BenchmarkReturn = benchNoFeesReturn
+
+		// Calculate CAGR for fee-free
+		duration := snapshots[len(snapshots)-1].Time.Sub(snapshots[0].Time)
+		yearsElapsed := float64(duration) / float64(360*clocky.Day)
+		if yearsElapsed > 0 {
+			data.MetricsNoFees.CAGR = (math.Pow(1+noFeesReturn/100, 1/yearsElapsed) - 1) * 100
+
+			// Calculate Sharpe/MaxDD for fee-free using equity tracker
+			noFeesEquity := metrics.NewEquity(quantum)
+			for i, s := range snapshots {
+				if noFeesEquity.ShouldSample(s.Time) {
+					noFeesEquity.Sample(s.Time, decimal.FromFloat64(strategyNoFeesSeries[i]))
+				}
+			}
+			data.MetricsNoFees.Sharpe = noFeesEquity.Sharpe(0.0487)
+			data.MetricsNoFees.MaxDrawdown = noFeesEquity.MaxDrawdown() * 100
+		}
+	}
+
 	return data
 }
 
@@ -382,9 +453,9 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
 	buf.WriteString(formatDuration(duration))
 	buf.WriteString(`</span>
             </div>
-            <div class="metric">
-                <span class="label">Fees Paid</span>
-                <span class="value negative">-$`)
+            <div class="metric fee-toggle" id="fee-toggle" title="Click to toggle fees on/off">
+                <span class="label" id="fee-label">Fees Paid</span>
+                <span class="value negative" id="fee-value">-$`)
 	buf.WriteString(m.FeesPaid.FormatThousand(2))
 	buf.WriteString(`</span>
             </div>
@@ -428,7 +499,7 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
             </div>
             <div class="metric">
                 <span class="label">Total Return</span>
-                <span class="value`)
+                <span id="metric-return" class="value`)
 	if m.TotalReturn >= 0 {
 		buf.WriteString(" positive")
 	} else {
@@ -440,7 +511,7 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
             </div>
             <div class="metric">
                 <span class="label" title="Compounding Annualized Growth Rate">CAGR</span>
-                <span class="value`)
+                <span id="metric-cagr" class="value`)
 	if m.CAGR >= 0 {
 		buf.WriteString(" positive")
 	} else {
@@ -452,19 +523,19 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
             </div>
             <div class="metric">
                 <span class="label">Sharpe Ratio</span>
-                <span class="value">`)
+                <span id="metric-sharpe" class="value">`)
 	buf.WriteString(fmt.Sprintf("%.2f", m.Sharpe))
 	buf.WriteString(`</span>
             </div>
             <div class="metric">
                 <span class="label">Max Drawdown</span>
-                <span class="value negative">`)
+                <span id="metric-maxdd" class="value negative">`)
 	buf.WriteString(fmt.Sprintf("-%.1f%%", m.MaxDrawdown))
 	buf.WriteString(`</span>
             </div>
             <div class="metric">
                 <span class="label">vs Benchmark</span>
-                <span class="value`)
+                <span id="metric-alpha" class="value`)
 	if alpha >= 0 {
 		buf.WriteString(" positive")
 	} else {
@@ -525,10 +596,10 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
             <p class="disclaimer">
                 The above address is owned by <a href="https://justine.lol/">Justine Alexandra Roberts Tunney</a>. By sending `)
 	buf.WriteString(html.EscapeString(asset))
-	buf.WriteString(` to this address, you get the benefit of entertainment in seeing the crypto show up on this page and being traded, and the satisfaction of knowing that you're supporting her work in fields such as open source development, artificial intelligence, finance, and grassroots activism. <strong>This is not an investment.</strong> She is not a registered anything. You are giving her the crypto. She has full autonomy over how she uses her crypto but promises you'll at least get to see it in action as part of this live trading portfolio for a short time. She has no way of knowing who sent her the crypto unless you tell her. You should furthermore consider the tax implications of sharing cryptography.
+	buf.WriteString(` to this address, you get the benefit of entertainment in seeing the crypto show up on this page and being traded, and the satisfaction of knowing that you're supporting her work in fields such as open source development, artificial intelligence, finance, and grassroots activism. <strong>This is not an investment.</strong> She is not a registered anything. You are giving her the crypto. She has full autonomy over how she uses her crypto but promises you'll at least get to see it in action as part of this live trading portfolio for a short time. She has no way of knowing who sent her the crypto. You should also consider the tax implications of sharing cryptography.
             </p>
             <p class="disclaimer">
-			    Our bespoke algorithm works by monitoring publicly available information in the cryptography community and then routing that knowledge to New York over private networks for analysis by proprietary Go code that places marketable IOC limit orders via the <a href="https://advanced.coinbase.com/join/L8EN839">Coinbase Advanced Trading API</a> as a VIP 4 member in order to clean stale bids and asks from the order book. You should assume that this algorithm is highly risky and experimental. It may lose all value at any time, including during periods of apparent stability. Past performance is no guarantee of future results. If you use our Coinbase referral hyperlink to join the website, you should not expect to see similar returns. They will charge you 10x-100x higher fees and trying to make money off cryptography is like trying to milk a male tiger. Don't come into the den of jackals. Do literally anything else instead, like buy U.S. Treasury Bonds from Charles Schwab.
+			    Our bespoke algorithm works by monitoring publicly available information in the cryptography community and then routing that knowledge to New York over private networks for analysis by proprietary Go code that places marketable IOC limit orders via the <a href="https://advanced.coinbase.com/join/L8EN839">Coinbase Advanced Trading API</a> as a VIP 4 member in order to clean stale bids and asks from the order book. You should assume that this algorithm is highly risky and experimental. It may lose all value at any time, including during periods of apparent stability. Past performance is no guarantee of future results. If you use our Coinbase referral hyperlink to join the website, you should not expect to see similar returns. They will charge you much higher fees and trying to make money off cryptography is like trying to milk a male tiger. Don't come into the den of jackals. Do literally anything else instead, like buy U.S. Treasury Bonds from Charles Schwab.
 			</p>
         </section>
 
