@@ -8,6 +8,7 @@ import (
 	"dropbear/db"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/loggy"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -122,13 +123,23 @@ func generateReport(client *coinbase.Client, asset, algorithm string, genesis cl
 
 // getDepositAddress fetches the deposit address for the asset.
 func getDepositAddress(client *coinbase.Client, asset string) (address, network string) {
-	account, err := client.GetV2AccountByCurrencyCode(asset)
+	accounts, err := client.GetAccounts()
 	if err != nil {
 		log.Printf("warning: failed to get v2 account for %s: %v", asset, err)
 		return "unavailable", ""
 	}
+	var accountID string
+	for _, account := range accounts {
+		if account.Currency == asset {
+			accountID = account.UUID
+			break
+		}
+	}
+	if accountID == "" {
+		loggy.Fatalf("no coinbase account found for asset %s", asset)
+	}
 
-	addresses, err := client.GetDepositAddresses(account.ID)
+	addresses, err := client.GetDepositAddresses(accountID)
 	if err != nil {
 		log.Printf("warning: failed to get deposit addresses: %v", err)
 		return "unavailable", ""
@@ -136,7 +147,7 @@ func getDepositAddress(client *coinbase.Client, asset string) (address, network 
 
 	if len(addresses) == 0 {
 		// try to create one
-		addr, err := client.CreateDepositAddress(account.ID)
+		addr, err := client.CreateDepositAddress(accountID)
 		if err != nil {
 			log.Printf("warning: failed to create deposit address: %v", err)
 			return "unavailable", ""
@@ -149,7 +160,7 @@ func getDepositAddress(client *coinbase.Client, asset string) (address, network 
 
 // fetchTransactionsForDisplay fetches transactions for the HTML table.
 // Includes LIFO profit/loss calculation for sell transactions of the benchmark asset.
-func fetchTransactionsForDisplay(client *coinbase.Client, benchmarkAsset string, genesis clocky.Time) ([]TransactionRow, error) {
+func fetchTransactionsForDisplay(_ *coinbase.Client, benchmarkAsset string, genesis clocky.Time) ([]TransactionRow, error) {
 	database := db.Get()
 
 	// First pass: build lots by replaying transactions in chronological order
@@ -372,51 +383,9 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
 	buf.WriteString(`</span>
             </div>
             <div class="metric">
-                <span class="label">Total Return</span>
-                <span class="value`)
-	if m.TotalReturn >= 0 {
-		buf.WriteString(" positive")
-	} else {
-		buf.WriteString(" negative")
-	}
-	buf.WriteString(`">`)
-	buf.WriteString(fmt.Sprintf("%+.1f%%", m.TotalReturn))
-	buf.WriteString(`</span>
-            </div>
-            <div class="metric">
-                <span class="label">Annualized</span>
-                <span class="value`)
-	if m.CAGR >= 0 {
-		buf.WriteString(" positive")
-	} else {
-		buf.WriteString(" negative")
-	}
-	buf.WriteString(`">`)
-	buf.WriteString(decimal.FromFloat64(m.CAGR).FormatThousand(1) + "%")
-	buf.WriteString(`</span>
-            </div>
-            <div class="metric">
-                <span class="label">Sharpe Ratio</span>
-                <span class="value">`)
-	buf.WriteString(fmt.Sprintf("%.2f", m.Sharpe))
-	buf.WriteString(`</span>
-            </div>
-            <div class="metric">
-                <span class="label">Max Drawdown</span>
-                <span class="value negative">`)
-	buf.WriteString(fmt.Sprintf("-%.1f%%", m.MaxDrawdown))
-	buf.WriteString(`</span>
-            </div>
-            <div class="metric">
-                <span class="label">vs Benchmark</span>
-                <span class="value`)
-	if alpha >= 0 {
-		buf.WriteString(" positive")
-	} else {
-		buf.WriteString(" negative")
-	}
-	buf.WriteString(`">`)
-	buf.WriteString(fmt.Sprintf("%+.1f%%", alpha))
+                <span class="label">Fees Paid</span>
+                <span class="value negative">-$`)
+	buf.WriteString(m.FeesPaid.FormatThousand(2))
 	buf.WriteString(`</span>
             </div>
             <div class="metric">
@@ -458,9 +427,51 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
 	buf.WriteString(`</span>
             </div>
             <div class="metric">
-                <span class="label">Fees Paid</span>
-                <span class="value negative">-$`)
-	buf.WriteString(m.FeesPaid.FormatThousand(2))
+                <span class="label">Total Return</span>
+                <span class="value`)
+	if m.TotalReturn >= 0 {
+		buf.WriteString(" positive")
+	} else {
+		buf.WriteString(" negative")
+	}
+	buf.WriteString(`">`)
+	buf.WriteString(fmt.Sprintf("%+.1f%%", m.TotalReturn))
+	buf.WriteString(`</span>
+            </div>
+            <div class="metric">
+                <span class="label" title="Compounding Annualized Growth Rate">CAGR</span>
+                <span class="value`)
+	if m.CAGR >= 0 {
+		buf.WriteString(" positive")
+	} else {
+		buf.WriteString(" negative")
+	}
+	buf.WriteString(`">`)
+	buf.WriteString(fmt.Sprintf("%.1f%%", m.CAGR))
+	buf.WriteString(`</span>
+            </div>
+            <div class="metric">
+                <span class="label">Sharpe Ratio</span>
+                <span class="value">`)
+	buf.WriteString(fmt.Sprintf("%.2f", m.Sharpe))
+	buf.WriteString(`</span>
+            </div>
+            <div class="metric">
+                <span class="label">Max Drawdown</span>
+                <span class="value negative">`)
+	buf.WriteString(fmt.Sprintf("-%.1f%%", m.MaxDrawdown))
+	buf.WriteString(`</span>
+            </div>
+            <div class="metric">
+                <span class="label">vs Benchmark</span>
+                <span class="value`)
+	if alpha >= 0 {
+		buf.WriteString(" positive")
+	} else {
+		buf.WriteString(" negative")
+	}
+	buf.WriteString(`">`)
+	buf.WriteString(fmt.Sprintf("%+.1f%%", alpha))
 	buf.WriteString(`</span>
             </div>
         </section>
@@ -476,6 +487,10 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
 	buf.WriteString(`</div>
             <div class="holdings">`)
 	for _, h := range m.Holdings {
+		// hide assets worth less than $1
+		if h.Value.Cmp(decimal.One) < 0 {
+			continue
+		}
 		buf.WriteString(`
                 <span class="holding">`)
 		if h.Currency == "USD" {
@@ -513,7 +528,7 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
 	buf.WriteString(` to this address, you get the benefit of entertainment in seeing the crypto show up on this page and being traded, and the satisfaction of knowing that you're supporting her work in fields such as open source development, artificial intelligence, finance, and grassroots activism. <strong>This is not an investment.</strong> She is not a registered anything. You are giving her the crypto. She has full autonomy over how she uses her crypto but promises you'll at least get to see it in action as part of this live trading portfolio for a short time. She has no way of knowing who sent her the crypto unless you tell her. You should furthermore consider the tax implications of sharing cryptography.
             </p>
             <p class="disclaimer">
-			    Our bespoke algorithm works by monitoring publicly available information in the cryptography community and then routing that knowledge to New York over private networks for analysis by proprietary Go code that places marketable IOC limit orders via the <a href="https://advanced.coinbase.com/join/L8EN839">Coinbase Advanced Trading API</a> as a VIP 4 member in order to clean stale bids and asks from the order book. You should assume that this algorithm is highly risky and experimental. It may lose all value at any time, including during periods of apparent stability. Past performance is no guarantee of future results. If you use our Coinbase referral hyperlink to join the website, you should not expect to see similar returns. They will charge you much higher fees and trying to make money off cryptography is like trying to milk a male tiger. Don't come into the den of jackals. Do literally anything else instead, like buy U.S. Treasury Bonds from Charles Schwab.
+			    Our bespoke algorithm works by monitoring publicly available information in the cryptography community and then routing that knowledge to New York over private networks for analysis by proprietary Go code that places marketable IOC limit orders via the <a href="https://advanced.coinbase.com/join/L8EN839">Coinbase Advanced Trading API</a> as a VIP 4 member in order to clean stale bids and asks from the order book. You should assume that this algorithm is highly risky and experimental. It may lose all value at any time, including during periods of apparent stability. Past performance is no guarantee of future results. If you use our Coinbase referral hyperlink to join the website, you should not expect to see similar returns. They will charge you 10x-100x higher fees and trying to make money off cryptography is like trying to milk a male tiger. Don't come into the den of jackals. Do literally anything else instead, like buy U.S. Treasury Bonds from Charles Schwab.
 			</p>
         </section>
 
@@ -589,7 +604,7 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
 		buf.WriteString("</td>\n")
 
 		// fee column
-		feeClass := "num"
+		feeClass := "fee num"
 		buf.WriteString("                        <td class=\"")
 		buf.WriteString(feeClass)
 		buf.WriteString("\">")

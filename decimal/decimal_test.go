@@ -31,7 +31,7 @@ func TestParse(t *testing.T) {
 		{"0.1", 10_000_000},
 		{".5", 50_000_000},
 		{"0.000000001", 0},
-		{"1.123456789", 1_123_456_78},
+		{"1.123456789", 1_123_456_79},
 		{"1.23456789123456789", 1_234_567_89},
 	}
 	for _, tt := range tests {
@@ -115,7 +115,7 @@ func TestMul(t *testing.T) {
 		{"0.000000001", "1", "0"},                    // smallest representable is now 0 (truncation)
 		{"0.1876", "0.9995", "0.1875062"},            // medium fractions that caused overflow
 		{"0.5", "0.5", "0.25"},                       // simple fractions
-		{"0.999999999", "0.999999999", "0.99999998"}, // near-1 fractions (truncated input -> 0.99999999^2)
+		{"0.999999999", "0.999999999", "1"}, // near-1 fractions (banker's rounds 0.999999999 to 1)
 		{"1e9", "8", "8000000000"},                   // max representable without overflow
 	}
 	for _, tt := range tests {

@@ -20,30 +20,30 @@ func TestWWMA_MatchesQuantConnect(t *testing.T) {
 	w := NewWWMA(3)
 
 	w.Add(decimal.FromInt(10))
-	assertDecimalClose(t, "step 1", w.Value, decimal.FromInt(10))
+	assertEq(t, "step 1", w.Value, decimal.FromInt(10))
 	if w.IsReady() {
 		t.Error("should not be ready after 1 sample")
 	}
 
 	w.Add(decimal.FromInt(11))
-	assertDecimalClose(t, "step 2", w.Value, decimal.Parse("10.5"))
+	assertEq(t, "step 2", w.Value, decimal.Parse("10.5"))
 	if w.IsReady() {
 		t.Error("should not be ready after 2 samples")
 	}
 
 	w.Add(decimal.FromInt(12))
-	assertDecimalClose(t, "step 3", w.Value, decimal.FromInt(11))
+	assertEq(t, "step 3", w.Value, decimal.FromInt(11))
 	if !w.IsReady() {
 		t.Error("should be ready after 3 samples")
 	}
 
 	w.Add(decimal.FromInt(13))
 	// 13/3 + 11*2/3 = 13/3 + 22/3 = 35/3 = 11.666...
-	assertDecimalClose(t, "step 4", w.Value, decimal.Parse("11.666666666666666666"))
+	assertEq(t, "step 4", w.Value, decimal.Parse("11.66666666"))
 
 	w.Add(decimal.FromInt(14))
 	// 14/3 + (35/3)*2/3 = 14/3 + 70/9 = 42/9 + 70/9 = 112/9 = 12.444...
-	assertDecimalClose(t, "step 5", w.Value, decimal.Parse("12.444444444444444444"))
+	assertEq(t, "step 5", w.Value, decimal.Parse("12.44444443"))
 }
 
 func TestWWMA_Period14(t *testing.T) {
@@ -58,12 +58,12 @@ func TestWWMA_Period14(t *testing.T) {
 		t.Error("should be ready after 14 samples")
 	}
 	// SMA of 1..14 = (1+14)*14/2 / 14 = 7.5
-	assertDecimalClose(t, "warmup SMA", w.Value, decimal.Parse("7.5"))
+	assertEq(t, "warmup SMA", w.Value, decimal.Parse("7.5"))
 
 	// Add 15, k = 1/14
 	// WWMA = 15/14 + 7.5*13/14 = 15/14 + 97.5/14 = 112.5/14 = 8.035714...
 	w.Add(decimal.FromInt(15))
-	assertDecimalClose(t, "after warmup", w.Value, decimal.Parse("8.035714285714285714"))
+	assertEq(t, "after warmup", w.Value, decimal.Parse("8.03571427"))
 }
 
 func TestWWMA_ConstantInput(t *testing.T) {
@@ -72,7 +72,7 @@ func TestWWMA_ConstantInput(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		w.Add(decimal.FromInt(100))
 	}
-	assertDecimalClose(t, "constant input", w.Value, decimal.FromInt(100))
+	assertEq(t, "constant input", w.Value, decimal.FromInt(100))
 }
 
 func TestWWMA_SmoothingFactor(t *testing.T) {
@@ -87,37 +87,35 @@ func TestWWMA_SmoothingFactor(t *testing.T) {
 	if !w.IsReady() {
 		t.Error("should be ready")
 	}
-	assertDecimalClose(t, "warmup", w.Value, decimal.FromInt(100))
+	assertEq(t, "warmup", w.Value, decimal.FromInt(100))
 
 	// Add 200: new = 200/10 + 100*9/10 = 20 + 90 = 110
 	w.Add(decimal.FromInt(200))
-	assertDecimalClose(t, "after spike", w.Value, decimal.FromInt(110))
+	assertEq(t, "after spike", w.Value, decimal.FromInt(110))
 
 	// Add 200 again: new = 200/10 + 110*9/10 = 20 + 99 = 119
 	w.Add(decimal.FromInt(200))
-	assertDecimalClose(t, "second spike", w.Value, decimal.FromInt(119))
+	assertEq(t, "second spike", w.Value, decimal.FromInt(119))
 }
 
-func assertDecimalClose(t *testing.T, name string, got, want decimal.Decimal) {
+func assertEq(t *testing.T, name string, got, want decimal.Decimal) {
 	t.Helper()
-	diff := got.Sub(want).Abs()
-	tolerance := decimal.Parse("0.00000001") // 8 decimal places
-	if diff.Cmp(tolerance) > 0 {
-		t.Errorf("%s: got %s, want %s (diff %s)", name, got.String(), want.String(), diff.String())
+	if got.Cmp(want) != 0 {
+		t.Errorf("%s: got %s, want %s", name, got.String(), want.String())
 	}
 }
 
 func BenchmarkWWMA(b *testing.B) {
 	w := NewWWMA(14)
 	v := decimal.Parse("123.456789")
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		w.Add(v)
 	}
 }
 
 func BenchmarkWWMA_DivIntEven(b *testing.B) {
 	v := decimal.Parse("123.456789")
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = v.DivIntEven(14)
 	}
 }
@@ -125,7 +123,7 @@ func BenchmarkWWMA_DivIntEven(b *testing.B) {
 func BenchmarkWWMA_DivFromInt(b *testing.B) {
 	v := decimal.Parse("123.456789")
 	d := decimal.FromInt(14)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = v.Div(d)
 	}
 }

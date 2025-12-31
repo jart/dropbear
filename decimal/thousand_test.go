@@ -29,7 +29,7 @@ func TestDecimal_FormatThousand(t *testing.T) {
 
 		// edge cases
 		{"no_decimals", Parse("1234567"), 0, "1,234,567"},
-		{"many_decimals", Parse("1.123456789"), 8, "1.12345678"},
+		{"many_decimals", Parse("1.123456789"), 8, "1.12345679"},
 		{"small_value", Parse("0.00001234"), 5, "0.00001"},
 
 		// push it to the limit

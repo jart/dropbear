@@ -2,10 +2,10 @@ package coinbase
 
 import (
 	"crypto/ed25519"
-	"dropbear/loggy"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 	"sync"
@@ -16,58 +16,65 @@ var (
 	flagKey = flag.String("coinbase-key", os.ExpandEnv("$HOME/.coinbase.key"), "path to coinbase ed25519 cdp key json file")
 )
 
-var (
-	keyOnce    sync.Once
-	keySaveID  string
-	keySaveKey ed25519.PrivateKey
-)
+type Key struct {
+	ID  string
+	Key ed25519.PrivateKey
+}
 
-func getKey() (string, ed25519.PrivateKey) {
-	keyOnce.Do(func() {
-		data, err := os.ReadFile(*flagKey)
-		if err != nil {
-			loggy.Fatalf("reading coinbase key file: %v", err)
-		}
-		var config struct {
-			ID         string `json:"id"`
-			PrivateKey string `json:"privateKey"`
-		}
-		if err := json.Unmarshal(data, &config); err != nil {
-			loggy.Fatalf("parsing coinbase key file: %v", err)
-		}
-		keyBytes, err := base64.StdEncoding.DecodeString(config.PrivateKey)
-		if err != nil {
-			loggy.Fatalf("decoding coinbase private key base64: %v", err)
-		}
-		if len(keyBytes) != ed25519.PrivateKeySize {
-			loggy.Fatalf("private coinbase key wrong size: got %d, want %d", len(keyBytes), ed25519.PrivateKeySize)
-		}
-		privateKey := ed25519.PrivateKey(keyBytes)
-		keySaveID = config.ID
-		keySaveKey = privateKey
-	})
-	return keySaveID, keySaveKey
+// LoadKey loads a coinbase ed25519 key from a json file.
+// File should contain {"id": "...", "privateKey": "..."} where:
+// - id is the key UUID string
+// - privateKey is the base64-encoded ed25519 private key
+func LoadKey(path string) (*Key, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading coinbase key file %s: %w", path, err)
+	}
+	var config struct {
+		ID         string `json:"id"`
+		PrivateKey string `json:"privateKey"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("parsing coinbase key file %s: %w", path, err)
+	}
+	keyBytes, err := base64.StdEncoding.DecodeString(config.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("decoding coinbase key file %s: %w", path, err)
+	}
+	if len(keyBytes) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("invalid coinbase key size in file %s: %d", path, len(keyBytes))
+	}
+	return &Key{
+		ID:  config.ID,
+		Key: ed25519.PrivateKey(keyBytes),
+	}, nil
+}
+
+// MustLoadKey loads a coinbase ed25519 key from a json file or panics.
+func MustLoadKey(path string) *Key {
+	key, err := LoadKey(path)
+	if err != nil {
+		panic(err)
+	}
+	return key
 }
 
 // generateJWT creates a string for authenticating a request.
-func generateJWT(uri string, expirationSeconds int64) string {
-	kid, key := getKey()
+func (key *Key) GenerateJWT(uri string, expirationSeconds int64) string {
 	now := time.Now().Unix()
-	nonce := strconv.FormatUint(generateNonce(), 10)
-	header := map[string]string{
+	headerJSON, _ := json.Marshal(map[string]string{
 		"alg":   "EdDSA",
-		"kid":   kid,
-		"nonce": nonce,
+		"kid":   key.ID,
+		"nonce": strconv.FormatUint(generateNonce(), 10),
 		"typ":   "JWT",
-	}
-	headerJSON, _ := json.Marshal(header)
+	})
 	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
 	payload := map[string]any{
 		"aud": []string{""},
 		"exp": now + expirationSeconds,
 		"iss": "coinbase-cloud",
 		"nbf": now,
-		"sub": kid,
+		"sub": key.ID,
 	}
 	if uri != "" {
 		payload["uris"] = []string{uri}
@@ -75,7 +82,19 @@ func generateJWT(uri string, expirationSeconds int64) string {
 	payloadJSON, _ := json.Marshal(payload)
 	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
 	message := headerB64 + "." + payloadB64
-	signature := ed25519.Sign(key, []byte(message))
+	signature := ed25519.Sign(key.Key, []byte(message))
 	signatureB64 := base64.RawURLEncoding.EncodeToString(signature)
 	return message + "." + signatureB64
+}
+
+var (
+	keyOnce sync.Once
+	keySave *Key
+)
+
+// GetDefaultKey loads and returns the default coinbase key.
+// This may be configured using the `-coinbase-key FILE` flag.
+func GetDefaultKey() *Key {
+	keyOnce.Do(func() { keySave = MustLoadKey(*flagKey) })
+	return keySave
 }

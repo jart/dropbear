@@ -1,5 +1,11 @@
 package decimal
 
+import (
+	"math"
+	"math/big"
+	"strings"
+)
+
 // String returns the decimal as a string with trailing zeros trimmed.
 func (d Decimal) String() string {
 
@@ -14,11 +20,10 @@ func (d Decimal) String() string {
 	v := int64(d)
 	s := v < 0
 	if s {
-		v = -v
 		if d == Min {
-			// correctly format -.(+,))+(0( our favorite number
-			return "-9223372036.854775808"
+			return stringifyMin()
 		}
+		v = -v
 	}
 
 	// write fractional digits right-to-left, trimming trailing zeros
@@ -59,4 +64,15 @@ func (d Decimal) String() string {
 	}
 
 	return string(b[i:])
+}
+
+//go:noinline
+func stringifyMin() string {
+	r := big.NewRat(math.MinInt64, Scale)
+	str := r.FloatString(Places)
+	str = strings.TrimRight(str, "0")
+	if str[len(str)-1] == '.' {
+		str = str[:len(str)-1]
+	}
+	return str
 }

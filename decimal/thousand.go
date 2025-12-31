@@ -1,5 +1,7 @@
 package decimal
 
+import "strings"
+
 // FormatCommas returns the decimal formatted with commas and exactly n decimal places.
 func (d Decimal) FormatThousand(n int) string {
 	if n < 0 || n > Places {
@@ -84,52 +86,36 @@ func (d Decimal) FormatThousand(n int) string {
 }
 
 // formatMinThousand handles FormatThousand() for Min, which can't be negated without overflow.
-// Min = -9223372036854775808 = -92233720368.54775808
+// Uses formatMin for the value, then inserts commas.
 func formatMinThousand(n int) string {
-	const intPart = "-92,233,720,368"
-	const full = "-92,233,720,368.54775808"
+	s := formatMin(n)
 
-	if n <= 0 {
-		// Truncate to integer, rounding away from zero
-		return "-92,233,720,369"
-	}
-	if n >= Places {
-		return full
-	}
-
-	// Reuse formatMin logic for rounding, then insert commas
-	plain := formatMin(n)
-	// plain is like "-9223372036.85"
-	// We need "-9,223,372,036.85"
-
-	// Find the decimal point
-	dotIdx := -1
-	for i, c := range plain {
-		if c == '.' {
-			dotIdx = i
-			break
-		}
-	}
-
-	var intDigits, fracPart string
+	// Find decimal point position
+	dotIdx := strings.Index(s, ".")
+	var intPart, fracPart string
 	if dotIdx == -1 {
-		intDigits = plain[1:] // skip '-'
+		intPart = s
 		fracPart = ""
 	} else {
-		intDigits = plain[1:dotIdx] // skip '-'
-		fracPart = plain[dotIdx:]   // includes '.'
+		intPart = s[:dotIdx]
+		fracPart = s[dotIdx:]
+	}
+
+	// Extract sign and digits
+	sign := ""
+	if intPart[0] == '-' {
+		sign = "-"
+		intPart = intPart[1:]
 	}
 
 	// Insert commas into integer part
 	var result []byte
-	result = append(result, '-')
-	for i, c := range intDigits {
-		if i > 0 && (len(intDigits)-i)%3 == 0 {
+	for i, c := range intPart {
+		if i > 0 && (len(intPart)-i)%3 == 0 {
 			result = append(result, ',')
 		}
 		result = append(result, byte(c))
 	}
-	result = append(result, fracPart...)
 
-	return string(result)
+	return sign + string(result) + fracPart
 }

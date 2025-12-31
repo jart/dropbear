@@ -1,92 +1,18 @@
 package coinbase
 
 import (
-	"database/sql"
 	"dropbear/clocky"
-	"dropbear/db"
 	"dropbear/decimal"
 	"dropbear/indicators"
 	_ "embed"
 	"fmt"
 	"slices"
-	"sync"
 )
 
 //go:embed minutecandles.sql
 var minuteCandlesSchema string
 
-var (
-	minuteCandlesOnce   sync.Once
-	minuteCandlesUpsert *sql.Stmt
-	minuteCandlesErr    error
-)
-
 const minuteMicros = 60 * 1_000_000
-
-func initMinuteCandles() error {
-	minuteCandlesOnce.Do(func() {
-		database := db.Get()
-		if _, err := database.Exec(minuteCandlesSchema); err != nil {
-			minuteCandlesErr = err
-			return
-		}
-		minuteCandlesUpsert, minuteCandlesErr = database.Prepare(`
-			INSERT OR REPLACE INTO coinbase_minutecandles (
-				symbol, start, open, high, low, close, volume
-			) VALUES (?, ?, ?, ?, ?, ?, ?)
-		`)
-	})
-	return minuteCandlesErr
-}
-
-// UpsertMinuteCandle inserts or updates a single minute candle.
-func UpsertMinuteCandle(symbol string, c *indicators.Candle) error {
-	if err := initMinuteCandles(); err != nil {
-		return err
-	}
-	_, err := minuteCandlesUpsert.Exec(
-		symbol,
-		c.Start,
-		c.Open.String(),
-		c.High.String(),
-		c.Low.String(),
-		c.Close.String(),
-		c.Volume.String(),
-	)
-	return err
-}
-
-// UpsertMinuteCandles inserts or updates multiple minute candles in a transaction.
-func UpsertMinuteCandles(symbol string, candles []*indicators.Candle) error {
-	if err := initMinuteCandles(); err != nil {
-		return err
-	}
-	if len(candles) == 0 {
-		return nil
-	}
-	database := db.Get()
-	tx, err := database.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	stmt := tx.Stmt(minuteCandlesUpsert)
-	for _, c := range candles {
-		_, err := stmt.Exec(
-			symbol,
-			c.Start,
-			c.Open.String(),
-			c.High.String(),
-			c.Low.String(),
-			c.Close.String(),
-			c.Volume.String(),
-		)
-		if err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
 
 // MinuteCandle represents a minute candle from the database.
 type MinuteCandle struct {
@@ -101,12 +27,11 @@ type MinuteCandle struct {
 
 // GetMinuteCandlesFromDB retrieves minute candles for a symbol in a time range from the database.
 // startMicros and endMicros are inclusive unix microsecond timestamps.
-func GetMinuteCandlesFromDB(symbol string, startMicros, endMicros clocky.Time) ([]MinuteCandle, error) {
-	if err := initMinuteCandles(); err != nil {
+func (c *Client) GetMinuteCandlesFromDB(symbol string, startMicros, endMicros clocky.Time) ([]MinuteCandle, error) {
+	if err := c.initMinuteCandles(); err != nil {
 		return nil, err
 	}
-	database := db.Get()
-	rows, err := database.Query(`
+	rows, err := c.db.Query(`
 		SELECT symbol, start, open, high, low, close, volume
 		FROM coinbase_minutecandles
 		WHERE symbol = ? AND start >= ? AND start <= ?
@@ -143,7 +68,7 @@ func (c *Client) GetMinuteCandlesRange(symbol string, startMicros, endMicros clo
 	endMicros = (endMicros / minuteMicros) * minuteMicros
 
 	// Get what we have in the database
-	cached, err := GetMinuteCandlesFromDB(symbol, startMicros, endMicros)
+	cached, err := c.GetMinuteCandlesFromDB(symbol, startMicros, endMicros)
 	if err != nil {
 		return nil, fmt.Errorf("querying cached candles: %w", err)
 	}
@@ -183,14 +108,14 @@ func (c *Client) GetMinuteCandlesRange(symbol string, startMicros, endMicros clo
 			if err != nil {
 				return nil, fmt.Errorf("fetching candles for %s [%s-%s]: %w", symbol, chunkStart, chunkEnd, err)
 			}
-			if err := UpsertMinuteCandles(symbol, candles); err != nil {
+			if err := c.upsertMinuteCandles(symbol, candles); err != nil {
 				return nil, fmt.Errorf("caching candles for %s: %w", symbol, err)
 			}
 		}
 	}
 
 	// Re-fetch from database to get the complete set
-	return GetMinuteCandlesFromDB(symbol, startMicros, endMicros)
+	return c.GetMinuteCandlesFromDB(symbol, startMicros, endMicros)
 }
 
 // timeRange represents a contiguous range of timestamps.
@@ -229,7 +154,7 @@ func (c *Client) GetMinuteCandleAt(symbol string, micros clocky.Time) (*MinuteCa
 	aligned := (micros / minuteMicros) * minuteMicros
 
 	// Try to get from cache first
-	candles, err := GetMinuteCandlesFromDB(symbol, aligned, aligned)
+	candles, err := c.GetMinuteCandlesFromDB(symbol, aligned, aligned)
 	if err != nil {
 		return nil, err
 	}
@@ -257,4 +182,67 @@ func (c *Client) GetMinuteCandleAt(symbol string, micros clocky.Time) (*MinuteCa
 	}
 
 	return nil, fmt.Errorf("no candle found for %s at %d", symbol, micros)
+}
+
+func (c *Client) initMinuteCandles() error {
+	c.minuteCandlesOnce.Do(func() {
+		if _, err := c.db.Exec(minuteCandlesSchema); err != nil {
+			c.minuteCandlesErr = err
+			return
+		}
+		c.minuteCandlesUpsert, c.minuteCandlesErr = c.db.Prepare(`
+			INSERT OR REPLACE INTO coinbase_minutecandles (
+				symbol, start, open, high, low, close, volume
+			) VALUES (?, ?, ?, ?, ?, ?, ?)
+		`)
+	})
+	return c.minuteCandlesErr
+}
+
+// UpsertMinuteCandle inserts or updates a single minute candle.
+func (c *Client) UpsertMinuteCandle(symbol string, candle *indicators.Candle) error {
+	if err := c.initMinuteCandles(); err != nil {
+		return err
+	}
+	_, err := c.minuteCandlesUpsert.Exec(
+		symbol,
+		candle.Start,
+		candle.Open.String(),
+		candle.High.String(),
+		candle.Low.String(),
+		candle.Close.String(),
+		candle.Volume.String(),
+	)
+	return err
+}
+
+// UpsertMinuteCandles inserts or updates multiple minute candles in a transaction.
+func (c *Client) upsertMinuteCandles(symbol string, candles []*indicators.Candle) error {
+	if err := c.initMinuteCandles(); err != nil {
+		return err
+	}
+	if len(candles) == 0 {
+		return nil
+	}
+	tx, err := c.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stmt := tx.Stmt(c.minuteCandlesUpsert)
+	for _, candle := range candles {
+		_, err := stmt.Exec(
+			symbol,
+			candle.Start,
+			candle.Open.String(),
+			candle.High.String(),
+			candle.Low.String(),
+			candle.Close.String(),
+			candle.Volume.String(),
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

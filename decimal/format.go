@@ -1,5 +1,10 @@
 package decimal
 
+import (
+	"math"
+	"math/big"
+)
+
 // Format returns the decimal formatted with exactly n decimal places, zero-padded.
 // For example Decimal.Parse("1.2034").Format(2) -> 13.20"
 // Whereas Decimal.Parse("1.2034").String() -> "1.2034"
@@ -74,52 +79,8 @@ func (d Decimal) Format(n int) string {
 	return string(b[i:])
 }
 
-// formatMin handles Format() for Min, which can't be negated without overflow.
-// Min = -9223372036854775808 = -92233720368.54775808
+//go:noinline
 func formatMin(n int) string {
-	// Full representation with 8 decimal places
-	const full = "-92233720368.54775808"
-	const intPart = "-92233720368"
-
-	if n <= 0 {
-		// Truncate to integer, rounding away from zero
-		// .54775808 >= .5, so round to -92233720369
-		return "-92233720369"
-	}
-	if n >= Places {
-		return full
-	}
-
-	// Build result with n decimal places and rounding
-	// Digits after decimal: 54775808
-	diglet := []byte{'5', '4', '7', '7', '5', '8', '0', '8'}
-	result := intPart + "."
-
-	// Check if we need to round up (away from zero = more negative = add 1 to magnitude)
-	roundUp := n < len(diglet) && diglet[n] >= '5'
-
-	// Take first n digits
-	frac := string(diglet[:n])
-
-	if roundUp {
-		// Add 1 to the fractional part, propagating carry if needed
-		fracBytes := []byte(frac)
-		carry := true
-		for i := len(fracBytes) - 1; i >= 0 && carry; i-- {
-			if fracBytes[i] < '9' {
-				fracBytes[i]++
-				carry = false
-			} else {
-				fracBytes[i] = '0'
-			}
-		}
-		if carry {
-			// Carry propagated into integer part
-			// -92233720368.5... rounds to -92233720369.0...
-			return "-92233720369." + string(make([]byte, n)) // n zeros
-		}
-		frac = string(fracBytes)
-	}
-
-	return result + frac
+	r := big.NewRat(math.MinInt64, Scale)
+	return r.FloatString(n)
 }

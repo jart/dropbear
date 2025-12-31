@@ -10,7 +10,7 @@ const (
 )
 
 // Parse parses a decimal string like "123.45" or "3.6372083e-07".
-// More than 9 decimal places is truncated (not rounded).
+// Trimmed to 8 decimal places using Bankers' Rounding.
 // Panics on invalid input or integer overflow.
 func Parse(str string) Decimal {
 	if len(str) == 0 {
@@ -52,17 +52,24 @@ func Parse(str string) Decimal {
 		panic("forbidden number")
 	}
 
-	// parse fractional part (only read up to Places digits to avoid overflow)
+	// parse fractional part (read Places+1 digits for rounding)
 	if i < len(str) && str[i] == '.' {
 		i++
 		f := int64(0)
 		k := 0
+		extraDigit := int64(-1)  // -1 means no extra digit
+		hasMoreDigits := false   // non-zero digits after extraDigit?
 		for i < len(str) {
 			if str[i] >= '0' && str[i] <= '9' {
 				if k < Places {
 					f *= 10
 					f += int64(str[i] - '0')
 					k++
+				} else if k == Places {
+					extraDigit = int64(str[i] - '0')
+					k++
+				} else if str[i] != '0' {
+					hasMoreDigits = true
 				}
 				digits++
 				i++
@@ -74,6 +81,15 @@ func Parse(str string) Decimal {
 		}
 		if k < Places {
 			f *= pow10[Places-k]
+		}
+		// apply banker's rounding based on extra digit
+		if extraDigit > 5 {
+			f++
+		} else if extraDigit == 5 {
+			// round to even only if exactly at midpoint
+			if hasMoreDigits || f%2 != 0 {
+				f++
+			}
 		}
 		x = x*Scale + f*s
 	} else {
@@ -119,7 +135,21 @@ func Parse(str string) Decimal {
 				if shift >= int64(len(pow10)) {
 					shift = int64(len(pow10) - 1)
 				}
-				x /= pow10[shift]
+				divisor := pow10[shift]
+				rem := x % divisor
+				x /= divisor
+				// banker's rounding on the remainder
+				half := divisor / 2
+				if rem < 0 {
+					rem = -rem
+				}
+				if rem > half || (rem == half && x%2 != 0) {
+					if s > 0 {
+						x++
+					} else {
+						x--
+					}
+				}
 				exp -= shift
 			}
 		}

@@ -1,23 +1,49 @@
 package coinbase
 
 import (
+	"database/sql"
+	"dropbear/db"
 	"dropbear/ds"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
 // Client is a Coinbase Advanced Trade API client.
 type Client struct {
-	rateLimiter rateLimiter
+	db                  *sql.DB
+	authKey             *Key
+	rateLimiter         rateLimiter
+	dayCandlesOnce      sync.Once
+	dayCandlesUpsert    *sql.Stmt
+	dayCandlesErr       error
+	minuteCandlesOnce   sync.Once
+	minuteCandlesUpsert *sql.Stmt
+	minuteCandlesErr    error
 }
 
-// NewClient creates a new Client.
+// NewClient creates a new Client with the default parameters.
 func NewClient() *Client {
-	return &Client{rateLimiter: newRateLimiterForPrivateEndpoints()}
+	return NewClientWith(GetDefaultKey(), db.Get())
+}
+
+// NewClientWithKey creates a new Client.
+func NewClientWith(authKey *Key, db *sql.DB) *Client {
+	return &Client{
+		db:          db,
+		authKey:     authKey,
+		rateLimiter: newRateLimiterForPrivateEndpoints(),
+	}
+}
+
+// Close closes the client.
+func (c *Client) Close() error {
+	c.rateLimiter.Close()
+	return nil
 }
 
 // Get makes an authenticated GET request.
@@ -63,7 +89,7 @@ func (c *Client) Request(client *http.Client, method, reqURL string, body io.Rea
 		if bodyBytes != nil {
 			bodyReader = io.NopCloser(ds.NewBytesReader(bodyBytes))
 		}
-		jwt := generateJWT(jwtURI, 60)
+		jwt := c.authKey.GenerateJWT(jwtURI, 60)
 		req, err := http.NewRequest(method, u.String(), bodyReader)
 		if err != nil {
 			return nil, fmt.Errorf("creating request: %w", err)

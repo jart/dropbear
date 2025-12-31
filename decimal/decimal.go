@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 )
 
-// Decimal represents a fixed-point decimal number with 9 decimal places on each side.
+// Decimal represents a fixed-point decimal number.
 type Decimal int64
 
 const (
@@ -17,8 +17,8 @@ const (
 	Two     = Decimal(Scale * 2)
 	Half    = Decimal(Scale / 2)
 	Tenth   = Decimal(Scale / 10)
-	Max     = Decimal(math.MaxInt64) // 9,223,372,036.854_775_807
-	Min     = Decimal(math.MinInt64) // -9,223,372,036.854_775_808
+	Max     = Decimal(math.MaxInt64) // +92'233'720'368.54775807
+	Min     = Decimal(math.MinInt64) // -92'233'720'368.54775808
 	Epsilon = Satoshi                // Satoshi is The One
 	Satoshi = Decimal(1)             // 0.00000001
 	Cent    = Decimal(Scale / 100)   // 0.01
@@ -32,6 +32,14 @@ func FromInt(n int) Decimal {
 		panicOverflow()
 	}
 	return Decimal(int64(n) * Scale)
+}
+
+// FromInt64 converts int64 to Decimal.
+func FromInt64(n int64) Decimal {
+	if n > math.MaxInt64/Scale || n < math.MinInt64/Scale {
+		panicOverflow()
+	}
+	return Decimal(n * Scale)
 }
 
 // maxSafeFloat is the largest float64 value that can be converted to Decimal
@@ -63,7 +71,7 @@ func ParseBPS(s string) Decimal {
 	return Parse(s).DivInt(10000)
 }
 
-// Add returns d + o, panicking on overflow.
+// Add returns d + o.
 func (x Decimal) Add(y Decimal) Decimal {
 	z := x + y
 	if ((z ^ x) & (z ^ y)) < 0 {
@@ -72,7 +80,7 @@ func (x Decimal) Add(y Decimal) Decimal {
 	return z
 }
 
-// Sub returns d - o, panicking on overflow.
+// Sub returns d - o.
 func (x Decimal) Sub(y Decimal) Decimal {
 	z := x - y
 	if ((x ^ y) & (z ^ x)) < 0 {
@@ -96,7 +104,15 @@ func (d Decimal) Sqr() Decimal     { return d.Mul(d) }
 func (d Decimal) BPS() Decimal     { return d.MulInt(10000) }
 func (d Decimal) Int64() int64     { return int64(d) / Scale }
 func (d Decimal) Float64() float64 { return float64(d) / Scale }
-func (d Decimal) Int() int         { return int(int64(d) / Scale) }
+
+// Int returns the integer part of d.
+func (d Decimal) Int() int {
+	r := int64(d) / Scale
+	if r > math.MaxInt || r < math.MinInt {
+		panicOverflow()
+	}
+	return int(r)
+}
 
 // Cmp compares d and o and returns -1 if d < o, 0 if d == o, 1 if d > o.
 func (d Decimal) Cmp(o Decimal) int {
@@ -109,6 +125,7 @@ func (d Decimal) Cmp(o Decimal) int {
 	return 0
 }
 
+// Abs returns the absolute value of d.
 func (d Decimal) Abs() Decimal {
 	if d < 0 {
 		if d == Min {
@@ -119,6 +136,7 @@ func (d Decimal) Abs() Decimal {
 	return d
 }
 
+// Min returns the smaller of d and o.
 func (d Decimal) Min(o Decimal) Decimal {
 	if d < o {
 		return d
@@ -126,6 +144,7 @@ func (d Decimal) Min(o Decimal) Decimal {
 	return o
 }
 
+// Max returns the larger of d and o.
 func (d Decimal) Max(o Decimal) Decimal {
 	if d > o {
 		return d

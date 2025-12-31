@@ -344,7 +344,7 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	order, err := gCoinbasePair.LimitOrder(side, size, limi, ds.OrderStrategyIOC)
 	if err != nil {
 		logDecision()
-		log.Printf("[error] failed to place order: %v", err)
+		log.Printf("[error] failed to place %s order: %v", side, err)
 		return
 	}
 

@@ -2,7 +2,6 @@ package coinbase
 
 import (
 	"database/sql"
-	"dropbear/db"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -233,18 +232,27 @@ func parseRFC3339Micros(s string) int64 {
 // SyncTransactions synchronizes v2 transactions from the Coinbase API to the local database.
 // It fetches transactions for the specified currency incrementally from the last synced transaction.
 func (c *Client) SyncTransactions(currency string) error {
-	database := db.Get()
 
 	// create transactions table if it doesn't exist
-	_, err := database.Exec(transactionsSchema)
+	_, err := c.db.Exec(transactionsSchema)
 	if err != nil {
 		return fmt.Errorf("creating transactions table: %w", err)
 	}
 
-	// Get v2 account for this currency
-	account, err := c.GetV2AccountByCurrencyCode(currency)
+	// get account id for currency
+	accounts, err := c.GetAccounts()
 	if err != nil {
 		return fmt.Errorf("getting account for %s: %w", currency, err)
+	}
+	var accountID string
+	for _, account := range accounts {
+		if account.Currency == currency {
+			accountID = account.UUID
+			break
+		}
+	}
+	if accountID == "" {
+		return nil // there isn't any of this currency in auth key's portfolio
 	}
 
 	// Get cursor for incremental sync.
@@ -256,13 +264,13 @@ func (c *Client) SyncTransactions(currency string) error {
 	var cursorCreatedAt int64
 
 	// Get 10th most recent transaction
-	err = database.QueryRow(`
+	err = c.db.QueryRow(`
 		SELECT COALESCE(id, ''), COALESCE(created_at, 0)
 		FROM coinbase_transactions
 		WHERE account_id = :account_id
 		ORDER BY created_at DESC
 		LIMIT 1 OFFSET 9
-	`, sql.Named("account_id", account.ID)).Scan(&cursor, &cursorCreatedAt)
+	`, sql.Named("account_id", accountID)).Scan(&cursor, &cursorCreatedAt)
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("getting recent transaction: %w", err)
 	}
@@ -270,7 +278,7 @@ func (c *Client) SyncTransactions(currency string) error {
 	// Check for earliest unconfirmed on-chain transaction
 	var unconfirmedCursor string
 	var unconfirmedCreatedAt int64
-	err = database.QueryRow(`
+	err = c.db.QueryRow(`
 		SELECT id, created_at
 		FROM coinbase_transactions
 		WHERE account_id = :account_id
@@ -279,7 +287,7 @@ func (c *Client) SyncTransactions(currency string) error {
 		  AND status != 'completed'
 		ORDER BY created_at ASC
 		LIMIT 1
-	`, sql.Named("account_id", account.ID)).Scan(&unconfirmedCursor, &unconfirmedCreatedAt)
+	`, sql.Named("account_id", accountID)).Scan(&unconfirmedCursor, &unconfirmedCreatedAt)
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("getting unconfirmed transaction: %w", err)
 	}
@@ -290,7 +298,7 @@ func (c *Client) SyncTransactions(currency string) error {
 	}
 
 	// Start transaction for atomic insert
-	tx, err := database.Begin()
+	tx, err := c.db.Begin()
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
@@ -325,7 +333,7 @@ func (c *Client) SyncTransactions(currency string) error {
 
 	total := 0
 	for {
-		resp, err := c.ListV2Transactions(account.ID, cursor, 100)
+		resp, err := c.ListV2Transactions(accountID, cursor, 100)
 		if err != nil {
 			return fmt.Errorf("fetching transactions: %w", err)
 		}
@@ -400,7 +408,7 @@ func (c *Client) SyncTransactions(currency string) error {
 
 			result, err := stmt.Exec(
 				sql.Named("id", t.ID),
-				sql.Named("account_id", account.ID),
+				sql.Named("account_id", accountID),
 				sql.Named("type", t.Type),
 				sql.Named("status", t.Status),
 				sql.Named("created_at", createdAt),

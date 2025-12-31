@@ -4,10 +4,11 @@ A fixed-point decimal library optimized for financial calculations.
 
 ## Design
 
-`Decimal` let's you encode real numbers with nine decimal places on each side.
-It's an alias for `int64`. The value `1.00` is stored internally as `1_000_000_000`.
-The max number is `9,223,372,036.854_775_807` and the min is `-9,223,372,036.854_775_808`.
+`Decimal` let's you encode real numbers with up to eight decimal places.
+It's an alias for `int64`. The value `1.00` is stored internally as `100_000_000`.
+The max number is `+92'233'720'368.54775807` and the min is `-92'233'720'368.54775808`.
 For safety, `Decimal` does overflow checking, rather than paying the cost of growing data.
+We use Bankers' Rounding for parsing and operations like division, to avoid statistical bias.
 
 ## Why not float64?
 

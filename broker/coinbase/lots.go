@@ -2,7 +2,6 @@ package coinbase
 
 import (
 	"dropbear/clocky"
-	"dropbear/db"
 	"dropbear/decimal"
 	"dropbear/ds"
 	"fmt"
@@ -15,8 +14,7 @@ import (
 // Buys/receives add lots, sells/sends consume lots using the specified method.
 // You need to call SyncTransactions(currency) beforehand.
 func (c *Client) GetLots(currency string, method ds.CostBasisMethod) (*ds.Lots, error) {
-	database := db.Get()
-	rows, err := database.Query(`
+	rows, err := c.db.Query(`
 		SELECT created_at, type, amount, native_amount, to_address,
 		       buy_total, fill_side, fill_price, fill_commission, fill_product_id
 		FROM coinbase_transactions

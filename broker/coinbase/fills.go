@@ -1,7 +1,6 @@
 package coinbase
 
 import (
-	"dropbear/db"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -72,8 +71,7 @@ func (c *Client) ListFills(startTime, endTime, cursor string) (*ListFillsRespons
 // SyncFills synchronizes fills from the Coinbase API to the local database.
 // It fetches fills incrementally from the last sequence_timestamp forward.
 func (c *Client) SyncFills() error {
-	db := db.Get()
-	_, err := db.Exec(`
+	_, err := c.db.Exec(`
 		CREATE TABLE IF NOT EXISTS fills (
 			entry_id TEXT PRIMARY KEY,
 			trade_id TEXT NOT NULL,
@@ -99,12 +97,12 @@ func (c *Client) SyncFills() error {
 	}
 	// Get the latest sequence_timestamp we have
 	var startTime string
-	err = db.QueryRow(`SELECT COALESCE(MAX(sequence_timestamp), '') FROM fills`).Scan(&startTime)
+	err = c.db.QueryRow(`SELECT COALESCE(MAX(sequence_timestamp), '') FROM fills`).Scan(&startTime)
 	if err != nil {
 		return fmt.Errorf("getting last timestamp: %w", err)
 	}
 	// Prepare insert statement
-	stmt, err := db.Prepare(`
+	stmt, err := c.db.Prepare(`
 		INSERT OR REPLACE INTO fills (
 			entry_id, trade_id, order_id, trade_time, trade_type,
 			price, size, commission, product_id, sequence_timestamp,

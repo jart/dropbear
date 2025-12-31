@@ -303,9 +303,12 @@ func calculateMetrics(
 		// undo the crypto effect
 		balances[tx.Currency] = balances[tx.Currency].Sub(tx.Amount)
 
-		// undo the USD effect for trades
+		// undo the USD effect for trades (including fees)
 		if tx.Type == "advanced_trade_fill" || tx.Type == "buy" || tx.Type == "sell" || tx.Type == "trade" {
 			balances["USD"] = balances["USD"].Add(tx.NativeAmount)
+			if tx.Currency != "USD" {
+				balances["USD"] = balances["USD"].Add(tx.Commission)
+			}
 		}
 	}
 
@@ -353,8 +356,10 @@ func calculateMetrics(
 		for txIdx < len(transactions) && transactions[txIdx].CreatedAt <= t {
 			tx := transactions[txIdx]
 
-			// accumulate fees
-			totalFees = totalFees.Add(tx.Commission)
+			// accumulate fees (only from crypto records - USD records duplicate the same fees)
+			if tx.Currency != "USD" {
+				totalFees = totalFees.Add(tx.Commission)
+			}
 
 			switch tx.Type {
 			case "send":
@@ -389,15 +394,25 @@ func calculateMetrics(
 			case "advanced_trade_fill", "buy", "sell", "trade":
 				balances[tx.Currency] = balances[tx.Currency].Add(tx.Amount)
 				balances["USD"] = balances["USD"].Sub(tx.NativeAmount)
+				// Fees are charged separately from native_amount and reduce USD
+				// (only crypto-side records have commission, USD-side records don't)
+				if tx.Currency != "USD" {
+					balances["USD"] = balances["USD"].Sub(tx.Commission)
+				}
 
 				// track lots for realized P/L (only for benchmark asset)
+				// Cost basis includes fees paid on purchase
+				// Proceeds are actual native_amount received minus fees on sale
 				if tx.Currency == benchmarkAsset {
 					if tx.Amount.IsPositive() {
-						lots.Add(tx.CreatedAt, tx.Amount, tx.NativeAmount)
+						// Buy: cost basis = native_amount + commission
+						costWithFee := tx.NativeAmount.Add(tx.Commission)
+						lots.Add(tx.CreatedAt, tx.Amount, costWithFee)
 					} else {
+						// Sell: proceeds = native_amount - commission
 						sellQty := tx.Amount.Neg()
+						proceeds := tx.NativeAmount.Abs().Sub(tx.Commission)
 						price := getPrice(benchmarkAsset, tx.CreatedAt)
-						proceeds := sellQty.Mul(price)
 						costBasis := lots.Consume(sellQty, price)
 						totalRealized = totalRealized.Add(proceeds.Sub(costBasis))
 					}

@@ -20,5 +20,5 @@ func WSUserURL() string {
 
 // GenerateWSJWT creates a JWT for websocket authentication.
 func GenerateWSJWT() string {
-	return generateJWT("", 60*3)
+	return GetDefaultKey().GenerateJWT("", 60*3)
 }

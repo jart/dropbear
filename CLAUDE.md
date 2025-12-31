@@ -22,7 +22,7 @@ this project does equities and cryptography trading using go.
 - `teddy/` is our QuantConnect-like framework for writing crypto trading algorithms
 - `cmd/spread/` is an example of a trading bot that uses the teddy framework
 - `loggy/` is our logging utilities
-- `decimal/` our fixed point number library with 9 decimal places
+- `decimal/` our fixed point number library with 8 decimal places
 - `db/` use `db.Get()` to get a WAL2 SQLite singleton into `~/.dropbear.sqlite3`
 - `indicators/` has indicators similar quantconnect but better, defines candles
 - `orderbook/` uses gods v2 tree set for fast level2 order book management
@@ -62,15 +62,32 @@ this project does equities and cryptography trading using go.
 
 - `decimal.Parse("0.01")`
 - `decimal.FromInt(100)`
-- `bid.Add(ask).DivInt(2)` calculates midpoint
+- `bid.Add(ask).DivIntEven(2)` calculates midpoint
 - `x.Cmp(y)` for comparisons
 - `x.{Min,Max}(y)` is nice and terse
 - `d.String()` produces string that shows decimal places be removes trailing zeroes
 - `d.Format(2)` produces string that always has 2 decimal places with nearest rounding
 - `d.MulInt(2)` shortcut for `d.Mul(decimal.Parse("2"))`
-- `d.Quantize({base,quote}Increment)` if you don't care
-- `d.Quantize{Nearest,Up,Down,Floor,Ceil}({base,quote}Increment)` when it matters
 - `d.Int()` and `d.Int64()` exist, also Sqr, Exp, Neg, Abs, IsZero, IsPositive, etc.
+- `d.QuantizeEven(q)` rounds half to even
+- `d.QuantizeNearest(q)` rounds half away from zero
+- `d.QuantizeTruncate(q)` rounds towards zero (use for order sizing and bid prices)
+- `d.QuantizeAway(q)` rounds away from zero (use for margin calculations and ask prices)
+
+### beware of overflow
+
+The decimal library only supports numbers up to the tens of billions. It will panic if any
+computation goes higher than that. Therefore you must choose algorithms that keep the scale
+of intermediary computations small. For example, to compute an average, rather than summing
+all the numbers and then dividing, consider using a running method like Welford's algorithm.
+
+### beware of statistical bias
+
+The decimal library has methods like DivEven() and DivIntEven() which are generally preferred
+since they use Bankers' Rounding. This is fixed-point, it's not rational, so unfortunately we
+can't throw an error when numbers less than 1e-8 are lost. So you need to be extra careful to
+choose the correct kind of division. You also need to think long and hard about what kind of
+quantization is appropriate, only in the situations where quantization is strictly required.
 
 ## time and durations
 
