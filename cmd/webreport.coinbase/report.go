@@ -46,6 +46,7 @@ type TransactionRow struct {
 	Date       string
 	Type       string
 	Side       string // Buy or Sell
+	Currency   string // asset currency (ETH, BTC, etc.)
 	Amount     string
 	FillPrice  string // price per unit
 	Notional   string
@@ -147,24 +148,81 @@ func getDepositAddress(client *coinbase.Client, asset string) (address, network 
 }
 
 // fetchTransactionsForDisplay fetches transactions for the HTML table.
-// Includes LIFO profit/loss calculation for sell transactions.
-func fetchTransactionsForDisplay(client *coinbase.Client, asset string, genesis clocky.Time) ([]TransactionRow, error) {
-	// get LIFO lots for profit/loss calculation
-	lots, err := client.GetLots(asset, ds.CostBasisMethodLIFO)
-	if err != nil {
-		log.Printf("warning: failed to get lots for profit/loss: %v", err)
-	}
-
+// Includes LIFO profit/loss calculation for sell transactions of the benchmark asset.
+func fetchTransactionsForDisplay(client *coinbase.Client, benchmarkAsset string, genesis clocky.Time) ([]TransactionRow, error) {
 	database := db.Get()
-	rows, err := database.Query(`
-		SELECT type, status, created_at, amount, native_amount,
+
+	// First pass: build lots by replaying transactions in chronological order
+	// We need to process in ASC order to correctly consume lots for P/L calculation
+	lots := ds.NewLots(ds.CostBasisMethodLIFO)
+	plMap := make(map[string]struct { // map transaction ID -> P/L info
+		CostBasis  decimal.Decimal
+		ProfitLoss decimal.Decimal
+	})
+
+	// Query all benchmark asset transactions to build lots
+	lotsRows, err := database.Query(`
+		SELECT id, type, created_at, amount, native_amount,
 		       COALESCE(fill_side, ''), COALESCE(fill_price, ''), COALESCE(fill_commission, '')
 		FROM coinbase_transactions
-		WHERE currency = :currency
-		  AND created_at >= :genesis
+		WHERE currency = :currency AND status = 'completed'
+		ORDER BY created_at ASC
+	`, sql.Named("currency", benchmarkAsset))
+	if err != nil {
+		log.Printf("warning: failed to query lots: %v", err)
+	} else {
+		defer lotsRows.Close()
+		for lotsRows.Next() {
+			var id, txType, amountStr, nativeStr, fillSide, fillPriceStr, commissionStr string
+			var createdAt int64
+			if err := lotsRows.Scan(&id, &txType, &createdAt, &amountStr, &nativeStr, &fillSide, &fillPriceStr, &commissionStr); err != nil {
+				continue
+			}
+			t := clocky.Time(createdAt)
+			amount := decimal.Parse(amountStr)
+			native := decimal.Parse(nativeStr)
+			var commission, fillPrice decimal.Decimal
+			if commissionStr != "" {
+				commission = decimal.Parse(commissionStr)
+			}
+			if fillPriceStr != "" {
+				fillPrice = decimal.Parse(fillPriceStr)
+			}
+
+			switch txType {
+			case "advanced_trade_fill", "buy", "sell", "trade":
+				if fillSide == "buy" && amount.IsPositive() {
+					lots.Add(t, amount, native.Abs())
+				} else if fillSide == "sell" && amount.IsNegative() && !fillPrice.IsZero() {
+					sellQty := amount.Neg()
+					proceeds := native.Abs()
+					costBasis := lots.Consume(sellQty, fillPrice)
+					profitLoss := proceeds.Sub(costBasis).Sub(commission)
+					plMap[id] = struct {
+						CostBasis  decimal.Decimal
+						ProfitLoss decimal.Decimal
+					}{costBasis, profitLoss}
+				}
+			case "send":
+				if amount.IsPositive() {
+					// deposit - add at zero cost basis (or use native if available)
+					lots.Add(t, amount, native.Abs())
+				}
+			}
+		}
+	}
+
+	// Second pass: fetch all transactions for display (DESC order)
+	// Exclude USD transactions as they're confusing (mirror of crypto trades)
+	rows, err := database.Query(`
+		SELECT id, type, status, created_at, amount, native_amount, currency,
+		       COALESCE(fill_side, ''), COALESCE(fill_price, ''), COALESCE(fill_commission, '')
+		FROM coinbase_transactions
+		WHERE created_at >= :genesis
+		  AND currency != 'USD'
 		ORDER BY created_at DESC
-		LIMIT 1000
-	`, sql.Named("currency", asset), sql.Named("genesis", int64(genesis)))
+		LIMIT 10000
+	`, sql.Named("genesis", int64(genesis)))
 	if err != nil {
 		return nil, err
 	}
@@ -172,51 +230,54 @@ func fetchTransactionsForDisplay(client *coinbase.Client, asset string, genesis 
 
 	var result []TransactionRow
 	for rows.Next() {
-		var txType, status, amountStr, nativeStr, fillSide, fillPriceStr, commissionStr string
+		var id, txType, status, amountStr, nativeStr, currency, fillSide, fillPriceStr, commissionStr string
 		var createdAt int64
-		if err := rows.Scan(&txType, &status, &createdAt, &amountStr, &nativeStr, &fillSide, &fillPriceStr, &commissionStr); err != nil {
+		if err := rows.Scan(&id, &txType, &status, &createdAt, &amountStr, &nativeStr, &currency, &fillSide, &fillPriceStr, &commissionStr); err != nil {
 			continue
 		}
 
 		t := clocky.Time(createdAt)
 		amount := decimal.Parse(amountStr)
 		native := decimal.Parse(nativeStr)
-		commission := decimal.Parse(commissionStr)
-		fillPrice := decimal.Parse(fillPriceStr)
+		var commission, fillPrice decimal.Decimal
+		if commissionStr != "" {
+			commission = decimal.Parse(commissionStr)
+		}
+		if fillPriceStr != "" {
+			fillPrice = decimal.Parse(fillPriceStr)
+		}
 
 		row := TransactionRow{
 			Date:     t.String()[:19], // trim microseconds
 			Type:     formatTxType(txType),
-			Amount:   formatAmount(amount, asset, 8),
+			Currency: currency,
+			Amount:   formatAmount(amount, currency, 8),
 			Notional: formatAmount(native.Neg(), "USD", 2), // flip sign: sells positive, buys negative
 			Status:   status,
 		}
 
 		// show side if present
-		if fillSide == "buy" {
+		switch fillSide {
+		case "buy":
 			row.Side = "Buy"
-		} else if fillSide == "sell" {
+		case "sell":
 			row.Side = "Sell"
 		}
 
 		// show fill price if present
 		if !fillPrice.IsZero() {
-			row.FillPrice = formatAmount(fillPrice, "USD", 2)
+			row.FillPrice = formatAmount(fillPrice, "USD", 8)
 		}
 
 		// show fee if present
 		if !commission.IsZero() {
-			row.Fee = formatAmount(commission.Neg(), "USD", 2) // show as negative (cost)
+			row.Fee = formatAmount(commission.Neg(), "USD", 8) // show as negative (cost)
 		}
 
-		// calculate LIFO cost basis and profit/loss for sells
-		if fillSide == "sell" && lots != nil && !fillPrice.IsZero() {
-			sellQty := amount.Neg() // amount is negative for sells
-			proceeds := native.Abs() // use actual USD amount from Coinbase, not computed
-			costBasis := lots.GetCostBasis(sellQty, fillPrice)
-			profitLoss := proceeds.Sub(costBasis).Sub(commission)
-			row.CostBasis = formatAmount(costBasis, "USD", 2)
-			row.ProfitLoss = formatAmount(profitLoss, "USD", 2)
+		// use pre-calculated P/L for benchmark asset sells
+		if pl, ok := plMap[id]; ok {
+			row.CostBasis = formatAmount(pl.CostBasis, "USD", 8)
+			row.ProfitLoss = formatAmount(pl.ProfitLoss, "USD", 8)
 		}
 
 		result = append(result, row)
@@ -413,17 +474,24 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
             <div class="portfolio-value">$`)
 	buf.WriteString(m.CurrentValue.FormatThousand(2))
 	buf.WriteString(`</div>
-            <div class="holdings">
+            <div class="holdings">`)
+	for _, h := range m.Holdings {
+		buf.WriteString(`
                 <span class="holding">`)
-	buf.WriteString(m.AssetBalance.String())
-	buf.WriteString(" ")
-	buf.WriteString(html.EscapeString(asset))
-	buf.WriteString(` @ $`)
-	buf.WriteString(m.AssetPrice.FormatThousand(2))
-	buf.WriteString(`</span>
-                <span class="holding">$`)
-	buf.WriteString(m.USDBalance.FormatThousand(2))
-	buf.WriteString(` USD</span>
+		if h.Currency == "USD" {
+			buf.WriteString("$")
+			buf.WriteString(h.Balance.FormatThousand(8))
+			buf.WriteString(" USD")
+		} else {
+			buf.WriteString(h.Balance.String())
+			buf.WriteString(" ")
+			buf.WriteString(html.EscapeString(h.Currency))
+			// buf.WriteString(" @ $")
+			// buf.WriteString(h.Price.FormatThousand(2))
+		}
+		buf.WriteString(`</span>`)
+	}
+	buf.WriteString(`
             </div>
         </section>
 

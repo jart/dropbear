@@ -36,7 +36,7 @@ a:visited {
     font-style: normal;
     font-display: swap;
 }
-          
+
 @font-face {
     font-family: 'Helvetica Neue';
     src: url('/webfonts/NeueHelveticaPro56Italic/font.woff2') format('woff2'),

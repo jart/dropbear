@@ -21,7 +21,6 @@ fetch('data.json')
             timeScale: {
                 borderColor: '#1a1a1a',
                 timeVisible: true,
-                rightOffset: 50, // buffer so lines don't get covered by legend
             },
             crosshair: {
                 vertLine: {
@@ -72,7 +71,10 @@ fetch('data.json')
         });
         benchmarkSeries.setData(data.benchmark);
 
-        // Fit content to show all data
+        // Fit content with 20% padding on the right for legend labels
+        var dataLength = data.strategy.length;
+        var rightPadding = Math.max(Math.ceil(dataLength * 0.2), 10);
+        chart.timeScale().applyOptions({ rightOffset: rightPadding });
         chart.timeScale().fitContent();
 
         // Handle resize
