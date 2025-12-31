@@ -21,8 +21,8 @@ a:visited {
 
 @font-face {
     font-family: 'Helvetica Neue';
-    src: url('https://justinestreet.capital/webfonts/NeueHelveticaPro45Light/font.woff2') format('woff2'),
-         url('https://justinestreet.capital/webfonts/NeueHelveticaPro45Light/font.woff') format('woff');
+    src: url('/webfonts/NeueHelveticaPro45Light/font.woff2') format('woff2'),
+         url('/webfonts/NeueHelveticaPro45Light/font.woff') format('woff');
     font-weight: 300;
     font-style: normal;
     font-display: swap;
@@ -30,9 +30,27 @@ a:visited {
 
 @font-face {
     font-family: 'Helvetica Neue';
-    src: url('https://justinestreet.capital/webfonts/NeueHelveticaPro55Roman/font.woff2') format('woff2'),
-         url('https://justinestreet.capital/webfonts/NeueHelveticaPro55Roman/font.woff') format('woff');
+    src: url('/webfonts/NeueHelveticaPro55Roman/font.woff2') format('woff2'),
+         url('/webfonts/NeueHelveticaPro55Roman/font.woff') format('woff');
     font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+          
+@font-face {
+    font-family: 'Helvetica Neue';
+    src: url('/webfonts/NeueHelveticaPro56Italic/font.woff2') format('woff2'),
+         url('/webfonts/NeueHelveticaPro56Italic/font.woff') format('woff');
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Helvetica Neue';
+    src: url('/webfonts/NeueHelveticaPro75Bold/font.woff2') format('woff2'),
+         url('/webfonts/NeueHelveticaPro75Bold/font.woff') format('woff');
+    font-weight: 700;
     font-style: normal;
     font-display: swap;
 }

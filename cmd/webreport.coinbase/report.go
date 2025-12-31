@@ -188,7 +188,7 @@ func fetchTransactionsForDisplay(client *coinbase.Client, asset string, genesis 
 			Date:     t.String()[:19], // trim microseconds
 			Type:     formatTxType(txType),
 			Amount:   formatAmount(amount, asset, 8),
-			Notional: formatAmount(native, "USD", 2),
+			Notional: formatAmount(native.Neg(), "USD", 2), // flip sign: sells positive, buys negative
 			Status:   status,
 		}
 
@@ -206,17 +206,17 @@ func fetchTransactionsForDisplay(client *coinbase.Client, asset string, genesis 
 
 		// show fee if present
 		if !commission.IsZero() {
-			row.Fee = formatAmount(commission.Neg(), "USD", 8) // show as negative (cost)
+			row.Fee = formatAmount(commission.Neg(), "USD", 2) // show as negative (cost)
 		}
 
 		// calculate LIFO cost basis and profit/loss for sells
 		if fillSide == "sell" && lots != nil && !fillPrice.IsZero() {
 			sellQty := amount.Neg() // amount is negative for sells
-			proceeds := sellQty.Mul(fillPrice)
+			proceeds := native.Abs() // use actual USD amount from Coinbase, not computed
 			costBasis := lots.GetCostBasis(sellQty, fillPrice)
 			profitLoss := proceeds.Sub(costBasis).Sub(commission)
-			row.CostBasis = formatAmount(costBasis, "USD", 8)
-			row.ProfitLoss = formatAmount(profitLoss, "USD", 8)
+			row.CostBasis = formatAmount(costBasis, "USD", 2)
+			row.ProfitLoss = formatAmount(profitLoss, "USD", 2)
 		}
 
 		result = append(result, row)
@@ -442,10 +442,10 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
             <p class="disclaimer">
                 The above address is owned by <a href="https://justine.lol/">Justine Alexandra Roberts Tunney</a>. By sending `)
 	buf.WriteString(html.EscapeString(asset))
-	buf.WriteString(` to this address, you get the benefit of entertainment in seeing the crypto show up on this page and being traded, and the satisfaction of knowing that you're supporting her work in fields such as open source development, artificial intelligence, finance, and grassroots activism. <strong>This is not an investment.</strong> You are giving her the crypto. She has full autonomy over how she uses her crypto but promises you'll at least get to see it in action as part of this live trading portfolio for a short time. She has no way of knowing who sent her the crypto unless you tell her. You should furthermore consider the tax implications of sharing cryptography.
+	buf.WriteString(` to this address, you get the benefit of entertainment in seeing the crypto show up on this page and being traded, and the satisfaction of knowing that you're supporting her work in fields such as open source development, artificial intelligence, finance, and grassroots activism. <strong>This is not an investment.</strong> She is not a registered anything. You are giving her the crypto. She has full autonomy over how she uses her crypto but promises you'll at least get to see it in action as part of this live trading portfolio for a short time. She has no way of knowing who sent her the crypto unless you tell her. You should furthermore consider the tax implications of sharing cryptography.
             </p>
             <p class="disclaimer">
-			    Our bespoke algorithm works by performing international surveillance of publicly available information in the cryptography community and then routing that knowledge to New York over private networks for analysis by proprietary Go code that places marketable IOC limit orders via the <a href="https://advanced.coinbase.com/join/L8EN839">Coinbase Advanced Trading API</a> as a VIP 4 member in order to clean stale bids and asks from the order book. You should assume that this algorithm is highly risky and experimental. It may lose all value at any time, including during periods of apparent stability. Past performance is no guarantee of future results. If you use our Coinbase referral hyperlink to join the website, you should not expect to see similar returns. They will charge you much higher fees and trying to make money off cryptography is like trying to milk a male tiger. Don't come into the den of jackals. Do anything else instead, like buy U.S. Treasury Bonds from Charles Schwab.
+			    Our bespoke algorithm works by monitoring publicly available information in the cryptography community and then routing that knowledge to New York over private networks for analysis by proprietary Go code that places marketable IOC limit orders via the <a href="https://advanced.coinbase.com/join/L8EN839">Coinbase Advanced Trading API</a> as a VIP 4 member in order to clean stale bids and asks from the order book. You should assume that this algorithm is highly risky and experimental. It may lose all value at any time, including during periods of apparent stability. Past performance is no guarantee of future results. If you use our Coinbase referral hyperlink to join the website, you should not expect to see similar returns. They will charge you much higher fees and trying to make money off cryptography is like trying to milk a male tiger. Don't come into the den of jackals. Do literally anything else instead, like buy U.S. Treasury Bonds from Charles Schwab.
 			</p>
         </section>
 
