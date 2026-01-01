@@ -38,7 +38,7 @@ var (
 	flagThreshold = decimal.FlagBPS("threshold", "5", "minimum spread deviation to trade (basis points)")
 	flagCooldown  = clocky.DurationFlag("cooldown", "400ms", "minimum time between trades")
 	flagFreshness = clocky.DurationFlag("freshness", "400ms", "max age of market data before suspending")
-	flagSamples   = flag.Int("samples", 500, "number of sample trades used to determine baseline spread")
+	flagSamples   = flag.Int("samples", 1000, "number of sample trades used to determine baseline spread")
 )
 
 var (
@@ -153,7 +153,7 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 
 	// calculate spread between coinbase and predictor
 	// spread = (midpoint - prediction) / prediction
-	bid, ask := gCoinbasePair.OrderBook.BestBidAsk()
+	bid, _, ask, _ := gCoinbasePair.OrderBook.BestBidAsk()
 	mid := bid.Add(ask).DivInt(2)
 	if !mid.IsPositive() {
 		log.Printf("[error] somehow have non-positive midpoint price %s", mid)
@@ -270,6 +270,33 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 				side, spread.BPS().Format(3), baseline.BPS().Format(3), deviation.BPS().Format(3), move.BPS().Format(3),
 				edge.BPS().Format(3), mid, predictorPrice, predictedPrice, limi)
 		}
+	}
+
+	// don't feed mount everest
+	var wallSize decimal.Decimal
+	var wallLevels int
+	if side == ds.SideBuy {
+		for _, level := range gCoinbasePair.OrderBook.TopAsks(100) {
+			if level.Price.Cmp(limi) > 0 {
+				break
+			}
+			wallSize = wallSize.Add(level.Size)
+			wallLevels++
+		}
+	} else {
+		for _, level := range gCoinbasePair.OrderBook.TopBids(100) {
+			if level.Price.Cmp(limi) < 0 {
+				break
+			}
+			wallSize = wallSize.Add(level.Size)
+			wallLevels++
+		}
+	}
+	clearPct := size.Div(wallSize).MulInt(100)
+	if clearPct.Cmp(decimal.FromInt(10)) < 0 {
+		logDecision()
+		log.Printf("[skip] would only clear %.1f%% of %s across %d levels", clearPct.Float64(), wallSize, wallLevels)
+		return
 	}
 
 	// make sure it's a good time to trade
