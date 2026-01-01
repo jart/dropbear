@@ -5,57 +5,62 @@ import (
 	"math/bits"
 )
 
-// Div divides d by o, rounding half away from zero (Commercial Rounding).
-// Use this for pricing, display, and final settlement, e.g. 2.5->3, 3.5->4.
-// This is the standard for commerce (invoices, tax calculation, pricing).
-// It matches the round() function in Excel and most human expectations.
+// Div divides d by o.
+// This uses Bankers' Rounding.
+// Panics on overflow (MinInt64 / -1) or division by zero.
 func (d Decimal) Div(o Decimal) Decimal {
-	if o == 0 {
-		panic("decimal division by zero")
+
+	// get absolute values and sign
+	di := int64(d)
+	oi := int64(o)
+	dm := di >> 63
+	ud := uint64((di ^ dm) - dm)
+	om := oi >> 63
+	uo := uint64((oi ^ om) - om)
+	sm := (di ^ oi) >> 63
+
+	// 128-bit Mul
+	hi, lo := bits.Mul64(ud, uint64(Scale))
+
+	// check for multiplication overflow (result > 2^64)
+	if hi >= uint64(Scale) {
+		panicOverflow()
 	}
 
-	// 1. Determine sign.
-	sign := int64(1)
-	if (d < 0) != (o < 0) {
-		sign = -1
-	}
+	// division: quo = result, rem = remainder
+	quo, rem := bits.Div64(hi, lo, uo)
 
-	// 2. Absolute values for uint64 arithmetic.
-	uD, uO := uint64(d), uint64(o)
-	if d < 0 {
-		uD = -uD
-	}
-	if o < 0 {
-		uO = -uO
-	}
+	// Banker's Rounding (Round Half To Even)
+	// We want to increment quo if:
+	// 1. rem > uo/2
+	// 2. rem == uo/2 AND quo is odd AND uo is even (exact half case)
+	//
+	// This is mathematically equivalent to:
+	// (2 * rem) + (quo & 1) > uo
+	//
+	// Proof:
+	// - If rem > uo/2: 2*rem > uo. (2*rem + bit) > uo holds.
+	// - If rem < uo/2: 2*rem < uo. Max (2*rem + 1) <= uo (since 2*rem <= uo-1). Condition fails.
+	// - If rem == uo/2 (exact half): 2*rem == uo.
+	//   - Condition becomes: uo + (quo&1) > uo.
+	//   - True if quo is odd (bit=1). False if quo is even (bit=0).
+	//
+	// Overflow Safety:
+	// uo <= 2^63 (abs(MinInt64)).
+	// rem < uo. Max rem is 2^63 - 1.
+	// Max lhs = 2*(2^63-1) + 1 = 2^64 - 1.
+	// This fits exactly in uint64.
 
-	// 3. Compute 128-bit numerator: d * Scale
-	//    bits.Mul64 results in (hi, lo)
-	hi, lo := bits.Mul64(uD, uint64(Scale))
-
-	// 4. Divide 128-bit numerator by 64-bit denominator.
-	//    bits.Div64(hi, lo, y) returns (quo, rem) = (hi, lo) / y
-	//    It panics automatically if the quotient overflows uint64 (which implies
-	//    hi >= uO, meaning the result is too big for 64 bits anyway).
-	quo, rem := bits.Div64(hi, lo, uO)
-
-	// 5. Rounding to nearest (Half Away From Zero).
-	//    We round up if rem >= o/2.
-	//    To avoid truncation issues with odd denominators, we use:
-	//    rem >= (o + 1) / 2
-	if rem >= (uO+1)/2 {
+	if (rem<<1)+(quo&1) > uo {
 		quo++
 	}
 
-	// 6. Check for overflow of the signed 64-bit result.
 	if quo > math.MaxInt64 {
-		// EDGE CASE: Allow MinInt64 (magnitude 2^63) ONLY if sign is negative.
-		// 1<<63 is the uint64 representation of absolute MinInt64.
-		if sign == -1 && quo == 1<<63 {
+		if sm == -1 && quo == 1<<63 {
 			return Decimal(math.MinInt64)
 		}
 		panicOverflow()
 	}
 
-	return Decimal(sign * int64(quo))
+	return Decimal(int64((quo ^ uint64(sm)) - uint64(sm)))
 }

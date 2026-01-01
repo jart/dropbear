@@ -50,7 +50,7 @@ func (r *report) Init() {
 		if cash.IsPositive() {
 			// convert USD to benchmark shares at current price
 			if r.benchmark.LastPrice.Load().IsPositive() {
-				r.benchmarkQuantity = r.benchmarkQuantity.Add(cash.DivEven(r.benchmark.LastPrice.Load()))
+				r.benchmarkQuantity = r.benchmarkQuantity.Add(cash.Div(r.benchmark.LastPrice.Load()))
 			}
 			r.initialHoldings = append(r.initialHoldings, initialHolding{
 				Symbol:   "USD",
@@ -70,7 +70,7 @@ func (r *report) Init() {
 				price := broker.Equities.GetPriceUSD(holding.Symbol)
 				quantityUSD := price.Mul(quantity)
 				if r.benchmark.LastPrice.Load().IsPositive() {
-					r.benchmarkQuantity = r.benchmarkQuantity.Add(quantityUSD.DivEven(r.benchmark.LastPrice.Load()))
+					r.benchmarkQuantity = r.benchmarkQuantity.Add(quantityUSD.Div(r.benchmark.LastPrice.Load()))
 				}
 			}
 			r.initialHoldings = append(r.initialHoldings, initialHolding{
@@ -150,8 +150,8 @@ func (r *report) Print() {
 	endReturn := decimal.Zero
 	benchReturn := decimal.Zero
 	if r.startEquity.IsPositive() {
-		endReturn = endEquity.Sub(r.startEquity).DivEven(r.startEquity)
-		benchReturn = benchmarkValue.Sub(r.startEquity).DivEven(r.startEquity)
+		endReturn = endEquity.Sub(r.startEquity).Div(r.startEquity)
+		benchReturn = benchmarkValue.Sub(r.startEquity).Div(r.startEquity)
 	}
 
 	// compounding annual growth rate
@@ -161,7 +161,7 @@ func (r *report) Print() {
 	if duration > 0 && r.startEquity.IsPositive() {
 		years := float64(duration) / float64(clocky.Year)
 		if years > 0 {
-			totalReturn := endEquity.DivEven(r.startEquity).Float64()
+			totalReturn := endEquity.Div(r.startEquity).Float64()
 			if totalReturn <= 0 {
 				// lost everything (or more with margin) - CAGR is undefined
 				cagr = math.Inf(-1)
@@ -171,7 +171,7 @@ func (r *report) Print() {
 					cagr = math.Inf(1)
 				}
 			}
-			benchReturn := benchmarkValue.DivEven(r.startEquity).Float64()
+			benchReturn := benchmarkValue.Div(r.startEquity).Float64()
 			if benchReturn <= 0 {
 				benchCagr = math.Inf(-1)
 			} else {

@@ -5,7 +5,8 @@ import (
 	"math/bits"
 )
 
-// MulInt multiplies d by n, panicking on overflow.
+// MulInt multiplies d by n.
+// This will panic on overflow which could be explicit or via runtime panic.
 func (d Decimal) MulInt(n int) Decimal {
 	x, y := int64(d), int64(n)
 

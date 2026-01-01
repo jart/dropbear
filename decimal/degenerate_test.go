@@ -394,7 +394,6 @@ func TestFromFloat64SafeRange(t *testing.T) {
 		{1000.0, "1000"},
 		{1000000.123456789, "1000000.12345679"}, // Rounded
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
 			d := FromFloat64(tt.f)
@@ -409,7 +408,6 @@ func TestFromFloat64SafeRange(t *testing.T) {
 // TestParseExtremeExponents tests Parse with very large exponents.
 // BUG: Parse does not check for overflow during exponent multiplication.
 // 1e10 is approximately the max safe value (1e10 * Scale = 1e18 ≈ MaxInt64).
-// Larger exponents silently overflow to garbage values.
 func TestParseExtremeExponents(t *testing.T) {
 	// These should overflow but currently produce garbage instead
 	overflowCases := []string{

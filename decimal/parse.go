@@ -57,8 +57,8 @@ func Parse(str string) Decimal {
 		i++
 		f := int64(0)
 		k := 0
-		extraDigit := int64(-1)  // -1 means no extra digit
-		hasMoreDigits := false   // non-zero digits after extraDigit?
+		extraDigit := int64(-1) // -1 means no extra digit
+		hasMoreDigits := false  // non-zero digits after extraDigit?
 		for i < len(str) {
 			if str[i] >= '0' && str[i] <= '9' {
 				if k < Places {

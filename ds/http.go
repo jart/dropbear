@@ -24,7 +24,7 @@ var BulkHttpClient = &http.Client{
 		ResponseHeaderTimeout: 3 * time.Second,
 		ExpectContinueTimeout: 0,
 		ForceAttemptHTTP2:     true,
-		DisableCompression:    true,
+		DisableCompression:    false,
 		TLSClientConfig: &tls.Config{
 			SessionTicketsDisabled: false,
 			ClientSessionCache:     tls.NewLRUClientSessionCache(32),

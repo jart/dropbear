@@ -53,7 +53,7 @@ func (r *report) Init() {
 				r.benchmarkQuantity = r.benchmarkQuantity.Add(quantity)
 			} else {
 				quantityUSD := broker.Pairs.GetPriceUSD(holding.Symbol).Mul(quantity)
-				r.benchmarkQuantity = r.benchmarkQuantity.Add(quantityUSD.DivEven(r.benchmark.LastPrice.Load()))
+				r.benchmarkQuantity = r.benchmarkQuantity.Add(quantityUSD.Div(r.benchmark.LastPrice.Load()))
 			}
 			r.initialHoldings = append(r.initialHoldings, initialHolding{
 				Symbol:   holding.Symbol,
@@ -125,8 +125,8 @@ func (r *report) Print() {
 	endReturn := decimal.Zero
 	benchReturn := decimal.Zero
 	if r.startEquity.IsPositive() {
-		endReturn = endEquity.Sub(r.startEquity).DivEven(r.startEquity)
-		benchReturn = benchmarkValue.Sub(r.startEquity).DivEven(r.startEquity)
+		endReturn = endEquity.Sub(r.startEquity).Div(r.startEquity)
+		benchReturn = benchmarkValue.Sub(r.startEquity).Div(r.startEquity)
 	}
 
 	// cagr calculation - compound at quantum intervals then annualize
@@ -135,7 +135,7 @@ func (r *report) Print() {
 		quantums := float64(duration) / float64(*flagQuantum)
 		quantumsPerYear := float64(365*24*clocky.Hour) / float64(*flagQuantum)
 		if quantums > 0 {
-			totalReturn := endEquity.DivEven(r.startEquity).Float64()
+			totalReturn := endEquity.Div(r.startEquity).Float64()
 			cagr = (math.Pow(totalReturn, quantumsPerYear/quantums) - 1) * 100
 			if cagr > 1e9 {
 				cagr = math.Inf(1)

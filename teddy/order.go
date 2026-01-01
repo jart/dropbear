@@ -138,7 +138,7 @@ func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) 
 
 	// clamp fill to remaining quantity
 	actualFilled := filled.Min(remaining)
-	actualNotional := notional.Mul(actualFilled).DivEven(filled) // proportional notional
+	actualNotional := notional.Mul(actualFilled).Div(filled) // proportional notional
 	fee := actualNotional.Mul(feeRate)
 	dir := decimal.Decimal(order.Side)
 	total := actualNotional.Add(fee.Mul(dir))
@@ -156,7 +156,7 @@ func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) 
 	order.Filled.Store(totalFilled)
 	add(&order.Fee, fee)
 	add(&order.Notional, actualNotional)
-	order.Price.Store(order.Notional.Load().DivEven(order.Filled.Load()))
+	order.Price.Store(order.Notional.Load().Div(order.Filled.Load()))
 	if isFullyFilled {
 		releaseHold = order.Hold.Load()
 		order.State.Store(ds.OrderStateFilled)
@@ -272,7 +272,7 @@ func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) 
 	}
 
 	if *flagVerbose {
-		percentFilled := order.Filled.DivEven(order.Quantity).MulInt(100).Truncate()
+		percentFilled := order.Filled.Div(order.Quantity).MulInt(100).Truncate()
 		log.Printf("[teddy] %s limit %s%% filled %s @ $%s",
 			order.Side, percentFilled, filled, order.LimitPrice)
 	}

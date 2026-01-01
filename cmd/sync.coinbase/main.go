@@ -41,6 +41,7 @@ func sync(dbPath string, coinbaseKeyPath string) {
 func main() {
 	flag.Parse()
 	loggy.Init()
+	sync(os.ExpandEnv("$HOME/.primary.sqlite3"), os.ExpandEnv("$HOME/.primary.key"))
 	sync(os.ExpandEnv("$HOME/.dropbear.sqlite3"), os.ExpandEnv("$HOME/.coinbase.key"))
 	sync(os.ExpandEnv("$HOME/.zec.sqlite3"), os.ExpandEnv("$HOME/.zec.key"))
 }

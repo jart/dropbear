@@ -48,8 +48,8 @@ func TestPanic(t *testing.T) {
 		One.Div(Decimal(0))
 	})
 
-	expectPanic("DivEven: Divide by Zero", func() {
-		One.DivEven(Decimal(0))
+	expectPanic("Div: Divide by Zero", func() {
+		One.Div(Decimal(0))
 	})
 
 	expectPanic("Div: Max / 0.5 (Result Overflow)", func() {

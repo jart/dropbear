@@ -109,14 +109,14 @@ func TestMul(t *testing.T) {
 		a, b, want string
 	}{
 		{"2.50", "4.00", "10"},
-		{"0.001", "0.9985", "0.0009985"},             // small numbers that caused divide-by-zero
-		{"0.0001", "0.9985", "0.00009985"},           // even smaller
-		{"100", "100", "10000"},                      // large numbers
-		{"0.000000001", "1", "0"},                    // smallest representable is now 0 (truncation)
-		{"0.1876", "0.9995", "0.1875062"},            // medium fractions that caused overflow
-		{"0.5", "0.5", "0.25"},                       // simple fractions
+		{"0.001", "0.9985", "0.0009985"},    // small numbers that caused divide-by-zero
+		{"0.0001", "0.9985", "0.00009985"},  // even smaller
+		{"100", "100", "10000"},             // large numbers
+		{"0.000000001", "1", "0"},           // smallest representable is now 0 (truncation)
+		{"0.1876", "0.9995", "0.1875062"},   // medium fractions that caused overflow
+		{"0.5", "0.5", "0.25"},              // simple fractions
 		{"0.999999999", "0.999999999", "1"}, // near-1 fractions (banker's rounds 0.999999999 to 1)
-		{"1e9", "8", "8000000000"},                   // max representable without overflow
+		{"1e9", "8", "8000000000"},          // max representable without overflow
 	}
 	for _, tt := range tests {
 		a := Parse(tt.a)
@@ -128,28 +128,11 @@ func TestMul(t *testing.T) {
 	}
 }
 
-func TestDiv(t *testing.T) {
-	a := Parse("10.00")
-	b := Parse("4.00")
-	got := a.Div(b).String()
-	if got != "2.5" {
-		t.Errorf("10.00 / 4.00 = %s, want 2.5", got)
-	}
-}
-
 func TestMulInt(t *testing.T) {
 	a := Parse("1.50")
 	got := a.MulInt(3).String()
 	if got != "4.5" {
 		t.Errorf("1.50 * 3 = %s, want 4.5", got)
-	}
-}
-
-func TestDivInt(t *testing.T) {
-	a := Parse("9.00")
-	got := a.DivInt(3).String()
-	if got != "3" {
-		t.Errorf("9.00 / 3 = %s, want 3", got)
 	}
 }
 
@@ -425,14 +408,6 @@ func BenchmarkDiv(b *testing.B) {
 		a := randomNumbers[(i+0)&31]
 		c := randomNumbers[(i+1)&31]
 		_ = a.Div(c)
-	}
-}
-
-func BenchmarkDivEven(b *testing.B) {
-	for i := 0; b.Loop(); i++ {
-		a := randomNumbers[(i+0)&31]
-		c := randomNumbers[(i+1)&31]
-		_ = a.DivEven(c)
 	}
 }
 

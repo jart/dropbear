@@ -113,10 +113,10 @@ func BenchmarkWWMA(b *testing.B) {
 	}
 }
 
-func BenchmarkWWMA_DivIntEven(b *testing.B) {
+func BenchmarkWWMA_DivInt(b *testing.B) {
 	v := decimal.Parse("123.456789")
 	for b.Loop() {
-		_ = v.DivIntEven(14)
+		_ = v.DivInt(14)
 	}
 }
 

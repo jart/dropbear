@@ -43,5 +43,5 @@ func (s *SMA) Value() decimal.Decimal {
 	if len(s.values) == 0 {
 		return decimal.Zero
 	}
-	return s.sum.DivIntEven(len(s.values))
+	return s.sum.DivInt(len(s.values))
 }

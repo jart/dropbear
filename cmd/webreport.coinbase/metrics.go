@@ -11,6 +11,7 @@ import (
 	"dropbear/teddy/metrics"
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"sort"
 )
@@ -408,7 +409,7 @@ func calculateMetrics(
 	// helper to get price for any currency at a time
 	getPrice := func(currency string, t clocky.Time) decimal.Decimal {
 		if currency == "USD" {
-			return decimal.FromInt(1)
+			return decimal.One
 		}
 		if cache, ok := priceCaches[currency]; ok {
 			return cache.GetPrice(t)
@@ -428,9 +429,7 @@ func calculateMetrics(
 
 	// replay transactions backwards to get genesis state
 	balances := make(map[string]decimal.Decimal)
-	for currency, bal := range currentBalances {
-		balances[currency] = bal
-	}
+	maps.Copy(balances, currentBalances)
 
 	for i := len(transactions) - 1; i >= 0; i-- {
 		tx := transactions[i]
@@ -448,9 +447,7 @@ func calculateMetrics(
 
 	// now balances contains genesis state
 	genesisBalances := make(map[string]decimal.Decimal)
-	for k, v := range balances {
-		genesisBalances[k] = v
-	}
+	maps.Copy(genesisBalances, balances)
 	genesisValue := calcPortfolioValue(genesisBalances, genesis)
 	genesisPrice := getPrice(benchmarkAsset, genesis)
 
@@ -464,9 +461,7 @@ func calculateMetrics(
 	benchmarkQty := genesisValue.Div(genesisPrice)
 
 	// reset to genesis state for forward replay
-	for k, v := range genesisBalances {
-		balances[k] = v
-	}
+	maps.Copy(balances, genesisBalances)
 
 	// sample at each quantum from genesis to now
 	var snapshots []PortfolioSnapshot
@@ -479,7 +474,8 @@ func calculateMetrics(
 
 	// seed lots with genesis holdings of benchmark asset
 	if genesisBalances[benchmarkAsset].IsPositive() {
-		lots.Add(genesis, genesisBalances[benchmarkAsset], genesisBalances[benchmarkAsset].Mul(genesisPrice))
+		lots.Add(genesis, genesisBalances[benchmarkAsset],
+			genesisBalances[benchmarkAsset].Mul(genesisPrice))
 	}
 
 	for t := genesis; t <= now; t = t.Add(quantum) {

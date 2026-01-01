@@ -60,18 +60,47 @@ func exactSub(a, b Decimal) (Decimal, bool) {
 }
 
 // exactMul computes a*b using exact arbitrary-precision arithmetic,
-// then truncates to our 9 decimal place precision (matching Go's int64 truncation semantics).
+// then rounds to our 8 decimal place precision using Banker's Rounding.
 // Returns (result, true) if result fits in int64, or (0, false) if it overflows.
 func exactMul(a, b Decimal) (Decimal, bool) {
 	aBig := big.NewInt(int64(a))
 	bBig := big.NewInt(int64(b))
 	product := new(big.Int).Mul(aBig, bBig)
-	// Truncate toward zero (Go's int64 division semantics)
-	result := new(big.Int).Quo(product, bigScale)
-	if !result.IsInt64() {
+
+	// Divide and get remainder
+	quot := new(big.Int)
+	rem := new(big.Int)
+	quot.QuoRem(product, bigScale, rem)
+
+	// Banker's Rounding (Round Half To Even)
+	// If remainder > half, round away from zero.
+	// If remainder == half, round to nearest even number.
+	remAbs := new(big.Int).Abs(rem)
+	halfScale := big.NewInt(Scale / 2)
+	cmp := remAbs.Cmp(halfScale)
+
+	if cmp > 0 {
+		// |rem| > 0.5: Round away from zero
+		if product.Sign() >= 0 {
+			quot.Add(quot, big.NewInt(1))
+		} else {
+			quot.Sub(quot, big.NewInt(1))
+		}
+	} else if cmp == 0 {
+		// |rem| == 0.5: Round to even
+		if quot.Bit(0) == 1 { // If odd, round away from zero to make it even
+			if product.Sign() >= 0 {
+				quot.Add(quot, big.NewInt(1))
+			} else {
+				quot.Sub(quot, big.NewInt(1))
+			}
+		}
+	}
+
+	if !quot.IsInt64() {
 		return 0, false
 	}
-	return Decimal(result.Int64()), true
+	return Decimal(quot.Int64()), true
 }
 
 // exactDiv computes a/b using exact arbitrary-precision arithmetic with rounding.

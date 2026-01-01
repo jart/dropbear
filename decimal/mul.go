@@ -5,41 +5,37 @@ import (
 	"math/bits"
 )
 
-// Mul multiplies two decimals, panicking on overflow.
+// Mul multiplies two decimals.
 func (d Decimal) Mul(o Decimal) Decimal {
 
-	// 1. Determine the sign of the result.
-	sign := int64(1)
-	if (d < 0) != (o < 0) {
-		sign = -1
-	}
+	// 1. Absolute values and sign
+	di := int64(d)
+	oi := int64(o)
+	dm := di >> 63
+	ud := uint64((di ^ dm) - dm)
+	om := oi >> 63
+	uo := uint64((oi ^ om) - om)
+	sm := (di ^ oi) >> 63
 
-	// 2. Convert to absolute values as uint64 to safely handle MinInt64.
-	//    Note: -uint64(MinInt64) is 2^63, which fits in uint64.
-	uD, uO := uint64(d), uint64(o)
-	if d < 0 {
-		uD = -uD
-	}
-	if o < 0 {
-		uO = -uO
-	}
+	// 2. Perform full 128-bit multiplication: (hi, lo) = ud * uo
+	hi, lo := bits.Mul64(ud, uo)
 
-	// 3. Perform full 128-bit multiplication: (hi, lo) = uD * uO
-	hi, lo := bits.Mul64(uD, uO)
-
-	// 4. Divide the 128-bit product by Scale.
+	// 3. Divide the 128-bit product by Scale.
 	//    bits.Div64 returns (quo, rem) and panics if quo overflows uint64.
-	//    We discard 'rem' (truncation), or use it for rounding if desired.
-	quo, _ := bits.Div64(hi, lo, uint64(Scale))
+	quo, rem := bits.Div64(hi, lo, uint64(Scale))
+
+	// 4. Bankers' Rounding (Round Half To Even)
+	quo -= uint64(int64(Scale/2-(rem+(quo&1))) >> 63)
 
 	// 5. Check for overflow of the signed 64-bit result range.
 	//    The quotient must fit in the positive part of int64.
 	if quo > math.MaxInt64 {
-		if quo == 9223372036854775808 && sign == -1 {
+		if quo == 1<<63 && sm == -1 {
 			return Min
 		}
 		panicOverflow()
 	}
 
-	return Decimal(sign * int64(quo))
+	// 6. Apply sign
+	return Decimal(int64((quo ^ uint64(sm)) - uint64(sm)))
 }

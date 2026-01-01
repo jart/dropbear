@@ -53,7 +53,7 @@ func (ls *Lots) Add(time clocky.Time, size, cost decimal.Decimal) {
 			ls.Size = decimal.Zero
 			return
 		} else if size.Cmp(debt) > 0 {
-			fraction := debt.DivEven(size)
+			fraction := debt.Div(size)
 			cost = cost.Sub(cost.Mul(fraction))
 			size = size.Sub(debt)
 			ls.Size = decimal.Zero
@@ -79,7 +79,7 @@ func (ls *Lots) PeekTopCostPerUnit() decimal.Decimal {
 	it := ls.set.Iterator()
 	if it.Next() {
 		lot := it.Value()
-		return lot.Cost.DivEven(lot.Size)
+		return lot.Cost.Div(lot.Size)
 	}
 	return decimal.Zero
 }
@@ -99,7 +99,7 @@ func (ls *Lots) GetCostBasis(size, fallbackPrice decimal.Decimal) decimal.Decima
 			cost = cost.Add(lot.Cost)
 			size = size.Sub(lot.Size)
 		} else {
-			fraction := size.DivEven(lot.Size)
+			fraction := size.Div(lot.Size)
 			cost = cost.Add(lot.Cost.Mul(fraction))
 			size = decimal.Zero
 		}
@@ -130,7 +130,7 @@ func (ls *Lots) Consume(size, fallbackPrice decimal.Decimal) decimal.Decimal {
 			ls.Size = ls.Size.Sub(lot.Size)
 			ls.Cost = ls.Cost.Sub(lot.Cost)
 		} else {
-			fraction := size.DivEven(lot.Size)
+			fraction := size.Div(lot.Size)
 			partialCost := lot.Cost.Mul(fraction)
 			ls.Size = ls.Size.Sub(size)
 			ls.Cost = ls.Cost.Sub(partialCost)
@@ -142,8 +142,8 @@ func (ls *Lots) Consume(size, fallbackPrice decimal.Decimal) decimal.Decimal {
 }
 
 func compareLotsHIFO(a, b *Lot) int {
-	x := a.Cost.DivEven(a.Size)
-	y := b.Cost.DivEven(b.Size)
+	x := a.Cost.Div(a.Size)
+	y := b.Cost.Div(b.Size)
 	cmp := y.Cmp(x)
 	if cmp != 0 {
 		return cmp

@@ -5,114 +5,139 @@ import (
 	"testing"
 )
 
-func TestDecimal_DivInt_Boundary(t *testing.T) {
+func TestDivInt(t *testing.T) {
 	tests := []struct {
-		name      string
-		d         Decimal
-		n         int
-		want      Decimal
-		wantPanic bool
+		name     string
+		d        Decimal
+		n        int
+		expected Decimal
 	}{
-		// --- Rounding Mechanics (Round Half Away From Zero) ---
-		{
-			name: "Exact Division: 6 / 3 = 2",
-			d:    Decimal(6),
-			n:    3,
-			want: Decimal(2),
-		},
-		{
-			name: "Round Down: 10 / 3 = 3.33... -> 3",
-			d:    Decimal(10),
-			n:    3,
-			want: Decimal(3),
-		},
-		{
-			name: "Round Up: 20 / 3 = 6.66... -> 7",
-			d:    Decimal(20),
-			n:    3,
-			want: Decimal(7),
-		},
-		{
-			name: "Halfway Round Up (Positive): 5 / 2 = 2.5 -> 3",
-			d:    Decimal(5),
-			n:    2,
-			want: Decimal(3),
-		},
-		{
-			name: "Halfway Round Down (Negative): -5 / 2 = -2.5 -> -3",
-			d:    Decimal(-5),
-			n:    2,
-			want: Decimal(-3),
-		},
-		{
-			name: "Mixed Signs Rounding: 5 / -2 = -2.5 -> -3",
-			d:    Decimal(5),
-			n:    -2,
-			want: Decimal(-3),
-		},
+		// --- Basic Exact Division ---
+		{"Exact Positive", 10, 2, 5},
+		{"Exact Negative", -10, 2, -5},
 
-		// --- Odd Divisors (The (N+1)/2 logic check) ---
-		{
-			name: "Odd Divisor Halfway Check: 2 / 5 = 0.4 -> 0",
-			d:    Decimal(2),
-			n:    5,
-			want: Decimal(0),
-		},
-		{
-			name: "Odd Divisor Halfway Check: 3 / 5 = 0.6 -> 1",
-			d:    Decimal(3),
-			n:    5,
-			want: Decimal(1),
-		},
+		// --- Normal Rounding (Not Half) ---
+		{"Round Down Positive", 10, 3, 3},   // +0.000000010 / 3 = +0.000000003
+		{"Round Up Positive", 11, 3, 4},     // +0.000000011 / 3 = +0.000000004
+		{"Round Down Negative", -10, 3, -3}, // -0.000000010 / 3 = -0.000000003
+		{"Round Up Negative", -11, 3, -4},   // -0.000000011 / 3 = -0.000000004
 
-		// --- Extreme Boundaries ---
+		// --- Banker's Rounding (Tie Breaking) ---
+
+		// Case 1: Quotient is Even, Remainder is Half -> Keep Quotient
+
+		// Raw Math:      5 / 2 = 2.5. Nearest even integer is 2.
+		// Fixed Point:   0.000000005 / 2 = 0.0000000025 -> rounds to 0.000000002
+		{"Tie/EvenQuo/Pos", 5, 2, 2},
+
+		// Raw Math:      13 / 2 = 6.5. Nearest even integer is 6.
+		// Fixed Point:   0.000000013 / 2 = 0.0000000065 -> rounds to 0.000000006
+		{"Tie/EvenQuo/Pos2", 13, 2, 6},
+
+		// Raw Math:      -5 / 2 = -2.5. Nearest even integer is -2.
+		// Fixed Point:   -0.000000005 / 2 = -0.0000000025 -> rounds to -0.000000002
+		{"Tie/EvenQuo/Neg", -5, 2, -2},
+
+		// Case 2: Quotient is Odd, Remainder is Half -> Round Away to make Even
+
+		// Raw Math:      3 / 2 = 1.5. Nearest even integer is 2.
+		// Fixed Point:   0.000000003 / 2 = 0.0000000015 -> rounds to 0.000000002
+		{"Tie/OddQuo/Pos", 3, 2, 2},
+
+		// Raw Math:      -3 / 2 = -1.5. Nearest even integer is -2.
+		// Fixed Point:   -0.000000003 / 2 = -0.0000000015 -> rounds to -0.000000002
+		{"Tie/OddQuo/Neg", -3, 2, -2},
+
+		// --- Negative Divisor Logic (Triggering "if y < 0") ---
+
+		// 1. Standard Rounding with Negative Divisor
+		// 5 / -3 = -1.66... -> rounds to -2
+		{"NegDiv/RoundAway", 5, -3, -2},
+
+		// 2. Banker's Rounding (Tie) with Negative Divisor
+
+		// Case A: Result is -2.5. Nearest even is -2.
+		// logic: quo starts at -2. rem is 1. absRem(1) == half(1).
+		// quo is even (-2), so we do NOT round away.
+		{"NegDiv/Tie/EvenQuo", 5, -2, -2},
+
+		// Case B: Result is -1.5. Nearest even is -2.
+		// logic: quo starts at -1. rem is 1. absRem(1) == half(1).
+		// quo is odd (-1), so we ROUND AWAY.
+		// (x<0) is false, (y<0) is true -> mismatch -> quo-- -> -2
+		{"NegDiv/Tie/OddQuo", 3, -2, -2},
+
+		// 3. Signs Mismatch (Negative d, Negative n)
+		// -5 / -2 = 2.5. Nearest even is 2.
+		// quo starts at 2. rem is -1.
+		// quo is even. No round.
+		{"NegDiv/NegD/Tie", -5, -2, 2},
+
+		// --- Large Number / Magnitude Logic Checks ---
 		{
-			name: "MinInt64 / 1 = MinInt64",
-			d:    Decimal(math.MinInt64),
-			n:    1,
-			want: Decimal(math.MinInt64),
+			"MaxInt64 Exact",
+			Decimal(math.MaxInt64), 1,
+			Decimal(math.MaxInt64),
 		},
 		{
-			name: "MinInt64 / MaxInt64 = -1 (Round Down)",
-			d:    Decimal(math.MinInt64),
-			n:    math.MaxInt64,
-			// -9223372036854775808 / 9223372036854775807 approx -1.000...001
-			// Should round to -1
-			want: Decimal(-1),
+			"MinInt64 Exact",
+			Decimal(math.MinInt64), 1,
+			Decimal(math.MinInt64),
 		},
 		{
-			name:      "MinInt64 / -1 = Overflow Panic",
-			d:         Decimal(math.MinInt64),
-			n:         -1,
-			wantPanic: true, // The only integer division overflow
-		},
-		{
-			name: "MaxInt64 / -1 = -MaxInt64",
-			d:    Decimal(math.MaxInt64),
-			n:    -1,
-			want: Decimal(-math.MaxInt64),
-		},
-		{
-			name:      "Division by Zero",
-			d:         Decimal(100),
-			n:         0,
-			wantPanic: true,
+			// MinInt64 is even, so it divides by 2 perfectly.
+			"MinInt64 / 2",
+			Decimal(math.MinInt64), 2,
+			Decimal(math.MinInt64 / 2),
 		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.d.DivInt(tt.n)
+			if got != tt.expected {
+				t.Errorf("DivInt(%d, %d) = %d; want %d", tt.d, tt.n, got, tt.expected)
+			}
+			got2 := tt.d.Div(FromInt(tt.n))
+			if got2 != tt.expected {
+				t.Errorf("DivInt inconsistent with Div(%d, %d) = %d; want %d", tt.d, tt.n, got2, tt.expected)
+			}
+		})
+	}
+}
 
+func TestDivInt_Panics(t *testing.T) {
+	tests := []struct {
+		name string
+		d    Decimal
+		n    int
+	}{
+		{
+			name: "Division by Zero",
+			d:    100,
+			n:    0,
+		},
+		{
+			name: "Overflow (MinInt64 / -1)",
+			d:    Decimal(math.MinInt64),
+			n:    -1,
+		},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defer func() {
-				r := recover()
-				if (r != nil) != tt.wantPanic {
-					t.Errorf("DivInt() panic = %v, wantPanic %v", r, tt.wantPanic)
+				if recover() == nil {
+					t.Errorf("did not panic")
 				}
 			}()
-
-			got := tt.d.DivInt(tt.n)
-			if got != tt.want {
-				t.Errorf("DivInt() = %v, want %v", got, tt.want)
-			}
+			tt.d.DivInt(tt.n)
+		})
+		t.Run(tt.name+" vs. Div", func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("did not panic")
+				}
+			}()
+			tt.d.Div(FromInt(tt.n))
 		})
 	}
 }

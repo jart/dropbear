@@ -131,9 +131,9 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 
 	actualFilled := filled.Min(remaining)
 	// Divide first to avoid overflow when notional*actualFilled is huge
-	actualNotional := notional.DivEven(filled).Mul(actualFilled)
+	actualNotional := notional.Div(filled).Mul(actualFilled)
 	// Scale fee proportionally if partial fill (divide first to avoid overflow)
-	actualFee := fee.DivEven(filled).Mul(actualFilled)
+	actualFee := fee.Div(filled).Mul(actualFilled)
 	dir := decimal.Decimal(order.Side)
 	total := actualNotional.Add(actualFee.Mul(dir))
 
@@ -146,7 +146,7 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 	order.Filled.Store(totalFilled)
 	add(&order.Fee, actualFee)
 	add(&order.Notional, actualNotional)
-	order.Price.Store(order.Notional.Load().DivEven(order.Filled.Load()))
+	order.Price.Store(order.Notional.Load().Div(order.Filled.Load()))
 	if isFullyFilled {
 		releaseHold = order.Hold.Load()
 		order.State.Store(ds.OrderStateFilled)
@@ -159,7 +159,7 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 	order.Lock.Unlock()
 
 	// Calculate price for potential recalculations
-	price := actualNotional.DivEven(actualFilled)
+	price := actualNotional.Div(actualFilled)
 
 	// Log the fill (if verbose)
 	if Live || *flagVerbose {
@@ -344,7 +344,7 @@ func (order *Order) fill(filled, notional, fee decimal.Decimal, force bool) (dec
 	}
 
 	if *flagVerbose {
-		percentFilled := order.Filled.DivEven(order.Quantity).MulInt(100).Truncate()
+		percentFilled := order.Filled.Div(order.Quantity).MulInt(100).Truncate()
 		log.Printf("[cubby] %s %s %s%% filled %s @ $%s",
 			order.Side, order.Type, percentFilled, filled, order.Price)
 	}
