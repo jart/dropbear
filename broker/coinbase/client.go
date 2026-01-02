@@ -51,6 +51,11 @@ func (c *Client) Get(url string) (*http.Response, error) {
 	return c.Request(ds.BulkHttpClient, "GET", url, nil, true)
 }
 
+// Post makes an authenticated POST request.
+func (c *Client) Post(url string, body io.Reader) (*http.Response, error) {
+	return c.Request(ds.BulkHttpClient, "POST", url, body, true)
+}
+
 // Request makes an authenticated API request to Coinbase with rate limiting.
 // Just because the returned error is nil doesn't mean the request succeeded.
 func (c *Client) Request(client *http.Client, method, reqURL string, body io.Reader, shouldRetry bool) (*http.Response, error) {

@@ -24,6 +24,11 @@ import (
 //go:embed static
 var staticFiles embed.FS
 
+// vipFeeRebateRate is the Coinbase VIP fee rebate (25%).
+// The "Fees Paid" metric shows net fees after rebate.
+// Transaction log shows gross fees; rebate sweeps appear as separate transactions.
+var vipFeeRebateRate = decimal.Parse("0.75") // 1 - 0.25 rebate
+
 // ChartData is the JSON structure for the chart.
 type ChartData struct {
 	Strategy  []ChartPoint `json:"strategy"`
@@ -277,10 +282,22 @@ func fetchTransactionsForDisplay(_ *coinbase.Client, benchmarkAsset string, gene
 		displayType := formatTxType(txType)
 		if txType == "tx" {
 			if amount.IsPositive() {
-				displayType = "Deposit"
+				// Small USD transfers (<$500) from primary are rebate sweeps
+				if currency == "USD" && native.Abs().Cmp(decimal.Parse("500")) < 0 {
+					displayType = "Rebate"
+				} else {
+					displayType = "Deposit"
+				}
 			} else {
 				displayType = "Withdrawal"
 			}
+		}
+
+		// For trades, flip notional sign (sells positive, buys negative)
+		// For deposits/withdrawals, keep native sign (deposits positive, withdrawals negative)
+		notional := native
+		if txType == "advanced_trade_fill" || txType == "buy" || txType == "sell" || txType == "trade" {
+			notional = native.Neg()
 		}
 
 		row := TransactionRow{
@@ -288,7 +305,7 @@ func fetchTransactionsForDisplay(_ *coinbase.Client, benchmarkAsset string, gene
 			Type:     displayType,
 			Currency: currency,
 			Amount:   formatAmount(amount, currency, 8),
-			Notional: formatAmount(native.Neg(), "USD", 2), // flip sign: sells positive, buys negative
+			Notional: formatAmount(notional, "USD", 2),
 			Status:   status,
 		}
 
@@ -365,12 +382,13 @@ func buildChartData(snapshots []PortfolioSnapshot, cashFlows []CashFlow, m *Repo
 	data.FeesPaid = m.FeesPaid.Float64()
 
 	// Calculate TWR-indexed values for chart (removes deposit jumps)
-	strategySeries := calculateTWRSeries(snapshots, cashFlows, true)
-	benchmarkSeries := calculateTWRSeries(snapshots, cashFlows, false)
+	// Main series uses VIP rebate (25% of fees added back)
+	strategySeries := calculateTWRSeries(snapshots, cashFlows, true, vipFeeRebate)
+	benchmarkSeries := calculateTWRSeries(snapshots, cashFlows, false, decimal.Zero)
 
 	// Calculate fee-free series (what performance would be without fees)
-	strategyNoFeesSeries := calculateTWRSeriesNoFees(snapshots, cashFlows, true)
-	benchmarkNoFeesSeries := calculateTWRSeriesNoFees(snapshots, cashFlows, false)
+	strategyNoFeesSeries := calculateTWRSeries(snapshots, cashFlows, true, decimal.One)
+	benchmarkNoFeesSeries := calculateTWRSeries(snapshots, cashFlows, false, decimal.Zero)
 
 	for i, s := range snapshots {
 		unixSec := s.Time.Unix()
@@ -432,14 +450,14 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Coinbase `)
+    <title>`)
 	buf.WriteString(html.EscapeString(asset))
 	buf.WriteString(`-USD Spot Trading</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>COINBASE `)
+        <h1>`)
 	buf.WriteString(html.EscapeString(asset))
 	buf.WriteString(`-USD SPOT TRADING</h1>
         <p class="tagline">Justine Street `)
@@ -453,10 +471,10 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
 	buf.WriteString(formatDuration(duration))
 	buf.WriteString(`</span>
             </div>
-            <div class="metric fee-toggle" id="fee-toggle" title="Click to toggle fees on/off">
-                <span class="label" id="fee-label">Fees Paid</span>
+            <div class="metric fee-toggle" id="fee-toggle" title="Click to toggle fees on/off. Net of 25% VIP rebate.">
+                <span class="label" id="fee-label">Net Fees</span>
                 <span class="value negative" id="fee-value">-$`)
-	buf.WriteString(m.FeesPaid.FormatThousand(2))
+	buf.WriteString(m.FeesPaid.Mul(vipFeeRebateRate).Format(2))
 	buf.WriteString(`</span>
             </div>
             <div class="metric">
@@ -475,7 +493,7 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
 		buf.WriteString("-")
 	}
 	buf.WriteString("$")
-	buf.WriteString(m.TotalRealized.Abs().FormatThousand(2))
+	buf.WriteString(m.TotalRealized.Abs().Format(2))
 	buf.WriteString(`</span>
             </div>
             <div class="metric">
@@ -494,7 +512,7 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
 		buf.WriteString("-")
 	}
 	buf.WriteString("$")
-	buf.WriteString(m.TotalUnrealized.Abs().FormatThousand(2))
+	buf.WriteString(m.TotalUnrealized.Abs().Format(2))
 	buf.WriteString(`</span>
             </div>
             <div class="metric">
@@ -552,7 +570,7 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
         </section>
 
         <section class="portfolio">
-            <h2>PORTFOLIO VALUE</h2>
+            <h2>ASSETS UNDER MANAGEMENT</h2>
             <div class="portfolio-value">$`)
 	buf.WriteString(m.CurrentValue.FormatThousand(2))
 	buf.WriteString(`</div>
@@ -596,11 +614,8 @@ func generateHTML(asset, algorithm string, duration clocky.Duration, m *ReportMe
             <p class="disclaimer">
                 The above address is owned by <a href="https://justine.lol/">Justine Alexandra Roberts Tunney</a>. By sending `)
 	buf.WriteString(html.EscapeString(asset))
-	buf.WriteString(` to this address, you get the benefit of entertainment in seeing the crypto show up on this page and being traded, and the satisfaction of knowing that you're supporting her work in fields such as open source development, artificial intelligence, finance, and grassroots activism. <strong>This is not an investment.</strong> She is not a registered anything. You are giving her the crypto. She has full autonomy over how she uses her crypto but promises you'll at least get to see it in action as part of this live trading portfolio for a short time. She has no way of knowing who sent her the crypto. You should also consider the tax implications of sharing cryptography.
+	buf.WriteString(` to this address, you get the benefit of entertainment in seeing the crypto show up on this page and being traded, and the satisfaction of knowing that you're supporting her work in fields such as open source development, artificial intelligence, finance, and grassroots activism. <strong>This is not an investment.</strong> She's not a registered anything. You are giving her the crypto. She has full autonomy over how she uses her crypto but promises you'll at least get to see it in action as part of this live trading portfolio for a short time. She has no way of knowing who sent her the crypto. You should also consider the tax implications of sharing cryptography.
             </p>
-            <p class="disclaimer">
-			    Our bespoke algorithm works by monitoring publicly available information in the cryptography community and then routing that knowledge to New York over private networks for analysis by proprietary Go code that places marketable IOC limit orders via the <a href="https://advanced.coinbase.com/join/L8EN839">Coinbase Advanced Trading API</a> as a VIP 4 member in order to clean stale bids and asks from the order book. You should assume that this algorithm is highly risky and experimental. It may lose all value at any time, including during periods of apparent stability. Past performance is no guarantee of future results. If you use our Coinbase referral hyperlink to join the website, you should not expect to see similar returns. They will charge you much higher fees and trying to make money off cryptography is like trying to milk a male tiger. Don't come into the den of jackals. Do literally anything else instead, like buy U.S. Treasury Bonds from Charles Schwab.
-			</p>
         </section>
 
         <section class="benchmark">

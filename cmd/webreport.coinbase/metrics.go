@@ -16,6 +16,9 @@ import (
 	"sort"
 )
 
+// vipFeeRebate is the fraction of fees rebated for Coinbase VIP (25%).
+var vipFeeRebate = decimal.Parse("0.25")
+
 // Transaction represents a transaction from the database.
 type Transaction struct {
 	ID           string
@@ -47,7 +50,8 @@ type CashFlow struct {
 // calculateTWRSeries computes cumulative TWR at each snapshot point.
 // Returns TWR-indexed values: startValue * (1 + cumulative_TWR) at each point.
 // This shows what the portfolio would be worth from trading alone, without deposit effects.
-func calculateTWRSeries(snapshots []PortfolioSnapshot, cashFlows []CashFlow, useStrategy bool) []float64 {
+// feeRebate specifies what fraction of fees to add back (0 = gross fees, 0.25 = VIP rebate, 1 = no fees).
+func calculateTWRSeries(snapshots []PortfolioSnapshot, cashFlows []CashFlow, useStrategy bool, feeRebate decimal.Decimal) []float64 {
 	if len(snapshots) < 1 {
 		return nil
 	}
@@ -58,116 +62,59 @@ func calculateTWRSeries(snapshots []PortfolioSnapshot, cashFlows []CashFlow, use
 		cfByTime[cf.Time] = cfByTime[cf.Time].Add(cf.Amount)
 	}
 
-	// Get starting value
-	var startVal float64
+	// Get starting value (with fee adjustment for strategy)
+	var startVal decimal.Decimal
 	if useStrategy {
-		startVal = snapshots[0].StrategyValue.Float64()
+		startVal = snapshots[0].StrategyValue.Add(snapshots[0].CumulativeFees.Mul(feeRebate))
 	} else {
-		startVal = snapshots[0].BenchmarkValue.Float64()
+		startVal = snapshots[0].BenchmarkValue
 	}
 
 	result := make([]float64, len(snapshots))
-	result[0] = startVal
+	result[0] = startVal.Float64()
 
 	// Calculate cumulative TWR at each point
-	cumulativeTWR := 1.0
+	cumulativeTWR := decimal.One
 	for i := 1; i < len(snapshots); i++ {
-		var prevVal, currVal float64
+		var prevVal, currVal decimal.Decimal
 		if useStrategy {
-			prevVal = snapshots[i-1].StrategyValue.Float64()
-			currVal = snapshots[i].StrategyValue.Float64()
+			// Add back the rebated portion of fees
+			prevVal = snapshots[i-1].StrategyValue.Add(snapshots[i-1].CumulativeFees.Mul(feeRebate))
+			currVal = snapshots[i].StrategyValue.Add(snapshots[i].CumulativeFees.Mul(feeRebate))
 		} else {
-			prevVal = snapshots[i-1].BenchmarkValue.Float64()
-			currVal = snapshots[i].BenchmarkValue.Float64()
+			prevVal = snapshots[i-1].BenchmarkValue
+			currVal = snapshots[i].BenchmarkValue
 		}
 
 		// Subtract any cash flows that happened in this period
-		var periodCashFlow float64
+		periodCashFlow := decimal.Zero
 		for t, amt := range cfByTime {
 			if t > snapshots[i-1].Time && t <= snapshots[i].Time {
-				periodCashFlow += amt.Float64()
+				periodCashFlow = periodCashFlow.Add(amt)
 			}
 		}
 
 		// Calculate sub-period return and accumulate
-		adjustedEnd := currVal - periodCashFlow
-		if prevVal > 0 {
-			subPeriodReturn := adjustedEnd / prevVal
-			cumulativeTWR *= subPeriodReturn
+		adjustedEnd := currVal.Sub(periodCashFlow)
+		if prevVal.IsPositive() {
+			subPeriodReturn := adjustedEnd.Div(prevVal)
+			cumulativeTWR = cumulativeTWR.Mul(subPeriodReturn)
 		}
 
 		// TWR-indexed value: what would portfolio be worth from trading alone
-		result[i] = startVal * cumulativeTWR
+		result[i] = startVal.Mul(cumulativeTWR).Float64()
 	}
 
 	return result
 }
 
 // calculateTWR computes total Time-Weighted Return from snapshots and cash flows.
-func calculateTWR(snapshots []PortfolioSnapshot, cashFlows []CashFlow, useStrategy bool) float64 {
-	series := calculateTWRSeries(snapshots, cashFlows, useStrategy)
+func calculateTWR(snapshots []PortfolioSnapshot, cashFlows []CashFlow, useStrategy bool, feeRebate decimal.Decimal) float64 {
+	series := calculateTWRSeries(snapshots, cashFlows, useStrategy, feeRebate)
 	if len(series) < 2 {
 		return 0
 	}
 	return (series[len(series)-1] / series[0]) - 1.0
-}
-
-// calculateTWRSeriesNoFees computes TWR series with fees added back.
-// This shows what performance would be if no fees were charged.
-func calculateTWRSeriesNoFees(snapshots []PortfolioSnapshot, cashFlows []CashFlow, useStrategy bool) []float64 {
-	if len(snapshots) < 1 {
-		return nil
-	}
-
-	// Build a map of cash flows by time for quick lookup
-	cfByTime := make(map[clocky.Time]decimal.Decimal)
-	for _, cf := range cashFlows {
-		cfByTime[cf.Time] = cfByTime[cf.Time].Add(cf.Amount)
-	}
-
-	// Get starting value with fees added back
-	var startVal float64
-	if useStrategy {
-		startVal = snapshots[0].StrategyValue.Add(snapshots[0].CumulativeFees).Float64()
-	} else {
-		startVal = snapshots[0].BenchmarkValue.Float64() // benchmark doesn't pay fees
-	}
-
-	result := make([]float64, len(snapshots))
-	result[0] = startVal
-
-	// Calculate cumulative TWR at each point with fees added back
-	cumulativeTWR := 1.0
-	for i := 1; i < len(snapshots); i++ {
-		var prevVal, currVal float64
-		if useStrategy {
-			// Add cumulative fees back to portfolio value
-			prevVal = snapshots[i-1].StrategyValue.Add(snapshots[i-1].CumulativeFees).Float64()
-			currVal = snapshots[i].StrategyValue.Add(snapshots[i].CumulativeFees).Float64()
-		} else {
-			prevVal = snapshots[i-1].BenchmarkValue.Float64()
-			currVal = snapshots[i].BenchmarkValue.Float64()
-		}
-
-		// Subtract any cash flows that happened in this period
-		var periodCashFlow float64
-		for t, amt := range cfByTime {
-			if t > snapshots[i-1].Time && t <= snapshots[i].Time {
-				periodCashFlow += amt.Float64()
-			}
-		}
-
-		// Calculate sub-period return and accumulate
-		adjustedEnd := currVal - periodCashFlow
-		if prevVal > 0 {
-			subPeriodReturn := adjustedEnd / prevVal
-			cumulativeTWR *= subPeriodReturn
-		}
-
-		result[i] = startVal * cumulativeTWR
-	}
-
-	return result
 }
 
 // Holding represents a single asset holding.
@@ -639,14 +586,15 @@ func calculateMetrics(
 	totalUnrealized := currentMarketValue.Sub(remainingCostBasis)
 
 	// Calculate TWR series for Sharpe/MaxDD (removes deposit distortion)
-	strategySeries := calculateTWRSeries(snapshots, cashFlows, true)
-	benchmarkSeries := calculateTWRSeries(snapshots, cashFlows, false)
+	// Use 0.25 rebate to reflect VIP 25% fee rebate (i.e., only 75% of fees are effectively paid)
+	strategySeries := calculateTWRSeries(snapshots, cashFlows, true, vipFeeRebate)
+	benchmarkSeries := calculateTWRSeries(snapshots, cashFlows, false, decimal.Zero)
 
 	// Use Time-Weighted Return to eliminate impact of deposits/withdrawals
 	totalReturn := (strategySeries[len(strategySeries)-1]/strategySeries[0] - 1) * 100
 	benchmarkReturn := (benchmarkSeries[len(benchmarkSeries)-1]/benchmarkSeries[0] - 1) * 100
 
-	log.Printf("TWR calculation: %d cash flows, strategy=%.2f%%, benchmark=%.2f%%",
+	log.Printf("TWR calculation: %d cash flows, strategy=%.2f%% (with 25%% rebate), benchmark=%.2f%%",
 		len(cashFlows), totalReturn, benchmarkReturn)
 
 	duration := finalSnapshot.Time.Sub(genesis)

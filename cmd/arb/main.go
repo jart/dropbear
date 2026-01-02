@@ -39,6 +39,7 @@ var (
 	flagCooldown  = clocky.DurationFlag("cooldown", "400ms", "minimum time between trades")
 	flagFreshness = clocky.DurationFlag("freshness", "400ms", "max age of market data before suspending")
 	flagSamples   = flag.Int("samples", 1000, "number of sample trades used to determine baseline spread")
+	flagClean     = decimal.FlagPercent("clean", "0", "we must clean at least this percent of stale content")
 )
 
 var (
@@ -153,7 +154,7 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 
 	// calculate spread between coinbase and predictor
 	// spread = (midpoint - prediction) / prediction
-	bid, _, ask, _ := gCoinbasePair.OrderBook.BestBidAsk()
+	bid, ask := gCoinbasePair.OrderBook.BestBidAsk()
 	mid := bid.Add(ask).DivInt(2)
 	if !mid.IsPositive() {
 		log.Printf("[error] somehow have non-positive midpoint price %s", mid)
@@ -273,8 +274,8 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	}
 
 	// don't feed mount everest
-	var wallSize decimal.Decimal
 	var wallLevels int
+	var wallSize decimal.Decimal
 	if side == ds.SideBuy {
 		for _, level := range gCoinbasePair.OrderBook.TopAsks(100) {
 			if level.Price.Cmp(limi) > 0 {
@@ -292,10 +293,10 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 			wallLevels++
 		}
 	}
-	clearPct := size.Div(wallSize).MulInt(100)
-	if clearPct.Cmp(decimal.FromInt(10)) < 0 {
+	cleaned := size.Div(wallSize)
+	if cleaned.Cmp(*flagClean) < 0 {
 		logDecision()
-		log.Printf("[skip] would only clear %.1f%% of %s across %d levels", clearPct.Float64(), wallSize, wallLevels)
+		log.Printf("[skip] would only clean %s%% of $%s across %d levels", cleaned.MulInt(100).Format(0), wallSize.Mul(mid).FormatThousand(2), wallLevels)
 		return
 	}
 
