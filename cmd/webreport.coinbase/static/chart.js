@@ -178,6 +178,6 @@ function updateMetricsDisplay(metrics, feesPaid, withFees) {
     // Update fee toggle label
     var feeLabelEl = document.getElementById('fee-label');
     if (feeLabelEl) {
-        feeLabelEl.textContent = withFees ? 'Fees Paid' : 'Fees Paid (OFF)';
+        feeLabelEl.textContent = withFees ? 'Net Fees' : 'Net Fees (OFF)';
     }
 }

@@ -5,7 +5,6 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/loggy"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -134,12 +133,9 @@ func (os *Orders) onCoinbaseOrderUpdate(orderUpdate *coinbase.OrderUpdate) {
 	order.lastFees.Store(cbFee)
 	order.Lock.Unlock()
 
-	// sanity check deltas
-	if fillDelta.IsNegative() {
-		loggy.Fatalf("fill delta went negative: %s -> %s", oldFilled, cbFilled)
-	}
-	if valueDelta.IsNegative() {
-		loggy.Fatalf("value delta went negative: %s -> %s", oldValue, cbValue)
+	// ignore stale out-of-order updates
+	if fillDelta.IsNegative() || valueDelta.IsNegative() {
+		return
 	}
 
 	// update order metadata that coinbase controls

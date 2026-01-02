@@ -379,7 +379,7 @@ func buildChartData(snapshots []PortfolioSnapshot, cashFlows []CashFlow, m *Repo
 	data.Metrics.Sharpe = m.Sharpe
 	data.Metrics.MaxDrawdown = m.MaxDrawdown
 	data.Metrics.BenchmarkReturn = m.BenchmarkReturn
-	data.FeesPaid = m.FeesPaid.Float64()
+	data.FeesPaid = m.FeesPaid.Mul(vipFeeRebateRate).Float64() // net fees after 25% rebate
 
 	// Calculate TWR-indexed values for chart (removes deposit jumps)
 	// Main series uses VIP rebate (25% of fees added back)
