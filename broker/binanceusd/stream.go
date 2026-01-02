@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const StreamURL = "wss://nickel.justine.lol/fut/ws"
+const StreamURL = "wss://nickel.justinestreet.capital/fut/ws"
 
 type marketData struct {
 	Symbol       string

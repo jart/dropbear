@@ -9,3 +9,5 @@ require (
 	github.com/klauspost/compress v1.18.2
 	github.com/mattn/go-sqlite3 v1.14.24
 )
+
+require golang.org/x/sys v0.39.0 // indirect

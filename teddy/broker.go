@@ -66,6 +66,9 @@ func (ex *Broker) run() {
 	case ds.BrokerCoinbase:
 		go coinbase.HTTPWarmupDaemon(3) // keep 3 connections warm
 		go ex.Orders.coinbaseOrderUpdateDaemon()
+		if !Paper {
+			go ex.Orders.coinbaseOrderSyncDaemon()
+		}
 		go ex.coinbaseFeeRatesDaemon()
 	case ds.BrokerKraken:
 		go kraken.HTTPWarmupDaemon(3) // keep 3 connections warm

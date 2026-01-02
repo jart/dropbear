@@ -5,9 +5,11 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/emirpasic/gods/v2/sets/treeset"
 )
@@ -151,12 +153,92 @@ func (os *Orders) onCoinbaseOrderUpdate(orderUpdate *coinbase.OrderUpdate) {
 	// process fill
 	if fillDelta.IsPositive() && valueDelta.IsPositive() {
 		_, _ = order.fill(fillDelta, valueDelta, feeRate, true)
-	} else if cbState.IsFinal() && !oldState.IsFinal() {
-		// order ended without new fills (cancelled, expired, etc.)
+	}
+	// Check if order should be killed (even if fills were processed above).
+	// This handles IOC orders that are partially filled then cancelled.
+	if cbState.IsFinal() && !order.State.Load().IsFinal() {
 		order.kill(cbState)
 	}
 }
 
 func compareOrdersByClientOrderID(a, b *Order) int {
 	return strings.Compare(a.ClientOrderID, b.ClientOrderID)
+}
+
+// coinbaseOrderSyncDaemon periodically polls Coinbase to reconcile open orders.
+// This provides self-healing in case websocket updates are missed.
+func (os *Orders) coinbaseOrderSyncDaemon() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		os.syncOpenOrdersWithCoinbase()
+	}
+}
+
+func (os *Orders) syncOpenOrdersWithCoinbase() {
+	// Get all open orders from Coinbase (with pagination)
+	cbOpenIDs := make(map[string]bool)
+	cursor := ""
+	for {
+		cbOrders, err := CoinbaseClient.ListOrders("OPEN", cursor)
+		if err != nil {
+			log.Printf("[teddy] sync: failed to list orders: %v", err)
+			return
+		}
+		for _, o := range cbOrders.Orders {
+			cbOpenIDs[o.OrderID] = true
+		}
+		if !cbOrders.HasNext {
+			break
+		}
+		cursor = cbOrders.Cursor
+	}
+
+	// Check local open orders against Coinbase
+	os.lock.RLock()
+	localOrders := make([]*Order, 0, os.openOrders.Size())
+	for it := os.openOrders.Iterator(); it.Next(); {
+		localOrders = append(localOrders, it.Value())
+	}
+	os.lock.RUnlock()
+
+	// Kill orders that are locally "open" but Coinbase says are closed
+	for _, order := range localOrders {
+		if order.OrderID == "" {
+			continue // order not yet acknowledged by Coinbase
+		}
+		if !cbOpenIDs[order.OrderID] {
+			// Coinbase says this order is closed, but we think it's open
+			// Fetch the current state and reconcile
+			cbOrder, err := CoinbaseClient.GetOrder(order.OrderID)
+			if err != nil {
+				log.Printf("[teddy] sync: failed to get order %s: %v", order.OrderID, err)
+				continue
+			}
+			state := ds.NewOrderStateForCoinbase(cbOrder.Status, decimal.Parse(cbOrder.FilledSize))
+			if state.IsFinal() && !order.State.Load().IsFinal() {
+				// Process any missed fills before killing
+				cbFilled := decimal.Parse(cbOrder.FilledSize)
+				cbValue := decimal.Parse(cbOrder.FilledValue)
+				cbFee := decimal.Parse(cbOrder.TotalFees)
+				localFilled := order.Filled.Load()
+				localValue := order.Notional.Load()
+				fillDelta := cbFilled.Sub(localFilled)
+				valueDelta := cbValue.Sub(localValue)
+				if fillDelta.IsPositive() && valueDelta.IsPositive() {
+					localFees := order.lastFees.Load()
+					feeDelta := cbFee.Sub(localFees)
+					feeRate := decimal.Zero
+					if valueDelta.IsPositive() {
+						feeRate = feeDelta.Div(valueDelta)
+					}
+					order.lastFees.Store(cbFee)
+					log.Printf("[teddy] sync: processing missed fill for %s: %s filled, %s value", order.OrderID, fillDelta, valueDelta)
+					order.fill(fillDelta, valueDelta, feeRate, true)
+				}
+				log.Printf("[teddy] sync: killing stale order %s (cb status=%s)", order.OrderID, cbOrder.Status)
+				order.kill(state)
+			}
+		}
+	}
 }

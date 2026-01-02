@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const baseURL = "https://nickel.justine.lol"
+const baseURL = "https://nickel.justinestreet.capital"
 
 // Client is a Binance REST API client.
 type Client struct{}

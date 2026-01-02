@@ -231,7 +231,8 @@ func (p *Pair) refreshCoinbase() {
 func (p *Pair) refreshBinance() {
 	json, err := BinanceClient.GetSymbol(p.Symbol)
 	if err != nil {
-		loggy.Fatalf("failed to get binance symbol info: %v", err)
+		log.Printf("warning: failed to get binance symbol info: %v", err)
+		return
 	}
 	for _, filter := range json.Filters {
 		p.refreshBinanceFilter(filter)
