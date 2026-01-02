@@ -8,14 +8,14 @@ import (
 
 func main() {
 	client := binance.NewClient()
-	for range 2 {
+	for i := range 3 {
 		start := clocky.Now()
 		_, err := client.GetTime()
 		latency := clocky.Since(start)
 		if err != nil {
-			log.Printf("error: %v", err)
+			log.Printf("request %d error: %v", i+1, err)
 		} else {
-			log.Printf("latency: %v", latency)
+			log.Printf("request %d latency: %v", i+1, latency)
 		}
 	}
 }

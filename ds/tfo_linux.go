@@ -4,12 +4,16 @@ package ds
 
 import (
 	"context"
+	"log"
 	"net"
 	"os"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 )
+
+// TFODebug enables debug logging for TCP Fast Open
+var TFODebug = false
 
 // DialTFO connects to the address and sends initial data in the SYN packet
 // using TCP Fast Open. If data is empty, falls back to normal dial.
@@ -98,11 +102,19 @@ func dialTFOSingle(ctx context.Context, raddr *net.TCPAddr, data []byte) (*net.T
 	// Connect with TFO using sendmsg(MSG_FASTOPEN)
 	var n int
 	var connectErr error
+	var done bool
 
 	writeErr := rawConn.Write(func(fd uintptr) bool {
+		if done {
+			return true // Already sent, just waiting for connection
+		}
 		n, connectErr = unix.SendmsgN(int(fd), data, nil, sa, unix.MSG_FASTOPEN|unix.MSG_NOSIGNAL)
+		if TFODebug {
+			log.Printf("TFO sendmsg: n=%d, err=%v, datalen=%d", n, connectErr, len(data))
+		}
 		if connectErr == unix.EINPROGRESS {
-			// Connection in progress, need to wait
+			// Connection in progress, need to wait for socket to become writable
+			done = true
 			connectErr = nil
 			return false
 		}

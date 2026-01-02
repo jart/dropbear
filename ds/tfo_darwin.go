@@ -4,12 +4,16 @@ package ds
 
 import (
 	"context"
+	"log"
 	"net"
 	"os"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 )
+
+// TFODebug enables debug logging for TCP Fast Open
+var TFODebug = false
 
 const tcpFastopenForceEnable = 0x218
 
@@ -59,7 +63,7 @@ func DialTFO(ctx context.Context, network, address string, data []byte) (*net.TC
 	return nil, firstErr
 }
 
-func dialTFOSingle(ctx context.Context, raddr *net.TCPAddr, data []byte) (*net.TCPConn, error) {
+func dialTFOSingle(_ context.Context, raddr *net.TCPAddr, data []byte) (*net.TCPConn, error) {
 	// Determine address family
 	family := unix.AF_INET
 	if raddr.IP.To4() == nil {
@@ -111,8 +115,12 @@ func dialTFOSingle(ctx context.Context, raddr *net.TCPAddr, data []byte) (*net.T
 	// Connect with TFO using connectx()
 	var n int
 	var connectErr error
+	var done bool
 
 	writeErr := rawConn.Write(func(fd uintptr) bool {
+		if done {
+			return true // Already called connectx, just waiting for connection
+		}
 		var iov []unix.Iovec
 		if len(data) > 0 {
 			iov = []unix.Iovec{{Base: &data[0], Len: uint64(len(data))}}
@@ -120,7 +128,11 @@ func dialTFOSingle(ctx context.Context, raddr *net.TCPAddr, data []byte) (*net.T
 		var sent uintptr
 		sent, connectErr = unix.Connectx(int(fd), 0, nil, sa, unix.SAE_ASSOCID_ANY, unix.CONNECT_DATA_IDEMPOTENT, iov, nil)
 		n = int(sent)
+		if TFODebug {
+			log.Printf("TFO connectx: n=%d, err=%v, datalen=%d", n, connectErr, len(data))
+		}
 		if connectErr == unix.EINPROGRESS {
+			done = true
 			connectErr = nil
 			return false
 		}

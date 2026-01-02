@@ -7,6 +7,9 @@ import (
 	"net"
 )
 
+// TFODebug enables debug logging for TCP Fast Open
+var TFODebug = false
+
 // DialTFO connects to the address and sends initial data.
 // On this platform, TFO is not supported so it falls back to normal dial + write.
 func DialTFO(ctx context.Context, network, address string, data []byte) (*net.TCPConn, error) {
