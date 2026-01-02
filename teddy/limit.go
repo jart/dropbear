@@ -27,7 +27,11 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 
 	// post-only orders aren't allowed to cross the spread
 	if strategy == ds.OrderStrategyPostOnly {
-		bestBid, bestAsk := p.OrderBook.BestBidAsk()
+		if !p.Lock.TryRLock() {
+			return nil, ds.ErrBusy
+		}
+		bestBid, bestAsk := p.Book.BestBidAsk()
+		p.Lock.RUnlock()
 		switch side {
 		case ds.SideBuy:
 			if limitPrice.Cmp(bestAsk) >= 0 {
@@ -126,14 +130,18 @@ func (p *Pair) LimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, st
 	case ds.OrderStrategyMarketable, ds.OrderStrategyIOC:
 		remaining := quantity
 		for remaining.IsPositive() {
-			fill, ok := p.OrderBook.Pop(side, remaining, limitPrice)
+			p.Lock.Lock()
+			fill, ok := p.Book.Pop(side, remaining, limitPrice)
+			p.Lock.Unlock()
 			if !ok {
 				break
 			}
 			fillNotional := fill.Price.Mul(fill.Size)
 			filled, err := order.fill(fill.Size, fillNotional, p.Broker.TakerFee, false)
 			if unfilled := fill.Size.Sub(filled); unfilled.IsPositive() {
-				p.OrderBook.Push(side.Flip(), fill.Price, unfilled)
+				p.Lock.Lock()
+				p.Book.Push(side.Flip(), fill.Price, unfilled)
+				p.Lock.Unlock()
 			}
 			if err != nil || !filled.IsPositive() {
 				break

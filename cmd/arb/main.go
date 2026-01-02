@@ -117,7 +117,9 @@ func onCoinbaseTick(tick *ds.Tick) {
 
 func onPricerTick(tick *ds.Tick) {
 	if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
-		gPricerPrice.Store(gPricerPair.OrderBook.MidPrice())
+		gPricerPair.Lock.RLock()
+		gPricerPrice.Store(gPricerPair.Book.MidPrice())
+		gPricerPair.Lock.RUnlock()
 	}
 }
 
@@ -125,9 +127,11 @@ func onPredictorTick(tick *ds.Tick) {
 	teddy.Spawn(func() {
 		if *flagLevel2 {
 			if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
-				bid := gPredictorPair.OrderBook.PickBidByValue(*flagDepth)
-				ask := gPredictorPair.OrderBook.PickAskByValue(*flagDepth)
+				gPredictorPair.Lock.RLock()
+				bid := gPredictorPair.Book.PickBidByValue(*flagDepth)
+				ask := gPredictorPair.Book.PickAskByValue(*flagDepth)
 				mid := bid.Add(ask).DivInt(2).Mul(gPricerPrice.Load())
+				gPredictorPair.Lock.RUnlock()
 				if !mid.IsPositive() {
 					log.Printf("[error] somehow have non-positive predictor midpoint price %s", mid)
 					return
@@ -147,14 +151,16 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	if teddy.Live {
 		now := clocky.Now()
 		goDelay := now.Sub(receivedTime)
-		if goDelay > clocky.Millisecond {
+		if goDelay > 2*clocky.Millisecond {
 			log.Printf("[info] tick took %s to deliver", goDelay)
 		}
 	}
 
 	// calculate spread between coinbase and predictor
 	// spread = (midpoint - prediction) / prediction
-	bid, ask := gCoinbasePair.OrderBook.BestBidAsk()
+	gCoinbasePair.Lock.RLock()
+	bid, ask := gCoinbasePair.Book.BestBidAsk()
+	gCoinbasePair.Lock.RUnlock()
 	mid := bid.Add(ask).DivInt(2)
 	if !mid.IsPositive() {
 		log.Printf("[error] somehow have non-positive midpoint price %s", mid)
@@ -276,23 +282,34 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	// don't feed mount everest
 	var wallLevels int
 	var wallSize decimal.Decimal
+	if !gCoinbasePair.Lock.TryRLock() {
+		log.Printf("[skip] coinbase pair lock is busy")
+		return
+	}
 	if side == ds.SideBuy {
-		for _, level := range gCoinbasePair.OrderBook.TopAsks(100) {
-			if level.Price.Cmp(limi) > 0 {
+		it := gCoinbasePair.Book.Asks.Iterator()
+		for it.Next() {
+			price := it.Key()
+			size := it.Value()
+			if price.Cmp(limi) > 0 {
 				break
 			}
-			wallSize = wallSize.Add(level.Size)
+			wallSize = wallSize.Add(size)
 			wallLevels++
 		}
 	} else {
-		for _, level := range gCoinbasePair.OrderBook.TopBids(100) {
-			if level.Price.Cmp(limi) < 0 {
+		it := gCoinbasePair.Book.Bids.Iterator()
+		for it.Next() {
+			price := it.Key()
+			size := it.Value()
+			if price.Cmp(limi) < 0 {
 				break
 			}
-			wallSize = wallSize.Add(level.Size)
+			wallSize = wallSize.Add(size)
 			wallLevels++
 		}
 	}
+	gCoinbasePair.Lock.RUnlock()
 	cleaned := size.Div(wallSize)
 	if cleaned.Cmp(*flagClean) < 0 {
 		logDecision()

@@ -1,64 +1,23 @@
 package ds
 
 import (
-	"cmp"
 	"dropbear/decimal"
-	"sync"
-	"time"
 
 	"github.com/emirpasic/gods/v2/maps/treemap"
 )
 
 // Book represents an order book for a single product.
-// Uses tree maps for O(log n) updates and O(1) best bid/ask.
 type Book struct {
-	Lock       sync.RWMutex
-	updated    chan struct{} // closed on each update, then recreated
-	ready      chan struct{} // closed once book has data
-	readyOnce  sync.Once
-	bids       *treemap.Map[decimal.Decimal, decimal.Decimal] // price -> size, descending (best bid = first)
-	asks       *treemap.Map[decimal.Decimal, decimal.Decimal] // price -> size, ascending (best ask = first)
-	lastUpdate time.Time                                      // system time of last websocket message
+	Bids *treemap.Map[decimal.Decimal, decimal.Decimal] // price -> size, descending (best bid = first)
+	Asks *treemap.Map[decimal.Decimal, decimal.Decimal] // price -> size, ascending (best ask = first)
 }
 
 // NewBook creates a new order book.
 func NewBook() *Book {
 	return &Book{
-		updated: make(chan struct{}),
-		ready:   make(chan struct{}),
-		bids:    treemap.NewWith[decimal.Decimal, decimal.Decimal](reverseDecimalComparator),
-		asks:    treemap.NewWith[decimal.Decimal, decimal.Decimal](cmp.Compare[decimal.Decimal]),
+		Bids: treemap.NewWith[decimal.Decimal, decimal.Decimal](decimal.CompareReverse),
+		Asks: treemap.NewWith[decimal.Decimal, decimal.Decimal](decimal.Compare),
 	}
-}
-
-// Ready returns a channel that is closed once the book has received data.
-func (b *Book) Ready() <-chan struct{} {
-	return b.ready
-}
-
-// Wait blocks until the book is updated.
-func (b *Book) Wait() {
-	<-b.Updated()
-}
-
-// Updated returns a channel that will be closed when the book is updated.
-// Use this with select for cancellable waits.
-func (b *Book) Updated() <-chan struct{} {
-	b.Lock.RLock()
-	ch := b.updated
-	b.Lock.RUnlock()
-	return ch
-}
-
-// Staleness returns how long since the last websocket update.
-func (b *Book) Staleness() time.Duration {
-	b.Lock.RLock()
-	t := b.lastUpdate
-	b.Lock.RUnlock()
-	if t.IsZero() {
-		return 0
-	}
-	return time.Since(t)
 }
 
 // MidPrice returns the market price.
@@ -71,58 +30,51 @@ func (b *Book) MidPrice() decimal.Decimal {
 // Normally ask is just a little bit higher than bid.
 // However it's possible for the books to overlap.
 func (b *Book) BestBidAsk() (bid, ask decimal.Decimal) {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
-	bid, _, _ = b.bids.Min()
-	ask, _, _ = b.asks.Min()
+	bid, _, _ = b.Bids.Min()
+	ask, _, _ = b.Asks.Min()
 	return
 }
 
+// Update updates or removes a level.
+func (b *Book) Update(side Side, price, size decimal.Decimal) {
+	switch side {
+	case SideBuy:
+		b.UpdateBid(price, size)
+	case SideSell:
+		b.UpdateAsk(price, size)
+	}
+}
+
 // UpdateBid updates or removes a bid level.
-// The write lock must be held by the caller.
 func (b *Book) UpdateBid(price, size decimal.Decimal) {
-	b.lastUpdate = time.Now()
 	if size.IsPositive() {
-		b.bids.Put(price, size)
+		b.Bids.Put(price, size)
 	} else {
-		b.bids.Remove(price)
+		b.Bids.Remove(price)
 	}
 }
 
 // UpdateAsk updates or removes an ask level.
-// The write lock must be held by the caller.
 func (b *Book) UpdateAsk(price, size decimal.Decimal) {
 	if size.IsPositive() {
-		b.asks.Put(price, size)
+		b.Asks.Put(price, size)
 	} else {
-		b.asks.Remove(price)
-	}
-}
-
-// Broadcast signals all waiters that the book has changed.
-// The write lock must be held by the caller.
-func (b *Book) Broadcast() {
-	if !b.bids.Empty() && !b.asks.Empty() {
-		b.readyOnce.Do(func() { close(b.ready) })
-		close(b.updated) // ready steady go
-		b.updated = make(chan struct{})
+		b.Asks.Remove(price)
 	}
 }
 
 // Clear removes all levels from the book.
 // The write lock must be held by the caller.
 func (b *Book) Clear() {
-	b.bids.Clear()
-	b.asks.Clear()
+	b.Bids.Clear()
+	b.Asks.Clear()
 }
 
 // Add includes limit order in order book.
 func (b *Book) Add(side Side, price, size decimal.Decimal) {
-	b.Lock.Lock()
-	defer b.Lock.Unlock()
-	book := b.asks
+	book := b.Asks
 	if side == SideBuy {
-		book = b.bids
+		book = b.Bids
 	}
 	existing, found := book.Get(price)
 	if found {
@@ -138,14 +90,12 @@ func (b *Book) BidDepthAbove(price decimal.Decimal) decimal.Decimal {
 	if price.IsZero() {
 		return decimal.Zero
 	}
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	var depth decimal.Decimal
-	it := b.bids.Iterator()
+	it := b.Bids.Iterator()
 	for it.Next() {
 		p := it.Key()
 		if p.Cmp(price) <= 0 {
-			break // bids are descending, so we're done
+			break // Bids are descending, so we're done
 		}
 		size := it.Value()
 		newDepth := depth.Add(size)
@@ -163,14 +113,12 @@ func (b *Book) AskDepthBelow(price decimal.Decimal) decimal.Decimal {
 	if price.IsZero() {
 		return decimal.Zero
 	}
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	var depth decimal.Decimal
-	it := b.asks.Iterator()
+	it := b.Asks.Iterator()
 	for it.Next() {
 		p := it.Key()
 		if p.Cmp(price) >= 0 {
-			break // asks are ascending, so we're done
+			break // Asks are ascending, so we're done
 		}
 		size := it.Value()
 		newDepth := depth.Add(size)
@@ -186,10 +134,8 @@ func (b *Book) AskDepthBelow(price decimal.Decimal) decimal.Decimal {
 // by walking the ask side of the book. Returns cost and whether there was
 // sufficient liquidity. This simulates a market buy order.
 func (b *Book) MarketBuyCost(baseQty decimal.Decimal) (cost decimal.Decimal, ok bool) {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	remaining := baseQty
-	it := b.asks.Iterator()
+	it := b.Asks.Iterator()
 	for it.Next() {
 		price := it.Key()
 		size := it.Value()
@@ -207,10 +153,8 @@ func (b *Book) MarketBuyCost(baseQty decimal.Decimal) (cost decimal.Decimal, ok 
 // selling baseQty by walking the bid side of the book. Returns proceeds and
 // whether there was sufficient liquidity. This simulates a market sell order.
 func (b *Book) MarketSellProceeds(baseQty decimal.Decimal) (proceeds decimal.Decimal, ok bool) {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	remaining := baseQty
-	it := b.bids.Iterator()
+	it := b.Bids.Iterator()
 	for it.Next() {
 		price := it.Key()
 		size := it.Value()
@@ -228,10 +172,8 @@ func (b *Book) MarketSellProceeds(baseQty decimal.Decimal) (proceeds decimal.Dec
 // the ask side up to limitPrice. Returns cost and whether there was sufficient
 // liquidity below the limit. This simulates an IOC buy order with limit.
 func (b *Book) MarketBuyCostLimited(baseQty, limitPrice decimal.Decimal) (cost decimal.Decimal, ok bool) {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	remaining := baseQty
-	it := b.asks.Iterator()
+	it := b.Asks.Iterator()
 	for it.Next() {
 		price := it.Key()
 		size := it.Value()
@@ -253,10 +195,8 @@ func (b *Book) MarketBuyCostLimited(baseQty, limitPrice decimal.Decimal) (cost d
 // walks the bid side down to limitPrice. Returns proceeds and whether there was
 // sufficient liquidity above the limit. This simulates an IOC sell order with limit.
 func (b *Book) MarketSellProceedsLimited(baseQty, limitPrice decimal.Decimal) (proceeds decimal.Decimal, ok bool) {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	remaining := baseQty
-	it := b.bids.Iterator()
+	it := b.Bids.Iterator()
 	for it.Next() {
 		price := it.Key()
 		size := it.Value()
@@ -276,10 +216,8 @@ func (b *Book) MarketSellProceedsLimited(baseQty, limitPrice decimal.Decimal) (p
 
 // TopBids returns the top n bid levels (best first).
 func (b *Book) TopBids(n int) []Level {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	var levels []Level
-	it := b.bids.Iterator()
+	it := b.Bids.Iterator()
 	for it.Next() && len(levels) < n {
 		levels = append(levels, Level{
 			Price: it.Key(),
@@ -291,10 +229,8 @@ func (b *Book) TopBids(n int) []Level {
 
 // TopAsks returns the top n ask levels (best first).
 func (b *Book) TopAsks(n int) []Level {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	var levels []Level
-	it := b.asks.Iterator()
+	it := b.Asks.Iterator()
 	for it.Next() && len(levels) < n {
 		levels = append(levels, Level{
 			Price: it.Key(),
@@ -306,13 +242,11 @@ func (b *Book) TopAsks(n int) []Level {
 
 // PickAsk picks a good ask price.
 // Assume we want to sell $1000 of coins and match the national best asking price of $10.00.
-// Since crypto lets you make $1 trades, there's no point in us doing that if the existing asks
+// Since crypto lets you make $1 trades, there's no point in us doing that if the existing Asks
 // at price $10.00, $10.01, and $10.02 sum up to fifty dollars.
 func (b *Book) PickAsk(depth decimal.Decimal) decimal.Decimal {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	var p, d decimal.Decimal
-	it := b.asks.Iterator()
+	it := b.Asks.Iterator()
 	for it.Next() {
 		p = it.Key()
 		d = d.Add(it.Value())
@@ -326,13 +260,11 @@ func (b *Book) PickAsk(depth decimal.Decimal) decimal.Decimal {
 // PickBid picks a good bid price.
 // This is the mirror of PickAsk for the buy side.
 // Assume we want to buy $1000 of coins and match the national best bid price of $10.00.
-// Since crypto lets you make $1 trades, there's no point in us doing that if the existing bids
+// Since crypto lets you make $1 trades, there's no point in us doing that if the existing Bids
 // at price $10.00, $9.99, and $9.98 sum up to fifty dollars.
 func (b *Book) PickBid(depth decimal.Decimal) decimal.Decimal {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	var p, d decimal.Decimal
-	it := b.bids.Iterator()
+	it := b.Bids.Iterator()
 	for it.Next() {
 		p = it.Key()
 		d = d.Add(it.Value())
@@ -346,10 +278,8 @@ func (b *Book) PickBid(depth decimal.Decimal) decimal.Decimal {
 // PickAskByValue returns the ask price where cumulative value (price*size) >= valueDepth.
 // This represents the worst price you'd pay to buy valueDepth worth of asset.
 func (b *Book) PickAskByValue(valueDepth decimal.Decimal) decimal.Decimal {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	var p, v decimal.Decimal
-	it := b.asks.Iterator()
+	it := b.Asks.Iterator()
 	for it.Next() {
 		p = it.Key()
 		v = v.Add(p.Mul(it.Value()))
@@ -363,10 +293,8 @@ func (b *Book) PickAskByValue(valueDepth decimal.Decimal) decimal.Decimal {
 // PickBidByValue returns the bid price where cumulative value (price*size) >= valueDepth.
 // This represents the worst price you'd get selling valueDepth worth of asset.
 func (b *Book) PickBidByValue(valueDepth decimal.Decimal) decimal.Decimal {
-	b.Lock.RLock()
-	defer b.Lock.RUnlock()
 	var p, v decimal.Decimal
-	it := b.bids.Iterator()
+	it := b.Bids.Iterator()
 	for it.Next() {
 		p = it.Key()
 		v = v.Add(p.Mul(it.Value()))
@@ -391,12 +319,10 @@ func (b *Book) MidPriceAtDepth(valueDepth decimal.Decimal) decimal.Decimal {
 // Fills as much quantity as possible without exceeding maxValue.
 // Returns quantity filled and array of fills at each price level hit.
 func (b *Book) Buy(quantity, buyingPower decimal.Decimal) (decimal.Decimal, []Level) {
-	b.Lock.Lock()
-	defer b.Lock.Unlock()
 	var fills []Level
 	remaining := quantity
 	var spent decimal.Decimal
-	it := b.asks.Iterator()
+	it := b.Asks.Iterator()
 	for it.Next() {
 		price := it.Key()
 		size := it.Value()
@@ -423,9 +349,9 @@ func (b *Book) Buy(quantity, buyingPower decimal.Decimal) (decimal.Decimal, []Le
 		remaining = remaining.Sub(fillSize)
 		newSize := size.Sub(fillSize)
 		if newSize.IsZero() {
-			b.asks.Remove(price)
+			b.Asks.Remove(price)
 		} else {
-			b.asks.Put(price, newSize)
+			b.Asks.Put(price, newSize)
 		}
 		if remaining.IsZero() {
 			break
@@ -438,11 +364,9 @@ func (b *Book) Buy(quantity, buyingPower decimal.Decimal) (decimal.Decimal, []Le
 // Fills as much quantity as possible.
 // Returns quantity filled and array of fills at each price level hit.
 func (b *Book) Sell(quantity decimal.Decimal) (decimal.Decimal, []Level) {
-	b.Lock.Lock()
-	defer b.Lock.Unlock()
 	var fills []Level
 	remaining := quantity
-	it := b.bids.Iterator()
+	it := b.Bids.Iterator()
 	for it.Next() {
 		price := it.Key()
 		size := it.Value()
@@ -454,9 +378,9 @@ func (b *Book) Sell(quantity decimal.Decimal) (decimal.Decimal, []Level) {
 		remaining = remaining.Sub(fillSize)
 		newSize := size.Sub(fillSize)
 		if newSize.IsZero() {
-			b.bids.Remove(price)
+			b.Bids.Remove(price)
 		} else {
-			b.bids.Put(price, newSize)
+			b.Bids.Put(price, newSize)
 		}
 		if remaining.IsZero() {
 			break
@@ -468,11 +392,9 @@ func (b *Book) Sell(quantity decimal.Decimal) (decimal.Decimal, []Level) {
 // BuyLimit is a helper for filling an IOC buy limit order.
 // Returns quantity filled and array of fills at each price level hit.
 func (b *Book) BuyLimit(quantity, limitPrice decimal.Decimal) (decimal.Decimal, []Level) {
-	b.Lock.Lock()
-	defer b.Lock.Unlock()
 	var fills []Level
 	remaining := quantity
-	it := b.asks.Iterator()
+	it := b.Asks.Iterator()
 	for it.Next() {
 		price := it.Key()
 		size := it.Value()
@@ -487,9 +409,9 @@ func (b *Book) BuyLimit(quantity, limitPrice decimal.Decimal) (decimal.Decimal, 
 		remaining = remaining.Sub(fillSize)
 		newSize := size.Sub(fillSize)
 		if newSize.IsZero() {
-			b.asks.Remove(price)
+			b.Asks.Remove(price)
 		} else {
-			b.asks.Put(price, newSize)
+			b.Asks.Put(price, newSize)
 		}
 		if remaining.IsZero() {
 			break
@@ -501,11 +423,9 @@ func (b *Book) BuyLimit(quantity, limitPrice decimal.Decimal) (decimal.Decimal, 
 // SellLimit is a helper for filling an IOC sell limit order.
 // Returns quantity filled and array of fills at each price level hit.
 func (b *Book) SellLimit(quantity, limitPrice decimal.Decimal) (decimal.Decimal, []Level) {
-	b.Lock.Lock()
-	defer b.Lock.Unlock()
 	var fills []Level
 	remaining := quantity
-	it := b.bids.Iterator()
+	it := b.Bids.Iterator()
 	for it.Next() {
 		price := it.Key()
 		size := it.Value()
@@ -520,9 +440,9 @@ func (b *Book) SellLimit(quantity, limitPrice decimal.Decimal) (decimal.Decimal,
 		remaining = remaining.Sub(fillSize)
 		newSize := size.Sub(fillSize)
 		if newSize.IsZero() {
-			b.bids.Remove(price)
+			b.Bids.Remove(price)
 		} else {
-			b.bids.Put(price, newSize)
+			b.Bids.Put(price, newSize)
 		}
 		if remaining.IsZero() {
 			break
@@ -532,18 +452,16 @@ func (b *Book) SellLimit(quantity, limitPrice decimal.Decimal) (decimal.Decimal,
 }
 
 // Pop removes up to maxQty from the best price on the opposite side.
-// For buys, pops from asks at or below limitPrice.
-// For sells, pops from bids at or above limitPrice.
+// For buys, pops from Asks at or below limitPrice.
+// For sells, pops from Bids at or above limitPrice.
 // Returns the fill and true if successful, or zero and false if no matching liquidity.
 func (b *Book) Pop(side Side, maxQty, limitPrice decimal.Decimal) (Level, bool) {
-	b.Lock.Lock()
-	defer b.Lock.Unlock()
 	var book *treemap.Map[decimal.Decimal, decimal.Decimal]
 	switch side {
 	case SideBuy:
-		book = b.asks
+		book = b.Asks
 	case SideSell:
-		book = b.bids
+		book = b.Bids
 	}
 	it := book.Iterator()
 	if !it.Next() {
@@ -569,9 +487,4 @@ func (b *Book) Pop(side Side, maxQty, limitPrice decimal.Decimal) (Level, bool) 
 // Push adds liquidity back to the book on the given side.
 func (b *Book) Push(side Side, price, size decimal.Decimal) {
 	b.Add(side, price, size)
-}
-
-// reverseDecimalComparator for descending order (bids)
-func reverseDecimalComparator(a, b decimal.Decimal) int {
-	return -cmp.Compare(a, b)
 }

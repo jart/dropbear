@@ -59,7 +59,7 @@ func setupTestBroker(t *testing.T) (*Broker, *Pair, *Holding, *Holding) {
 		QuoteMaxSize:   decimal.FromInt(1000000),
 		BaseMinSize:    decimal.Satoshi,
 		BaseMaxSize:    decimal.FromInt(1000),
-		OrderBook:      ds.NewBook(),
+		Book:           ds.NewBook(),
 		LastPrice:      decimal.FromInt(100), // $100 per BTC for easy math
 		Trades:         make(map[ds.Side]int),
 	}
@@ -69,12 +69,10 @@ func setupTestBroker(t *testing.T) (*Broker, *Pair, *Holding, *Holding) {
 	return ex, pair, usdHolding, btcHolding
 }
 
-// setupOrderBook populates the order book with liquidity.
-func setupOrderBook(pair *Pair, bidPrice, askPrice, size decimal.Decimal) {
-	pair.OrderBook.Lock.Lock()
-	pair.OrderBook.UpdateBid(bidPrice, size)
-	pair.OrderBook.UpdateAsk(askPrice, size)
-	pair.OrderBook.Lock.Unlock()
+// setupBook populates the order book with liquidity.
+func setupBook(pair *Pair, bidPrice, askPrice, size decimal.Decimal) {
+	pair.Book.UpdateBid(bidPrice, size)
+	pair.Book.UpdateAsk(askPrice, size)
 }
 
 // TestAvailableNeverExceedsQuantity verifies the core invariant that
@@ -88,7 +86,7 @@ func TestAvailableNeverExceedsQuantity(t *testing.T) {
 	usdHolding.Available = initialUSD
 
 	// Setup order book: bid at $99, ask at $101, 100 BTC available
-	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(101), decimal.FromInt(100))
+	setupBook(pair, decimal.FromInt(99), decimal.FromInt(101), decimal.FromInt(100))
 
 	// Simulate a market buy order for 1 BTC
 	// At $101/BTC, this costs $101
@@ -146,7 +144,7 @@ func TestCorrectHoldRelease(t *testing.T) {
 	usdHolding.Available = initialUSD
 
 	// Setup order book
-	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(101), decimal.FromInt(100))
+	setupBook(pair, decimal.FromInt(99), decimal.FromInt(101), decimal.FromInt(100))
 
 	quantity := decimal.One
 	bestAsk := decimal.FromInt(101)
@@ -201,7 +199,7 @@ func TestMultipleBuysNeverExceedBalance(t *testing.T) {
 	usdHolding.Quantity = initialUSD
 	usdHolding.Available = initialUSD
 
-	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(1000))
+	setupBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(1000))
 
 	// Execute 10 buys of 1 BTC each at $100
 	for i := 0; i < 10; i++ {
@@ -254,7 +252,7 @@ func TestInvestedCannotExceedInitialBalance(t *testing.T) {
 
 	// BTC at $100 for easy math
 	price := decimal.FromInt(100)
-	setupOrderBook(pair, price.Sub(decimal.One), price.Add(decimal.One), decimal.FromInt(10000))
+	setupBook(pair, price.Sub(decimal.One), price.Add(decimal.One), decimal.FromInt(10000))
 	pair.LastPrice = price
 
 	// Track max invested
@@ -306,7 +304,7 @@ func TestHoldingInvariantsWithFees(t *testing.T) {
 	usdHolding.Quantity = initialUSD
 	usdHolding.Available = initialUSD
 
-	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
+	setupBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
 
 	// Buy 1 BTC at $100
 	quantity := decimal.One
@@ -359,7 +357,7 @@ func TestFillWithFee(t *testing.T) {
 	usdHolding.Quantity = initialUSD
 	usdHolding.Available = initialUSD
 
-	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
+	setupBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
 
 	// Simulate placing an order with hold
 	quantity := decimal.One
@@ -408,7 +406,7 @@ func TestMultipleFillsWithDifferentFees(t *testing.T) {
 	usdHolding.Quantity = initialUSD
 	usdHolding.Available = initialUSD
 
-	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
+	setupBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
 
 	// Order for 3 BTC with hold
 	totalQuantity := decimal.FromInt(3)
@@ -462,7 +460,7 @@ func TestFeeHigherThanEstimated(t *testing.T) {
 	usdHolding.Quantity = initialUSD
 	usdHolding.Available = initialUSD
 
-	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
+	setupBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
 
 	// Place order with underestimated hold (5% fee estimate = $5, but actual is $8)
 	quantity := decimal.One
@@ -525,7 +523,7 @@ func TestKillThenFillRaceCondition(t *testing.T) {
 	usdcHolding.IsCash = true
 	ex.Holdings.holdingsMap["USDC"] = usdcHolding
 
-	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
+	setupBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
 
 	// Create a buy order with hold
 	quantity := decimal.One
@@ -635,7 +633,7 @@ func TestKillThenFillRaceConditionSell(t *testing.T) {
 	usdcHolding.IsCash = true
 	ex.Holdings.holdingsMap["USDC"] = usdcHolding
 
-	setupOrderBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
+	setupBook(pair, decimal.FromInt(99), decimal.FromInt(100), decimal.FromInt(100))
 
 	// Create a sell order
 	quantity := decimal.One

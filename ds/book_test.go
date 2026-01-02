@@ -31,11 +31,9 @@ func TestPickBid_EmptyBook(t *testing.T) {
 
 func TestPickAsk_BasicScenario(t *testing.T) {
 	b := NewBook()
-	b.Lock.Lock()
 	b.UpdateBid(decimal.Parse("10.00"), decimal.Parse("100"))
 	b.UpdateAsk(decimal.Parse("10.02"), decimal.Parse("50"))
 	b.UpdateAsk(decimal.Parse("10.03"), decimal.Parse("50"))
-	b.Lock.Unlock()
 	result := b.PickAsk(decimal.Parse("30"))
 	expected := decimal.Parse("10.02")
 	if result != expected {
@@ -45,12 +43,10 @@ func TestPickAsk_BasicScenario(t *testing.T) {
 
 func TestPickAsk_SkipSmallLevels(t *testing.T) {
 	b := NewBook()
-	b.Lock.Lock()
 	b.UpdateBid(decimal.Parse("10.00"), decimal.Parse("100"))
 	b.UpdateAsk(decimal.Parse("10.02"), decimal.Parse("10"))
 	b.UpdateAsk(decimal.Parse("10.03"), decimal.Parse("10"))
 	b.UpdateAsk(decimal.Parse("10.04"), decimal.Parse("100"))
-	b.Lock.Unlock()
 	// Queue position 50, so we need cumulative competition > 50
 	// 10.02: 10 (total: 10)
 	// 10.03: 10 (total: 20)
@@ -65,12 +61,10 @@ func TestPickAsk_SkipSmallLevels(t *testing.T) {
 
 func TestPickBid_BasicScenario(t *testing.T) {
 	b := NewBook()
-	b.Lock.Lock()
 	// Best bid at 10.00, best ask at 10.02
 	b.UpdateBid(decimal.Parse("10.00"), decimal.Parse("50"))
 	b.UpdateBid(decimal.Parse("9.99"), decimal.Parse("50"))
 	b.UpdateAsk(decimal.Parse("10.02"), decimal.Parse("100"))
-	b.Lock.Unlock()
 	// Order size 100, queue position 30, increment 0.01
 	// Competition at 10.00 is 50, which exceeds queue position 30
 	// Level size 50 < order size 100, so we match at 10.00
@@ -83,12 +77,10 @@ func TestPickBid_BasicScenario(t *testing.T) {
 
 func TestPickBid_SkipSmallLevels(t *testing.T) {
 	b := NewBook()
-	b.Lock.Lock()
 	b.UpdateBid(decimal.Parse("10.00"), decimal.Parse("10"))
 	b.UpdateBid(decimal.Parse("9.99"), decimal.Parse("10"))
 	b.UpdateBid(decimal.Parse("9.98"), decimal.Parse("100"))
 	b.UpdateAsk(decimal.Parse("10.02"), decimal.Parse("100"))
-	b.Lock.Unlock()
 	result := b.PickBid(decimal.Parse("50"))
 	expected := decimal.Parse("9.98")
 	if result != expected {
@@ -98,11 +90,9 @@ func TestPickBid_SkipSmallLevels(t *testing.T) {
 
 func TestPickBid_RespectHighestLimit(t *testing.T) {
 	b := NewBook()
-	b.Lock.Lock()
 	// Spread is tight: bid at 10.00, ask at 10.01
 	b.UpdateBid(decimal.Parse("10.00"), decimal.Parse("200"))
 	b.UpdateAsk(decimal.Parse("10.01"), decimal.Parse("100"))
-	b.Lock.Unlock()
 	// Order size 50, queue position 30, increment 0.01
 	// Highest possible = 10.01 - 0.01 = 10.00
 	// Level 200 > order 50, wants to overcut but highest is 10.00
@@ -115,11 +105,9 @@ func TestPickBid_RespectHighestLimit(t *testing.T) {
 
 func TestPickAsk_RespectLowestLimit(t *testing.T) {
 	b := NewBook()
-	b.Lock.Lock()
 	// Spread is tight: bid at 10.00, ask at 10.01
 	b.UpdateBid(decimal.Parse("10.00"), decimal.Parse("100"))
 	b.UpdateAsk(decimal.Parse("10.01"), decimal.Parse("200"))
-	b.Lock.Unlock()
 	// Order size 50, queue position 30, increment 0.01
 	// Lowest possible = 10.00 + 0.01 = 10.01
 	// Level 200 > order 50, wants to undercut but lowest is 10.01
@@ -132,7 +120,6 @@ func TestPickAsk_RespectLowestLimit(t *testing.T) {
 
 func BenchmarkPickAsk(b *testing.B) {
 	book := NewBook()
-	book.Lock.Lock()
 	basePrice := decimal.Parse("100.00")
 	increment := decimal.Parse("0.01")
 	for i := 0; i < 100; i++ {
@@ -142,7 +129,6 @@ func BenchmarkPickAsk(b *testing.B) {
 		book.UpdateBid(bidPrice, size)
 		book.UpdateAsk(askPrice, size)
 	}
-	book.Lock.Unlock()
 	depth := decimal.FromInt(500)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -152,7 +138,6 @@ func BenchmarkPickAsk(b *testing.B) {
 
 func BenchmarkBestBidAsk(b *testing.B) {
 	book := NewBook()
-	book.Lock.Lock()
 	basePrice := decimal.Parse("100.00")
 	increment := decimal.Parse("0.01")
 	for i := 0; i < 100; i++ {
@@ -162,7 +147,6 @@ func BenchmarkBestBidAsk(b *testing.B) {
 		book.UpdateBid(bidPrice, size)
 		book.UpdateAsk(askPrice, size)
 	}
-	book.Lock.Unlock()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		book.BestBidAsk()

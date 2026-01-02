@@ -28,7 +28,7 @@ type Pair struct {
 	BaseMinSize    decimal.Decimal
 	BaseMaxSize    decimal.Decimal
 	Trades         map[ds.Side]int
-	OrderBook      *ds.Book
+	Book           *ds.Book
 	OnTick         func(*ds.Tick)
 	OnReady        func()
 	repr           string
@@ -58,7 +58,7 @@ func newPair(broker *Broker, symbol string) *Pair {
 		Trades:         make(map[ds.Side]int),
 		OnTick:         func(*ds.Tick) {},
 		OnReady:        func() {},
-		OrderBook:      ds.NewBook(),
+		Book:           ds.NewBook(),
 		openOrders:     treeset.NewWith(compareOrdersByClientOrderID),
 		repr:           symbol + "@" + broker.Broker.String(),
 	}
@@ -113,18 +113,17 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 	// update order book
 	if tick.Bids != nil || tick.Asks != nil {
 		p.hasL2Data = true
-		p.OrderBook.Lock.Lock()
+		p.Lock.Lock()
 		if tick.Snap {
-			p.OrderBook.Clear()
+			p.Book.Clear()
 		}
 		for _, bid := range tick.Bids {
-			p.OrderBook.UpdateBid(bid.Price, bid.Size)
+			p.Book.UpdateBid(bid.Price, bid.Size)
 		}
 		for _, ask := range tick.Asks {
-			p.OrderBook.UpdateAsk(ask.Price, ask.Size)
+			p.Book.UpdateAsk(ask.Price, ask.Size)
 		}
-		p.OrderBook.Broadcast()
-		p.OrderBook.Lock.Unlock()
+		p.Lock.Unlock()
 	}
 
 	if !p.isReady && p.hasL2Data && p.hasTradeData {
@@ -152,7 +151,9 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 			// (a taker sell hits bids, a taker buy lifts asks)
 			remaining := trade.Quantity
 			for remaining.IsPositive() {
-				fill, ok := p.OrderBook.Pop(trade.Side, remaining, trade.Price)
+				p.Lock.Lock()
+				fill, ok := p.Book.Pop(trade.Side, remaining, trade.Price)
+				p.Lock.Unlock()
 				if !ok {
 					break
 				}
@@ -183,7 +184,9 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 						if err == nil && filled.IsPositive() {
 							leftover := fill.Size.Sub(filled)
 							if leftover.IsPositive() {
-								p.OrderBook.Push(trade.Side.Flip(), fill.Price, leftover)
+								p.Lock.Lock()
+								p.Book.Push(trade.Side.Flip(), fill.Price, leftover)
+								p.Lock.Unlock()
 							}
 						}
 					}
@@ -192,7 +195,6 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 			}
 		}
 	}
-
 }
 
 func (p *Pair) refreshDaemon() {

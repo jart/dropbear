@@ -191,6 +191,16 @@ func (d *Decimal) Deserialize(reader io.Reader) error {
 	return nil
 }
 
+// Compare compares a to b.
+func Compare(a, b Decimal) int {
+	return a.Cmp(b)
+}
+
+// CompareReverse compares b to a.
+func CompareReverse(a, b Decimal) int {
+	return b.Cmp(a)
+}
+
 //go:noinline
 func panicOverflow() {
 	panic("decimal overflow")
