@@ -5,13 +5,23 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"fmt"
+	"sort"
 	"strings"
 )
 
 func main() {
 	ds.SetOffline()
 	assets, _ := alpaca.NewClient().GetAssets()
+
+	// now sort keys before iterating over assets
+	keys := make([]string, 0, len(assets))
 	for _, a := range assets {
+		keys = append(keys, a.Symbol)
+	}
+	sort.Strings(keys)
+
+	for _, symbol := range keys {
+		a := assets[symbol]
 		if a.Class == alpaca.AssetClassUSEquity &&
 			a.Status == alpaca.AssetStatusActive &&
 			a.Tradable && !a.PTPNoException && !a.PTPWithException &&
@@ -20,8 +30,8 @@ func main() {
 			if (strings.Contains(name, "2x") ||
 				strings.Contains(name, "3x") ||
 				strings.Contains(name, "ultra") ||
-				strings.Contains(name, "leveraged")) && (!strings.Contains(a.Name, "short") &&
-				!strings.Contains(a.Name, "bear")) {
+				strings.Contains(name, "leveraged")) && (!strings.Contains(name, "short") &&
+				!strings.Contains(name, "bear")) {
 				fmt.Printf("%-10s %s\n", a.Symbol, a.Name)
 			}
 		}
