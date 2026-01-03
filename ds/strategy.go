@@ -20,3 +20,16 @@ func (l OrderStrategy) String() string {
 		panic("invalid order strategy")
 	}
 }
+
+func (l OrderStrategy) GoString() string {
+	switch l {
+	case OrderStrategyMarketable:
+		return "OrderStrategyMarketable"
+	case OrderStrategyPostOnly:
+		return "OrderStrategyPostOnly"
+	case OrderStrategyIOC:
+		return "OrderStrategyIOC"
+	default:
+		panic("invalid order strategy")
+	}
+}

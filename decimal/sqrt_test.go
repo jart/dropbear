@@ -34,9 +34,12 @@ func TestSqrt(t *testing.T) {
 }
 
 func TestSqrtNegative(t *testing.T) {
-	assertPanics(t, "imaginary number", func() {
-		_ = FromInt(-1).Sqrt()
-	})
+	defer func() {
+		if recover() == nil {
+			t.Error("expected panic for imaginary number")
+		}
+	}()
+	_ = FromInt(-1).Sqrt()
 }
 
 func BenchmarkSqrt(b *testing.B) {

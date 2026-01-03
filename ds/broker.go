@@ -54,3 +54,20 @@ func (e Broker) String() string {
 		panic("invalid broker")
 	}
 }
+
+func (e Broker) GoString() string {
+	switch e {
+	case BrokerAlpaca:
+		return "BrokerAlpaca"
+	case BrokerBinance:
+		return "BrokerBinance"
+	case BrokerBinanceusd:
+		return "BrokerBinanceusd"
+	case BrokerCoinbase:
+		return "BrokerCoinbase"
+	case BrokerKraken:
+		return "BrokerKraken"
+	default:
+		panic("invalid broker")
+	}
+}

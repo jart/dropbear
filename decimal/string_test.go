@@ -2,7 +2,7 @@ package decimal
 
 import "testing"
 
-func TestDecimal_String(t *testing.T) {
+func TestString(t *testing.T) {
 	tests := []struct {
 		name string
 		d    Decimal
@@ -10,6 +10,7 @@ func TestDecimal_String(t *testing.T) {
 	}{
 		{"zero", Zero, "0"},
 		{"one", One, "1"},
+		{"1.1", Parse("1.10"), "1.1"},
 		{"satoshi", Satoshi, "0.00000001"},
 		{"max", Max, "92233720368.54775807"},
 		{"min", Min, "-92233720368.54775808"},

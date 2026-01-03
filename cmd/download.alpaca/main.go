@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -35,19 +34,22 @@ func main() {
 	flag.Parse()
 	loggy.Init()
 
-	// Get symbols from args, or fetch all tradable US equities
+	// get symbols from args, otherwise fetch everything
 	symbols := flag.Args()
 	if len(symbols) == 0 {
 		log.Println("No symbols specified, fetching all tradable US equities...")
 		client := alpaca.NewClient()
-		assets, err := client.GetAssets()
+		err := client.SyncAssets()
 		if err != nil {
-			log.Fatalf("failed to get assets: %v", err)
+			fmt.Fprintf(os.Stderr, "failed to sync assets: %v\n", err)
+			os.Exit(1)
 		}
-		for _, a := range assets {
+		for _, a := range alpaca.Assets {
 			if a.Class == alpaca.AssetClassUSEquity &&
 				a.Status == alpaca.AssetStatusActive &&
-				a.Tradable {
+				a.Tradable == ds.True &&
+				a.PTPNoException == ds.False &&
+				a.PTPWithException == ds.False {
 				symbols = append(symbols, a.Symbol)
 			}
 		}
@@ -77,9 +79,7 @@ func main() {
 	// Start workers
 	var wg sync.WaitGroup
 	for i := 0; i < *flagWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			client := alpaca.NewClient()
 			for j := range jobs {
 				if stopped.Load() {
@@ -89,7 +89,7 @@ func main() {
 					exhausted.Store(j.symbol, true)
 				}
 			}
-		}()
+		})
 	}
 
 	// Queue up work - start from current month (for cron freshness)
@@ -187,14 +187,14 @@ type barsResponse struct {
 }
 
 type barData struct {
-	Timestamp  string  `json:"t"`
-	Open       float64 `json:"o"`
-	High       float64 `json:"h"`
-	Low        float64 `json:"l"`
-	Close      float64 `json:"c"`
-	Volume     float64 `json:"v"`
-	TradeCount int     `json:"n"`
-	VWAP       float64 `json:"vw"`
+	Timestamp  string      `json:"t"`
+	Open       json.Number `json:"o"`
+	High       json.Number `json:"h"`
+	Low        json.Number `json:"l"`
+	Close      json.Number `json:"c"`
+	Volume     json.Number `json:"v"`
+	TradeCount int         `json:"n"`
+	VWAP       json.Number `json:"vw"`
 }
 
 func fetchMonth(client *alpaca.Client, symbol string, month time.Time) ([]indicators.Candle, error) {
@@ -216,7 +216,7 @@ func fetchMonth(client *alpaca.Client, symbol string, month time.Time) ([]indica
 			url += "&page_token=" + pageToken
 		}
 
-		resp, err := dataRequest(client, url)
+		resp, err := client.Get(url)
 		if err != nil {
 			return nil, err
 		}
@@ -235,17 +235,17 @@ func fetchMonth(client *alpaca.Client, symbol string, month time.Time) ([]indica
 		resp.Body.Close()
 
 		for _, bar := range data.Bars {
-			t, err := time.Parse(time.RFC3339, bar.Timestamp)
+			t, err := clocky.ParseTime(bar.Timestamp)
 			if err != nil {
 				return nil, fmt.Errorf("parse timestamp %q: %w", bar.Timestamp, err)
 			}
 			candles = append(candles, indicators.Candle{
-				Start:  clocky.Time(t.UnixMicro()),
-				Open:   decimal.FromFloat64(bar.Open),
-				High:   decimal.FromFloat64(bar.High),
-				Low:    decimal.FromFloat64(bar.Low),
-				Close:  decimal.FromFloat64(bar.Close),
-				Volume: decimal.FromFloat64(bar.Volume),
+				Start:  t,
+				Open:   decimal.Parse(bar.Open.String()),
+				High:   decimal.Parse(bar.High.String()),
+				Low:    decimal.Parse(bar.Low.String()),
+				Close:  decimal.Parse(bar.Close.String()),
+				Volume: decimal.Parse(bar.Volume.String()),
 			})
 		}
 
@@ -258,24 +258,12 @@ func fetchMonth(client *alpaca.Client, symbol string, month time.Time) ([]indica
 	return candles, nil
 }
 
-func dataRequest(_ *alpaca.Client, url string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	key, secret := alpaca.GetKey()
-	req.Header.Set("APCA-API-KEY-ID", key)
-	req.Header.Set("APCA-API-SECRET-KEY", secret)
-	return http.DefaultClient.Do(req)
-}
-
 func writeCandles(path string, candles []indicators.Candle) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-
 	// Write raw 48-byte candles (no compression, no length prefix)
 	buf := make([]byte, 0, len(candles)*48)
 	for i := range candles {

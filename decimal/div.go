@@ -19,15 +19,14 @@ func (d Decimal) Div(o Decimal) Decimal {
 	uo := uint64((oi ^ om) - om)
 	sm := (di ^ oi) >> 63
 
-	// 128-bit Mul
+	// 128-bit Mul: (hi, lo) = ud * Scale
+	// Since ud <= 2^63 and Scale = 1e8, the product fits in ~90 bits.
+	// hi = (ud * Scale) >> 64 <= (2^63 * 1e8) >> 64 = 5e7 < 2^63.
 	hi, lo := bits.Mul64(ud, uint64(Scale))
 
-	// check for multiplication overflow (result > 2^64)
-	if hi >= uint64(Scale) {
-		panicOverflow()
-	}
-
 	// division: quo = result, rem = remainder
+	// Note: bits.Div64 panics if hi >= uo, which happens when dividing
+	// by very small numbers (e.g., Max / Epsilon). That's the desired behavior.
 	quo, rem := bits.Div64(hi, lo, uo)
 
 	// Banker's Rounding (Round Half To Even)

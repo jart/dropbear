@@ -1,9 +1,6 @@
 package decimal
 
-import (
-	"log"
-	"testing"
-)
+import "testing"
 
 func TestParseWithExponent(t *testing.T) {
 	tests := []struct {
@@ -85,9 +82,13 @@ func TestParseWithExponent(t *testing.T) {
 
 	for _, tt := range tests {
 		if tt.wantStr == "" {
-			assertPanics(t, tt.input, func() {
-				d := Parse(tt.input)
-				log.Printf("Parse(%q) = %d", tt.input, d)
+			t.Run(tt.input, func(t *testing.T) {
+				defer func() {
+					if recover() == nil {
+						t.Errorf("Parse(%q) should have panicked", tt.input)
+					}
+				}()
+				Parse(tt.input)
 			})
 		} else {
 			d := Parse(tt.input)

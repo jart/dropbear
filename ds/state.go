@@ -18,8 +18,9 @@ const (
 	OrderStateInvalid
 )
 
-func (os OrderState) String() string {
-	switch os {
+// String returns a human-readable representation of the order state.
+func (os *OrderState) String() string {
+	switch os.Load() {
 	case OrderStateNew:
 		return "New"
 	case OrderStateSubmitted:
@@ -41,14 +42,27 @@ func (os OrderState) String() string {
 	}
 }
 
-// IsFinal returns true if the order state is a final state.
-// Please note order updates may still occur after reaching a final state.
-func (os OrderState) IsFinal() bool {
-	switch os {
-	case OrderStateFilled, OrderStateCanceled, OrderStateInvalid:
-		return true
+// GoString returns a Go-syntax representation of the order state.
+func (os *OrderState) GoString() string {
+	switch os.Load() {
+	case OrderStateNew:
+		return "OrderStateNew"
+	case OrderStateSubmitted:
+		return "OrderStateSubmitted"
+	case OrderStatePartiallyFilled:
+		return "OrderStatePartiallyFilled"
+	case OrderStateFilled:
+		return "OrderStateFilled"
+	case OrderStateCanceled:
+		return "OrderStateCanceled"
+	case OrderStateInvalid:
+		return "OrderStateInvalid"
+	case OrderStateCancelPending:
+		return "OrderStateCancelPending"
+	case OrderStateUpdateSubmitted:
+		return "OrderStateUpdateSubmitted"
 	default:
-		return false
+		panic("unknown order state")
 	}
 }
 
@@ -60,6 +74,17 @@ func (d *OrderState) Store(v OrderState) {
 // Load atomically loads and returns the value of d.
 func (d *OrderState) Load() OrderState {
 	return OrderState(atomic.LoadInt32((*int32)(d)))
+}
+
+// IsFinal returns true if the order state is a final state.
+// Please note order updates may still occur after reaching a final state.
+func (os OrderState) IsFinal() bool {
+	switch os {
+	case OrderStateFilled, OrderStateCanceled, OrderStateInvalid:
+		return true
+	default:
+		return false
+	}
 }
 
 func NewOrderStateForCoinbase(state string, cumulativeQuantity decimal.Decimal) OrderState {

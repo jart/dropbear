@@ -2,18 +2,18 @@ package decimal
 
 import "testing"
 
-func TestDecimal_Format(t *testing.T) {
+func TestFormat(t *testing.T) {
 	tests := []struct {
 		name string
 		d    Decimal
 		n    int
 		want string
 	}{
+		{"zero", Parse("0"), 3, "0.000"},
 		{"simple integer", Parse("123"), 2, "123.00"},
 		{"simple fractional", Parse("123.456"), 2, "123.46"},
 		{"simple fractional rounding down", Parse("123.454"), 2, "123.45"},
 		{"negative fractional", Parse("-0.00123"), 4, "-0.0012"},
-		{"zero", Parse("0"), 3, "0.000"},
 		{"rounding up", Parse("1.9999"), 3, "2.000"},
 		{"lots of digits", Parse("1.23456789"), 8, "1.23456789"},
 		{"bone", Parse("1.23456789"), 5, "1.23457"},

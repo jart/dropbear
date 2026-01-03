@@ -35,3 +35,16 @@ func (ac AssetClass) String() string {
 		panic("unknown asset class")
 	}
 }
+
+func (ac AssetClass) GoString() string {
+	switch ac {
+	case AssetClassUSEquity:
+		return "AssetClassUSEquity"
+	case AssetClassCrypto:
+		return "AssetClassCrypto"
+	case AssetClassCryptoPerp:
+		return "AssetClassCryptoPerp"
+	default:
+		panic("unknown asset class")
+	}
+}

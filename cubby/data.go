@@ -7,96 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"syscall"
-	"unsafe"
 )
-
-// candleReader provides zero-copy iteration over equity candle files.
-// Files are memory-mapped for efficient access.
-type candleReader struct {
-	file   *os.File
-	data   []byte
-	offset int
-}
-
-// openCandleReader opens an equitydata file for reading.
-// The file format is raw 48-byte candles with no length prefix.
-func openCandleReader(path string) (*candleReader, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	info, err := file.Stat()
-	if err != nil {
-		file.Close()
-		return nil, err
-	}
-	size := info.Size()
-	if size == 0 {
-		file.Close()
-		return &candleReader{}, nil
-	}
-	data, err := syscall.Mmap(int(file.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
-	if err != nil {
-		file.Close()
-		return nil, err
-	}
-	// Tell the kernel we'll read sequentially
-	return &candleReader{
-		file: file,
-		data: data,
-	}, nil
-}
-
-// candleSize is the size of a Candle in bytes (6 x int64 = 48 bytes).
-const candleSize = 48
-
-// Next returns a pointer to the next candle in the file.
-// Returns nil when there are no more candles.
-// The returned pointer is only valid while the file is open.
-func (r *candleReader) Next() *indicators.Candle {
-	if r.offset+candleSize > len(r.data) {
-		return nil
-	}
-	// Zero-copy: cast directly to Candle pointer
-	candle := (*indicators.Candle)(unsafe.Pointer(&r.data[r.offset]))
-	r.offset += candleSize
-	return candle
-}
-
-// SeekTo uses binary search to find the first candle >= target time.
-func (r *candleReader) SeekTo(target clocky.Time) {
-	n := len(r.data) / candleSize
-	if n == 0 {
-		return
-	}
-	// Binary search for first candle >= target
-	lo, hi := 0, n
-	for lo < hi {
-		mid := (lo + hi) / 2
-		candle := (*indicators.Candle)(unsafe.Pointer(&r.data[mid*candleSize]))
-		if candle.Start < target {
-			lo = mid + 1
-		} else {
-			hi = mid
-		}
-	}
-	r.offset = lo * candleSize
-}
-
-// Close unmaps the file and closes it.
-func (r *candleReader) Close() error {
-	if r.data != nil {
-		syscall.Munmap(r.data)
-		r.data = nil
-	}
-	if r.file != nil {
-		err := r.file.Close()
-		r.file = nil
-		return err
-	}
-	return nil
-}
 
 // recordedCandleData reads candles from mmap'd monthly files.
 // Each month is memory-mapped separately to handle symbols with many years of data.
@@ -123,8 +34,8 @@ func openRecordedCandleData(symbol string, start, end clocky.Time) *recordedCand
 	}
 
 	// Parse start/end into year-month for filtering
-	startYM := start.YearMonth()
-	endYM := end.YearMonth()
+	startYM := start.YearMonthString()
+	endYM := end.YearMonthString()
 
 	// Collect filenames within range
 	var filenames []string
@@ -142,7 +53,6 @@ func openRecordedCandleData(symbol string, start, end clocky.Time) *recordedCand
 		}
 		filenames = append(filenames, name)
 	}
-
 	if len(filenames) == 0 {
 		return nil
 	}
@@ -164,41 +74,6 @@ func openRecordedCandleData(symbol string, start, end clocky.Time) *recordedCand
 	return m
 }
 
-// equityMinutesDir returns the path to the new equity data directory.
-func equityMinutesDir() string {
-	candidates := []string{
-		os.ExpandEnv("$HOME/equitydata/minutes"),
-		"/fast/equitydata/minutes",
-		"/disk/equitydata/minutes",
-	}
-	for _, path := range candidates {
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			return path
-		}
-	}
-	return ""
-}
-
-// loadNextMonth loads the next month's file.
-func (m *recordedCandleData) loadNextMonth() {
-	if m.reader != nil {
-		m.reader.Close()
-		m.reader = nil
-	}
-	m.currentMonth = ""
-	for m.fileIndex < len(m.files) {
-		name := m.files[m.fileIndex]
-		m.fileIndex++
-		path := filepath.Join(m.symbolDir, name)
-		reader, err := openCandleReader(path)
-		if err == nil && reader != nil {
-			m.reader = reader
-			m.currentMonth = name
-			return
-		}
-	}
-}
-
 // Read copies the next candle into the provided struct.
 func (m *recordedCandleData) Read(candle *indicators.Candle) error {
 	for {
@@ -208,7 +83,6 @@ func (m *recordedCandleData) Read(candle *indicators.Candle) error {
 				return nil
 			}
 		}
-		// Current month exhausted, try loading next
 		m.loadNextMonth()
 		if m.reader == nil {
 			return io.EOF
@@ -219,7 +93,7 @@ func (m *recordedCandleData) Read(candle *indicators.Candle) error {
 // SeekTo binary searches to find first candle >= target.
 // Loads the appropriate month file if needed.
 func (m *recordedCandleData) SeekTo(target clocky.Time) {
-	targetYM := target.YearMonth()
+	targetYM := target.YearMonthString()
 
 	// If already on the target month, just binary search
 	if m.currentMonth == targetYM && m.reader != nil {
@@ -260,4 +134,39 @@ func (m *recordedCandleData) Close() {
 		m.reader = nil
 	}
 	m.files = nil
+}
+
+// loadNextMonth loads the next month's file.
+func (m *recordedCandleData) loadNextMonth() {
+	if m.reader != nil {
+		m.reader.Close()
+		m.reader = nil
+	}
+	m.currentMonth = ""
+	for m.fileIndex < len(m.files) {
+		name := m.files[m.fileIndex]
+		m.fileIndex++
+		path := filepath.Join(m.symbolDir, name)
+		reader, err := openCandleReader(path)
+		if err == nil && reader != nil {
+			m.reader = reader
+			m.currentMonth = name
+			return
+		}
+	}
+}
+
+// equityMinutesDir returns the path to the new equity data directory.
+func equityMinutesDir() string {
+	candidates := []string{
+		os.ExpandEnv("$HOME/equitydata/minutes"),
+		"/fast/equitydata/minutes",
+		"/disk/equitydata/minutes",
+	}
+	for _, path := range candidates {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return path
+		}
+	}
+	return ""
 }

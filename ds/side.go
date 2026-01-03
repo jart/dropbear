@@ -54,6 +54,17 @@ func (s Side) String() string {
 	}
 }
 
+func (s Side) GoString() string {
+	switch s {
+	case SideSell:
+		return "SideSell"
+	case SideBuy:
+		return "SideBuy"
+	default:
+		panic("invalid side")
+	}
+}
+
 func (s Side) ToUpper() string {
 	switch s {
 	case SideSell:

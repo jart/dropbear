@@ -34,21 +34,120 @@ func (t Time) Unix() int64              { return int64(t) / 1_000_000 }
 func (t Time) Quantize(d Duration) Time { return Time((int64(t) / int64(d)) * int64(d)) }
 func (t Time) Before(u Time) bool       { return t < u }
 func (t Time) After(u Time) bool        { return t > u }
+func (t Time) Minute() int              { return time.UnixMicro(int64(t)).In(TZ).Minute() }
+func (t Time) Hour() int                { return time.UnixMicro(int64(t)).In(TZ).Hour() }
+func (t Time) Day() int                 { return int(time.UnixMicro(int64(t)).In(TZ).Day()) }
 func (t Time) Month() int               { return int(time.UnixMicro(int64(t)).In(TZ).Month()) }
 func (t Time) Year() int                { return time.UnixMicro(int64(t)).In(TZ).Year() }
 func (t Time) Weekday() Weekday         { return Weekday(time.UnixMicro(int64(t)).In(TZ).Weekday()) }
-func (t Time) YearMonth() string        { return time.UnixMicro(int64(t)).In(TZ).Format("2006-01") }
+
+// Date returns the date.
+func (t Time) Date() (year int, month time.Month, day int) {
+	return time.UnixMicro(int64(t)).In(TZ).Date()
+}
+
+// Clock returns the time.
+func (t Time) Clock() (hour, min, sec int) {
+	return time.UnixMicro(int64(t)).In(TZ).Clock()
+}
+
+// DateInt returns the date in YYYYMMDD format.
+func (t Time) DateInt() int {
+	y, m, d := t.Date()
+	return y*10000 + int(m)*100 + d
+}
+
+// ClockInt returns the time in HHMMSS format.
+func (t Time) ClockInt() int {
+	hour, min, sec := t.Clock()
+	return hour*1_00_00 + min*1_00 + sec
+}
+
+// YearMonth returns the year and month in YYYY-MM format.
+func (t Time) YearMonthString() string {
+	var buf [7]byte
+	y, m, _ := t.Date()
+	buf[0] = byte('0' + (y/1000)%10)
+	buf[1] = byte('0' + (y/100)%10)
+	buf[2] = byte('0' + (y/10)%10)
+	buf[3] = byte('0' + (y % 10))
+	buf[4] = '-'
+	buf[5] = byte('0' + int(m)/10)
+	buf[6] = byte('0' + int(m)%10)
+	return string(buf[:])
+}
 
 // String returns formatted local microsecond timestamp.
 // This is intended for displaying the time to us humans.
 func (t Time) String() string {
-	return time.UnixMicro(int64(t)).In(TZ).Format("2006-01-02T15:04:05.000000")
+	var buf [26]byte
+	u := time.UnixMicro(int64(t)).In(TZ)
+	y, m, d := u.Date()
+	h, M, s := u.Clock()
+	buf[0] = byte('0' + (y/1000)%10)
+	buf[1] = byte('0' + (y/100)%10)
+	buf[2] = byte('0' + (y/10)%10)
+	buf[3] = byte('0' + (y % 10))
+	buf[4] = '-'
+	buf[5] = byte('0' + int(m)/10)
+	buf[6] = byte('0' + int(m)%10)
+	buf[7] = '-'
+	buf[8] = byte('0' + d/10)
+	buf[9] = byte('0' + d%10)
+	buf[10] = 'T'
+	buf[11] = byte('0' + h/10)
+	buf[12] = byte('0' + h%10)
+	buf[13] = ':'
+	buf[14] = byte('0' + M/10)
+	buf[15] = byte('0' + M%10)
+	buf[16] = ':'
+	buf[17] = byte('0' + s/10)
+	buf[18] = byte('0' + s%10)
+	buf[19] = '.'
+	buf[20] = byte('0' + (t/100000)%10)
+	buf[21] = byte('0' + (t/10000)%10)
+	buf[22] = byte('0' + (t/1000)%10)
+	buf[23] = byte('0' + (t/100)%10)
+	buf[24] = byte('0' + (t/10)%10)
+	buf[25] = byte('0' + (t % 10))
+	return string(buf[:])
 }
 
 // String returns formatted RFC3339 UTC timestamp.
 // This is intended for Internet protocols that need it.
 func (t Time) RFC3339() string {
-	return time.UnixMicro(int64(t)).UTC().Format(time.RFC3339Nano)
+	var buf [27]byte
+	u := time.UnixMicro(int64(t)).UTC()
+	y, m, d := u.Date()
+	h, M, s := u.Clock()
+	buf[0] = byte('0' + (y/1000)%10)
+	buf[1] = byte('0' + (y/100)%10)
+	buf[2] = byte('0' + (y/10)%10)
+	buf[3] = byte('0' + (y % 10))
+	buf[4] = '-'
+	buf[5] = byte('0' + int(m)/10)
+	buf[6] = byte('0' + int(m)%10)
+	buf[7] = '-'
+	buf[8] = byte('0' + d/10)
+	buf[9] = byte('0' + d%10)
+	buf[10] = 'T'
+	buf[11] = byte('0' + h/10)
+	buf[12] = byte('0' + h%10)
+	buf[13] = ':'
+	buf[14] = byte('0' + M/10)
+	buf[15] = byte('0' + M%10)
+	buf[16] = ':'
+	buf[17] = byte('0' + s/10)
+	buf[18] = byte('0' + s%10)
+	buf[19] = '.'
+	buf[20] = byte('0' + (t/100000)%10)
+	buf[21] = byte('0' + (t/10000)%10)
+	buf[22] = byte('0' + (t/1000)%10)
+	buf[23] = byte('0' + (t/100)%10)
+	buf[24] = byte('0' + (t/10)%10)
+	buf[25] = byte('0' + (t % 10))
+	buf[26] = 'Z'
+	return string(buf[:])
 }
 
 var localFormats = []string{

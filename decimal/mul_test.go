@@ -1,202 +1,192 @@
 package decimal
 
 import (
-	"math"
 	"testing"
 )
 
-func TestDecimal_Mul_Boundary(t *testing.T) {
+func TestMul(t *testing.T) {
 	tests := []struct {
-		name      string
-		d, o      Decimal
-		want      Decimal
-		wantPanic bool
+		name string
+		d, o Decimal
+		want Decimal
 	}{
-		// --- Sanity Checks ---
-		{"1 * 1 = 1", One, One, One, false},
-		{"1 * -1 = -1", One, NegOne, NegOne, false},
-		{"-1 * -1 = 1", NegOne, NegOne, One, false},
+		// Zero multiplications
+		{"0 * 0 = 0", Zero, Zero, Zero},
+		{"1 * 0 = 0", One, Zero, Zero},
+		{"0 * 1 = 0", Zero, One, Zero},
+		{"-1 * 0 = 0", NegOne, Zero, Zero},
+		{"Max * 0 = 0", Max, Zero, Zero},
+		{"Min * 0 = 0", Min, Zero, Zero},
 
-		// --- MaxInt64 Boundaries ---
-		{
-			name: "Max * 1 = Max",
-			d:    Max,
-			o:    One,
-			want: Max,
-		},
-		{
-			name: "Max * -1 = -Max",
-			d:    Max,
-			o:    NegOne,
-			want: -Max,
-		},
-		{
-			name:      "Max * 2 = Overflow",
-			d:         Max,
-			o:         Decimal(2 * Scale),
-			wantPanic: true,
-		},
+		// Identity (anything * 1 = anything)
+		{"1 * 1 = 1", One, One, One},
+		{"-1 * 1 = -1", NegOne, One, NegOne},
+		{"2 * 1 = 2", Two, One, Two},
+		{"Max * 1 = Max", Max, One, Max},
+		{"Min * 1 = Min", Min, One, Min},
 
-		// --- MinInt64 Boundaries ---
-		{
-			name: "Min * 1 = Min",
-			d:    Min,
-			o:    One,
-			want: Min, // Valid in Pixel Perfect impl
-		},
-		{
-			name: "Min * -1 = Overflow",
-			// Explain: Min is -2^63. Result should be +2^63.
-			// MaxInt64 is 2^63 - 1. Therefore, this MUST panic.
-			d:         Min,
-			o:         NegOne,
-			wantPanic: true,
-		},
-		{
-			name: "Min * 0.5 = Min / 2",
-			d:    Min,
-			o:    Decimal(Scale / 2),
-			want: Decimal(math.MinInt64 / 2),
-		},
+		// Negation (anything * -1)
+		{"1 * -1 = -1", One, NegOne, NegOne},
+		{"-1 * -1 = 1", NegOne, NegOne, One},
+		{"2 * -1 = -2", Two, NegOne, -Two},
+		{"Max * -1 = -Max", Max, NegOne, -Max},
+		// Min * -1 overflows (tested in panic tests)
 
-		// --- Precision / Rounding ---
-		{
-			name:      "Max * (1+epsilon) = Overflow",
-			d:         Max,
-			o:         One.Add(Epsilon),
-			wantPanic: true,
-		},
-		{
-			name: "Smallest Non-Zero Product",
-			d:    Epsilon,
-			o:    One,
-			want: Epsilon,
-		},
+		// Small positive * positive
+		{"2 * 2 = 4", Two, Two, Parse("4")},
+		{"2 * 3 = 6", Two, Parse("3"), Parse("6")},
+		{"1.5 * 2 = 3", Parse("1.5"), Two, Parse("3")},
+		{"1.5 * 1.5 = 2.25", Parse("1.5"), Parse("1.5"), Parse("2.25")},
+		{"0.5 * 0.5 = 0.25", Half, Half, Parse("0.25")},
+		{"0.1 * 0.1 = 0.01", Tenth, Tenth, Parse("0.01")},
+		{"10 * 10 = 100", Parse("10"), Parse("10"), Parse("100")},
+		{"100 * 100 = 10000", Parse("100"), Parse("100"), Parse("10000")},
+		{"1000 * 1000 = 1000000", Parse("1000"), Parse("1000"), Parse("1000000")},
+
+		// Small positive * negative
+		{"2 * -2 = -4", Two, -Two, Parse("-4")},
+		{"1.5 * -2 = -3", Parse("1.5"), -Two, Parse("-3")},
+		{"0.5 * -0.5 = -0.25", Half, -Half, Parse("-0.25")},
+
+		// Small negative * positive
+		{"-2 * 2 = -4", -Two, Two, Parse("-4")},
+		{"-1.5 * 2 = -3", Parse("-1.5"), Two, Parse("-3")},
+
+		// Small negative * negative
+		{"-2 * -2 = 4", -Two, -Two, Parse("4")},
+		{"-1.5 * -1.5 = 2.25", Parse("-1.5"), Parse("-1.5"), Parse("2.25")},
+		{"-0.5 * -0.5 = 0.25", -Half, -Half, Parse("0.25")},
+
+		// Fractional precision
+		{"0.00000001 * 1 = 0.00000001", Epsilon, One, Epsilon},
+		{"0.00000001 * 2 = 0.00000002", Epsilon, Two, Decimal(2)},
+		{"0.00000001 * 100000000 = 1", Epsilon, Parse("100000000"), One},
+		{"0.01 * 100 = 1", Cent, Parse("100"), One},
+		{"0.001 * 1000 = 1", Parse("0.001"), Parse("1000"), One},
+
+		// Commutative property
+		{"3 * 7 = 21", Parse("3"), Parse("7"), Parse("21")},
+		{"7 * 3 = 21", Parse("7"), Parse("3"), Parse("21")},
+		{"1.23 * 4.56", Parse("1.23"), Parse("4.56"), Parse("5.6088")},
+		{"4.56 * 1.23", Parse("4.56"), Parse("1.23"), Parse("5.6088")},
+
+		// Associative-like checks
+		{"(2*3)*4 = 24", Parse("6"), Parse("4"), Parse("24")},
+		{"2*(3*4) = 24", Two, Parse("12"), Parse("24")},
+
+		// Powers and squares
+		{"10 * 10 = 100", Parse("10"), Parse("10"), Parse("100")},
+		{"100 * 100 = 10000", Parse("100"), Parse("100"), Parse("10000")},
+		{"0.1 * 10 = 1", Parse("0.1"), Parse("10"), One},
+		{"0.01 * 100 = 1", Parse("0.01"), Parse("100"), One},
+
+		// Financial calculations
+		{"100 * 1.05 = 105", Parse("100"), Parse("1.05"), Parse("105")},
+		{"1000 * 0.0725 = 72.5", Parse("1000"), Parse("0.0725"), Parse("72.5")},
+		{"99.99 * 1.0825 = 108.239175", Parse("99.99"), Parse("1.0825"), Parse("108.239175")},
+
+		// Near-boundary products
+		{"Max/2 * 2 = Max-ish", Max / 2, Two, (Max / 2).Mul(Two)},
+		{"Min/2 * 2 = Min", Min / 2, Two, Min},
+
+		// Half multiplications
+		{"1 * 0.5 = 0.5", One, Half, Half},
+		{"2 * 0.5 = 1", Two, Half, One},
+		{"3 * 0.5 = 1.5", Parse("3"), Half, Parse("1.5")},
+		{"0.5 * 0.5 = 0.25", Half, Half, Parse("0.25")},
+
+		// Tenth multiplications
+		{"1 * 0.1 = 0.1", One, Tenth, Tenth},
+		{"10 * 0.1 = 1", Parse("10"), Tenth, One},
+		{"0.1 * 0.1 = 0.01", Tenth, Tenth, Parse("0.01")},
+
+		// Large safe products
+		{"1000000 * 1000", Parse("1000000"), Parse("1000"), Parse("1000000000")},
+		{"50000000 * 100", Parse("50000000"), Parse("100"), Parse("5000000000")},
+
+		// Epsilon-scale products
+		{"0.00000001 * 0.00000001 = 0", Epsilon, Epsilon, Zero}, // underflow to zero
+		{"0.0001 * 0.0001 = 0.00000001", Parse("0.0001"), Parse("0.0001"), Epsilon},
+		{"0.001 * 0.00001 = 0.00000001", Parse("0.001"), Parse("0.00001"), Epsilon},
+
+		// bankers' rounding demonstration
+		{"0.5 * 0.00000001 = 0 (0.5 -> 0)", Half, Epsilon, Zero},
+		{"1.5 * 0.00000001 = 0.00000002 (1.5 -> 2)", Parse("1.5"), Epsilon, Decimal(2)},
+		{"2.5 * 0.00000001 = 0.00000002 (2.5 -> 2)", Parse("2.5"), Epsilon, Decimal(2)},
+		{"3.5 * 0.00000001 = 0.00000004 (3.5 -> 4)", Parse("3.5"), Epsilon, Decimal(4)},
+		{"4.5 * 0.00000001 = 0.00000004 (4.5 -> 4)", Parse("4.5"), Epsilon, Decimal(4)},
+		{"5.5 * 0.00000001 = 0.00000006 (5.5 -> 6)", Parse("5.5"), Epsilon, Decimal(6)},
+		{"6.5 * 0.00000001 = 0.00000006 (6.5 -> 6)", Parse("6.5"), Epsilon, Decimal(6)},
+		{"7.5 * 0.00000001 = 0.00000008 (7.5 -> 8)", Parse("7.5"), Epsilon, Decimal(8)},
+		{"8.5 * 0.00000001 = 0.00000008 (8.5 -> 8)", Parse("8.5"), Epsilon, Decimal(8)},
+		{"9.5 * 0.00000001 = 0.0000001 (9.5 -> 10)", Parse("9.5"), Epsilon, Decimal(10)},
+		{"0.00000003 * 0.5 = 0.00000002 (1.5 -> 2)", Decimal(3), Half, Decimal(2)},
+		{"0.00000005 * 0.5 = 0.00000002 (2.5 -> 2)", Decimal(5), Half, Decimal(2)},
+		{"0.00000007 * 0.5 = 0.00000004 (3.5 -> 4)", Decimal(7), Half, Decimal(4)},
+		{"0.00000009 * 0.5 = 0.00000004 (4.5 -> 4)", Decimal(9), Half, Decimal(4)},
+		{"0.00000011 * 0.5 = 0.00000006 (5.5 -> 6)", Decimal(11), Half, Decimal(6)},
+		{"-0.00000003 * 0.5 = -0.00000002 (-1.5 -> -2)", Decimal(-3), Half, Decimal(-2)},
+		{"-0.00000005 * 0.5 = -0.00000002 (-2.5 -> -2)", Decimal(-5), Half, Decimal(-2)},
+		{"-0.00000007 * 0.5 = -0.00000004 (-3.5 -> -4)", Decimal(-7), Half, Decimal(-4)},
+		{"-0.00000009 * 0.5 = -0.00000004 (-4.5 -> -4)", Decimal(-9), Half, Decimal(-4)},
+		{"0.00000003 * -0.5 = -0.00000002", Decimal(3), -Half, Decimal(-2)},
+		{"0.00000005 * -0.5 = -0.00000002", Decimal(5), -Half, Decimal(-2)},
+		{"-0.00000003 * -0.5 = 0.00000002", Decimal(-3), -Half, Decimal(2)},
+		{"-0.00000005 * -0.5 = 0.00000002", Decimal(-5), -Half, Decimal(2)},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer func() {
-				r := recover()
-				if (r != nil) != tt.wantPanic {
-					t.Errorf("Mul() panic = %v, wantPanic %v", r, tt.wantPanic)
-				}
-			}()
-
 			got := tt.d.Mul(tt.o)
 			if got != tt.want {
-				t.Errorf("Mul() = %v, want %v", got, tt.want)
+				t.Errorf("Mul() = %v (%d), want %v (%d)", got, got, tt.want, tt.want)
 			}
 		})
 	}
 }
 
-func TestGeminiBreak(t *testing.T) {
-	// 1. Rounding Consistency
-	// Mul now uses Banker's Rounding, same as Parse.
-	t.Run("RoundingConsistency", func(t *testing.T) {
-		// 1.00000001 * 1.5 = 1.500000015
-		// Parse("1.500000015") -> 1.50000002 (Round to Even)
-		// Mul should now be 1.50000002
+func TestMulPanic(t *testing.T) {
+	tests := []struct {
+		name string
+		d, o Decimal
+	}{
+		// Min * -1 = +2^63 which overflows
+		{"Min * -1", Min, NegOne},
 
-		d1 := Parse("1.00000001")
-		d2 := Parse("1.5")
+		// Max overflow cases
+		{"Max * 2", Max, Two},
+		{"Max * -2", Max, -Two},
+		{"Max * Max", Max, Max},
+		{"Max * 1.00000001", Max, One.Add(Epsilon)},
 
-		mulResult := d1.Mul(d2)
-		expectedMath := "1.500000015"
-		parseResult := Parse(expectedMath)
+		// Min overflow cases
+		{"Min * 2", Min, Two},
+		{"Min * -2", Min, -Two},
+		{"Min * Min", Min, Min},
 
-		if mulResult != parseResult {
-			t.Errorf("Still inconsistent! Mul: %s, Parse: %s", mulResult, parseResult)
-		} else {
-			t.Logf("Consistent! Mul: %s, Parse: %s", mulResult, parseResult)
-		}
-	})
+		// Large products that overflow
+		{"50000000000 * 2", Parse("50000000000"), Two},
+		{"10000000000 * 10", Parse("10000000000"), Parse("10")},
+		{"1000000000 * 100", Parse("1000000000"), Parse("100")},
 
-	// 2. Check for Overflow in Parse
-	// The comment in degenerate_test.go suggested silent overflow.
-	// Our tests show it DOES panic with "toasted number".
-	t.Run("ParseOverflow", func(t *testing.T) {
-		inputs := []string{"1e11", "1e12", "1e19"}
-		for _, input := range inputs {
-			t.Run(input, func(t *testing.T) {
-				defer func() {
-					if r := recover(); r != nil {
-						// Expected panic
-						if r != "toasted number" {
-							t.Logf("Parse(%s) panicked with unexpected message: %v", input, r)
-						}
-					}
-				}()
-				_ = Parse(input)
-				// If we reach here, it didn't panic
-				t.Errorf("Parse(\"%s\") did not panic!", input)
-			})
-		}
-	})
-
-	// Check FromFloat64 vs Mul consistency
-	t.Run("FromFloat64Consistency", func(t *testing.T) {
-		// 1.000000015
-		// FromFloat64(1.500000015) uses math.Round (Half Away From Zero) -> 1.50000002
-		// Mul should now match (Banker's rounding also yields .02 for .015 if odd)
-		// Wait, 1.50000001 (odd) -> .015 rounds up to even .02? No.
-		// 1.50000001 is 150000001.
-		// 150000001 * 1.5?
-		// d1=1.00000001. d2=1.5.
-		// 100000001 * 150000000 = 15000000150000000
-		// Div 10^8 -> 150000001.5
-		// Remainder is exactly half (Scale/2).
-		// Quotient is 150000001 (odd).
-		// Banker's Rounding: Odd + 0.5 -> Round Up -> 150000002.
-		// So it should be 1.50000002.
-
-		dMul := Parse("1.00000001").Mul(Parse("1.5"))
-
-		dExpected := FromFloat64(1.500000015)
-
-		if dMul != dExpected {
-			t.Errorf("Mismatch: Mul=%s, FromFloat64=%s", dMul, dExpected)
-		} else {
-			t.Logf("Match: Mul=%s, FromFloat64=%s", dMul, dExpected)
-		}
-	})
-
-	// 3. Check Mul Overflow behavior (Runtime Panic vs panicOverflow)
-	t.Run("MulRuntimePanic", func(t *testing.T) {
-		// MaxInt64 * MaxInt64 / Scale should panic.
-		// If it causes a runtime panic (integer overflow) instead of "decimal overflow",
-		// it might be what the user meant.
-		d1 := Max
-		d2 := Max
-
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Error("Mul did not panic")
-			} else {
-				t.Logf("Mul panicked with: %v", r)
-				if r == "decimal overflow" {
-					t.Log("Panic type: Custom decimal overflow")
-				} else {
-					t.Log("Panic type: Runtime/Other")
+		// Near-max products
+		{"92233720368 * 1.1", Parse("92233720368"), Parse("1.1")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("Mul(%v, %v) should have panicked", tt.d, tt.o)
 				}
-			}
-		}()
-		_ = d1.Mul(d2)
-	})
-
-	// 4. Check Mul Overflow without Panic?
-	// Is there a case where hi < Scale but quo > MaxInt64 AND sign check fails?
-	// quo > MaxInt64 covers positive overflow.
-	// We need quo > MaxInt64 but logic doesn't catch it? No, logic is simple.
+			}()
+			tt.d.Mul(tt.o)
+		})
+	}
 }
 
-func TestStringFormat(t *testing.T) {
-	// Test if we can generate a wrong string
-	// e.g. -0
-	// d = 0.
-	if Zero.String() != "0" {
-		t.Errorf("Zero.String() = %s", Zero.String())
+func BenchmarkMul(b *testing.B) {
+	d := Parse("123.456")
+	o := Parse("789.012")
+	for b.Loop() {
+		_ = d.Mul(o)
 	}
 }

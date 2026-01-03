@@ -1,8 +1,11 @@
 package alpaca
 
-import "fmt"
+import (
+	"fmt"
+	"sync/atomic"
+)
 
-type AssetStatus uint8
+type AssetStatus int32
 
 const (
 	AssetStatusActive AssetStatus = iota
@@ -29,4 +32,25 @@ func (as AssetStatus) String() string {
 	default:
 		panic("unknown asset status")
 	}
+}
+
+func (as AssetStatus) GoString() string {
+	switch as {
+	case AssetStatusActive:
+		return "AssetStatusActive"
+	case AssetStatusInactive:
+		return "AssetStatusInactive"
+	default:
+		panic("unknown asset status")
+	}
+}
+
+// Load atomically loads and returns the value of as.
+func (as *AssetStatus) Load() AssetStatus {
+	return AssetStatus(atomic.LoadInt32((*int32)(as)))
+}
+
+// Store atomically stores v into as.
+func (as *AssetStatus) Store(v AssetStatus) {
+	atomic.StoreInt32((*int32)(as), int32(v))
 }

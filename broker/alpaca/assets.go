@@ -4,103 +4,123 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
-	"time"
 
 	"dropbear/decimal"
-	"dropbear/ds"
 )
 
-type Asset struct {
-	Symbol                 string          // e.g. GOOG, BRK.B, BTC/USD
-	Exchange               Exchange        // e.g. ExchangeNYSE, ExchangeNASDAQ, ExchangeCrypto
-	Name                   string          // e.g. Alphabet Inc. Class C Capital Stock, Bitcoin / US Dollar
-	ID                     string          // e.g. 60d10d62-7876-415d-9feb-c92cd87076da
-	Class                  AssetClass      // e.g. AssetClassUSEquity, AssetClassCrypto
-	Status                 AssetStatus     // e.g. AssetStatusActive, AssetStatusInactive
-	IPO                    bool            // currently in initial public offering phase (limit orders only)
-	Tradable               bool            // can be bought or sold on Alpaca
-	Marginable             bool            // can be purchased with borrowed funds (margin)
-	Shortable              bool            // can be sold short (subject to availability)
-	EasyToBorrow           bool            // readily available for shorting (no locate required)
-	Fractionable           bool            // supports fractional shares during regular market hours
-	FractionableExtHours   bool            // supports fractional shares during extended hours
-	HasOptions             bool            // options contracts are available for this asset
-	OptionsLateClose       bool            // options trade 15 min past close
-	PTPNoException         bool            // publicly traded partnership subject to 10% withholding
-	PTPWithException       bool            // publicly traded partnership currently exempt from withholding
-	MarginRequirementLong  decimal.Decimal // initial margin requirement to buy this asset (e.g., 0.25 for 25%)
-	MarginRequirementShort decimal.Decimal // maintenance margin requirement to hold a short position (e.g., 0.30 for 30%)
-	MinTradeIncrement      decimal.Decimal // smallest amount of the asset that can be traded (e.g., 0.000000001 for crypto)
-	PriceIncrement         decimal.Decimal // smallest unit of price movement supported (tick size)
+var Lock sync.RWMutex
+
+// GetAsset retrieves an asset by symbol.
+func GetAsset(symbol string) *Asset {
+	Lock.RLock()
+	defer Lock.RUnlock()
+	return Assets[symbol]
 }
 
-// GetAssets retrieves all tradeable assets.
-func (c *Client) GetAssets() (map[string]*Asset, error) {
-	// In offline mode, use generated Go code (no JSON parsing)
-	if ds.IsOffline() {
-		return generatedAssets, nil
+// SyncAssets fetches the latest assets from Alpaca and updates the local Assets map.
+// Asset objects returned earlier by GetAsset are atomically updated in place.
+func (c *Client) SyncAssets() error {
+	Lock.Lock()
+	defer Lock.Unlock()
+	jsonAssets, err := c.fetchAssets()
+	if err != nil {
+		return err
 	}
-
-	// generate cache key of today's date
-	today := time.Now()
-	key := today.Year()*10000 + int(today.Month())*100 + today.Day()
-
-	// check cache for result with cheap read lock
-	if res := func(key int) map[string]*Asset {
-		assetsCacheMu.RLock()
-		defer assetsCacheMu.RUnlock()
-		if assetsCacheKey == key && assetsCacheData != nil {
-			return assetsCacheData
+	shouldDelete := make(map[string]bool)
+	for _, asset := range Assets {
+		shouldDelete[asset.Symbol] = true
+	}
+	for _, ja := range jsonAssets {
+		shouldDelete[ja.Symbol] = false
+		ac, err := ParseAssetClass(ja.Class)
+		if err != nil {
+			err = fmt.Errorf("unknown asset class for %s: %s", ja.Symbol, ja.Class)
+			continue
 		}
-		return nil
-	}(key); res != nil {
-		return res, nil
+		ex, err := ParseExchange(ja.Exchange)
+		if err != nil {
+			err = fmt.Errorf("unknown exchange for %s: %s", ja.Symbol, ja.Exchange)
+			continue
+		}
+		as, err := ParseAssetStatus(ja.Status)
+		if err != nil {
+			err = fmt.Errorf("unknown asset status for %s: %s", ja.Symbol, ja.Status)
+			continue
+		}
+		minTradeIncrement := decimal.One
+		if ja.MinTradeIncrement != "" {
+			minTradeIncrement = decimal.Parse(ja.MinTradeIncrement)
+		}
+		priceIncrement := decimal.Cent
+		if ja.PriceIncrement != "" {
+			priceIncrement = decimal.Parse(ja.PriceIncrement)
+		}
+		asset := Assets[ja.Symbol]
+		if asset == nil {
+			name := ja.Name
+			if name == "" {
+				name = ja.Symbol
+			}
+			asset = &Asset{
+				Symbol:   ja.Symbol,
+				Exchange: ex,
+				Class:    ac,
+				Status:   as,
+				ID:       ja.ID,
+				Name:     name,
+			}
+			Assets[ja.Symbol] = asset
+		}
+		IPO := false
+		HasOptions := false
+		PTPNoException := false
+		PTPWithException := false
+		OptionsLateClose := false
+		FractionableExtHours := false
+		for _, attr := range ja.Attributes {
+			switch attr {
+			case "ipo":
+				IPO = true
+			case "has_options":
+				HasOptions = true
+			case "ptp_no_exception":
+				PTPNoException = true
+			case "ptp_with_exception":
+				PTPWithException = true
+			case "options_late_close":
+				OptionsLateClose = true
+			case "fractional_eh_enabled":
+				FractionableExtHours = true
+			default:
+				err = fmt.Errorf("unknown asset attribute for %s: %s", ja.Symbol, attr)
+			}
+		}
+		asset.IPO.Store(IPO)
+		asset.HasOptions.Store(HasOptions)
+		asset.PTPNoException.Store(PTPNoException)
+		asset.PTPWithException.Store(PTPWithException)
+		asset.OptionsLateClose.Store(OptionsLateClose)
+		asset.FractionableExtHours.Store(FractionableExtHours)
+		asset.Tradable.Store(ja.Tradable)
+		asset.Marginable.Store(ja.Marginable)
+		asset.Shortable.Store(ja.Shortable)
+		asset.EasyToBorrow.Store(ja.EasyToBorrow)
+		asset.Fractionable.Store(ja.Fractionable)
+		asset.MarginRequirementLong.Store(decimal.Parse(ja.MarginRequirementLong).DivInt(100))
+		asset.MarginRequirementShort.Store(decimal.Parse(ja.MarginRequirementShort).DivInt(100))
+		asset.MinTradeIncrement.Store(minTradeIncrement)
+		asset.PriceIncrement.Store(priceIncrement)
+		asset.Status.Store(as)
 	}
-
-	// ensure only one fetch
-	assetsCacheMu.Lock()
-	defer assetsCacheMu.Unlock()
-
-	// return cache if another goroutine updated it
-	if assetsCacheKey == key && assetsCacheData != nil {
-		return assetsCacheData, nil
+	for sym, del := range shouldDelete {
+		if del {
+			delete(Assets, sym)
+		}
 	}
-
-	// fetch from API
-	jsonAssets, err := c.fetchAssets()
-	if err != nil {
-		return nil, err
-	}
-
-	// make the data structure more pleasant
-	result, err := translateAssets(jsonAssets)
-	if err != nil {
-		return nil, err
-	}
-
-	// update cache
-	assetsCacheKey = key
-	assetsCacheData = result
-	return result, nil
+	return err
 }
-
-func (c *Client) FetchAssets() (map[string]*Asset, error) {
-	jsonAssets, err := c.fetchAssets()
-	if err != nil {
-		return nil, err
-	}
-	return translateAssets(jsonAssets)
-}
-
-// Cache for GetAssets - only refetches once per day in live mode
-var (
-	assetsCacheMu   sync.RWMutex
-	assetsCacheKey  int // YYYYMMDD format
-	assetsCacheData map[string]*Asset
-)
 
 type jsonAsset struct {
 	ID                     string   `json:"id"`       // e.g. 60d10d62-7876-415d-9feb-c92cd87076da
@@ -134,72 +154,6 @@ func (c *Client) fetchAssets() ([]jsonAsset, error) {
 	var result []jsonAsset
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
-	}
-	return result, nil
-}
-
-func translateAssets(jsonAssets []jsonAsset) (map[string]*Asset, error) {
-	result := make(map[string]*Asset)
-	for _, ja := range jsonAssets {
-		ac, err := ParseAssetClass(ja.Class)
-		if err != nil {
-			log.Printf("[alpaca] unknown asset class for %s: %s", ja.Symbol, ja.Class)
-			continue
-		}
-		ex, err := ParseExchange(ja.Exchange)
-		if err != nil {
-			log.Printf("[alpaca] unknown exchange for %s: %s", ja.Symbol, ja.Exchange)
-			continue
-		}
-		as, err := ParseAssetStatus(ja.Status)
-		if err != nil {
-			log.Printf("[alpaca] unknown asset status for %s: %s", ja.Symbol, ja.Status)
-			continue
-		}
-		minTradeIncrement := decimal.One
-		if ja.MinTradeIncrement != "" {
-			minTradeIncrement = decimal.Parse(ja.MinTradeIncrement)
-		}
-		priceIncrement := decimal.Cent
-		if ja.PriceIncrement != "" {
-			priceIncrement = decimal.Parse(ja.PriceIncrement)
-		}
-		asset := &Asset{
-			Symbol:                 ja.Symbol,
-			Class:                  ac,
-			Exchange:               ex,
-			Status:                 as,
-			ID:                     ja.ID,
-			Name:                   ja.Name,
-			Tradable:               ja.Tradable,
-			Marginable:             ja.Marginable,
-			Shortable:              ja.Shortable,
-			EasyToBorrow:           ja.EasyToBorrow,
-			Fractionable:           ja.Fractionable,
-			MarginRequirementLong:  decimal.Parse(ja.MarginRequirementLong).DivInt(100),
-			MarginRequirementShort: decimal.Parse(ja.MarginRequirementShort).DivInt(100),
-			MinTradeIncrement:      minTradeIncrement,
-			PriceIncrement:         priceIncrement,
-		}
-		for _, attr := range ja.Attributes {
-			switch attr {
-			case "ipo":
-				asset.IPO = true
-			case "has_options":
-				asset.HasOptions = true
-			case "ptp_no_exception":
-				asset.PTPNoException = true
-			case "ptp_with_exception":
-				asset.PTPWithException = true
-			case "options_late_close":
-				asset.OptionsLateClose = true
-			case "fractional_eh_enabled":
-				asset.FractionableExtHours = true
-			default:
-				log.Printf("[alpaca] unknown asset attribute for %s: %s", ja.Symbol, attr)
-			}
-		}
-		result[ja.Symbol] = asset
 	}
 	return result, nil
 }

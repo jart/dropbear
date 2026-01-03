@@ -2,7 +2,7 @@ package decimal
 
 import "strings"
 
-// FormatCommas returns the decimal formatted with commas and exactly n decimal places.
+// FormatThousand returns the decimal formatted with commas and exactly n decimal places.
 func (d Decimal) FormatThousand(n int) string {
 	if n < 0 || n > Places {
 		panic("illegal places")

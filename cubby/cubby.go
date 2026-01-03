@@ -31,19 +31,22 @@ var (
 	Live         bool // true means we're in live trading or paper trading mode
 	Paper        bool // true means orders are simulated
 	AlpacaClient *alpaca.Client
+	Running      bool
+	Benchmark    *Equity
 	gSigChan     chan os.Signal
-	gRunning     bool
-	gBenchmark   *Equity
-	gRateLimiter *rateLimiter
+	Cash         decimal.Decimal = decimal.FromInt(100_000)
 )
 
 func Init() {
 	Live = !*flagBacktest
-	AlpacaClient = alpaca.NewClient()
 	if Live {
 		if *flagPaper {
 			Paper = true
-			gRateLimiter = newRateLimiter()
+		}
+		AlpacaClient = alpaca.NewClient()
+		err := AlpacaClient.SyncAssets()
+		if err != nil {
+			panic(err)
 		}
 		gSigChan = make(chan os.Signal, 1)
 		signal.Notify(gSigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
@@ -57,114 +60,19 @@ func Init() {
 		ds.SetOffline()
 		clocky.SetLive(false)
 		clocky.Now = clocky.FakeNow
-		gRateLimiter = newRateLimiter()
-	}
-
-	// Register DTBP lifecycle callbacks
-	// These fire at specific market times to manage day trading buying power
-	AfterOpen(func() {
-		for _, b := range Brokers.All() {
-			b.InitDTBP()
-		}
-	})
-	BeforeCloseEarly(func() {
-		for _, b := range Brokers.All() {
-			b.EndDayTradingTime()
-		}
-	})
-	AfterClose(func() {
-		for _, b := range Brokers.All() {
-			b.LockDTBP()
-			// Charge margin interest on negative cash balance
-			if b.MarginInterest != nil {
-				charge := b.MarginInterest.ChargeDaily(clocky.Now(), b.Cash.Load())
-				if charge.IsPositive() {
-					sub(&b.Cash, charge)
-				}
-			}
-		}
-	})
-}
-
-// StartTime returns the backtest start time.
-func StartTime() clocky.Time {
-	return *flagStart
-}
-
-// EndTime returns the backtest end time.
-func EndTime() clocky.Time {
-	return *flagEnd
-}
-
-// SetBalance sets the simulated balance for the given broker and symbol.
-// For USD, this sets the cash balance on the Broker.
-// For stocks, this sets the position quantity on the Holding.
-func SetBalance(broker ds.Broker, symbol string, quantity decimal.Decimal) {
-	if quantity.IsNegative() {
-		panic("cannot set negative balance")
-	}
-	if Live {
-		return
-	}
-	b := Brokers.Get(broker)
-	if symbol == "USD" {
-		b.Lock.Lock()
-		b.Cash.Store(quantity)
-		// Set PDT mode from flag
-		b.PatternDayTrader = *flagPDT
-		// Set buying power based on margin flag
-		b.RegTBuyingPower.Store(quantity.MulInt(2))
-		if *flagPDT {
-			b.DayTradingBuyingPower.Store(quantity.MulInt(4))
-			b.BodDTBP = quantity.MulInt(4)
-			b.IsDayTradingTime = true
-		} else {
-			b.DayTradingBuyingPower.Store(quantity.MulInt(*flagMargin))
-			b.BodDTBP = quantity.MulInt(2)
-		}
-		// Initialize LastEquity for DTBP lifecycle
-		b.LastEquity = quantity
-		b.Lock.Unlock()
-	} else {
-		if quantity.IsZero() {
-			return
-		}
-		ho := b.Holdings.Get(symbol)
-		ho.Lock.Lock()
-		ho.Quantity.Store(quantity)
-		ho.Available.Store(quantity)
-		ho.Lots.Add(clocky.Now(), quantity, decimal.Zero)
-		ho.Check()
-		ho.Lock.Unlock()
 	}
 }
 
-// SetBenchmark sets the asset against which performance is judged.
-func SetBenchmark(equity *Equity) {
-	gBenchmark = equity
-}
-
-// Run starts the main event loop.
+// Run runs the main event loop.
 func Run() {
-	gRunning = true
-	defer func() {
-		gRunning = false
-	}()
-	if gBenchmark == nil {
-		panic("you forgot to call cubby.SetBenchmark()")
+	Running = true
+	defer onRunEnd()
+	if Benchmark == nil {
+		panic("you forgot to set cubby.Benchmark")
 	}
-	report := newReport(gBenchmark)
+	report := newReport(Benchmark)
 	if Live {
-		defer cancelAllOpenOrders()
-		sampler := newSamplerDaemon(*flagQuantum, report)
-		defer sampler.Close()
-		sampler.Run()
-		for _, broker := range Brokers.All() {
-			broker.run()
-			for _, eq := range broker.Equities.All() {
-				eq.run()
-			}
-		}
+		defer AlpacaClient.CancelAllOrders()
 		for {
 			if <-gSigChan == syscall.SIGUSR1 {
 				report.Print()
@@ -196,41 +104,6 @@ func Run() {
 	report.Print()
 }
 
-// GetEquityUSD returns value of all holdings in USD across all brokers.
-func GetEquityUSD() decimal.Decimal {
-	equity := decimal.Zero
-	Brokers.Each(func(broker *Broker) {
-		equity = equity.Add(broker.Holdings.GetEquityUSD())
-	})
-	return equity
-}
-
-// GetInvestedUSD returns value of all non-cash holdings in USD.
-func GetInvestedUSD() decimal.Decimal {
-	invested := decimal.Zero
-	Brokers.Each(func(broker *Broker) {
-		invested = invested.Add(broker.Holdings.GetInvestedUSD())
-	})
-	return invested
-}
-
-// GetRiskFreeRate returns annualized risk-free rate.
-func GetRiskFreeRate() decimal.Decimal {
-	return *flagRFR
-}
-
-// cancelAllOpenOrders cancels all open orders.
-func cancelAllOpenOrders() {
-	if !Paper {
-		for _, broker := range Brokers.brokerArray {
-			for _, order := range broker.Orders.openOrders.Values() {
-				if order.OrderID != "" {
-					log.Printf("canceling order %s on %s", order.OrderID, broker)
-					if err := AlpacaClient.CancelOrder(order.OrderID); err != nil {
-						log.Printf("error canceling order %s on %s: %v", order.OrderID, broker, err)
-					}
-				}
-			}
-		}
-	}
+func onRunEnd() {
+	Running = false
 }

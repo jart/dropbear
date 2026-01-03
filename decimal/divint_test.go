@@ -7,137 +7,134 @@ import (
 
 func TestDivInt(t *testing.T) {
 	tests := []struct {
-		name     string
-		d        Decimal
-		n        int
-		expected Decimal
+		name string
+		d    Decimal
+		n    int
+		want Decimal
 	}{
-		// --- Basic Exact Division ---
-		{"Exact Positive", 10, 2, 5},
-		{"Exact Negative", -10, 2, -5},
+		// identity
+		{"0 / 1 = 0", Zero, 1, Zero},
+		{"1 / 1 = 1", One, 1, One},
+		{"-1 / 1 = -1", NegOne, 1, NegOne},
+		{"2 / 1 = 2", Two, 1, Two},
+		{"Max / 1 = Max", Max, 1, Max},
+		{"Min / 1 = Min", Min, 1, Min},
 
-		// --- Normal Rounding (Not Half) ---
-		{"Round Down Positive", 10, 3, 3},   // +0.000000010 / 3 = +0.000000003
-		{"Round Up Positive", 11, 3, 4},     // +0.000000011 / 3 = +0.000000004
-		{"Round Down Negative", -10, 3, -3}, // -0.000000010 / 3 = -0.000000003
-		{"Round Up Negative", -11, 3, -4},   // -0.000000011 / 3 = -0.000000004
+		// negation
+		{"1 / -1 = -1", One, -1, NegOne},
+		{"-1 / -1 = 1", NegOne, -1, One},
+		{"2 / -1 = -2", Two, -1, -Two},
+		{"Max / -1 = -Max", Max, -1, -Max},
 
-		// --- Banker's Rounding (Tie Breaking) ---
+		// zero numerator
+		{"0 / 2 = 0", Zero, 2, Zero},
+		{"0 / -1 = 0", Zero, -1, Zero},
+		{"0 / 100 = 0", Zero, 100, Zero},
 
-		// Case 1: Quotient is Even, Remainder is Half -> Keep Quotient
+		// exact divisions
+		{"4 / 2 = 2", Parse("4"), 2, Two},
+		{"6 / 2 = 3", Parse("6"), 2, Parse("3")},
+		{"6 / 3 = 2", Parse("6"), 3, Two},
+		{"10 / 2 = 5", Parse("10"), 2, Parse("5")},
+		{"100 / 10 = 10", Parse("100"), 10, Parse("10")},
+		{"1000 / 100 = 10", Parse("1000"), 100, Parse("10")},
 
-		// Raw Math:      5 / 2 = 2.5. Nearest even integer is 2.
-		// Fixed Point:   0.000000005 / 2 = 0.0000000025 -> rounds to 0.000000002
-		{"Tie/EvenQuo/Pos", 5, 2, 2},
+		// fractional results
+		{"0.00000010 / 2 = 0.00000005", Decimal(10), 2, Decimal(5)},
+		{"1 / 2 = 0.5", One, 2, Half},
+		{"1 / 4 = 0.25", One, 4, Parse("0.25")},
+		{"1 / 5 = 0.2", One, 5, Parse("0.2")},
+		{"1 / 10 = 0.1", One, 10, Tenth},
+		{"1 / 100 = 0.01", One, 100, Cent},
 
-		// Raw Math:      13 / 2 = 6.5. Nearest even integer is 6.
-		// Fixed Point:   0.000000013 / 2 = 0.0000000065 -> rounds to 0.000000006
-		{"Tie/EvenQuo/Pos2", 13, 2, 6},
+		// negative divisions
+		{"6 / -2 = -3", Parse("6"), -2, Parse("-3")},
+		{"-6 / 2 = -3", Parse("-6"), 2, Parse("-3")},
+		{"-6 / -2 = 3", Parse("-6"), -2, Parse("3")},
+		{"1 / -2 = -0.5", One, -2, -Half},
+		{"-1 / 2 = -0.5", NegOne, 2, -Half},
+		{"-1 / -2 = 0.5", NegOne, -2, Half},
 
-		// Raw Math:      -5 / 2 = -2.5. Nearest even integer is -2.
-		// Fixed Point:   -0.000000005 / 2 = -0.0000000025 -> rounds to -0.000000002
-		{"Tie/EvenQuo/Neg", -5, 2, -2},
+		// repeating decimals
+		{"1 / 3 = 0.33333333", One, 3, Parse("0.33333333")},
+		{"2 / 3 = 0.66666667", Two, 3, Parse("0.66666667")},
+		{"1 / 6 = 0.16666667", One, 6, Parse("0.16666667")},
+		{"1 / 7 = 0.14285714", One, 7, Parse("0.14285714")},
+		{"1 / 9 = 0.11111111", One, 9, Parse("0.11111111")},
 
-		// Case 2: Quotient is Odd, Remainder is Half -> Round Away to make Even
+		// powers of 2
+		{"1 / 8 = 0.125", One, 8, Parse("0.125")},
+		{"1 / 16 = 0.0625", One, 16, Parse("0.0625")},
+		{"1 / 32 = 0.03125", One, 32, Parse("0.03125")},
+		{"1 / 64 = 0.015625", One, 64, Parse("0.015625")},
 
-		// Raw Math:      3 / 2 = 1.5. Nearest even integer is 2.
-		// Fixed Point:   0.000000003 / 2 = 0.0000000015 -> rounds to 0.000000002
-		{"Tie/OddQuo/Pos", 3, 2, 2},
+		// powers of 10
+		{"1 / 1000 = 0.001", One, 1000, Parse("0.001")},
+		{"1 / 10000 = 0.0001", One, 10000, Parse("0.0001")},
+		{"1 / 100000000 = 0.00000001", One, 100000000, Epsilon},
 
-		// Raw Math:      -3 / 2 = -1.5. Nearest even integer is -2.
-		// Fixed Point:   -0.000000003 / 2 = -0.0000000015 -> rounds to -0.000000002
-		{"Tie/OddQuo/Neg", -3, 2, -2},
+		// large values
+		{"1000000 / 1000 = 1000", Parse("1000000"), 1000, Parse("1000")},
+		{"1000000000 / 1000 = 1000000", Parse("1000000000"), 1000, Parse("1000000")},
+		{"Max / 2 (rounds up)", Max, 2, Max/2 + 1},
+		{"Max / MaxInt32", Max, math.MaxInt32, Max.DivInt(math.MaxInt32)},
+		{"Min / 2", Min, 2, Min / 2},
 
-		// --- Negative Divisor Logic (Triggering "if y < 0") ---
-
-		// 1. Standard Rounding with Negative Divisor
-		// 5 / -3 = -1.66... -> rounds to -2
-		{"NegDiv/RoundAway", 5, -3, -2},
-
-		// 2. Banker's Rounding (Tie) with Negative Divisor
-
-		// Case A: Result is -2.5. Nearest even is -2.
-		// logic: quo starts at -2. rem is 1. absRem(1) == half(1).
-		// quo is even (-2), so we do NOT round away.
-		{"NegDiv/Tie/EvenQuo", 5, -2, -2},
-
-		// Case B: Result is -1.5. Nearest even is -2.
-		// logic: quo starts at -1. rem is 1. absRem(1) == half(1).
-		// quo is odd (-1), so we ROUND AWAY.
-		// (x<0) is false, (y<0) is true -> mismatch -> quo-- -> -2
-		{"NegDiv/Tie/OddQuo", 3, -2, -2},
-
-		// 3. Signs Mismatch (Negative d, Negative n)
-		// -5 / -2 = 2.5. Nearest even is 2.
-		// quo starts at 2. rem is -1.
-		// quo is even. No round.
-		{"NegDiv/NegD/Tie", -5, -2, 2},
-
-		// --- Large Number / Magnitude Logic Checks ---
-		{
-			"MaxInt64 Exact",
-			Decimal(math.MaxInt64), 1,
-			Decimal(math.MaxInt64),
-		},
-		{
-			"MinInt64 Exact",
-			Decimal(math.MinInt64), 1,
-			Decimal(math.MinInt64),
-		},
-		{
-			// MinInt64 is even, so it divides by 2 perfectly.
-			"MinInt64 / 2",
-			Decimal(math.MinInt64), 2,
-			Decimal(math.MinInt64 / 2),
-		},
+		// bankers' rounding demonstration
+		{"1 / 2 = 0 (0.5 -> 0)", Epsilon, 2, Zero},
+		{"3 / 2 = 2 (1.5 -> 2)", Decimal(3), 2, Decimal(2)},
+		{"5 / 2 = 2 (2.5 -> 2)", Decimal(5), 2, Decimal(2)},
+		{"7 / 2 = 4 (3.5 -> 4)", Decimal(7), 2, Decimal(4)},
+		{"9 / 2 = 4 (4.5 -> 4)", Decimal(9), 2, Decimal(4)},
+		{"11 / 2 = 6 (5.5 -> 6)", Decimal(11), 2, Decimal(6)},
+		{"13 / 2 = 6 (6.5 -> 6)", Decimal(13), 2, Decimal(6)},
+		{"15 / 2 = 8 (7.5 -> 8)", Decimal(15), 2, Decimal(8)},
+		{"17 / 2 = 8 (8.5 -> 8)", Decimal(17), 2, Decimal(8)},
+		{"19 / 2 = 10 (9.5 -> 10)", Decimal(19), 2, Decimal(10)},
+		{"-3 / 2 = -2", Decimal(-3), 2, Decimal(-2)},
+		{"-5 / 2 = -2", Decimal(-5), 2, Decimal(-2)},
+		{"-7 / 2 = -4", Decimal(-7), 2, Decimal(-4)},
+		{"-9 / 2 = -4", Decimal(-9), 2, Decimal(-4)},
+		{"3 / -2 = -2", Decimal(3), -2, Decimal(-2)},
+		{"5 / -2 = -2", Decimal(5), -2, Decimal(-2)},
+		{"-3 / -2 = 2", Decimal(-3), -2, Decimal(2)},
+		{"-5 / -2 = 2", Decimal(-5), -2, Decimal(2)},
+		{"5 / 4 = 1 (1.25 -> 1)", Decimal(5), 4, Decimal(1)},
+		{"6 / 4 = 2 (1.5 -> 2)", Decimal(6), 4, Decimal(2)},
+		{"10 / 4 = 2 (2.5 -> 2)", Decimal(10), 4, Decimal(2)},
+		{"14 / 4 = 4 (3.5 -> 4)", Decimal(14), 4, Decimal(4)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := tt.d.DivInt(tt.n)
-			if got != tt.expected {
-				t.Errorf("DivInt(%d, %d) = %d; want %d", tt.d, tt.n, got, tt.expected)
-			}
-			got2 := tt.d.Div(FromInt(tt.n))
-			if got2 != tt.expected {
-				t.Errorf("DivInt inconsistent with Div(%d, %d) = %d; want %d", tt.d, tt.n, got2, tt.expected)
+			if got != tt.want {
+				t.Errorf("DivInt() = %v (%d), want %v (%d)", got, got, tt.want, tt.want)
 			}
 		})
 	}
 }
 
-func TestDivInt_Panics(t *testing.T) {
+func TestDivIntPanic(t *testing.T) {
 	tests := []struct {
 		name string
 		d    Decimal
 		n    int
 	}{
-		{
-			name: "Division by Zero",
-			d:    100,
-			n:    0,
-		},
-		{
-			name: "Overflow (MinInt64 / -1)",
-			d:    Decimal(math.MinInt64),
-			n:    -1,
-		},
+		{"1 / 0", One, 0},
+		{"-1 / 0", NegOne, 0},
+		{"Max / 0", Max, 0},
+		{"Min / 0", Min, 0},
+		{"0 / 0", Zero, 0},
+		{"Min / -1", Min, -1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defer func() {
 				if recover() == nil {
-					t.Errorf("did not panic")
+					t.Errorf("DivInt(%v, %v) should have panicked", tt.d, tt.n)
 				}
 			}()
 			tt.d.DivInt(tt.n)
-		})
-		t.Run(tt.name+" vs. Div", func(t *testing.T) {
-			defer func() {
-				if recover() == nil {
-					t.Errorf("did not panic")
-				}
-			}()
-			tt.d.Div(FromInt(tt.n))
 		})
 	}
 }

@@ -20,62 +20,49 @@
 //	go run ./cmd/fngu -backtest              # backtest mode
 //	go run ./cmd/fngu -backtest -lookback 10 # 10-minute breakout
 //	go run ./cmd/fngu -paper                 # paper trading
+
 package main
 
 import (
-	"dropbear/clocky"
 	"dropbear/cubby"
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/indicators"
 	"dropbear/loggy"
 	"flag"
-	"fmt"
 	"log"
-	"time"
 )
 
 var (
 	flagSymbol    = flag.String("symbol", "FNGU", "symbol to trade")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
-	flagHodl      = flag.String("hodl", "", "symbol to hold when not trading (e.g., JPST for yield)")
+	flagHodl      = flag.String("hodl", "", "symbol to hold when not trading")
 	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
 	flagLookback  = flag.Int("lookback", 15, "breakout lookback period (minutes)")
 	flagBuffer    = decimal.FlagPercent("buffer", "10", "buffer percentage (10%)")
-	flagTrailPct  = decimal.Flag("trail", "0.025", "trailing stop percentage (0.025 = 2.5%)")
-	flagMinGap    = decimal.Flag("mingap", "0.01", "minimum gap to enter (1%)")
+	flagTrail     = decimal.FlagPercent("trail", "2.5", "trailing stop percentage (2.5%)")
+	flagMinGap    = decimal.FlagPercent("mingap", "1", "minimum gap to enter (1%)")
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
 )
 
+const (
+	openTime  = 6_30_00 + 15_00
+	closeTime = 13_00_00 - 15_00
+)
+
 var (
-	gBroker    *cubby.Broker
 	gEquity    *cubby.Equity
-	gHodl      *cubby.Equity // symbol to hold when not trading (for yield)
+	gHodl      *cubby.Equity
 	gBenchmark *cubby.Equity
 
 	// Intraday state (reset each day)
 	gCandles     []indicators.Candle // rolling window of recent candles
 	gDayHigh     decimal.Decimal     // highest price seen today
 	gDayLow      decimal.Decimal     // lowest price seen today
-	gEntryPrice  decimal.Decimal     // price we entered at (zero if flat)
 	gHighSince   decimal.Decimal     // highest price since entry (for trailing stop)
-	gCurrentDate time.Time           // current trading day
-	gTradesToday int                 // number of trades today
-	gClosedToday bool                // already closed for the day
-
-	// Statistics
-	gTotalTrades   int
-	gWinningTrades int
-	gLosingTrades  int
-	gTotalPnL      decimal.Decimal
-)
-
-const (
-	marketOpenHour    = 6 // 6:30 AM PT = 9:30 AM ET
-	marketOpenMinute  = 30
-	marketCloseHour   = 13 // 1:00 PM PT = 4:00 PM ET
-	marketCloseMinute = 0
-	closeBeforeMin    = 15 // close positions this many minutes before market close
+	gTradesToday int                 // number of trades executed today
+	gCurrentDate int                 // current trading date
+	gIsOpen      bool                // market is open
 )
 
 func main() {
@@ -83,25 +70,14 @@ func main() {
 	loggy.Init()
 	cubby.Init()
 
-	// Set up broker and equities
-	gBroker = cubby.Brokers.Get(ds.BrokerAlpaca)
-	gEquity = gBroker.Equities.Get(*flagSymbol)
-	gBenchmark = gBroker.Equities.Get(*flagBenchmark)
+	gEquity = cubby.AddEquity(*flagSymbol)
+	gBenchmark = cubby.AddEquity(*flagBenchmark)
 	if *flagHodl != "" {
-		gHodl = gBroker.Equities.Get(*flagHodl)
-		gHodl.OnCandle = func(*indicators.Candle) {} // just need price tracking
+		gHodl = cubby.AddEquity(*flagHodl)
 	}
-
-	// Set callbacks
 	gEquity.OnCandle = onCandle
-	gBenchmark.OnCandle = func(*indicators.Candle) {} // just for benchmark tracking
-
-	// Set initial balance and benchmark
-	cubby.SetBalance(ds.BrokerAlpaca, "USD", *flagCash)
-	cubby.SetBenchmark(gBenchmark)
-
-	// Set up ready callback
-	cubby.Brokers.OnReady = onReady
+	cubby.Benchmark = gBenchmark
+	cubby.Cash = *flagCash
 
 	log.Printf("FNGU Day Trading Strategy")
 	log.Printf("  Symbol: %s", *flagSymbol)
@@ -109,41 +85,28 @@ func main() {
 		log.Printf("  Hodl: %s (overnight yield)", *flagHodl)
 	}
 	log.Printf("  Lookback: %d minutes", *flagLookback)
-	log.Printf("  Trail Stop: %.1f%%", flagTrailPct.Float64()*100)
-	log.Printf("  Min Gap: %.2f%%", flagMinGap.Float64()*100)
+	log.Printf("  Trail Stop: %s%%", flagTrail.MulInt(100).Format(1))
+	log.Printf("  Min Gap: %s%%", flagBuffer.MulInt(100).Format(1))
 
-	// Run the framework
 	cubby.Run()
-
-	// Print final stats
-	printStats()
-}
-
-func onReady() {
-	log.Printf("Market data ready, starting strategy...")
 }
 
 func onCandle(c *indicators.Candle) {
-	now := cubby.ToPacific(c.Start)
 
-	// Check for new trading day
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, cubby.Pacific)
-	if !today.Equal(gCurrentDate) {
-		resetDay(today)
+	// check for day change
+	date := c.Start.DateInt()
+	if date != gCurrentDate {
+		onDayChange()
+		gCurrentDate = date
 	}
 
-	// Skip pre-market and after-hours
-	if !isMarketHours(now) {
-		return
-	}
-
-	// Update rolling candle window
+	// update rolling candle window
 	gCandles = append(gCandles, *c)
 	if len(gCandles) > *flagLookback {
 		gCandles = gCandles[1:]
 	}
 
-	// Update day high/low
+	// update day high/low
 	if gDayHigh.IsZero() || c.High.Cmp(gDayHigh) > 0 {
 		gDayHigh = c.High
 	}
@@ -151,249 +114,155 @@ func onCandle(c *indicators.Candle) {
 		gDayLow = c.Low
 	}
 
-	// Skip if already closed for the day
-	if gClosedToday {
-		return
-	}
-
-	// Check if we need to close before market close
-	closeTime := time.Date(now.Year(), now.Month(), now.Day(),
-		marketCloseHour, marketCloseMinute-closeBeforeMin, 0, 0, cubby.Pacific)
-	if now.After(closeTime) || now.Equal(closeTime) {
-		closePosition("EOD")
-		buyHodl() // park cash in yield-generating ETF overnight
-		gClosedToday = true
-		return
-	}
-
-	// Need at least lookback candles before trading
+	// need at least lookback candles before trading
 	if len(gCandles) < *flagLookback {
 		return
 	}
 
-	// Skip first 15 minutes of trading (let market settle)
-	openTime := time.Date(now.Year(), now.Month(), now.Day(),
-		marketOpenHour, marketOpenMinute+15, 0, 0, cubby.Pacific)
-	if now.Before(openTime) {
-		return
+	// only proceed if market is open
+	time := c.Start.ClockInt()
+	if !gIsOpen {
+		if time >= openTime && time < closeTime {
+			gIsOpen = true
+			onMarketOpen()
+		} else {
+			return
+		}
+	} else {
+		if time >= closeTime {
+			onMarketClose()
+			gIsOpen = false
+			return
+		}
 	}
 
 	// Get current position
-	shares := gEquity.Shares.Quantity.Load()
-	hasPosition := shares.IsPositive()
+	shares := gEquity.Quantity.Load()
+	invested := !shares.IsZero()
 	price := c.Close
 
-	if hasPosition {
-		// Update trailing stop
+	if invested {
+		// update trailing stop
 		if price.Cmp(gHighSince) > 0 {
 			gHighSince = price
 		}
-
-		// Check trailing stop
-		stopPrice := gHighSince.Mul(decimal.One.Sub(*flagTrailPct))
+		// check trailing stop
+		stopPrice := gHighSince.Mul(decimal.One.Sub(*flagTrail))
 		if price.Cmp(stopPrice) <= 0 {
-			closePosition("TRAIL_STOP")
+			close(gEquity, "TRAIL_STOP")
 		}
 	} else {
-		// Look for breakout entry
-		checkBreakoutEntry(c, now)
+		checkBreakoutEntry(c)
 	}
 }
 
-func checkBreakoutEntry(c *indicators.Candle, now time.Time) {
-	if len(gCandles) < *flagLookback {
-		return
-	}
+func checkBreakoutEntry(c *indicators.Candle) {
 
-	// Calculate lookback high (excluding current candle)
+	// calculate lookback high (excluding current candle)
 	var lookbackHigh decimal.Decimal
 	for i := 0; i < len(gCandles)-1; i++ {
 		if lookbackHigh.IsZero() || gCandles[i].High.Cmp(lookbackHigh) > 0 {
 			lookbackHigh = gCandles[i].High
 		}
 	}
-
 	if lookbackHigh.IsZero() {
 		return
 	}
-
 	price := c.Close
 
-	// Check for breakout: price above lookback high by minimum gap
+	// check for breakout: price above lookback high by minimum gap
 	breakoutThreshold := lookbackHigh.Mul(decimal.One.Add(*flagMinGap))
 	if price.Cmp(breakoutThreshold) <= 0 {
 		return
 	}
 
-	// Don't enter if we've already traded too much today (limit churn)
+	// don't enter if we've already traded too much today (limit churn)
 	if gTradesToday >= 3 {
 		return
 	}
+
+	// free up buying power
+	close(gHodl, "FREE_CASH")
 
 	// Calculate position size: use full buying power (margin handled by cubby -margin flag)
 	// PDT rules allow 4x leverage intraday, must close by EOD
 	// Cap max position to $1B to avoid decimal overflow on sale proceeds
 	// (with 40x leverage and big gains, selling can produce multi-billion proceeds)
-	maxPosition := decimal.FromInt(1000000000)
-	buyingPower := gEquity.Broker.DayTradingBuyingPower.Load()
-	// Cap buying power to avoid overflow
-	if buyingPower.Cmp(maxPosition) > 0 {
-		buyingPower = maxPosition
-	}
+	buyingPower := gEquity.GetBuyingPower()
 	usableBuyingPower := buyingPower.Mul(decimal.One.Sub(*flagBuffer))
-	qty := usableBuyingPower.Div(price).Int()
-
-	if qty <= 0 {
+	qty := usableBuyingPower.Div(price).Truncate()
+	if !qty.IsPositive() {
 		return
 	}
 
-	// Sell hodl position first to free up buying power
-	sellHodl()
-
-	// Enter long position
-	gEquity.MarketOrder(ds.SideBuy, qty)
-	gEntryPrice = price
+	// enter long position
+	order := gEquity.MarketOrder(qty)
+	order.Wait()
 	gHighSince = price
 	gTradesToday++
-	gTotalTrades++
 
 	if *flagVerbose {
-		log.Printf("[%s] BUY %d @ $%s (breakout above $%s)",
-			now.Format("15:04"), qty, price.Format(2), lookbackHigh.Format(2))
+		log.Printf("BUY %s of %s at %s", qty.Mul(price), *flagSymbol, price)
 	}
 }
 
-func closePosition(reason string) {
-	shares := gEquity.Shares.Quantity.Load()
-	if !shares.IsPositive() {
+func close(equity *cubby.Equity, reason string) {
+	shares := equity.Quantity.Load()
+	if shares.IsZero() {
 		return
 	}
-
-	qty := shares.Int()
-	if qty <= 0 {
-		return
-	}
-
-	price := gEquity.LastPrice.Load()
-	gEquity.MarketOrder(ds.SideSell, qty)
-
-	// Calculate P&L
-	if !gEntryPrice.IsZero() {
-		pnl := price.Sub(gEntryPrice).Mul(shares)
-		gTotalPnL = gTotalPnL.Add(pnl)
-
-		if pnl.IsPositive() {
-			gWinningTrades++
-		} else {
-			gLosingTrades++
-		}
-
+	quantity := shares.Neg()
+	price := equity.LastPrice.Load()
+	equity.MarketOrder(quantity).Wait()
+	if !equity.EntryPrice.IsZero() {
+		pnl := price.Sub(equity.EntryPrice).Mul(shares)
 		if *flagVerbose {
-			now := time.UnixMicro(int64(clocky.Now()))
-			pnlPct := pnl.Div(gEntryPrice.Mul(shares)).MulInt(100)
-			log.Printf("[%s] SELL %d @ $%s (%s) P&L: $%s (%.2f%%)",
-				now.Format("15:04"), qty, price.Format(2), reason,
-				pnl.Format(2), pnlPct.Float64())
+			pnlPct := pnl.Div(equity.EntryPrice.Mul(shares)).MulInt(100)
+			log.Printf("SELL %s of %s at %s P&L: $%s (%s%%)",
+				quantity.Mul(price), equity.Symbol, price, price.Format(2), reason,
+				pnl.Format(2), pnlPct.Format(2))
 		}
 	}
-
-	gEntryPrice = decimal.Zero
 	gHighSince = decimal.Zero
 }
 
-func resetDay(today time.Time) {
-	// Close any position from previous day (shouldn't happen, but safety)
-	if gEquity != nil {
-		shares := gEquity.Shares.Quantity.Load()
-		if shares.IsPositive() {
-			closePosition("NEW_DAY")
-		}
-	}
-	// Sell hodl position at start of new trading day
-	sellHodl()
+func onMarketOpen() {
+}
 
-	gCurrentDate = today
+func onMarketClose() {
+	close(gEquity, "EOD")
+	buyHodl()
 	gCandles = nil
 	gDayHigh = decimal.Zero
 	gDayLow = decimal.Zero
-	gEntryPrice = decimal.Zero
 	gHighSince = decimal.Zero
-	gTradesToday = 0
-	gClosedToday = false
-
-	if *flagVerbose {
-		log.Printf("=== New trading day: %s ===", today.Format("2006-01-02"))
-	}
 }
 
-func isMarketHours(t time.Time) bool {
-	hour := t.Hour()
-	minute := t.Minute()
-	timeOfDay := hour*60 + minute
-
-	marketOpen := marketOpenHour*60 + marketOpenMinute
-	marketClose := marketCloseHour*60 + marketCloseMinute
-
-	return timeOfDay >= marketOpen && timeOfDay < marketClose
+func onDayChange() {
+	gCandles = nil
+	gDayHigh = decimal.Zero
+	gDayLow = decimal.Zero
+	gHighSince = decimal.Zero
+	gTradesToday = 0
 }
 
 func buyHodl() {
-	if gHodl == nil {
-		return
+	if gHodl != nil {
+		price := gHodl.AskPrice.Load()
+		if price.IsZero() {
+			return
+		}
+		cash := cubby.Cash.Load()
+		if !cash.IsPositive() {
+			return
+		}
+		qty := cash.Div(price).Truncate()
+		if !qty.IsPositive() {
+			return
+		}
+		gHodl.MarketOrder(ds.SideBuy, qty)
+		if *flagVerbose {
+			log.Printf("BUY %s of %s at %s", qty.Mul(gHodl.AskPrice), *flagSymbol, price)
+		}
 	}
-	// Use cash (not margin) for overnight hodl - no need to leverage a bond ETF
-	price := gHodl.LastPrice.Load()
-	if price.IsZero() {
-		return
-	}
-	cash := gBroker.Cash.Load()
-	if !cash.IsPositive() {
-		return
-	}
-	qty := cash.Div(price).Int()
-	if qty <= 0 {
-		return
-	}
-	gHodl.MarketOrder(ds.SideBuy, qty)
-	if *flagVerbose {
-		now := time.UnixMicro(int64(clocky.Now()))
-		log.Printf("[%s] HODL BUY %d %s @ $%s",
-			now.Format("15:04"), qty, *flagHodl, price.Format(2))
-	}
-}
-
-func sellHodl() {
-	if gHodl == nil {
-		return
-	}
-	shares := gHodl.Shares.Quantity.Load()
-	if !shares.IsPositive() {
-		return
-	}
-	qty := shares.Int()
-	if qty <= 0 {
-		return
-	}
-	price := gHodl.LastPrice.Load()
-	gHodl.MarketOrder(ds.SideSell, qty)
-	if *flagVerbose {
-		now := time.UnixMicro(int64(clocky.Now()))
-		log.Printf("[%s] HODL SELL %d %s @ $%s",
-			now.Format("15:04"), qty, *flagHodl, price.Format(2))
-	}
-}
-
-func printStats() {
-	fmt.Println()
-	fmt.Println("========================================")
-	fmt.Println("FNGU Day Trading Strategy Results")
-	fmt.Println("========================================")
-	fmt.Printf("Total Trades: %d\n", gTotalTrades)
-	fmt.Printf("Winning: %d\n", gWinningTrades)
-	fmt.Printf("Losing: %d\n", gLosingTrades)
-	if gTotalTrades > 0 {
-		winRate := float64(gWinningTrades) / float64(gTotalTrades) * 100
-		fmt.Printf("Win Rate: %.1f%%\n", winRate)
-	}
-	fmt.Printf("Total P&L (before fees): $%s\n", gTotalPnL.Format(2))
 }

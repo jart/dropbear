@@ -32,6 +32,25 @@ func (ot OrderType) String() string {
 	}
 }
 
+func (ot OrderType) GoString() string {
+	switch ot {
+	case OrderTypeLimit:
+		return "OrderTypeLimit"
+	case OrderTypeMarket:
+		return "OrderTypeMarket"
+	case OrderTypeMOC:
+		return "OrderTypeMOC"
+	case OrderTypeMOO:
+		return "OrderTypeMOO"
+	case OrderTypeLOC:
+		return "OrderTypeLOC"
+	case OrderTypeLOO:
+		return "OrderTypeLOO"
+	default:
+		panic("invalid order type")
+	}
+}
+
 func ParseOrderType(s string) (OrderType, error) {
 	switch s {
 	case "limit", "Limit", "LIMIT":

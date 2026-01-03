@@ -65,3 +65,28 @@ func (ex Exchange) String() string {
 		panic("unknown exchange")
 	}
 }
+
+func (ex Exchange) GoString() string {
+	switch ex {
+	case ExchangeNYSE:
+		return "ExchangeNYSE"
+	case ExchangeNASDAQ:
+		return "ExchangeNASDAQ"
+	case ExchangeAMEX:
+		return "ExchangeAMEX"
+	case ExchangeARCA:
+		return "ExchangeARCA"
+	case ExchangeASCX:
+		return "ExchangeASCX"
+	case ExchangeBATS:
+		return "ExchangeBATS"
+	case ExchangeNYSEARCA:
+		return "ExchangeNYSEARCA"
+	case ExchangeCrypto:
+		return "ExchangeCrypto"
+	case ExchangeOTC:
+		return "ExchangeOTC"
+	default:
+		panic("unknown exchange")
+	}
+}
