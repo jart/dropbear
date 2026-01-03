@@ -71,9 +71,9 @@ var (
 )
 
 const (
-	marketOpenHour    = 9
+	marketOpenHour    = 6 // 6:30 AM PT = 9:30 AM ET
 	marketOpenMinute  = 30
-	marketCloseHour   = 16
+	marketCloseHour   = 13 // 1:00 PM PT = 4:00 PM ET
 	marketCloseMinute = 0
 	closeBeforeMin    = 15 // close positions this many minutes before market close
 )
@@ -124,12 +124,10 @@ func onReady() {
 }
 
 func onCandle(c *indicators.Candle) {
-	now := time.UnixMicro(int64(c.Start))
-	loc, _ := time.LoadLocation("America/New_York")
-	now = now.In(loc)
+	now := cubby.ToPacific(c.Start)
 
 	// Check for new trading day
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, cubby.Pacific)
 	if !today.Equal(gCurrentDate) {
 		resetDay(today)
 	}
@@ -160,7 +158,7 @@ func onCandle(c *indicators.Candle) {
 
 	// Check if we need to close before market close
 	closeTime := time.Date(now.Year(), now.Month(), now.Day(),
-		marketCloseHour, marketCloseMinute-closeBeforeMin, 0, 0, loc)
+		marketCloseHour, marketCloseMinute-closeBeforeMin, 0, 0, cubby.Pacific)
 	if now.After(closeTime) || now.Equal(closeTime) {
 		closePosition("EOD")
 		buyHodl() // park cash in yield-generating ETF overnight
@@ -175,7 +173,7 @@ func onCandle(c *indicators.Candle) {
 
 	// Skip first 15 minutes of trading (let market settle)
 	openTime := time.Date(now.Year(), now.Month(), now.Day(),
-		marketOpenHour, marketOpenMinute+15, 0, 0, loc)
+		marketOpenHour, marketOpenMinute+15, 0, 0, cubby.Pacific)
 	if now.Before(openTime) {
 		return
 	}
@@ -292,8 +290,6 @@ func closePosition(reason string) {
 
 		if *flagVerbose {
 			now := time.UnixMicro(int64(clocky.Now()))
-			loc, _ := time.LoadLocation("America/New_York")
-			now = now.In(loc)
 			pnlPct := pnl.Div(gEntryPrice.Mul(shares)).MulInt(100)
 			log.Printf("[%s] SELL %d @ $%s (%s) P&L: $%s (%.2f%%)",
 				now.Format("15:04"), qty, price.Format(2), reason,
@@ -361,8 +357,6 @@ func buyHodl() {
 	gHodl.MarketOrder(ds.SideBuy, qty)
 	if *flagVerbose {
 		now := time.UnixMicro(int64(clocky.Now()))
-		loc, _ := time.LoadLocation("America/New_York")
-		now = now.In(loc)
 		log.Printf("[%s] HODL BUY %d %s @ $%s",
 			now.Format("15:04"), qty, *flagHodl, price.Format(2))
 	}
@@ -384,8 +378,6 @@ func sellHodl() {
 	gHodl.MarketOrder(ds.SideSell, qty)
 	if *flagVerbose {
 		now := time.UnixMicro(int64(clocky.Now()))
-		loc, _ := time.LoadLocation("America/New_York")
-		now = now.In(loc)
 		log.Printf("[%s] HODL SELL %d %s @ $%s",
 			now.Format("15:04"), qty, *flagHodl, price.Format(2))
 	}

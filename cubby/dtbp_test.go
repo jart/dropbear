@@ -6,6 +6,8 @@ import (
 	"dropbear/ds"
 	"testing"
 	"time"
+
+	"github.com/emirpasic/gods/v2/trees/binaryheap"
 )
 
 func TestDTBP_PDTAccount_4xIntraday(t *testing.T) {
@@ -397,13 +399,27 @@ func TestSchedule_CloseEarly_Fires(t *testing.T) {
 		closeEarlyFired = true
 	})
 
-	loc, _ := time.LoadLocation("America/New_York")
-	// 15:50 ET
-	closeEarlyTime := time.Date(2025, 1, 2, 15, 50, 0, 0, loc)
-	checkSchedule(clocky.Time(closeEarlyTime.UnixMicro()))
+	// Set range to include 12:50 PT on Jan 2 (close early time)
+	start := time.Date(2025, 1, 2, 6, 30, 0, 0, Pacific)
+	end := time.Date(2025, 1, 2, 13, 0, 0, 0, Pacific)
+
+	m := &manager{
+		heap:  binaryheap.NewWith(compareHeapEntries),
+		start: clocky.Time(start.UnixMicro()),
+		end:   clocky.Time(end.UnixMicro()),
+	}
+	m.generateScheduledEvents()
+
+	// Find and execute the beforeCloseEarly event
+	for !m.heap.Empty() {
+		entry, _ := m.heap.Pop()
+		if entry.callback != nil {
+			entry.callback()
+		}
+	}
 
 	if !closeEarlyFired {
-		t.Error("BeforeCloseEarly callback should have fired at 15:50")
+		t.Error("BeforeCloseEarly callback should have fired")
 	}
 }
 
@@ -415,12 +431,26 @@ func TestSchedule_CloseEarly_DoesNotFireEarly(t *testing.T) {
 		closeEarlyFired = true
 	})
 
-	loc, _ := time.LoadLocation("America/New_York")
-	// 15:49 ET - one minute before
-	beforeTime := time.Date(2025, 1, 2, 15, 49, 0, 0, loc)
-	checkSchedule(clocky.Time(beforeTime.UnixMicro()))
+	// Set range to end at 12:49 PT - before the 12:50 close early event
+	start := time.Date(2025, 1, 2, 6, 30, 0, 0, Pacific)
+	end := time.Date(2025, 1, 2, 12, 49, 0, 0, Pacific)
+
+	m := &manager{
+		heap:  binaryheap.NewWith(compareHeapEntries),
+		start: clocky.Time(start.UnixMicro()),
+		end:   clocky.Time(end.UnixMicro()),
+	}
+	m.generateScheduledEvents()
+
+	// Execute all events in range
+	for !m.heap.Empty() {
+		entry, _ := m.heap.Pop()
+		if entry.callback != nil {
+			entry.callback()
+		}
+	}
 
 	if closeEarlyFired {
-		t.Error("BeforeCloseEarly should not fire at 15:49")
+		t.Error("BeforeCloseEarly should not fire when range ends at 12:49")
 	}
 }

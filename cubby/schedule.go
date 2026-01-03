@@ -6,36 +6,40 @@ import (
 )
 
 // Schedule holds callbacks for market events.
+// Events are generated at startup and inserted into the priority heap.
 type Schedule struct {
-	beforeOpen       []func() // called before market opens (9:30 AM ET)
+	beforeOpen       []func() // called before market opens (6:30 AM PT)
 	afterOpen        []func() // called after market opens
-	beforeCloseEarly []func() // called 10 min before close (15:50 ET) - ends day trading time
-	beforeClose      []func() // called before market closes (4:00 PM ET)
+	beforeCloseEarly []func() // called 10 min before close (12:50 PT) - ends day trading time
+	beforeClose      []func() // called before market closes (1:00 PM PT)
 	afterClose       []func() // called after market closes
-	lastDate         string
-	firedOpen        bool
-	firedCloseEarly  bool
-	firedClose       bool
-	nyLoc            *time.Location
 }
 
-// US equity market hours in Eastern Time
+// US equity market hours in Pacific Time
 const (
-	MarketOpenHour    = 9
+	MarketOpenHour    = 6
 	MarketOpenMinute  = 30
-	MarketCloseHour   = 16
+	MarketCloseHour   = 13
 	MarketCloseMinute = 0
 )
 
-var gSchedule = &Schedule{}
+// Pacific is the cached America/Los_Angeles timezone (loaded once at startup).
+var Pacific *time.Location
 
 func init() {
-	loc, err := time.LoadLocation("America/New_York")
+	var err error
+	Pacific, err = time.LoadLocation("America/Los_Angeles")
 	if err != nil {
-		panic("failed to load America/New_York timezone")
+		panic("failed to load America/Los_Angeles timezone: " + err.Error())
 	}
-	gSchedule.nyLoc = loc
 }
+
+// ToPacific converts a clocky.Time to time.Time in Pacific timezone.
+func ToPacific(ts clocky.Time) time.Time {
+	return time.UnixMicro(int64(ts)).In(Pacific)
+}
+
+var gSchedule = &Schedule{}
 
 // BeforeOpen registers a callback to run before market open.
 func BeforeOpen(fn func()) {
@@ -63,77 +67,22 @@ func AfterClose(fn func()) {
 	gSchedule.afterClose = append(gSchedule.afterClose, fn)
 }
 
-// checkSchedule fires scheduled callbacks based on current time.
-// Called by the manager for each candle.
-func checkSchedule(now clocky.Time) {
-	s := gSchedule
-	t := time.UnixMicro(int64(now)).In(s.nyLoc)
-	date := t.Format("2006-01-02")
-	hour, min := t.Hour(), t.Minute()
-	timeOfDay := hour*60 + min
-
-	marketOpen := MarketOpenHour*60 + MarketOpenMinute    // 9:30 = 570
-	closeEarly := MarketCloseHour*60 - 10                 // 15:50 = 950
-	marketClose := MarketCloseHour*60 + MarketCloseMinute // 16:00 = 960
-
-	// New trading day
-	if date != s.lastDate {
-		s.lastDate = date
-		s.firedOpen = false
-		s.firedCloseEarly = false
-		s.firedClose = false
-	}
-
-	// Before/After Open (fire once per day when we cross 9:30)
-	if !s.firedOpen && timeOfDay >= marketOpen {
-		for _, fn := range s.beforeOpen {
-			fn()
-		}
-		s.firedOpen = true
-		for _, fn := range s.afterOpen {
-			fn()
-		}
-	}
-
-	// Before Close Early (fire once per day when we cross 15:50)
-	// This ends day trading time - only 2x leverage after this
-	if !s.firedCloseEarly && timeOfDay >= closeEarly {
-		for _, fn := range s.beforeCloseEarly {
-			fn()
-		}
-		s.firedCloseEarly = true
-	}
-
-	// Before/After Close (fire once per day when we cross 16:00)
-	if !s.firedClose && timeOfDay >= marketClose {
-		for _, fn := range s.beforeClose {
-			fn()
-		}
-		s.firedClose = true
-		for _, fn := range s.afterClose {
-			fn()
-		}
-	}
-}
-
 // IsMarketOpen returns true if the market is currently open.
 func IsMarketOpen() bool {
-	now := clocky.Now()
-	t := time.UnixMicro(int64(now)).In(gSchedule.nyLoc)
+	t := ToPacific(clocky.Now())
 	weekday := t.Weekday()
 	if weekday == time.Saturday || weekday == time.Sunday {
 		return false
 	}
-	hour, min := t.Hour(), t.Minute()
-	timeOfDay := hour*60 + min
+	timeOfDay := t.Hour()*60 + t.Minute()
 	marketOpen := MarketOpenHour*60 + MarketOpenMinute
 	marketClose := MarketCloseHour*60 + MarketCloseMinute
 	return timeOfDay >= marketOpen && timeOfDay < marketClose
 }
 
-// IsMarketOpenCandle returns true if the given timestamp is the market open candle (9:30 AM ET).
+// IsMarketOpenCandle returns true if the given timestamp is the market open candle (6:30 AM PT).
 func IsMarketOpenCandle(ts clocky.Time) bool {
-	t := time.UnixMicro(int64(ts)).In(gSchedule.nyLoc)
+	t := ToPacific(ts)
 	weekday := t.Weekday()
 	if weekday == time.Saturday || weekday == time.Sunday {
 		return false
@@ -142,13 +91,12 @@ func IsMarketOpenCandle(ts clocky.Time) bool {
 }
 
 // IsMarketCloseCandle returns true if the given timestamp is the last candle before market close.
-// For 1-minute candles, this is the 15:59 candle (which closes at 16:00).
+// For 1-minute candles, this is the 12:59 candle (which closes at 13:00 PT).
 func IsMarketCloseCandle(ts clocky.Time) bool {
-	t := time.UnixMicro(int64(ts)).In(gSchedule.nyLoc)
+	t := ToPacific(ts)
 	weekday := t.Weekday()
 	if weekday == time.Saturday || weekday == time.Sunday {
 		return false
 	}
-	// The last trading minute is 15:59 (closes at 16:00)
 	return t.Hour() == MarketCloseHour-1 && t.Minute() == 59
 }

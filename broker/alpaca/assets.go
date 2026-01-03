@@ -1,7 +1,6 @@
 package alpaca
 
 import (
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,6 +39,10 @@ type Asset struct {
 
 // GetAssets retrieves all tradeable assets.
 func (c *Client) GetAssets() (map[string]*Asset, error) {
+	// In offline mode, use generated Go code (no JSON parsing)
+	if ds.IsOffline() {
+		return generatedAssets, nil
+	}
 
 	// generate cache key of today's date
 	today := time.Now()
@@ -66,19 +69,10 @@ func (c *Client) GetAssets() (map[string]*Asset, error) {
 		return assetsCacheData, nil
 	}
 
-	// load or fetch the assets
-	var err error
-	var jsonAssets []jsonAsset
-	if ds.IsOffline() {
-		jsonAssets, err = c.loadAssets()
-		if err != nil {
-			panic(err)
-		}
-	} else {
-		jsonAssets, err = c.fetchAssets()
-		if err != nil {
-			return nil, err
-		}
+	// fetch from API
+	jsonAssets, err := c.fetchAssets()
+	if err != nil {
+		return nil, err
 	}
 
 	// make the data structure more pleasant
@@ -93,8 +87,13 @@ func (c *Client) GetAssets() (map[string]*Asset, error) {
 	return result, nil
 }
 
-//go:embed assets.json
-var assetsJSON []byte
+func (c *Client) FetchAssets() (map[string]*Asset, error) {
+	jsonAssets, err := c.fetchAssets()
+	if err != nil {
+		return nil, err
+	}
+	return translateAssets(jsonAssets)
+}
 
 // Cache for GetAssets - only refetches once per day in live mode
 var (
@@ -120,14 +119,6 @@ type jsonAsset struct {
 	MarginRequirementLong  string   `json:"margin_requirement_long"`  // e.g. "100"
 	MarginRequirementShort string   `json:"margin_requirement_short"` // e.g. "30"
 	Attributes             []string `json:"attributes,omitempty"`
-}
-
-func (c *Client) loadAssets() ([]jsonAsset, error) {
-	var result []jsonAsset
-	if err := json.Unmarshal(assetsJSON, &result); err != nil {
-		return nil, fmt.Errorf("decoding embedded assets: %w", err)
-	}
-	return result, nil
 }
 
 func (c *Client) fetchAssets() ([]jsonAsset, error) {

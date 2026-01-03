@@ -14,6 +14,7 @@ import (
 type report struct {
 	lock              sync.RWMutex
 	startTime         clocky.Time
+	endTime           clocky.Time // last candle time (not scheduled event)
 	startEquity       decimal.Decimal
 	initialHoldings   []initialHolding
 	benchmark         *Equity
@@ -85,31 +86,29 @@ func (r *report) Init() {
 }
 
 func (r *report) Sample(now clocky.Time) {
-
 	// always sample invested on every tick for accurate min/max/avg
 	invested := GetInvestedUSD()
 	r.lock.Lock()
+	r.endTime = now // track last candle time for CAGR calculation
 	r.strategyInvested.Sample(invested)
 	r.lock.Unlock()
 
 	// sample equity on quantum intervals for Sharpe/drawdown calculations
-	shouldSample := func() bool {
-		r.lock.RLock()
-		defer r.lock.RUnlock()
-		return r.strategyEquity.ShouldSample(now)
-	}()
+	r.lock.RLock()
+	shouldSample := r.strategyEquity.ShouldSample(now)
+	r.lock.RUnlock()
 	if shouldSample {
 		equity := GetEquityUSD()
 		r.lock.Lock()
-		defer r.lock.Unlock()
 		r.strategyEquity.Sample(now, equity)
 		r.benchmarkEquity.Sample(now, r.benchmarkQuantity.Mul(r.benchmark.LastPrice.Load()))
+		r.lock.Unlock()
 	}
 }
 
 func (r *report) Print() {
-	endTime := clocky.Now()
 	r.lock.Lock()
+	endTime := r.endTime
 	defer r.lock.Unlock()
 	ex := Brokers.Get(ds.BrokerAlpaca)
 

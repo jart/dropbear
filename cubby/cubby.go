@@ -199,19 +199,19 @@ func Run() {
 // GetEquityUSD returns value of all holdings in USD across all brokers.
 func GetEquityUSD() decimal.Decimal {
 	equity := decimal.Zero
-	for _, broker := range Brokers.All() {
+	Brokers.Each(func(broker *Broker) {
 		equity = equity.Add(broker.Holdings.GetEquityUSD())
-	}
+	})
 	return equity
 }
 
 // GetInvestedUSD returns value of all non-cash holdings in USD.
 func GetInvestedUSD() decimal.Decimal {
-	equity := decimal.Zero
-	for _, broker := range Brokers.All() {
-		equity = equity.Add(broker.Holdings.GetInvestedUSD())
-	}
-	return equity
+	invested := decimal.Zero
+	Brokers.Each(func(broker *Broker) {
+		invested = invested.Add(broker.Holdings.GetInvestedUSD())
+	})
+	return invested
 }
 
 // GetRiskFreeRate returns annualized risk-free rate.

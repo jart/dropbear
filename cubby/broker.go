@@ -594,6 +594,15 @@ func (bs *brokers) All() []*Broker {
 	return result
 }
 
+// Each iterates over all brokers without allocating a slice.
+func (bs *brokers) Each(fn func(*Broker)) {
+	bs.lock.RLock()
+	defer bs.lock.RUnlock()
+	for _, broker := range bs.brokerArray {
+		fn(broker)
+	}
+}
+
 func (bs *brokers) markReady(broker *Broker) {
 	bs.lock.Lock()
 	bs.unready.Remove(broker)
@@ -655,29 +664,38 @@ func (hs *Holdings) All() []*Holding {
 	return result
 }
 
+// Each iterates over all holdings without allocating a slice.
+func (hs *Holdings) Each(fn func(*Holding)) {
+	hs.lock.RLock()
+	defer hs.lock.RUnlock()
+	for _, holding := range hs.holdingsArray {
+		fn(holding)
+	}
+}
+
 func (hs *Holdings) GetEquityUSD() decimal.Decimal {
 	// Start with cash balance
 	total := hs.broker.Cash.Load()
 	// Add value of all stock positions
-	for _, holding := range hs.All() {
+	hs.Each(func(holding *Holding) {
 		price := holding.Broker.Equities.GetPriceUSD(holding.Symbol)
 		holding.Lock.RLock()
 		value := holding.Quantity.Load().Mul(price)
 		holding.Lock.RUnlock()
 		total = total.Add(value)
-	}
+	})
 	return total
 }
 
 func (hs *Holdings) GetInvestedUSD() decimal.Decimal {
 	total := decimal.Zero
-	for _, holding := range hs.All() {
+	hs.Each(func(holding *Holding) {
 		price := holding.Broker.Equities.GetPriceUSD(holding.Symbol)
 		holding.Lock.RLock()
 		value := holding.Quantity.Load().Mul(price)
 		holding.Lock.RUnlock()
 		total = total.Add(value)
-	}
+	})
 	return total
 }
 

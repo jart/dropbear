@@ -2,41 +2,45 @@ package cubby
 
 import (
 	"dropbear/clocky"
-	"dropbear/ds"
 	"dropbear/indicators"
 	"dropbear/loggy"
 	"fmt"
 	"io"
 	"log"
-	"os"
-	"path/filepath"
-	"sort"
 	"sync"
+	"time"
 
 	"github.com/emirpasic/gods/v2/trees/binaryheap"
-	"github.com/klauspost/compress/zstd"
 )
 
-type managerEntry struct {
+// heapEntry is either a candle or a scheduled event.
+type heapEntry struct {
+	time     clocky.Time
+	candle   *candleEntry // non-nil for candle data
+	callback func()       // non-nil for scheduled events
+}
+
+type candleEntry struct {
 	data   *recordedCandleData
 	candle *indicators.Candle
 	equity *Equity
 }
 
 type manager struct {
-	heap     *binaryheap.Heap[*managerEntry]
-	sample   func(clocky.Time)
-	lock     sync.Mutex
-	report   *report
-	ready    bool
-	finished bool
-	start    clocky.Time
-	end      clocky.Time
+	heap        *binaryheap.Heap[*heapEntry]
+	sample      func(clocky.Time)
+	lock        sync.Mutex
+	report      *report
+	ready       bool
+	finished    bool
+	start       clocky.Time
+	end         clocky.Time
+	actualStart clocky.Time // latest first-candle across all equities
 }
 
 func newManager(report *report) *manager {
 	return &manager{
-		heap:   binaryheap.NewWith(compareManagerEntries),
+		heap:   binaryheap.NewWith(compareHeapEntries),
 		sample: func(clocky.Time) {},
 		report: report,
 		start:  StartTime(),
@@ -47,16 +51,18 @@ func newManager(report *report) *manager {
 func (m *manager) Close() {
 	for !m.heap.Empty() {
 		entry, _ := m.heap.Pop()
-		entry.data.Close()
+		if entry.candle != nil {
+			entry.candle.data.Close()
+		}
 	}
 	m.finished = false
 }
 
 // checkMarginCalls checks all brokers for margin calls and triggers auto-liquidation.
 func (m *manager) checkMarginCalls() {
-	for _, b := range Brokers.All() {
+	Brokers.Each(func(b *Broker) {
 		b.CheckMarginCall()
-	}
+	})
 }
 
 // checkLiquidation returns true if account equity has been wiped out.
@@ -96,33 +102,37 @@ func (m *manager) Register(equity *Equity) {
 	if data == nil {
 		loggy.Fatalf("no data found for %s", equity.Symbol)
 	}
-	entry := &managerEntry{equity: equity, data: data, candle: &indicators.Candle{}}
-	// Skip candles before start time
-	for {
-		err := data.Read(entry.candle)
-		if err != nil {
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				data.Close()
-				return
-			}
-			loggy.Fatalf("failed to read initial candle: %v", err)
+	ce := &candleEntry{equity: equity, data: data, candle: &indicators.Candle{}}
+	// Binary search to first candle >= start time
+	data.SeekTo(m.start)
+	err := data.Read(ce.candle)
+	if err != nil {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			data.Close()
+			return
 		}
-		if !entry.candle.Start.Before(m.start) {
-			break
-		}
+		loggy.Fatalf("failed to read initial candle: %v", err)
 	}
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	if m.finished {
 		panic(fmt.Sprintf("cannot register %v equity after market data manager has started running", equity))
 	}
-	m.heap.Push(entry)
+	// Track latest first-candle across all equities
+	if ce.candle.Start > m.actualStart {
+		m.actualStart = ce.candle.Start
+	}
+	m.heap.Push(&heapEntry{time: ce.candle.Start, candle: ce})
 }
 
 func (m *manager) Run() {
 	m.lock.Lock()
 	m.finished = true
 	m.lock.Unlock()
+
+	// Generate scheduled events for the date range
+	m.generateScheduledEvents()
+
 	oldOnReady := Brokers.OnReady
 	Brokers.OnReady = func() {
 		if oldOnReady != nil {
@@ -132,195 +142,164 @@ func (m *manager) Run() {
 		m.sample = m.report.Sample
 		m.ready = true
 	}
+
+	// Fast-forward all equities to actualStart (when all have data)
+	if m.actualStart > m.start {
+		log.Printf("[cubby] fast-forwarding to %s (earliest common data)", m.actualStart)
+		// Set time before fast-forward so OnReady/report.Init() sees correct time
+		clocky.SetNow(m.actualStart)
+		// Drain heap, seek all candle readers to actualStart, rebuild
+		var entries []*heapEntry
+		for !m.heap.Empty() {
+			entry, _ := m.heap.Pop()
+			if entry.candle != nil {
+				ce := entry.candle
+				ce.data.SeekTo(m.actualStart)
+				err := ce.data.Read(ce.candle)
+				if err != nil {
+					if err == io.EOF || err == io.ErrUnexpectedEOF {
+						ce.data.Close()
+						continue
+					}
+					panic("failed to read candle: " + err.Error())
+				}
+				// Mark equity ready since we're past its first candle
+				ce.equity.LastPrice.Store(ce.candle.Close)
+				if !ce.equity.isReady {
+					ce.equity.isReady = true
+					ce.equity.Broker.Equities.markReady(ce.equity)
+				}
+				entries = append(entries, &heapEntry{time: ce.candle.Start, candle: ce})
+			} else if entry.time >= m.actualStart {
+				// Keep scheduled events at or after actualStart
+				entries = append(entries, entry)
+			}
+		}
+		for _, e := range entries {
+			m.heap.Push(e)
+		}
+	}
 	for !m.heap.Empty() {
 		entry, _ := m.heap.Pop()
-		now := entry.candle.Start
+		now := entry.time
 
 		// Stop if we've reached end time
 		if now.After(m.end) {
-			entry.data.Close()
+			if entry.candle != nil {
+				entry.candle.data.Close()
+			}
 			continue
 		}
 
 		clocky.SetNow(now)
 
-		// fire scheduled callbacks
-		checkSchedule(now)
+		// Handle scheduled event
+		if entry.callback != nil {
+			entry.callback()
+			continue
+		}
 
+		// Handle candle
+		ce := entry.candle
 		m.sample(now)
-		entry.equity.handleCandle(entry.candle)
+		ce.equity.handleCandle(ce.candle)
 
 		if m.ready {
-			entry.equity.OnCandle(entry.candle)
+			ce.equity.OnCandle(ce.candle)
 
 			// Check for margin calls (equity < maintenance margin)
 			m.checkMarginCalls()
 
 			// Check for liquidation (equity <= 0)
 			if m.checkLiquidation() {
-				entry.data.Close()
+				ce.data.Close()
 				// Drain remaining entries
 				for !m.heap.Empty() {
 					e, _ := m.heap.Pop()
-					e.data.Close()
+					if e.candle != nil {
+						e.candle.data.Close()
+					}
 				}
 				return
 			}
 		}
 
-		err := entry.data.Read(entry.candle)
+		err := ce.data.Read(ce.candle)
 		if err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				entry.data.Close()
+				ce.data.Close()
 				// Continue with remaining equities (union, not intersection)
 				continue
 			}
 			panic("failed to read candle: " + err.Error())
 		}
-		m.heap.Push(entry)
+		m.heap.Push(&heapEntry{time: ce.candle.Start, candle: ce})
 	}
 	if !m.ready {
 		panic("no market data available; cannot run backtest")
 	}
 }
 
-func compareManagerEntries(a, b *managerEntry) int {
-	if a.candle.Start.Before(b.candle.Start) {
+// generateScheduledEvents creates all scheduled events for the date range.
+func (m *manager) generateScheduledEvents() {
+	// Iterate through each day in the range
+	startDay := time.UnixMicro(int64(m.start)).In(Pacific)
+	endDay := time.UnixMicro(int64(m.end)).In(Pacific)
+
+	for day := startDay; !day.After(endDay); day = day.AddDate(0, 0, 1) {
+		// Skip weekends
+		if day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
+			continue
+		}
+
+		year, month, d := day.Date()
+
+		// Market open: 6:30 AM PT
+		openTime := time.Date(year, month, d, MarketOpenHour, MarketOpenMinute, 0, 0, Pacific)
+		openTs := clocky.Time(openTime.UnixMicro())
+		if openTs >= m.start && openTs <= m.end {
+			for _, fn := range gSchedule.beforeOpen {
+				cb := fn // capture
+				m.heap.Push(&heapEntry{time: openTs, callback: cb})
+			}
+			for _, fn := range gSchedule.afterOpen {
+				cb := fn
+				m.heap.Push(&heapEntry{time: openTs + 1, callback: cb}) // +1µs to order after beforeOpen
+			}
+		}
+
+		// Close early: 12:50 PT (ends day trading time)
+		closeEarlyTime := time.Date(year, month, d, MarketCloseHour, -10, 0, 0, Pacific)
+		closeEarlyTs := clocky.Time(closeEarlyTime.UnixMicro())
+		if closeEarlyTs >= m.start && closeEarlyTs <= m.end {
+			for _, fn := range gSchedule.beforeCloseEarly {
+				cb := fn
+				m.heap.Push(&heapEntry{time: closeEarlyTs, callback: cb})
+			}
+		}
+
+		// Market close: 1:00 PM PT
+		closeTime := time.Date(year, month, d, MarketCloseHour, MarketCloseMinute, 0, 0, Pacific)
+		closeTs := clocky.Time(closeTime.UnixMicro())
+		if closeTs >= m.start && closeTs <= m.end {
+			for _, fn := range gSchedule.beforeClose {
+				cb := fn
+				m.heap.Push(&heapEntry{time: closeTs, callback: cb})
+			}
+			for _, fn := range gSchedule.afterClose {
+				cb := fn
+				m.heap.Push(&heapEntry{time: closeTs + 1, callback: cb})
+			}
+		}
+	}
+}
+
+func compareHeapEntries(a, b *heapEntry) int {
+	if a.time < b.time {
 		return -1
 	}
-	if a.candle.Start.After(b.candle.Start) {
+	if a.time > b.time {
 		return +1
 	}
 	return 0
-}
-
-// recordedCandleData reads candles one month at a time to limit memory usage.
-// Each month is slurped into memory, then the file is closed.
-type recordedCandleData struct {
-	symbolDir string
-	files     []string // remaining monthly files to read
-	candles   []indicators.Candle
-	current   int
-}
-
-// openRecordedCandleData prepares to read candles for a symbol within the date range.
-// Files are loaded one month at a time to avoid file descriptor limits.
-func openRecordedCandleData(symbol string, start, end clocky.Time) *recordedCandleData {
-	base := ds.EquityMinutesDir()
-	if base == "" {
-		loggy.Fatalf("equitydata directory not found")
-	}
-	symbolDir := filepath.Join(base, symbol)
-
-	// List all monthly files for this symbol
-	entries, err := os.ReadDir(symbolDir)
-	if err != nil {
-		return nil
-	}
-
-	// Parse start/end into year-month for filtering
-	startYM := start.YearMonth()
-	endYM := end.YearMonth()
-
-	// Collect filenames within range
-	var filenames []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name() // Format: YYYY-MM
-		if len(name) < 7 {
-			continue
-		}
-		// Filter to files within our date range
-		if name < startYM || name > endYM {
-			continue
-		}
-		filenames = append(filenames, name)
-	}
-
-	if len(filenames) == 0 {
-		return nil
-	}
-
-	// Sort filenames chronologically
-	sort.Strings(filenames)
-
-	m := &recordedCandleData{
-		symbolDir: symbolDir,
-		files:     filenames,
-	}
-
-	// Load first month
-	m.loadNextMonth()
-	if len(m.candles) == 0 {
-		return nil
-	}
-
-	return m
-}
-
-// loadNextMonth loads the next month's candles into memory.
-func (m *recordedCandleData) loadNextMonth() {
-	m.candles = nil
-	m.current = 0
-	for len(m.files) > 0 {
-		name := m.files[0]
-		m.files = m.files[1:]
-		path := filepath.Join(m.symbolDir, name)
-		candles := readCandleFile(path)
-		if len(candles) > 0 {
-			m.candles = candles
-			return
-		}
-	}
-}
-
-// readCandleFile reads all candles from a zstd-compressed file and closes it.
-func readCandleFile(path string) []indicators.Candle {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer file.Close()
-
-	reader, err := zstd.NewReader(file)
-	if err != nil {
-		return nil
-	}
-	defer reader.Close()
-
-	var candles []indicators.Candle
-	for {
-		var c indicators.Candle
-		err := c.Deserialize(reader)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			break
-		}
-		if err != nil {
-			break
-		}
-		candles = append(candles, c)
-	}
-	return candles
-}
-
-func (m *recordedCandleData) Read(candle *indicators.Candle) error {
-	for {
-		if m.current < len(m.candles) {
-			*candle = m.candles[m.current]
-			m.current++
-			return nil
-		}
-		// Current month exhausted, try loading next
-		m.loadNextMonth()
-		if len(m.candles) == 0 {
-			return io.EOF
-		}
-	}
-}
-
-func (m *recordedCandleData) Close() {
-	m.candles = nil
-	m.files = nil
 }
