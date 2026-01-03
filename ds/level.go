@@ -2,7 +2,6 @@ package ds
 
 import (
 	"dropbear/decimal"
-	"io"
 )
 
 // Level represents the sum of bids or asks at a price level in an order book.
@@ -21,16 +20,4 @@ func (t *Level) Decode(b []byte) []byte {
 	b = t.Price.Decode(b)
 	b = t.Size.Decode(b)
 	return b
-}
-
-func (t *Level) Deserialize(reader io.Reader) error {
-	err := t.Price.Deserialize(reader)
-	if err != nil {
-		return err
-	}
-	err = t.Size.Deserialize(reader)
-	if err != nil {
-		return err
-	}
-	return nil
 }

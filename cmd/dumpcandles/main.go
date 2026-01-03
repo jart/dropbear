@@ -5,11 +5,10 @@ import (
 	"dropbear/indicators"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
-
-	"github.com/klauspost/compress/zstd"
+	"syscall"
+	"unsafe"
 )
 
 var (
@@ -31,27 +30,33 @@ func main() {
 	}
 }
 
+const candleSize = 48
+
 func dump(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	r, err := zstd.NewReader(f)
+
+	info, err := f.Stat()
 	if err != nil {
 		return err
 	}
-	defer r.Close()
+	size := info.Size()
+	if size == 0 {
+		return nil
+	}
+
+	data, err := syscall.Mmap(int(f.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		return err
+	}
+	defer syscall.Munmap(data)
+
 	count := 0
-	for {
-		var candle indicators.Candle
-		err = candle.Deserialize(r)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
+	for offset := 0; offset+candleSize <= len(data); offset += candleSize {
+		candle := (*indicators.Candle)(unsafe.Pointer(&data[offset]))
 		if *flagStart != 0 && candle.Start < *flagStart {
 			continue
 		}

@@ -4,8 +4,6 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"encoding/binary"
-	"fmt"
-	"io"
 	"unsafe"
 )
 
@@ -126,12 +124,6 @@ func (t Tick) Bytes() []byte {
 	return t.data
 }
 
-// Serialize writes the tick payload to a writer (legacy format, no length prefix).
-func (t Tick) Serialize(w io.Writer) error {
-	_, err := w.Write(t.data)
-	return err
-}
-
 // TickBuilder constructs ticks for serialization.
 // Used by broker streams to build ticks from live market data.
 type TickBuilder struct {
@@ -189,66 +181,6 @@ func (b *TickBuilder) Build(buf []byte) []byte {
 	return buf
 }
 
-// Serialize writes the tick to a writer using the legacy format (no length prefix).
-func (b *TickBuilder) Serialize(writer io.Writer) error {
-	data := b.Encode(nil)
-	wrote, err := writer.Write(data)
-	if err != nil {
-		return err
-	}
-	if wrote != len(data) {
-		return io.ErrShortWrite
-	}
-	return nil
-}
-
-// Deserialize reads a tick from a reader using the legacy format (no length prefix).
-// This populates the builder from serialized data.
-func (b *TickBuilder) Deserialize(reader io.Reader) error {
-	err := b.Time.Deserialize(reader)
-	if err != nil {
-		return err
-	}
-	b.Snap, err = deserializeBool(reader)
-	if err != nil {
-		return err
-	}
-	bidCount, err := deserializeUint32(reader)
-	if err != nil {
-		return err
-	}
-	b.Bids = growSlice(b.Bids, int(bidCount))
-	for i := range bidCount {
-		err = b.Bids[i].Deserialize(reader)
-		if err != nil {
-			return err
-		}
-	}
-	askCount, err := deserializeUint32(reader)
-	if err != nil {
-		return err
-	}
-	b.Asks = growSlice(b.Asks, int(askCount))
-	for i := range askCount {
-		err = b.Asks[i].Deserialize(reader)
-		if err != nil {
-			return err
-		}
-	}
-	tradeCount, err := deserializeUint32(reader)
-	if err != nil {
-		return err
-	}
-	b.Trades = growTrades(b.Trades, int(tradeCount))
-	for i := range tradeCount {
-		err = b.Trades[i].Deserialize(reader)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // ToTick converts the builder to a Tick view.
 // The returned Tick is only valid while buf remains unchanged.
 func (b *TickBuilder) ToTick(buf []byte) (Tick, []byte) {
@@ -269,29 +201,4 @@ func growTrades(s []Trade, n int) []Trade {
 		return s[:n]
 	}
 	return make([]Trade, n)
-}
-
-func deserializeBool(reader io.Reader) (bool, error) {
-	var b [1]byte
-	_, err := io.ReadFull(reader, b[:])
-	if err != nil {
-		return false, err
-	}
-	switch b[0] {
-	case 0:
-		return false, nil
-	case 1:
-		return true, nil
-	default:
-		return false, fmt.Errorf("failed to deserialize bool")
-	}
-}
-
-func deserializeUint32(reader io.Reader) (uint32, error) {
-	var b [4]byte
-	_, err := io.ReadFull(reader, b[:])
-	if err != nil {
-		return 0, err
-	}
-	return binary.LittleEndian.Uint32(b[:]), nil
 }

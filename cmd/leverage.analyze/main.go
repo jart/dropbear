@@ -17,15 +17,14 @@ import (
 	"dropbear/indicators"
 	"dropbear/loggy"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
-
-	"github.com/klauspost/compress/zstd"
+	"unsafe"
 )
 
 // Symbol categories
@@ -149,6 +148,8 @@ func main() {
 	analyzeDayTrading(data)
 }
 
+const candleSize = 48
+
 func loadSymbol(symbol string) *symbolData {
 	base := ds.EquityMinutesDir()
 	symbolDir := filepath.Join(base, symbol)
@@ -165,29 +166,31 @@ func loadSymbol(symbol string) *symbolData {
 			continue
 		}
 		path := filepath.Join(symbolDir, entry.Name())
-		file, err := os.Open(path)
+		f, err := os.Open(path)
 		if err != nil {
 			continue
 		}
-		reader, err := zstd.NewReader(file)
+		info, err := f.Stat()
 		if err != nil {
-			file.Close()
+			f.Close()
 			continue
 		}
-
-		for {
-			var c indicators.Candle
-			err := c.Deserialize(reader)
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				break
-			}
-			if err != nil {
-				break
-			}
-			candles = append(candles, c)
+		size := info.Size()
+		if size == 0 {
+			f.Close()
+			continue
 		}
-		reader.Close()
-		file.Close()
+		data, err := syscall.Mmap(int(f.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
+		if err != nil {
+			f.Close()
+			continue
+		}
+		for offset := 0; offset+candleSize <= len(data); offset += candleSize {
+			candle := (*indicators.Candle)(unsafe.Pointer(&data[offset]))
+			candles = append(candles, *candle)
+		}
+		syscall.Munmap(data)
+		f.Close()
 	}
 
 	if len(candles) == 0 {

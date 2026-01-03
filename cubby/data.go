@@ -19,7 +19,7 @@ type candleReader struct {
 	offset int
 }
 
-// openCandleReader opens an equitydata2 file for reading.
+// openCandleReader opens an equitydata file for reading.
 // The file format is raw 48-byte candles with no length prefix.
 func openCandleReader(path string) (*candleReader, error) {
 	file, err := os.Open(path)
@@ -167,9 +167,9 @@ func openRecordedCandleData(symbol string, start, end clocky.Time) *recordedCand
 // equityMinutesDir returns the path to the new equity data directory.
 func equityMinutesDir() string {
 	candidates := []string{
-		os.ExpandEnv("$HOME/equitydata2/minutes"),
-		"/fast/equitydata2/minutes",
-		"/disk/equitydata2/minutes",
+		os.ExpandEnv("$HOME/equitydata/minutes"),
+		"/fast/equitydata/minutes",
+		"/disk/equitydata/minutes",
 	}
 	for _, path := range candidates {
 		if info, err := os.Stat(path); err == nil && info.IsDir() {

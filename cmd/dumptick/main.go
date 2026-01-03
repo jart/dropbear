@@ -5,11 +5,8 @@ import (
 	"dropbear/ds"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
-
-	"github.com/klauspost/compress/zstd"
 )
 
 var (
@@ -32,43 +29,39 @@ func main() {
 }
 
 func dump(path string) error {
-	f, err := os.Open(path)
+	reader, err := ds.OpenTickReader(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	r, err := zstd.NewReader(f)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
+	defer reader.Close()
+
 	count := 0
-	var builder ds.TickBuilder
 	for {
-		err = builder.Deserialize(r)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		tick := reader.Next()
+		if tick.IsZero() {
 			break
 		}
-		if err != nil {
-			return err
-		}
-		if *flagStart != 0 && builder.Time < *flagStart {
+		tickTime := tick.Time()
+		if *flagStart != 0 && tickTime < *flagStart {
 			continue
 		}
-		if *flagEnd != 0 && builder.Time >= *flagEnd {
+		if *flagEnd != 0 && tickTime >= *flagEnd {
 			continue
 		}
-		fmt.Printf("tick %s\n", builder.Time)
-		if builder.Snap {
+		fmt.Printf("tick %s\n", tickTime)
+		if tick.Snap() {
 			fmt.Printf("  snap\n")
 		}
-		for _, bid := range builder.Bids {
+		for i := 0; i < tick.BidCount(); i++ {
+			bid := tick.Bid(i)
 			fmt.Printf("  bid %s @ %s\n", bid.Size, bid.Price)
 		}
-		for _, ask := range builder.Asks {
+		for i := 0; i < tick.AskCount(); i++ {
+			ask := tick.Ask(i)
 			fmt.Printf("  ask %s @ %s\n", ask.Size, ask.Price)
 		}
-		for _, trade := range builder.Trades {
+		for i := 0; i < tick.TradeCount(); i++ {
+			trade := tick.Trade(i)
 			fmt.Printf("  %s %s @ %s @ %s\n", trade.Side, trade.Quantity, trade.Price, trade.Time)
 		}
 		count++

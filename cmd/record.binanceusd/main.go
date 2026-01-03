@@ -2,7 +2,9 @@ package main
 
 import (
 	"dropbear/broker/binanceusd"
+	"dropbear/ds"
 	"dropbear/loggy"
+	"encoding/binary"
 	"flag"
 	"log"
 	"os"
@@ -10,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-
-	"github.com/klauspost/compress/zstd"
 )
 
 var (
@@ -39,23 +39,20 @@ type recorder struct {
 	client *binanceusd.Client
 	symbol string
 	lock   sync.Mutex
-	writer *zstd.Encoder
+	writer *ds.TickWriter
+	buf    []byte
 	done   bool
 }
 
 func newRecorder(client *binanceusd.Client, symbol string) *recorder {
 	home := os.Getenv("HOME")
-	outputDir := home + "/marketdata/" + *flagName + "/binanceusd/"
+	outputDir := home + "/coindata/" + *flagName + "/binanceusd/"
 	os.MkdirAll(outputDir, 0755)
 	outputPath := outputDir + strings.ToUpper(symbol)
 	log.Printf("recording binance market data for %s to %s", symbol, outputPath)
-	outputFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	writer, err := ds.NewTickWriter(outputPath)
 	if err != nil {
 		log.Fatalf("failed to create output file: %v", err)
-	}
-	writer, err := zstd.NewWriter(outputFile, zstd.WithWindowSize(128*1024))
-	if err != nil {
-		log.Fatalf("failed to create zstd writer: %v", err)
 	}
 	recorder := &recorder{
 		client: client,
@@ -80,7 +77,11 @@ func (r *recorder) run() {
 			r.lock.Unlock()
 			return
 		}
-		err := tick.Serialize(r.writer)
+		// Write length-prefixed tick data
+		payload := tick.Bytes()
+		r.buf = binary.LittleEndian.AppendUint32(r.buf[:0], uint32(len(payload)))
+		r.buf = append(r.buf, payload...)
+		err := r.writer.Write(r.buf)
 		r.lock.Unlock()
 		if err != nil {
 			loggy.Fatalf("binance[%s]: market data write error: %v", r.symbol, err)

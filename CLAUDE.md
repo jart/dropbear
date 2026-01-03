@@ -34,8 +34,8 @@ this project does equities and cryptography trading using go.
 ## data locations
 
 - `~/.dropbear.sqlite3` - main database for fills/trades. has 20gb of equity candles too
-- `~/equitydata/minutes/AAPL/2025-01` - zstd-compressed indicators.Candle binary market data
-- `~/marketdata/<dataset>/{coinbase,binance}/<SYMBOL>` - zstd-compressed ds.Tick binary market data
+- `~/equitydata/minutes/AAPL/2025-01` - indicators.Candle binary market data
+- `~/marketdata/<dataset>/{coinbase,binance}/<SYMBOL>` - ds.Tick binary market data
 
 ## programs
 
@@ -120,7 +120,7 @@ go run ./cmd/chart -symbol BTC weekend
 ```
 
 The dataset above is stored in `~/marketdata/weekend/coinbase/BTC-USD` and it contains
-a zstd-compressed binary-encoded array of `ds/tick.go` structures.
+a binary-encoded array of `ds/tick.go` structures.
 
 ## running backtests
 

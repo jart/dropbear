@@ -21,8 +21,6 @@ import (
 	"dropbear/ds"
 	"dropbear/indicators"
 	"dropbear/loggy"
-
-	"github.com/klauspost/compress/zstd"
 )
 
 var (
@@ -278,17 +276,11 @@ func writeCandles(path string, candles []indicators.Candle) error {
 	}
 	defer f.Close()
 
-	w, err := zstd.NewWriter(f, zstd.WithWindowSize(128*1024))
-	if err != nil {
-		return err
-	}
-	defer w.Close()
-
+	// Write raw 48-byte candles (no compression, no length prefix)
+	buf := make([]byte, 0, len(candles)*48)
 	for i := range candles {
-		if err := candles[i].Serialize(w); err != nil {
-			return err
-		}
+		buf = candles[i].Encode(buf)
 	}
-
-	return w.Close()
+	_, err = f.Write(buf)
+	return err
 }

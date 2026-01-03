@@ -3,7 +3,6 @@ package indicators
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"io"
 )
 
 // Candle represents a single OHLC candlestick.
@@ -34,19 +33,4 @@ func (c *Candle) Decode(b []byte) []byte {
 	b = c.Close.Decode(b)
 	b = c.Volume.Decode(b)
 	return b
-}
-
-func (c *Candle) Serialize(w io.Writer) error {
-	_, err := w.Write(c.Encode(nil))
-	return err
-}
-
-func (c *Candle) Deserialize(r io.Reader) error {
-	var b [48]byte
-	_, err := io.ReadFull(r, b[:])
-	if err != nil {
-		return err
-	}
-	c.Decode(b[:])
-	return nil
 }

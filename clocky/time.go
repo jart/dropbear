@@ -2,7 +2,6 @@ package clocky
 
 import (
 	"encoding/binary"
-	"io"
 	"sync/atomic"
 	"time"
 )
@@ -111,14 +110,4 @@ func (d Time) Encode(b []byte) []byte {
 func (d *Time) Decode(b []byte) []byte {
 	*d = Time(int64(binary.LittleEndian.Uint64(b)))
 	return b[8:]
-}
-
-func (d *Time) Deserialize(reader io.Reader) error {
-	var b [8]byte
-	_, err := io.ReadFull(reader, b[:])
-	if err != nil {
-		return err
-	}
-	d.Decode(b[:])
-	return nil
 }

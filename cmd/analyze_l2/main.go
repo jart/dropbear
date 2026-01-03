@@ -6,15 +6,12 @@ import (
 	"dropbear/ds"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/klauspost/compress/zstd"
 )
 
 var (
@@ -29,27 +26,32 @@ type PriceEvent struct {
 }
 
 func loadTicks(path string) ([]ds.TickBuilder, error) {
-	f, err := os.Open(path)
+	reader, err := ds.OpenTickReader(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	r, err := zstd.NewReader(f)
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
+	defer reader.Close()
+
 	var ticks []ds.TickBuilder
 	for {
-		var tick ds.TickBuilder
-		err = tick.Deserialize(r)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		tick := reader.Next()
+		if tick.IsZero() {
 			break
 		}
-		if err != nil {
-			return nil, err
+		// Convert Tick to TickBuilder for compatibility with existing code
+		var builder ds.TickBuilder
+		builder.Time = tick.Time()
+		builder.Snap = tick.Snap()
+		for i := 0; i < tick.BidCount(); i++ {
+			builder.Bids = append(builder.Bids, tick.Bid(i))
 		}
-		ticks = append(ticks, tick)
+		for i := 0; i < tick.AskCount(); i++ {
+			builder.Asks = append(builder.Asks, tick.Ask(i))
+		}
+		for i := 0; i < tick.TradeCount(); i++ {
+			builder.Trades = append(builder.Trades, tick.Trade(i))
+		}
+		ticks = append(ticks, builder)
 	}
 	return ticks, nil
 }
@@ -245,7 +247,7 @@ func main() {
 	flag.Parse()
 
 	homeDir, _ := os.UserHomeDir()
-	dataPath := filepath.Join(homeDir, "marketdata", *flagDataset)
+	dataPath := filepath.Join(homeDir, "coindata", *flagDataset)
 	symbol := strings.ToUpper(*flagSymbol)
 
 	coinbaseSymbol := symbol + "-USD"

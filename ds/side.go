@@ -4,7 +4,6 @@ import (
 	"dropbear/decimal"
 	"dropbear/loggy"
 	"fmt"
-	"io"
 )
 
 type Side decimal.Decimal
@@ -88,14 +87,4 @@ func (s *Side) Decode(b []byte) []byte {
 	default:
 		panic("failed to deserialize side")
 	}
-}
-
-func (s *Side) Deserialize(reader io.Reader) error {
-	var b [1]byte
-	_, err := io.ReadFull(reader, b[:])
-	if err != nil {
-		return err
-	}
-	s.Decode(b[:])
-	return nil
 }

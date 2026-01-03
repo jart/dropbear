@@ -2,7 +2,6 @@ package decimal
 
 import (
 	"encoding/binary"
-	"io"
 	"math"
 	"sync/atomic"
 )
@@ -179,16 +178,6 @@ func (d Decimal) Encode(b []byte) []byte {
 func (d *Decimal) Decode(b []byte) []byte {
 	*d = Decimal(int64(binary.LittleEndian.Uint64(b)))
 	return b[8:]
-}
-
-func (d *Decimal) Deserialize(reader io.Reader) error {
-	var b [8]byte
-	_, err := io.ReadFull(reader, b[:])
-	if err != nil {
-		return err
-	}
-	d.Decode(b[:])
-	return nil
 }
 
 // Compare compares a to b.

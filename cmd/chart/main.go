@@ -6,12 +6,9 @@ import (
 	"dropbear/ds"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
-
-	"github.com/klauspost/compress/zstd"
 )
 
 var (
@@ -27,37 +24,27 @@ func main() {
 
 	// Open coinbase market data
 	home := os.Getenv("HOME")
-	path := fmt.Sprintf("%s/marketdata/%s/coinbase/%s-USD", home, dataset, *flagSymbol)
-	f, err := os.Open(path)
+	path := fmt.Sprintf("%s/coindata/%s/coinbase/%s-USD", home, dataset, *flagSymbol)
+	reader, err := ds.OpenTickReader(path)
 	if err != nil {
 		log.Fatalf("failed to open %s: %v", path, err)
-	}
-	defer f.Close()
-
-	reader, err := zstd.NewReader(f)
-	if err != nil {
-		log.Fatalf("failed to create zstd reader: %v", err)
 	}
 	defer reader.Close()
 
 	// Collect price samples
 	var prices []pricePoint
 	var lastPrice float64
-	var builder ds.TickBuilder
 	sampleInterval := clocky.Minute
 
 	for {
-		err := builder.Deserialize(reader)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		tick := reader.Next()
+		if tick.IsZero() {
 			break
-		}
-		if err != nil {
-			log.Fatalf("deserialize error: %v", err)
 		}
 
 		// Get price from trades
-		for _, trade := range builder.Trades {
-			lastPrice = trade.Price.Float64()
+		for i := 0; i < tick.TradeCount(); i++ {
+			lastPrice = tick.Trade(i).Price.Float64()
 		}
 
 		if lastPrice == 0 {
@@ -65,9 +52,9 @@ func main() {
 		}
 
 		// Sample at intervals
-		if len(prices) == 0 || builder.Time.Sub(prices[len(prices)-1].time) >= sampleInterval {
+		if len(prices) == 0 || tick.Time().Sub(prices[len(prices)-1].time) >= sampleInterval {
 			prices = append(prices, pricePoint{
-				time:  builder.Time,
+				time:  tick.Time(),
 				price: lastPrice,
 			})
 		}
