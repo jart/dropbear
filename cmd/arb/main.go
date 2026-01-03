@@ -288,27 +288,23 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 		return
 	}
 	if side == ds.SideBuy {
-		it := gCoinbasePair.Book.Asks.Iterator()
-		for it.Next() {
-			price := it.Key()
-			size := it.Value()
+		gCoinbasePair.Book.EachAsk(func(price, size decimal.Decimal) bool {
 			if price.Cmp(limi) > 0 {
-				break
+				return false
 			}
 			wallSize = wallSize.Add(size)
 			wallLevels++
-		}
+			return true
+		})
 	} else {
-		it := gCoinbasePair.Book.Bids.Iterator()
-		for it.Next() {
-			price := it.Key()
-			size := it.Value()
+		gCoinbasePair.Book.EachBid(func(price, size decimal.Decimal) bool {
 			if price.Cmp(limi) < 0 {
-				break
+				return false
 			}
 			wallSize = wallSize.Add(size)
 			wallLevels++
-		}
+			return true
+		})
 	}
 	gCoinbasePair.Lock.RUnlock()
 	cleaned := size.Div(wallSize)
