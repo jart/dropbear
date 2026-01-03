@@ -11,8 +11,9 @@ func main() {
 	avg, cnt := 0.0, 1.0
 	bes, wor := clocky.Minute, clocky.Microsecond
 	for tick := range binanceusd.MarketData("BTCUSDT", binanceusd.NewClient()) {
-		for _, trade := range tick.Trades {
-			del = tick.Time.Sub(trade.Time)
+		for i := range tick.TradeCount() {
+			trade := tick.Trade(i)
+			del = tick.Time().Sub(trade.Time)
 			bes = min(bes, del)
 			wor = max(wor, del)
 			avg += (float64(del) - avg) / cnt

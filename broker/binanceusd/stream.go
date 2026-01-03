@@ -15,8 +15,10 @@ const StreamURL = "wss://nickel.justinestreet.capital/fut/ws"
 type marketData struct {
 	Symbol       string
 	client       *Client
-	channel      chan<- *ds.Tick
+	channel      chan<- ds.Tick
 	LastUpdateID int64
+	builder      ds.TickBuilder
+	buf          []byte
 }
 
 type marketTrade struct {
@@ -37,8 +39,8 @@ type depthUpdate struct {
 	FinalUpdateID int64      `json:"u"`
 }
 
-func MarketData(symbol string, client *Client) <-chan *ds.Tick {
-	channel := make(chan *ds.Tick, 64)
+func MarketData(symbol string, client *Client) <-chan ds.Tick {
+	channel := make(chan ds.Tick, 64)
 	marketData := &marketData{
 		Symbol:  symbol,
 		client:  client,
@@ -114,14 +116,13 @@ func (m *marketData) snapshot() error {
 	if err != nil {
 		return err
 	}
-	tick := &ds.Tick{
-		Time: clocky.Now(),
-		Snap: true,
-	}
+	m.builder.Reset()
+	m.builder.Time = clocky.Now()
+	m.builder.Snap = true
 	for _, bid := range depthSnapshot.Bids {
 		price := decimal.Parse(bid[0])
 		size := decimal.Parse(bid[1])
-		tick.Bids = append(tick.Bids, ds.Level{
+		m.builder.Bids = append(m.builder.Bids, ds.Level{
 			Price: price,
 			Size:  size,
 		})
@@ -129,13 +130,13 @@ func (m *marketData) snapshot() error {
 	for _, ask := range depthSnapshot.Asks {
 		price := decimal.Parse(ask[0])
 		size := decimal.Parse(ask[1])
-		tick.Asks = append(tick.Asks, ds.Level{
+		m.builder.Asks = append(m.builder.Asks, ds.Level{
 			Price: price,
 			Size:  size,
 		})
 	}
 	m.LastUpdateID = depthSnapshot.LastUpdateID
-	m.channel <- tick
+	m.sendTick()
 	return nil
 }
 
@@ -181,22 +182,23 @@ func (m *marketData) handleTrade(data []byte, now clocky.Time) error {
 		log.Printf("binanceusd[%s]: ignoring trade with empty price/quantity: %s", m.Symbol, data)
 		return nil
 	}
-	tick := &ds.Tick{Time: now}
-	side := ds.SideBuy
-	if raw.IsSell {
-		side = ds.SideSell
-	}
 	price := decimal.Parse(raw.Price)
 	if price.IsZero() {
 		return nil // this can happen with the futures stream
 	}
-	tick.Trades = append(tick.Trades, ds.Trade{
+	m.builder.Reset()
+	m.builder.Time = now
+	side := ds.SideBuy
+	if raw.IsSell {
+		side = ds.SideSell
+	}
+	m.builder.Trades = append(m.builder.Trades, ds.Trade{
 		Price:    price,
 		Quantity: decimal.Parse(raw.Quantity),
 		Time:     clocky.Time(raw.Time * 1000),
 		Side:     side,
 	})
-	m.channel <- tick
+	m.sendTick()
 	return nil
 }
 
@@ -207,11 +209,12 @@ func (m *marketData) handleDepthUpdate(data []byte, now clocky.Time) error {
 		return err
 	}
 	if depthUpdate.FinalUpdateID > m.LastUpdateID {
-		tick := &ds.Tick{Time: now}
+		m.builder.Reset()
+		m.builder.Time = now
 		for _, bid := range depthUpdate.Bids {
 			price := decimal.Parse(bid[0])
 			size := decimal.Parse(bid[1])
-			tick.Bids = append(tick.Bids, ds.Level{
+			m.builder.Bids = append(m.builder.Bids, ds.Level{
 				Price: price,
 				Size:  size,
 			})
@@ -219,12 +222,19 @@ func (m *marketData) handleDepthUpdate(data []byte, now clocky.Time) error {
 		for _, ask := range depthUpdate.Asks {
 			price := decimal.Parse(ask[0])
 			size := decimal.Parse(ask[1])
-			tick.Asks = append(tick.Asks, ds.Level{
+			m.builder.Asks = append(m.builder.Asks, ds.Level{
 				Price: price,
 				Size:  size,
 			})
 		}
-		m.channel <- tick
+		m.sendTick()
 	}
 	return nil
+}
+
+func (m *marketData) sendTick() {
+	m.buf = m.builder.Encode(m.buf[:0])
+	data := make([]byte, len(m.buf))
+	copy(data, m.buf)
+	m.channel <- ds.NewTick(data)
 }

@@ -3,9 +3,8 @@ package teddy
 import (
 	"dropbear/clocky"
 	"dropbear/ds"
-	"dropbear/loggy"
 	"fmt"
-	"io"
+	"log"
 	"sync"
 	"unsafe"
 
@@ -13,8 +12,8 @@ import (
 )
 
 type managerEntry struct {
-	data *recordedMarketData
-	tick *ds.Tick
+	data marketDataSource
+	tick ds.Tick
 	pair *Pair
 }
 
@@ -44,15 +43,13 @@ func (m *manager) Close() {
 }
 
 func (m *manager) Register(pair *Pair) {
-	data := openRecordedMarketData(*flagBacktest, pair.Broker.Broker, pair.Symbol)
-	entry := &managerEntry{pair: pair, data: data, tick: &ds.Tick{}}
-	err := data.Read(entry.tick)
-	if err != nil {
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			data.Close()
-			return
-		}
-		loggy.Fatalf("failed to read initial tick: %v", err)
+	data := openMarketData(*flagBacktest, pair.Broker.Broker, pair.Symbol)
+	entry := &managerEntry{pair: pair, data: data}
+	entry.tick = data.Next()
+	if entry.tick.IsZero() {
+		log.Printf("no data for %s", pair)
+		data.Close()
+		return
 	}
 	m.lock.Lock()
 	defer m.lock.Unlock()
@@ -79,7 +76,7 @@ func (m *manager) Run() {
 
 		// globally order ticks by time
 		entry, _ := m.heap.Pop()
-		now := entry.tick.Time
+		now := entry.tick.Time()
 		clocky.SetNow(now)
 
 		// update data structures
@@ -92,13 +89,10 @@ func (m *manager) Run() {
 		}
 
 		// read next tick
-		err := entry.data.Read(entry.tick)
-		if err != nil {
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				entry.data.Close()
-				break // yes we really want the intersection of chosen datasets
-			}
-			panic("failed to read tick: " + err.Error())
+		entry.tick = entry.data.Next()
+		if entry.tick.IsZero() {
+			entry.data.Close()
+			break // yes we really want the intersection of chosen datasets
 		}
 		m.heap.Push(entry)
 	}
@@ -108,10 +102,10 @@ func (m *manager) Run() {
 }
 
 func compareManagerEntries(a, b *managerEntry) int {
-	if a.tick.Time.Before(b.tick.Time) {
+	if a.tick.Time().Before(b.tick.Time()) {
 		return -1
 	}
-	if a.tick.Time.After(b.tick.Time) {
+	if a.tick.Time().After(b.tick.Time()) {
 		return +1
 	}
 	return 0

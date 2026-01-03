@@ -29,7 +29,7 @@ type Pair struct {
 	BaseMaxSize    decimal.Decimal
 	Trades         map[ds.Side]int
 	Book           *ds.Book
-	OnTick         func(*ds.Tick)
+	OnTick         func(ds.Tick)
 	OnReady        func()
 	repr           string
 	isReady        bool
@@ -56,7 +56,7 @@ func newPair(broker *Broker, symbol string) *Pair {
 		BaseMinSize:    guessBaseMinSize(baseCurrency),
 		BaseMaxSize:    guessBaseMaxSize(baseCurrency),
 		Trades:         make(map[ds.Side]int),
-		OnTick:         func(*ds.Tick) {},
+		OnTick:         func(ds.Tick) {},
 		OnReady:        func() {},
 		Book:           ds.NewBook(),
 		openOrders:     treeset.NewWith(compareOrdersByClientOrderID),
@@ -86,41 +86,43 @@ func (p *Pair) run() {
 	}
 }
 
-func (p *Pair) liveDataDaemon(channel <-chan *ds.Tick) {
+func (p *Pair) liveDataDaemon(channel <-chan ds.Tick) {
 	for tick := range channel {
 		p.handleTick(tick)
 		p.OnTick(tick)
 	}
 }
 
-func (p *Pair) handleTick(tick *ds.Tick) {
+func (p *Pair) handleTick(tick ds.Tick) {
 
 	// pulse rate limiter
 	if Paper {
-		gRateLimiter.Pulse(tick.Time)
+		gRateLimiter.Pulse(tick.Time())
 	}
 
 	// update last price
-	if len(tick.Trades) > 0 {
+	if tick.TradeCount() > 0 {
 		p.hasTradeData = true
 		lastPrice := decimal.Zero
-		for _, trade := range tick.Trades {
-			lastPrice = trade.Price
+		for i := range tick.TradeCount() {
+			lastPrice = tick.Trade(i).Price
 		}
 		p.LastPrice.Store(lastPrice)
 	}
 
 	// update order book
-	if tick.Bids != nil || tick.Asks != nil {
+	if tick.BidCount() > 0 || tick.AskCount() > 0 {
 		p.hasL2Data = true
 		p.Lock.Lock()
-		if tick.Snap {
+		if tick.Snap() {
 			p.Book.Clear()
 		}
-		for _, bid := range tick.Bids {
+		for i := range tick.BidCount() {
+			bid := tick.Bid(i)
 			p.Book.UpdateBid(bid.Price, bid.Size)
 		}
-		for _, ask := range tick.Asks {
+		for i := range tick.AskCount() {
+			ask := tick.Ask(i)
 			p.Book.UpdateAsk(ask.Price, ask.Size)
 		}
 		p.Lock.Unlock()
@@ -138,14 +140,15 @@ func (p *Pair) handleTick(tick *ds.Tick) {
 	// simulate passive order fills BEFORE applying book updates
 	// trades consume liquidity from the order book; our passive orders
 	// only get filled after the liquidity ahead of us is consumed
-	if Paper && p.isReady && len(tick.Trades) > 0 {
+	if Paper && p.isReady && tick.TradeCount() > 0 {
 		p.Lock.RLock()
 		var orders []*Order
 		for i := p.openOrders.Iterator(); i.Next(); {
 			orders = append(orders, i.Value())
 		}
 		p.Lock.RUnlock()
-		for _, trade := range tick.Trades {
+		for i := range tick.TradeCount() {
+			trade := tick.Trade(i)
 			// pop from book to consume liquidity ahead of our orders
 			// trade.Side is the taker side, so we pop from the opposite side
 			// (a taker sell hits bids, a taker buy lifts asks)

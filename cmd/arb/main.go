@@ -109,24 +109,24 @@ func onReady() {
 	gSpreadLock.Unlock()
 }
 
-func onCoinbaseTick(tick *ds.Tick) {
-	if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
-		gLastCoinbase.Store(tick.Time)
+func onCoinbaseTick(tick ds.Tick) {
+	if tick.BidCount() > 0 || tick.AskCount() > 0 {
+		gLastCoinbase.Store(tick.Time())
 	}
 }
 
-func onPricerTick(tick *ds.Tick) {
-	if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
+func onPricerTick(tick ds.Tick) {
+	if tick.BidCount() > 0 || tick.AskCount() > 0 {
 		gPricerPair.Lock.RLock()
 		gPricerPrice.Store(gPricerPair.Book.MidPrice())
 		gPricerPair.Lock.RUnlock()
 	}
 }
 
-func onPredictorTick(tick *ds.Tick) {
+func onPredictorTick(tick ds.Tick) {
 	teddy.Spawn(func() {
 		if *flagLevel2 {
-			if len(tick.Bids) > 0 || len(tick.Asks) > 0 {
+			if tick.BidCount() > 0 || tick.AskCount() > 0 {
 				gPredictorPair.Lock.RLock()
 				bid := gPredictorPair.Book.PickBidByValue(*flagDepth)
 				ask := gPredictorPair.Book.PickAskByValue(*flagDepth)
@@ -136,11 +136,12 @@ func onPredictorTick(tick *ds.Tick) {
 					log.Printf("[error] somehow have non-positive predictor midpoint price %s", mid)
 					return
 				}
-				arbitrage(tick.Time, tick.Time, mid)
+				arbitrage(tick.Time(), tick.Time(), mid)
 			}
 		} else {
-			for _, trade := range tick.Trades {
-				arbitrage(trade.Time, tick.Time, trade.Price)
+			for i := range tick.TradeCount() {
+				trade := tick.Trade(i)
+				arbitrage(trade.Time, tick.Time(), trade.Price)
 			}
 		}
 	})

@@ -36,7 +36,7 @@ type PriceEvent struct {
 	Kind  string // "trade" or "mid"
 }
 
-func loadTicks(path string) ([]ds.Tick, error) {
+func loadTicks(path string) ([]ds.TickBuilder, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -47,9 +47,9 @@ func loadTicks(path string) ([]ds.Tick, error) {
 		return nil, err
 	}
 	defer r.Close()
-	var ticks []ds.Tick
+	var ticks []ds.TickBuilder
 	for {
-		var tick ds.Tick
+		var tick ds.TickBuilder
 		err = tick.Deserialize(r)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
@@ -63,7 +63,7 @@ func loadTicks(path string) ([]ds.Tick, error) {
 }
 
 // Extract trade prices from ticks
-func extractTrades(ticks []ds.Tick) []PriceEvent {
+func extractTrades(ticks []ds.TickBuilder) []PriceEvent {
 	var events []PriceEvent
 	for _, tick := range ticks {
 		for _, trade := range tick.Trades {
@@ -81,7 +81,7 @@ func extractTrades(ticks []ds.Tick) []PriceEvent {
 }
 
 // Extract mid prices from ticks (when book updates happen)
-func extractMids(ticks []ds.Tick) []PriceEvent {
+func extractMids(ticks []ds.TickBuilder) []PriceEvent {
 	var events []PriceEvent
 	for _, tick := range ticks {
 		if len(tick.Bids) == 0 || len(tick.Asks) == 0 {
@@ -298,7 +298,7 @@ func buildSources(symbol string) []Source {
 // SourceData holds loaded data for a source
 type SourceData struct {
 	Source Source
-	Ticks  []ds.Tick
+	Ticks  []ds.TickBuilder
 	Trades []PriceEvent
 	Mids   []PriceEvent
 }

@@ -43,32 +43,32 @@ func dump(path string) error {
 	}
 	defer r.Close()
 	count := 0
+	var builder ds.TickBuilder
 	for {
-		var tick ds.Tick
-		err = tick.Deserialize(r)
+		err = builder.Deserialize(r)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
 		if err != nil {
 			return err
 		}
-		if *flagStart != 0 && tick.Time < *flagStart {
+		if *flagStart != 0 && builder.Time < *flagStart {
 			continue
 		}
-		if *flagEnd != 0 && tick.Time >= *flagEnd {
+		if *flagEnd != 0 && builder.Time >= *flagEnd {
 			continue
 		}
-		fmt.Printf("tick %s\n", tick.Time)
-		if tick.Snap {
+		fmt.Printf("tick %s\n", builder.Time)
+		if builder.Snap {
 			fmt.Printf("  snap\n")
 		}
-		for _, bid := range tick.Bids {
+		for _, bid := range builder.Bids {
 			fmt.Printf("  bid %s @ %s\n", bid.Size, bid.Price)
 		}
-		for _, ask := range tick.Asks {
+		for _, ask := range builder.Asks {
 			fmt.Printf("  ask %s @ %s\n", ask.Size, ask.Price)
 		}
-		for _, trade := range tick.Trades {
+		for _, trade := range builder.Trades {
 			fmt.Printf("  %s %s @ %s @ %s\n", trade.Side, trade.Quantity, trade.Price, trade.Time)
 		}
 		count++

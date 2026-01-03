@@ -43,11 +43,11 @@ func main() {
 	// Collect price samples
 	var prices []pricePoint
 	var lastPrice float64
-	var tick ds.Tick
+	var builder ds.TickBuilder
 	sampleInterval := clocky.Minute
 
 	for {
-		err := tick.Deserialize(reader)
+		err := builder.Deserialize(reader)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
@@ -56,7 +56,7 @@ func main() {
 		}
 
 		// Get price from trades
-		for _, trade := range tick.Trades {
+		for _, trade := range builder.Trades {
 			lastPrice = trade.Price.Float64()
 		}
 
@@ -65,9 +65,9 @@ func main() {
 		}
 
 		// Sample at intervals
-		if len(prices) == 0 || tick.Time.Sub(prices[len(prices)-1].time) >= sampleInterval {
+		if len(prices) == 0 || builder.Time.Sub(prices[len(prices)-1].time) >= sampleInterval {
 			prices = append(prices, pricePoint{
-				time:  tick.Time,
+				time:  builder.Time,
 				price: lastPrice,
 			})
 		}

@@ -28,7 +28,7 @@ type PriceEvent struct {
 	Price decimal.Decimal
 }
 
-func loadTicks(path string) ([]ds.Tick, error) {
+func loadTicks(path string) ([]ds.TickBuilder, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -39,9 +39,9 @@ func loadTicks(path string) ([]ds.Tick, error) {
 		return nil, err
 	}
 	defer r.Close()
-	var ticks []ds.Tick
+	var ticks []ds.TickBuilder
 	for {
-		var tick ds.Tick
+		var tick ds.TickBuilder
 		err = tick.Deserialize(r)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
@@ -55,7 +55,7 @@ func loadTicks(path string) ([]ds.Tick, error) {
 }
 
 // Extract trade prices from ticks
-func extractTrades(ticks []ds.Tick) []PriceEvent {
+func extractTrades(ticks []ds.TickBuilder) []PriceEvent {
 	var events []PriceEvent
 	for _, tick := range ticks {
 		for _, trade := range tick.Trades {
@@ -73,7 +73,7 @@ func extractTrades(ticks []ds.Tick) []PriceEvent {
 
 // Extract mid prices from L2 ticks using ds.Book for O(log n) updates
 // Uses $1000 depth to ignore thin liquidity at NBBO
-func extractMids(ticks []ds.Tick) []PriceEvent {
+func extractMids(ticks []ds.TickBuilder) []PriceEvent {
 	var events []PriceEvent
 	book := ds.NewBook()
 	depth := decimal.Parse("1000") // $1000 liquidity depth

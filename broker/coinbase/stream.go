@@ -12,11 +12,13 @@ import (
 type marketData struct {
 	ProductID string
 	client    *Client
-	channel   chan<- *ds.Tick
+	channel   chan<- ds.Tick
+	builder   ds.TickBuilder
+	buf       []byte
 }
 
-func MarketData(productID string, client *Client) <-chan *ds.Tick {
-	channel := make(chan *ds.Tick, 64)
+func MarketData(productID string, client *Client) <-chan ds.Tick {
+	channel := make(chan ds.Tick, 64)
 	marketData := &marketData{
 		ProductID: productID,
 		client:    client,
@@ -143,40 +145,51 @@ func (m *marketData) handleMessage(data []byte) {
 
 func (m *marketData) handleL2(events []Event, now clocky.Time) {
 	for _, event := range events {
-		tick := &ds.Tick{Time: now}
+		m.builder.Reset()
+		m.builder.Time = now
 		if event.Type == "snapshot" {
-			tick.Snap = true
+			m.builder.Snap = true
 		}
 		for _, u := range event.Updates {
 			price := decimal.Parse(u.PriceLevel)
 			size := decimal.Parse(u.NewQuantity)
 			if u.Side == "bid" {
-				tick.Bids = append(tick.Bids, ds.Level{
+				m.builder.Bids = append(m.builder.Bids, ds.Level{
 					Price: price,
 					Size:  size,
 				})
 			} else {
-				tick.Asks = append(tick.Asks, ds.Level{
+				m.builder.Asks = append(m.builder.Asks, ds.Level{
 					Price: price,
 					Size:  size,
 				})
 			}
 		}
-		m.channel <- tick
+		m.sendTick()
 	}
 }
 
 func (m *marketData) handleTrades(events []Event, now clocky.Time) {
 	for _, event := range events {
-		tick := &ds.Tick{Time: now}
+		m.builder.Reset()
+		m.builder.Time = now
 		for _, eventTrade := range event.Trades {
-			tick.Trades = append(tick.Trades, ds.Trade{
+			m.builder.Trades = append(m.builder.Trades, ds.Trade{
 				Price:    decimal.Parse(eventTrade.Price),
 				Quantity: decimal.Parse(eventTrade.Size),
 				Side:     ds.MustParseSide(eventTrade.Side).Flip(),
 				Time:     clocky.MustParseTime(eventTrade.Time),
 			})
 		}
-		m.channel <- tick
+		m.sendTick()
 	}
+}
+
+func (m *marketData) sendTick() {
+	// Serialize builder to bytes and create Tick view
+	m.buf = m.builder.Encode(m.buf[:0])
+	// Make a copy since the buffer will be reused
+	data := make([]byte, len(m.buf))
+	copy(data, m.buf)
+	m.channel <- ds.NewTick(data)
 }

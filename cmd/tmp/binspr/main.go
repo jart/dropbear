@@ -19,11 +19,13 @@ func main() {
 	for {
 		select {
 		case tick := <-coin:
-			for _, trade := range tick.Trades {
+			for i := range tick.TradeCount() {
+				trade := tick.Trade(i)
 				coinbasePrice = trade.Price
 			}
 		case tick := <-spot:
-			for _, trade := range tick.Trades {
+			for i := range tick.TradeCount() {
+				trade := tick.Trade(i)
 				spotPrice = trade.Price
 				if futuresPrice.IsPositive() {
 					del := spotPrice.Sub(futuresPrice).Abs().Div(spotPrice).BPS()
@@ -38,7 +40,8 @@ func main() {
 				}
 			}
 		case tick := <-futures:
-			for _, trade := range tick.Trades {
+			for i := range tick.TradeCount() {
+				trade := tick.Trade(i)
 				futuresPrice = trade.Price
 				if spotPrice.IsPositive() {
 					del := spotPrice.Sub(futuresPrice).Abs().Div(spotPrice).BPS()

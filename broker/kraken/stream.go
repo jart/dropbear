@@ -14,13 +14,15 @@ const wsURL = "wss://ws.kraken.com/v2"
 type marketData struct {
 	Symbol  string
 	client  *Client
-	channel chan<- *ds.Tick
+	channel chan<- ds.Tick
+	builder ds.TickBuilder
+	buf     []byte
 }
 
 // MarketData creates a channel that streams market data ticks for the given symbol.
 // Symbol format is "BTC/USD" (Kraken uses slash separator).
-func MarketData(symbol string, client *Client) <-chan *ds.Tick {
-	channel := make(chan *ds.Tick, 64)
+func MarketData(symbol string, client *Client) <-chan ds.Tick {
+	channel := make(chan ds.Tick, 64)
 	marketData := &marketData{
 		Symbol:  symbol,
 		client:  client,
@@ -153,14 +155,15 @@ func (m *marketData) handleBook(data json.RawMessage, msgType string, now clocky
 		return
 	}
 	for _, book := range books {
-		tick := &ds.Tick{Time: now}
+		m.builder.Reset()
+		m.builder.Time = now
 		if msgType == "snapshot" {
-			tick.Snap = true
+			m.builder.Snap = true
 		}
 		for _, bid := range book.Bids {
 			price := decimal.Parse(bid.Price)
 			size := decimal.Parse(bid.Qty)
-			tick.Bids = append(tick.Bids, ds.Level{
+			m.builder.Bids = append(m.builder.Bids, ds.Level{
 				Price: price,
 				Size:  size,
 			})
@@ -168,12 +171,12 @@ func (m *marketData) handleBook(data json.RawMessage, msgType string, now clocky
 		for _, ask := range book.Asks {
 			price := decimal.Parse(ask.Price)
 			size := decimal.Parse(ask.Qty)
-			tick.Asks = append(tick.Asks, ds.Level{
+			m.builder.Asks = append(m.builder.Asks, ds.Level{
 				Price: price,
 				Size:  size,
 			})
 		}
-		m.channel <- tick
+		m.sendTick()
 	}
 }
 
@@ -186,7 +189,8 @@ func (m *marketData) handleTrades(data json.RawMessage, now clocky.Time) {
 	if len(trades) == 0 {
 		return
 	}
-	tick := &ds.Tick{Time: now}
+	m.builder.Reset()
+	m.builder.Time = now
 	for _, trade := range trades {
 		side := ds.SideBuy
 		if trade.Side == "sell" {
@@ -198,12 +202,19 @@ func (m *marketData) handleTrades(data json.RawMessage, now clocky.Time) {
 				tradeTime = clocky.Time(parsed.UnixMicro())
 			}
 		}
-		tick.Trades = append(tick.Trades, ds.Trade{
+		m.builder.Trades = append(m.builder.Trades, ds.Trade{
 			Price:    decimal.Parse(trade.Price),
 			Quantity: decimal.Parse(trade.Qty),
 			Side:     side,
 			Time:     tradeTime,
 		})
 	}
-	m.channel <- tick
+	m.sendTick()
+}
+
+func (m *marketData) sendTick() {
+	m.buf = m.builder.Encode(m.buf[:0])
+	data := make([]byte, len(m.buf))
+	copy(data, m.buf)
+	m.channel <- ds.NewTick(data)
 }
