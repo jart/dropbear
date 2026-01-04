@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -47,7 +48,12 @@ func (c *Client) Request(client *http.Client, method, path string, body io.Reade
 		if bodyBytes != nil {
 			bodyReader = io.NopCloser(ds.NewBytesReader(bodyBytes))
 		}
-		req, err := http.NewRequest(method, baseURL+path, bodyReader)
+		// use path as-is if it's already a full URL, otherwise prepend baseURL
+		requestURL := path
+		if u, err := url.Parse(path); err != nil || u.Scheme == "" || u.Host == "" {
+			requestURL = baseURL + path
+		}
+		req, err := http.NewRequest(method, requestURL, bodyReader)
 		if err != nil {
 			return nil, fmt.Errorf("creating request: %w", err)
 		}

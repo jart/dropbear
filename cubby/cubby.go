@@ -17,7 +17,7 @@ import (
 var (
 	flagPaper      = flag.Bool("paper", false, "simulate order execution on live data")
 	flagBacktest   = flag.Bool("backtest", false, "run backtest on historical data")
-	flagStart      = clocky.TimeFlag("start", "2016-01-01", "backtest start date")
+	flagStart      = clocky.TimeFlag("start", "1980-01-01", "backtest start date")
 	flagEnd        = clocky.TimeFlag("end", "2099-12-31", "backtest end date")
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flagRFR        = decimal.FlagBPS("rfr", "487", "annualized risk-free rate in basis points")
@@ -28,13 +28,20 @@ var (
 )
 
 var (
-	Live         bool // true means we're in live trading or paper trading mode
-	Paper        bool // true means orders are simulated
-	AlpacaClient *alpaca.Client
-	Running      bool
-	Benchmark    *Equity
-	gSigChan     chan os.Signal
-	Cash         decimal.Decimal = decimal.FromInt(100_000)
+	Live      bool // true means we're in live trading or paper trading mode
+	Paper     bool // true means orders are simulated
+	Client    *alpaca.Client
+	Running   bool
+	Benchmark *Equity
+	Cash      decimal.Decimal = decimal.FromInt(100_000)
+	Hold      decimal.Decimal
+)
+
+var (
+	gSigChan            chan os.Signal
+	gMaxMarginAvailable decimal.Decimal
+	gPowerLevel         decimal.Decimal
+	gFeeCalculator      *alpaca.FeeCalculator
 )
 
 func Init() {
@@ -43,8 +50,8 @@ func Init() {
 		if *flagPaper {
 			Paper = true
 		}
-		AlpacaClient = alpaca.NewClient()
-		err := AlpacaClient.SyncAssets()
+		Client = alpaca.NewClient()
+		err := Client.SyncAssets()
 		if err != nil {
 			panic(err)
 		}
@@ -58,8 +65,8 @@ func Init() {
 		}
 		Paper = true
 		ds.SetOffline()
-		clocky.SetLive(false)
 		clocky.Now = clocky.FakeNow
+		clocky.Sleep = clocky.NoSleep
 	}
 }
 
@@ -70,24 +77,20 @@ func Run() {
 	if Benchmark == nil {
 		panic("you forgot to set cubby.Benchmark")
 	}
-	report := newReport(Benchmark)
+	gFeeCalculator = alpaca.NewFeeCalculator()
 	if Live {
-		defer AlpacaClient.CancelAllOrders()
+		defer Client.CancelAllOrders()
 		for {
 			if <-gSigChan == syscall.SIGUSR1 {
-				report.Print()
+				// report.Print()
 			} else {
 				break
 			}
 		}
 		log.Printf("goodbye")
 	} else {
-		manager := newManager(report)
-		for _, broker := range Brokers.All() {
-			for _, eq := range broker.Equities.All() {
-				manager.Register(eq)
-			}
-		}
+		backtest := newBacktest()
+		defer backtest.Close()
 		if *flagCPUProfile != "" {
 			f, err := os.Create(*flagCPUProfile)
 			if err != nil {
@@ -99,9 +102,30 @@ func Run() {
 			}
 			defer pprof.StopCPUProfile()
 		}
-		manager.Run()
+		backtest.Run()
 	}
-	report.Print()
+	// report.Print()
+}
+
+func GetPortfolioValue() decimal.Decimal {
+	return Cash.Add(GetInvestedValue())
+}
+
+func GetInvestedValue() decimal.Decimal {
+	total := decimal.Zero
+	for _, equity := range Equities {
+		total = total.Add(equity.Price.Mul(equity.Quantity.Abs()))
+	}
+	return total
+}
+
+func GetMarginUsed() decimal.Decimal {
+	total := decimal.Zero
+	for _, equity := range Equities {
+		margin := equity.Asset.GetMaintenanceMargin(equity.Quantity, equity.Price)
+		total = total.Add(margin)
+	}
+	return total
 }
 
 func onRunEnd() {

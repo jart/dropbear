@@ -63,18 +63,10 @@ func (t Time) ClockInt() int {
 	return hour*1_00_00 + min*1_00 + sec
 }
 
-// YearMonth returns the year and month in YYYY-MM format.
-func (t Time) YearMonthString() string {
-	var buf [7]byte
+// YearMonth returns the year and month in YYYYMM format.
+func (t Time) YearMonth() YearMonth {
 	y, m, _ := t.Date()
-	buf[0] = byte('0' + (y/1000)%10)
-	buf[1] = byte('0' + (y/100)%10)
-	buf[2] = byte('0' + (y/10)%10)
-	buf[3] = byte('0' + (y % 10))
-	buf[4] = '-'
-	buf[5] = byte('0' + int(m)/10)
-	buf[6] = byte('0' + int(m)%10)
-	return string(buf[:])
+	return YearMonth(y*100 + int(m))
 }
 
 // String returns formatted local microsecond timestamp.
@@ -200,6 +192,11 @@ func (d *Time) AtomicAdd(v Duration) Time {
 // Swap atomically replaces v into d.
 func (d *Time) Swap(v Time) Time {
 	return Time(atomic.SwapInt64((*int64)(d), int64(v)))
+}
+
+// CompareAndSwap executes the compare-and-swap operation for d.
+func (d *Time) CompareAndSwap(old, new Time) bool {
+	return atomic.CompareAndSwapInt64((*int64)(d), int64(old), int64(new))
 }
 
 func (d Time) Encode(b []byte) []byte {

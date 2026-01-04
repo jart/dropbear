@@ -26,7 +26,6 @@ package main
 import (
 	"dropbear/cubby"
 	"dropbear/decimal"
-	"dropbear/ds"
 	"dropbear/indicators"
 	"dropbear/loggy"
 	"flag"
@@ -46,8 +45,8 @@ var (
 )
 
 const (
-	openTime  = 6_30_00 + 15_00
-	closeTime = 13_00_00 - 15_00
+	openTime  = 6_45_00
+	closeTime = 12_45_00
 )
 
 var (
@@ -86,7 +85,7 @@ func main() {
 	}
 	log.Printf("  Lookback: %d minutes", *flagLookback)
 	log.Printf("  Trail Stop: %s%%", flagTrail.MulInt(100).Format(1))
-	log.Printf("  Min Gap: %s%%", flagBuffer.MulInt(100).Format(1))
+	log.Printf("  Min Gap: %s%%", flagMinGap.MulInt(100).Format(1))
 
 	cubby.Run()
 }
@@ -188,40 +187,44 @@ func checkBreakoutEntry(c *indicators.Candle) {
 	// PDT rules allow 4x leverage intraday, must close by EOD
 	// Cap max position to $1B to avoid decimal overflow on sale proceeds
 	// (with 40x leverage and big gains, selling can produce multi-billion proceeds)
-	buyingPower := gEquity.GetBuyingPower()
+	buyingPower := gEquity.GetMaxOrderQuantity()
 	usableBuyingPower := buyingPower.Mul(decimal.One.Sub(*flagBuffer))
-	qty := usableBuyingPower.Div(price).Truncate()
-	if !qty.IsPositive() {
+	quantity := usableBuyingPower.Truncate()
+	if !quantity.IsPositive() {
 		return
 	}
 
 	// enter long position
-	order := gEquity.MarketOrder(qty)
+	order, err := gEquity.MarketOrder(quantity)
+	if err != nil {
+		log.Printf("error placing buy order: %v", err)
+		return
+	}
 	order.Wait()
-	gHighSince = price
+	gHighSince = order.FilledPrice
 	gTradesToday++
 
 	if *flagVerbose {
-		log.Printf("BUY %s of %s at %s", qty.Mul(price), *flagSymbol, price)
+		log.Printf("BUY $%s of %s %s at $%s", order.FilledQuantity.Mul(order.FilledPrice).FormatThousand(2), order.FilledQuantity, gEquity.Symbol, order.FilledPrice)
 	}
 }
 
 func close(equity *cubby.Equity, reason string) {
+	if equity == nil {
+		return
+	}
 	shares := equity.Quantity.Load()
 	if shares.IsZero() {
 		return
 	}
-	quantity := shares.Neg()
-	price := equity.LastPrice.Load()
-	equity.MarketOrder(quantity).Wait()
-	if !equity.EntryPrice.IsZero() {
-		pnl := price.Sub(equity.EntryPrice).Mul(shares)
-		if *flagVerbose {
-			pnlPct := pnl.Div(equity.EntryPrice.Mul(shares)).MulInt(100)
-			log.Printf("SELL %s of %s at %s P&L: $%s (%s%%)",
-				quantity.Mul(price), equity.Symbol, price, price.Format(2), reason,
-				pnl.Format(2), pnlPct.Format(2))
-		}
+	order, err := equity.MarketOrder(shares.Neg())
+	if err != nil {
+		log.Printf("error placing sell order: %v", err)
+		return
+	}
+	order.Wait()
+	if *flagVerbose {
+		log.Printf("SELL $%s of %s %s at $%s (%s)", order.FilledQuantity.Neg().Mul(order.FilledPrice).FormatThousand(2), order.FilledQuantity, equity.Symbol, order.FilledPrice, reason)
 	}
 	gHighSince = decimal.Zero
 }
@@ -260,9 +263,14 @@ func buyHodl() {
 		if !qty.IsPositive() {
 			return
 		}
-		gHodl.MarketOrder(ds.SideBuy, qty)
+		order, err := gHodl.MarketOrder(qty)
+		if err != nil {
+			log.Printf("error placing buy order: %v", err)
+			return
+		}
+		order.Wait()
 		if *flagVerbose {
-			log.Printf("BUY %s of %s at %s", qty.Mul(gHodl.AskPrice), *flagSymbol, price)
+			log.Printf("BUY $%s of %s %s at $%s", order.FilledQuantity.Mul(order.FilledPrice).FormatThousand(2), order.FilledQuantity, gHodl.Symbol, order.FilledPrice)
 		}
 	}
 }

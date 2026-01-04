@@ -26,6 +26,7 @@ var costPlusFeeTiers = []struct {
 
 // FeeCalculator implements the Alpaca Elite cost-plus fee structure.
 type FeeCalculator struct {
+	TotalFees    decimal.Decimal
 	lock         sync.Mutex
 	sharesTraded decimal.Decimal
 	currentMonth int
@@ -52,7 +53,9 @@ func (f *FeeCalculator) GetFee(now clocky.Time, sharesTraded decimal.Decimal, is
 	catFee := catFeePerTrade
 	tafFee := quantity.Mul(tafFeePerShare)
 	regulatoryFees := catFee.Add(tafFee)
-	return brokerFee.Add(exchangeFee).Add(regulatoryFees)
+	fee := brokerFee.Add(exchangeFee).Add(regulatoryFees)
+	f.TotalFees.AtomicAdd(fee)
+	return fee
 }
 
 func (f *FeeCalculator) getSharesTradedThisMonth(now clocky.Time, quantity decimal.Decimal) decimal.Decimal {
