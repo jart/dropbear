@@ -8,5 +8,3 @@ and rips to shreds any dumb liqudiity it can pick off.
 
 This project provides tools for defending yourself from the dropbear, by
 being quicker and having better integrated market intelligence.
-
-See [HUMANS.md](HUMANS.md) to learn how to get started.

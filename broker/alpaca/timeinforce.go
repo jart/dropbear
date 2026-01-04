@@ -5,6 +5,7 @@ import "fmt"
 type TimeInForce uint8
 
 const (
+
 	// TimeInForceDay is eligible for execution only on the day it is live.
 	// By default, the order is only valid during Regular Trading Hours
 	// (9:30am - 4:00pm ET). If unfilled after the closing auction, it is

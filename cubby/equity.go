@@ -5,7 +5,6 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/indicators"
 	"errors"
 	"fmt"
 
@@ -24,8 +23,15 @@ type Equity struct {
 	Quantity   decimal.Decimal // number of shares held (negative if short)
 	Hold       decimal.Decimal // number of shares held up in limit orders
 	EntryPrice decimal.Decimal // average entry price for current position
-	OnCandle   func(*indicators.Candle)
+	OnBar      func(*alpaca.Bar)
 	isReady    bool
+
+	// bar data for slippage calculation during backtesting
+	barHigh       decimal.Decimal // current bar high
+	barLow        decimal.Decimal // current bar low
+	barVolume     decimal.Decimal // current bar volume
+	barVWAP       decimal.Decimal // current bar volume-weighted average price
+	barTradeCount int64           // current bar trade count
 }
 
 // Equities holds all added equities by symbol.
@@ -54,9 +60,9 @@ func AddEquity(symbol string) (*Equity, error) {
 		return nil, ErrNotEquity
 	}
 	e = &Equity{
-		Symbol:   symbol,
-		Asset:    asset,
-		OnCandle: func(*indicators.Candle) {},
+		Symbol: symbol,
+		Asset:  asset,
+		OnBar:  func(*alpaca.Bar) {},
 	}
 	Equities[symbol] = e
 	return e, nil
@@ -67,7 +73,7 @@ func (e *Equity) String() string {
 }
 
 // GetMaxOrderQuantity returns the maximum number of shares that can be ordered.
-func (e *Equity) GetMaxOrderQuantity() decimal.Decimal {
+func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 	marginUsed := GetMarginUsed()
 	equity := GetPortfolioValue().Mul(gPowerLevel)
 	maxMarginAvailable := gMaxMarginAvailable.Mul(gPowerLevel)
@@ -76,7 +82,7 @@ func (e *Equity) GetMaxOrderQuantity() decimal.Decimal {
 	hi := decimal.FromInt(100_000)
 	for lo.Cmp(hi) < 0 {
 		mid := lo.Add(hi.Sub(lo).Add(decimal.One).DivInt(2))
-		marginNeeded := e.Asset.GetInitialMargin(mid, e.Price)
+		marginNeeded := e.Asset.GetInitialMargin(mid, price)
 		if marginNeeded.Cmp(marginAvailable) <= 0 {
 			lo = mid
 		} else {
@@ -86,8 +92,15 @@ func (e *Equity) GetMaxOrderQuantity() decimal.Decimal {
 	return lo.Truncate()
 }
 
-// MarketOrder places a market order for the given quantity of shares.
-func (e *Equity) MarketOrder(quantity decimal.Decimal) (*Order, error) {
+// LimitOrder places a limit order for the given quantity of shares.
+// For backtesting, simulates fill based on whether limit price intersects the bar's range.
+func (e *Equity) LimitOrder(quantity, limitPrice decimal.Decimal, timeInForce alpaca.TimeInForce) (*Order, error) {
+	switch timeInForce {
+	case alpaca.TimeInForceIOC:
+		// supported
+	default:
+		return nil, fmt.Errorf("unsupported time in force: %s", timeInForce)
+	}
 	if quantity.IsZero() {
 		return nil, fmt.Errorf("cannot place zero-quantity order")
 	}
@@ -97,12 +110,14 @@ func (e *Equity) MarketOrder(quantity decimal.Decimal) (*Order, error) {
 	if !e.Asset.Tradable.Load() {
 		return nil, fmt.Errorf("asset %s is not tradable", e.Symbol)
 	}
+	if !limitPrice.IsPositive() {
+		return nil, fmt.Errorf("limit price must be positive")
+	}
+
 	side := ds.SideBuy
-	price := e.AskPrice
 	newQty := e.Quantity.Add(quantity)
 	if quantity.IsNegative() {
 		side = ds.SideSell
-		price = e.BidPrice
 		if newQty.IsNegative() {
 			if !e.Asset.Shortable.Load() {
 				return nil, fmt.Errorf("asset %s is not shortable", e.Symbol)
@@ -112,63 +127,151 @@ func (e *Equity) MarketOrder(quantity decimal.Decimal) (*Order, error) {
 			}
 		}
 	}
-	if !price.IsPositive() {
+	if !e.barHigh.IsPositive() {
 		return nil, fmt.Errorf("cannot place order on %s that hasn't received data yet", e.Symbol)
 	}
 	if e.Quantity.Mul(newQty).IsNegative() {
 		return nil, fmt.Errorf("order quantity %s would flip the %s %s position we hold", quantity, e.Quantity, e.Symbol)
 	}
+
+	// Check margin for new positions
 	if newQty.Abs().Cmp(e.Quantity.Abs()) > 0 {
 		marginUsed := GetMarginUsed()
 		equity := GetPortfolioValue().Mul(gPowerLevel)
-		marginNeeded := e.Asset.GetInitialMargin(quantity, price)
+		marginNeeded := e.Asset.GetInitialMargin(quantity, limitPrice)
 		maxMarginAvailable := gMaxMarginAvailable.Mul(gPowerLevel)
 		marginAvailable := equity.Sub(marginUsed).Min(maxMarginAvailable)
 		if marginNeeded.Cmp(marginAvailable) > 0 {
 			return nil, fmt.Errorf("need %s margin but only %s available", marginNeeded, marginAvailable)
 		}
 	}
+
 	if Paper {
-		filledQuantity := quantity
-		notional := price.Mul(filledQuantity)
-		e.Quantity = e.Quantity.Add(filledQuantity)
-		fee := gFeeCalculator.GetFee(clocky.Now(), filledQuantity, true)
-		Cash = Cash.Sub(fee).Sub(notional)
-		orderID := uuid.New().String()
-		return &Order{
-			OrderID:        orderID,
-			ClientOrderID:  orderID,
-			Side:           side,
-			Equity:         e,
-			Status:         alpaca.OrderStatusFilled,
-			Quantity:       quantity,
-			FilledQuantity: filledQuantity,
-			FilledPrice:    price,
-			TotalFees:      fee,
-		}, nil
-	} else {
-		response, err := Client.MarketOrder(e.Symbol, side, quantity.Abs(), alpaca.TimeInForceDay)
-		if err != nil {
-			return nil, err
-		}
-		filledQuantity := response.FilledQty
-		if quantity.IsNegative() {
-			filledQuantity = filledQuantity.Neg()
-		}
-		notional := price.Mul(filledQuantity)
-		e.Quantity = e.Quantity.Add(filledQuantity)
-		fee := gFeeCalculator.GetFee(clocky.Now(), filledQuantity, true)
-		Cash = Cash.Sub(fee).Sub(notional)
-		return &Order{
-			OrderID:        response.ID,
-			ClientOrderID:  response.ClientOrderID,
-			Equity:         e,
-			Side:           side,
-			Status:         response.Status,
-			Quantity:       quantity,
-			FilledPrice:    response.FilledAvgPrice,
-			FilledQuantity: filledQuantity,
-			TotalFees:      fee,
-		}, nil
+		return e.simulateLimitOrder(side, quantity, limitPrice)
 	}
+	return e.executeLimitOrder(side, quantity, limitPrice, timeInForce)
+}
+
+// simulateLimitOrder simulates an IOC limit order fill during backtesting.
+func (e *Equity) simulateLimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal) (*Order, error) {
+	orderID := uuid.New().String()
+	order := &Order{
+		OrderID:       orderID,
+		ClientOrderID: orderID,
+		Side:          side,
+		Equity:        e,
+		Quantity:      quantity,
+		LimitPrice:    limitPrice,
+	}
+
+	var fillPrice decimal.Decimal
+	var fillRatio decimal.Decimal
+
+	if side == ds.SideBuy {
+		// BUY: need price to come down to our limit
+		// limitPrice is max we're willing to pay
+		if limitPrice.Cmp(e.barLow) < 0 {
+			// Our limit is below the bar's low - no fill possible
+			order.Status = alpaca.OrderStatusCanceled
+			return order, nil
+		}
+		if limitPrice.Cmp(e.barHigh) >= 0 {
+			// We're willing to pay more than bar's high - full fill at VWAP
+			fillPrice = e.barVWAP
+			fillRatio = decimal.One
+		} else {
+			// Partial fill: our limit is within the bar's range
+			// Estimate fill ratio based on where our limit sits in the range
+			barRange := e.barHigh.Sub(e.barLow)
+			if barRange.IsPositive() {
+				// How much of the bar traded at or below our limit?
+				fillRatio = limitPrice.Sub(e.barLow).Div(barRange)
+			} else {
+				fillRatio = decimal.One
+			}
+			// Fill at our limit price (we got what we asked for)
+			fillPrice = limitPrice
+		}
+	} else {
+		// SELL: need price to come up to our limit
+		// limitPrice is min we're willing to accept
+		if limitPrice.Cmp(e.barHigh) > 0 {
+			// Our limit is above the bar's high - no fill possible
+			order.Status = alpaca.OrderStatusCanceled
+			return order, nil
+		}
+		if limitPrice.Cmp(e.barLow) <= 0 {
+			// We're willing to accept less than bar's low - full fill at VWAP
+			fillPrice = e.barVWAP
+			fillRatio = decimal.One
+		} else {
+			// Partial fill: our limit is within the bar's range
+			barRange := e.barHigh.Sub(e.barLow)
+			if barRange.IsPositive() {
+				// How much of the bar traded at or above our limit?
+				fillRatio = e.barHigh.Sub(limitPrice).Div(barRange)
+			} else {
+				fillRatio = decimal.One
+			}
+			// Fill at our limit price
+			fillPrice = limitPrice
+		}
+	}
+
+	// Calculate filled quantity based on fill ratio and available volume
+	maxFillFromVolume := e.barVolume.Mul(fillRatio)
+	filledQuantity := quantity.Abs().Min(maxFillFromVolume).Truncate()
+	if side == ds.SideSell {
+		filledQuantity = filledQuantity.Neg()
+	}
+
+	if filledQuantity.IsZero() {
+		order.Status = alpaca.OrderStatusCanceled
+		return order, nil
+	}
+
+	// Update position and cash
+	notional := fillPrice.Mul(filledQuantity)
+	e.Quantity = e.Quantity.Add(filledQuantity)
+	fee := gFeeCalculator.GetFee(clocky.Now(), filledQuantity, true)
+	Cash = Cash.Sub(fee).Sub(notional)
+
+	order.Status = alpaca.OrderStatusFilled
+	order.FilledQuantity = filledQuantity
+	order.FilledPrice = fillPrice
+	order.TotalFees = fee
+
+	if filledQuantity.Abs().Cmp(quantity.Abs()) < 0 {
+		order.Status = alpaca.OrderStatusPartiallyFilled
+	}
+
+	return order, nil
+}
+
+// executeLimitOrder executes a real limit order through the broker.
+func (e *Equity) executeLimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, timeInForce alpaca.TimeInForce) (*Order, error) {
+	response, err := Client.LimitOrder(e.Symbol, side, quantity.Abs(), limitPrice, timeInForce, false)
+	if err != nil {
+		return nil, err
+	}
+	filledQuantity := response.FilledQty
+	if quantity.IsNegative() {
+		filledQuantity = filledQuantity.Neg()
+	}
+	notional := response.FilledAvgPrice.Mul(filledQuantity)
+	e.Quantity = e.Quantity.Add(filledQuantity)
+	fee := gFeeCalculator.GetFee(clocky.Now(), filledQuantity, true)
+	Cash = Cash.Sub(fee).Sub(notional)
+	return &Order{
+		OrderID:        response.ID,
+		ClientOrderID:  response.ClientOrderID,
+		Equity:         e,
+		Side:           side,
+		Status:         response.Status,
+		Quantity:       quantity,
+		LimitPrice:     limitPrice,
+		FilledPrice:    response.FilledAvgPrice,
+		FilledQuantity: filledQuantity,
+		TotalFees:      fee,
+	}, nil
 }

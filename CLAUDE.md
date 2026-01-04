@@ -20,28 +20,38 @@ this project does equities and cryptography trading using go.
 
 - `cubby/` is our QuantConnect-like framework for writing equity trading algorithms
 - `teddy/` is our QuantConnect-like framework for writing crypto trading algorithms
-- `cmd/spread/` is an example of a trading bot that uses the teddy framework
+- `clocky/` is our time library
 - `loggy/` is our logging utilities
 - `decimal/` our fixed point number library with 8 decimal places
 - `db/` use `db.Get()` to get a WAL2 SQLite singleton into `~/.dropbear.sqlite3`
 - `indicators/` has indicators similar quantconnect but better, defines candles
 - `orderbook/` uses gods v2 tree set for fast level2 order book management
+- `broker/alpaca/` our own client library (that's where we trade equities)
 - `broker/coinbase/` our own client library (where we currently do our trading!)
 - `broker/binance/` our own client library (used for market data only currently)
-- `broker/alpaca/` our own client library (that's where we trade equities)
+- `broker/binanceusd/` is also binance but for futures rather than spot trading
 - `auth/` lets the dropbear https server support yubikey authentication
 
-## data locations
+## coinbase portfolios locations
 
-- `~/.dropbear.sqlite3` - main database for fills/trades. has 20gb of equity candles too
-- `~/equitydata/minutes/AAPL/2025-01` - indicators.Candle binary market data
-- `~/marketdata/<dataset>/{coinbase,binance}/<SYMBOL>` - ds.Tick binary market data
+The `go run ./cmd/sync.coinbase` command defines the following portfolios:
+
+```go
+	sync(os.ExpandEnv("$HOME/.primary.sqlite3"), os.ExpandEnv("$HOME/.primary.key"))
+	sync(os.ExpandEnv("$HOME/.dropbear.sqlite3"), os.ExpandEnv("$HOME/.coinbase.key"))
+	sync(os.ExpandEnv("$HOME/.zec.sqlite3"), os.ExpandEnv("$HOME/.zec.key"))
+```
+
+The sync command will fetch the latest `coinbase_transactions` table content into each sqlite db.
+
+## equity minute candles
+
+For example `~/equitydata/minutes/AAPL` has indicators.Candle binary unsafe mappable bisectable array.
 
 ## programs
 
-- `cmd/spread/` is the main trading strategy (live and backtest)
-- `cmd/dumptick ~/marketdata/weekend/binance/FDUSDUSDT` dumps raw recorded data
-- `cmd/record.{binance,coinbase}/` records live websocket data to binary format
+- `cmd/dumptick ~/coindata/weekend/binance/FDUSDUSDT` dumps raw recorded data
+- `cmd/record.{binance,binanceusd,coinbase}/` records live websocket data to binary format
 
 ## style
 
@@ -93,17 +103,7 @@ we have an aws z1d instance 1ms away from coinbase in us-east-1 named penny.
 
 we have an aws z1d instance in tokyo named nickel that lets us access binance data 21ms faster via amazon's private internet.
 
-## basis points
-
-- when we say "1 bps" what that means is 0.0001
-- the basis point is a convention to make very small percentages readable
-- would you do math on an iso8601 timestamp? please don't do it on basis points
-
-## spread backtesting
-
-spread is the main trading strategy in `cmd/spread/`. it uses binance-coinbase spread mean reversion.
-
-## viewing charts
+## viewing coinbase charts
 
 You can see an ASCII chart of what's in any particular dataset, like follows:
 
@@ -111,15 +111,19 @@ You can see an ASCII chart of what's in any particular dataset, like follows:
 go run ./cmd/chart -symbol BTC weekend
 ```
 
-The dataset above is stored in `~/marketdata/weekend/coinbase/BTC-USD` and it contains
+The dataset above is stored in `~/coindata/weekend/coinbase/BTC-USD` and it contains
 a binary-encoded array of `ds/tick.go` structures.
 
 ## running backtests
 
-```bash
-# single backtest
-go run ./cmd/spread -backtest chaos -symbol DOGE
+our best alpaca etf day trading strategy
 
-# uber test script (tests many coins across many datasets)
-./scripts/test.sh spread -spread 2 -samples 7000 -skew 1 -buygap 5 -target 5000 -comfort 20
+```bash
+go run ./cmd/fngu -backtest -v -lookback 10 -start 2025-01-01 -symbol "NVDL SOXL GUSH JNUG BITX DUSL BIB CURE UYG DPST" -cash 161845
+```
+
+our best crypto trading strategy
+
+```bash
+go run ./cmd/arb -backtest churu -symbol ETH -predictor ETHFDUSD@binance -pricer FDUSDUSDT@binance -threshold 2.2 -level2 -samples 2000 -usd 50000 -clean 10
 ```

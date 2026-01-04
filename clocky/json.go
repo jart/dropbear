@@ -1,25 +1,16 @@
 package clocky
 
 import (
-	"slices"
 	"errors"
+	"slices"
 	"time"
 )
 
-const (
-	// minTimestamp is 1980-01-01 00:00:00 UTC in microseconds.
-	// Timestamps before this are rejected because the seconds/millis/micros
-	// heuristic becomes unreliable near the Unix epoch.
-	minTimestamp = 315_532_800_000_000
-
-	// epochWindow allows timestamps within ±2 days of epoch (for zero/null values).
-	// This is in the final µs result, so ±172800 seconds input (treated as seconds).
-	epochWindow = 2 * 24 * 60 * 60 * 1_000_000 // 172,800,000,000 µs
+var (
+	ErrTimestampTooOld = errors.New("timestamp before 1980 is ambiguous (use RFC3339 string for older dates)")
+	ErrMissingTimezone = errors.New("timestamp string requires timezone (Z or +/-offset)")
+	ErrYearOverflow    = errors.New("year outside 0000-9999 range")
 )
-
-var ErrTimestampTooOld = errors.New("timestamp before 1980 is ambiguous (use RFC3339 string for older dates)")
-var ErrMissingTimezone = errors.New("timestamp string requires timezone (Z or +/-offset)")
-var ErrYearOverflow = errors.New("year outside 0000-9999 range")
 
 // UnmarshalJSON implements json.Unmarshaler.
 // Accepts JSON strings (RFC3339 with timezone), numbers (unix seconds/millis/micros), or null.
@@ -39,6 +30,59 @@ func (t *Time) UnmarshalJSON(data []byte) error {
 	}
 	return t.unmarshalInteger(data)
 }
+
+// MarshalJSON implements json.Marshaler.
+// Outputs RFC3339 with microsecond precision.
+func (t Time) MarshalJSON() ([]byte, error) {
+	var buf [29]byte
+	buf[0] = '"'
+	u := time.UnixMicro(int64(t)).UTC()
+	y, m, d := u.Date()
+	if y < 0 || y > 9999 {
+		return nil, ErrYearOverflow
+	}
+	h, M, s := u.Clock()
+	buf[1] = byte('0' + (y/1000)%10)
+	buf[2] = byte('0' + (y/100)%10)
+	buf[3] = byte('0' + (y/10)%10)
+	buf[4] = byte('0' + (y % 10))
+	buf[5] = '-'
+	buf[6] = byte('0' + int(m)/10)
+	buf[7] = byte('0' + int(m)%10)
+	buf[8] = '-'
+	buf[9] = byte('0' + d/10)
+	buf[10] = byte('0' + d%10)
+	buf[11] = 'T'
+	buf[12] = byte('0' + h/10)
+	buf[13] = byte('0' + h%10)
+	buf[14] = ':'
+	buf[15] = byte('0' + M/10)
+	buf[16] = byte('0' + M%10)
+	buf[17] = ':'
+	buf[18] = byte('0' + s/10)
+	buf[19] = byte('0' + s%10)
+	buf[20] = '.'
+	buf[21] = byte('0' + (t/100000)%10)
+	buf[22] = byte('0' + (t/10000)%10)
+	buf[23] = byte('0' + (t/1000)%10)
+	buf[24] = byte('0' + (t/100)%10)
+	buf[25] = byte('0' + (t/10)%10)
+	buf[26] = byte('0' + (t % 10))
+	buf[27] = 'Z'
+	buf[28] = '"'
+	return buf[:], nil
+}
+
+const (
+	// minTimestamp is 1980-01-01 00:00:00 UTC in microseconds.
+	// Timestamps before this are rejected because the seconds/millis/micros
+	// heuristic becomes unreliable near the Unix epoch.
+	minTimestamp = 315_532_800_000_000
+
+	// epochWindow allows timestamps within ±2 days of epoch (for zero/null values).
+	// This is in the final µs result, so ±172800 seconds input (treated as seconds).
+	epochWindow = 2 * 24 * 60 * 60 * 1_000_000 // 172,800,000,000 µs
+)
 
 func (t *Time) unmarshalRFC3339(data []byte) error {
 	data = data[1 : len(data)-1]
@@ -172,46 +216,4 @@ func hasTimezone(data []byte) bool {
 		}
 	}
 	return false
-}
-
-// MarshalJSON implements json.Marshaler.
-// Outputs RFC3339 with microsecond precision.
-func (t Time) MarshalJSON() ([]byte, error) {
-	var buf [29]byte
-	buf[0] = '"'
-	u := time.UnixMicro(int64(t)).UTC()
-	y, m, d := u.Date()
-	if y < 0 || y > 9999 {
-		return nil, ErrYearOverflow
-	}
-	h, M, s := u.Clock()
-	buf[1] = byte('0' + (y/1000)%10)
-	buf[2] = byte('0' + (y/100)%10)
-	buf[3] = byte('0' + (y/10)%10)
-	buf[4] = byte('0' + (y % 10))
-	buf[5] = '-'
-	buf[6] = byte('0' + int(m)/10)
-	buf[7] = byte('0' + int(m)%10)
-	buf[8] = '-'
-	buf[9] = byte('0' + d/10)
-	buf[10] = byte('0' + d%10)
-	buf[11] = 'T'
-	buf[12] = byte('0' + h/10)
-	buf[13] = byte('0' + h%10)
-	buf[14] = ':'
-	buf[15] = byte('0' + M/10)
-	buf[16] = byte('0' + M%10)
-	buf[17] = ':'
-	buf[18] = byte('0' + s/10)
-	buf[19] = byte('0' + s%10)
-	buf[20] = '.'
-	buf[21] = byte('0' + (t/100000)%10)
-	buf[22] = byte('0' + (t/10000)%10)
-	buf[23] = byte('0' + (t/1000)%10)
-	buf[24] = byte('0' + (t/100)%10)
-	buf[25] = byte('0' + (t/10)%10)
-	buf[26] = byte('0' + (t % 10))
-	buf[27] = 'Z'
-	buf[28] = '"'
-	return buf[:], nil
 }

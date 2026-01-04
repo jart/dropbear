@@ -15,12 +15,11 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
-	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/indicators"
 	"dropbear/loggy"
 )
 
@@ -31,8 +30,8 @@ var (
 )
 
 const (
-	dataURL    = "https://data.alpaca.markets"
-	candleSize = 48
+	dataURL = "https://data.alpaca.markets"
+	barSize = int(unsafe.Sizeof(alpaca.Bar{}))
 )
 
 func main() {
@@ -128,25 +127,18 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 	// Read existing data and find where to resume from
 	var existingData []byte
 	var lastTime clocky.Time
-	if data, err := os.ReadFile(outPath); err == nil && len(data) >= candleSize {
+	if data, err := os.ReadFile(outPath); err == nil && len(data) >= barSize {
 		existingData = data
-		n := len(data) / candleSize
-		off := (n - 1) * candleSize
-		lastTime = clocky.Time(int64(data[off]) |
-			int64(data[off+1])<<8 |
-			int64(data[off+2])<<16 |
-			int64(data[off+3])<<24 |
-			int64(data[off+4])<<32 |
-			int64(data[off+5])<<40 |
-			int64(data[off+6])<<48 |
-			int64(data[off+7])<<56)
+		n := len(data) / barSize
+		lastBar := (*alpaca.Bar)(unsafe.Pointer(&data[(n-1)*barSize]))
+		lastTime = lastBar.Timestamp
 	}
 
 	// Determine start time
 	loc, _ := time.LoadLocation("America/New_York")
 	var start time.Time
 	if lastTime != 0 {
-		// Resume from 1 minute after last candle
+		// Resume from 1 minute after last bar
 		start = time.UnixMicro(int64(lastTime)).Add(time.Minute)
 	} else {
 		// Start from beginning of Alpaca's data
@@ -161,8 +153,8 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 		return
 	}
 
-	// Download all candles
-	candles, err := fetchAll(client, symbol, start, end, stopped)
+	// Download all bars
+	bars, err := fetchAll(client, symbol, start, end, stopped)
 	if err != nil {
 		if err != errInterrupted {
 			log.Printf("%s: %v", symbol, err)
@@ -170,7 +162,7 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 		return
 	}
 
-	if len(candles) == 0 {
+	if len(bars) == 0 {
 		if lastTime == 0 {
 			log.Printf("%s: no data available", symbol)
 		} else {
@@ -204,15 +196,15 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 		}
 	}
 
-	// Write new candles
-	var buf [candleSize]byte
+	// Write new bars
 	written := 0
-	for i := range candles {
-		// Skip any candles at or before our last time (safety check)
-		if candles[i].Start <= lastTime {
+	for i := range bars {
+		// Skip any bars at or before our last time (safety check)
+		if bars[i].Timestamp <= lastTime {
 			continue
 		}
-		if _, err := out.Write(candles[i].Encode(buf[:0])); err != nil {
+		barBytes := unsafe.Slice((*byte)(unsafe.Pointer(&bars[i])), barSize)
+		if _, err := out.Write(barBytes); err != nil {
 			f.Close()
 			os.Remove(tmpPath)
 			log.Printf("%s: write failed: %v", symbol, err)
@@ -243,32 +235,16 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 	}
 
 	if lastTime == 0 {
-		log.Printf("%s: saved %d candles", symbol, written)
+		log.Printf("%s: saved %d bars", symbol, written)
 	} else {
-		log.Printf("%s: appended %d candles", symbol, written)
+		log.Printf("%s: appended %d bars", symbol, written)
 	}
-}
-
-type barsResponse struct {
-	Bars      []barData `json:"bars"`
-	NextToken string    `json:"next_page_token"`
-}
-
-type barData struct {
-	Timestamp  string      `json:"t"`
-	Open       json.Number `json:"o"`
-	High       json.Number `json:"h"`
-	Low        json.Number `json:"l"`
-	Close      json.Number `json:"c"`
-	Volume     json.Number `json:"v"`
-	TradeCount int         `json:"n"`
-	VWAP       json.Number `json:"vw"`
 }
 
 var errInterrupted = fmt.Errorf("interrupted")
 
-func fetchAll(client *alpaca.Client, symbol string, start, end time.Time, stopped *atomic.Bool) ([]indicators.Candle, error) {
-	var candles []indicators.Candle
+func fetchAll(client *alpaca.Client, symbol string, start, end time.Time, stopped *atomic.Bool) ([]alpaca.Bar, error) {
+	var bars []alpaca.Bar
 	pageToken := ""
 
 	for {
@@ -297,7 +273,7 @@ func fetchAll(client *alpaca.Client, symbol string, start, end time.Time, stoppe
 			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 		}
 
-		var data barsResponse
+		var data alpaca.BarsResponse
 		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 			resp.Body.Close()
 			return nil, fmt.Errorf("decode: %w", err)
@@ -305,18 +281,7 @@ func fetchAll(client *alpaca.Client, symbol string, start, end time.Time, stoppe
 		resp.Body.Close()
 
 		for _, bar := range data.Bars {
-			t, err := clocky.ParseTime(bar.Timestamp)
-			if err != nil {
-				return nil, fmt.Errorf("parse timestamp %q: %w", bar.Timestamp, err)
-			}
-			candles = append(candles, indicators.Candle{
-				Start:  t,
-				Open:   decimal.Parse(bar.Open.String()),
-				High:   decimal.Parse(bar.High.String()),
-				Low:    decimal.Parse(bar.Low.String()),
-				Close:  decimal.Parse(bar.Close.String()),
-				Volume: decimal.Parse(bar.Volume.String()),
-			})
+			bars = append(bars, bar)
 		}
 
 		if data.NextToken == "" {
@@ -325,5 +290,5 @@ func fetchAll(client *alpaca.Client, symbol string, start, end time.Time, stoppe
 		pageToken = data.NextToken
 	}
 
-	return candles, nil
+	return bars, nil
 }

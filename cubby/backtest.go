@@ -4,7 +4,6 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/indicators"
 	"log"
 	"os"
 	"path"
@@ -24,9 +23,9 @@ type backtest struct {
 }
 
 type backtestEntry struct {
-	candle  *indicators.Candle
-	candles *indicators.CandleFile
-	equity  *Equity
+	bar    *alpaca.Bar
+	bars   *Bars
+	equity *Equity
 }
 
 const (
@@ -49,24 +48,24 @@ func newBacktest() *backtest {
 	equityData := getEquityDataDir()
 	for _, equity := range Equities {
 		path := path.Join(equityData, "minutes", equity.Symbol)
-		candles, err := indicators.OpenCandleFile(path)
+		bars, err := OpenBars(path)
 		if err != nil {
 			panic(err)
 		}
-		first := candles.Get(0)
-		last := candles.Get(candles.Count() - 1)
-		m.minTime = max(m.minTime, first.Start)
-		m.maxTime = min(m.maxTime, last.Start.Add(clocky.Minute))
-		entry := &backtestEntry{equity: equity, candles: candles}
+		first := bars.Get(0)
+		last := bars.Get(bars.Count() - 1)
+		m.minTime = max(m.minTime, first.Timestamp)
+		m.maxTime = min(m.maxTime, last.Timestamp.Add(clocky.Minute))
+		entry := &backtestEntry{equity: equity, bars: bars}
 		entries = append(entries, entry)
 	}
 	if !m.minTime.Before(m.maxTime) {
 		panic("no overlapping data range across all registered equities")
 	}
 	for _, entry := range entries {
-		entry.candles.Seek(m.minTime)
-		entry.candle = entry.candles.Read()
-		if entry.candle == nil || entry.candle.Start.After(m.maxTime) {
+		entry.bars.Seek(m.minTime)
+		entry.bar = entry.bars.Read()
+		if entry.bar == nil || entry.bar.Timestamp.After(m.maxTime) {
 			panic("equity has no data in overlapping range: " + entry.equity.Symbol)
 		}
 		m.heap.Push(entry)
@@ -79,7 +78,7 @@ func newBacktest() *backtest {
 func (m *backtest) Close() {
 	for !m.heap.Empty() {
 		entry, _ := m.heap.Pop()
-		err := entry.candles.Close()
+		err := entry.bars.Close()
 		if err != nil {
 			panic(err)
 		}
@@ -93,7 +92,7 @@ func (m *backtest) Run() {
 	for !isDone {
 		iterations++
 		entry, _ := m.heap.Pop()
-		time := entry.candle.Start
+		time := entry.bar.Timestamp
 		entries = entries[:0]
 		entries = append(entries, entry)
 		for {
@@ -101,26 +100,31 @@ func (m *backtest) Run() {
 			if entry == nil {
 				break
 			}
-			if entry.candle.Start != time {
+			if entry.bar.Timestamp != time {
 				break
 			}
 			entry, _ = m.heap.Pop()
 			entries = append(entries, entry)
 		}
 		for _, entry := range entries {
-			entry.equity.Price = entry.candle.Close
-			entry.equity.AskPrice = entry.candle.Close
-			entry.equity.BidPrice = entry.candle.Close
+			entry.equity.Price = entry.bar.Close
+			entry.equity.AskPrice = entry.bar.Close
+			entry.equity.BidPrice = entry.bar.Close
+			entry.equity.barHigh = entry.bar.High
+			entry.equity.barLow = entry.bar.Low
+			entry.equity.barVolume = entry.bar.Volume
+			entry.equity.barVWAP = entry.bar.VWAP
+			entry.equity.barTradeCount = entry.bar.TradeCount
 		}
 		m.setTime(time.Add(clocky.Minute))
 		for _, entry := range entries {
-			entry.equity.OnCandle(entry.candle)
+			entry.equity.OnBar(entry.bar)
 		}
 		for _, entry := range entries {
-			candle := entry.candles.Read()
-			isDone = isDone || candle == nil || candle.Start >= m.maxTime
+			bar := entry.bars.Read()
+			isDone = isDone || bar == nil || bar.Timestamp >= m.maxTime
 			if !isDone {
-				entry.candle = candle
+				entry.bar = bar
 			}
 			m.heap.Push(entry)
 		}
@@ -135,11 +139,13 @@ func (m *backtest) Run() {
 	if years > 0 {
 		annualReturn := (endValue.Float64()/m.startCash.Float64() - 1) * 100 / years
 		log.Printf("Summary:")
-		log.Printf("  Start: $%s", m.startCash.FormatThousand(2))
-		log.Printf("  End:   $%s", endValue.FormatThousand(2))
-		log.Printf("  Fees:  $%s", gFeeCalculator.TotalFees.FormatThousand(2))
-		log.Printf("  Return: %s%% (%.1f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
-		log.Printf("  Period: %.1f days (%.2f years)", days, years)
+		log.Printf("  Start:    $%s", m.startCash.FormatThousand(2))
+		log.Printf("  End:      $%s", endValue.FormatThousand(2))
+		log.Printf("  Fees:     $%s", gFeeCalculator.TotalFees.FormatThousand(2))
+		log.Printf("  Slippage: $%s", gTotalSlippage.FormatThousand(2))
+		log.Printf("  Interest: $%s", m.interest.TotalCharged.FormatThousand(2))
+		log.Printf("  Return:   %s%% (%.1f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
+		log.Printf("  Period:   %.1f days (%.2f years)", days, years)
 	}
 }
 
@@ -178,10 +184,10 @@ func (m *backtest) onMarketClose(now clocky.Time) {
 }
 
 func compareBacktestEntries(a, b *backtestEntry) int {
-	if a.candle.Start < b.candle.Start {
+	if a.bar.Timestamp < b.bar.Timestamp {
 		return -1
 	}
-	if a.candle.Start > b.candle.Start {
+	if a.bar.Timestamp > b.bar.Timestamp {
 		return +1
 	}
 	if a.equity.Symbol < b.equity.Symbol {
