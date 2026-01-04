@@ -140,18 +140,18 @@ func (e *Equity) MarketOrder(quantity decimal.Decimal) (*Order, error) {
 			ClientOrderID:  orderID,
 			Side:           side,
 			Equity:         e,
-			Status:         "filled",
+			Status:         alpaca.OrderStatusFilled,
 			Quantity:       quantity,
 			FilledQuantity: filledQuantity,
 			FilledPrice:    price,
 			TotalFees:      fee,
 		}, nil
 	} else {
-		response, err := Client.MarketOrder(e.Symbol, quantity)
+		response, err := Client.MarketOrder(e.Symbol, side, quantity.Abs(), alpaca.TimeInForceDay)
 		if err != nil {
 			return nil, err
 		}
-		filledQuantity := decimal.Parse(response.FilledQty)
+		filledQuantity := response.FilledQty
 		if quantity.IsNegative() {
 			filledQuantity = filledQuantity.Neg()
 		}
@@ -166,7 +166,7 @@ func (e *Equity) MarketOrder(quantity decimal.Decimal) (*Order, error) {
 			Side:           side,
 			Status:         response.Status,
 			Quantity:       quantity,
-			FilledPrice:    decimal.Parse(response.FilledAvgPrice),
+			FilledPrice:    response.FilledAvgPrice,
 			FilledQuantity: filledQuantity,
 			TotalFees:      fee,
 		}, nil

@@ -138,3 +138,10 @@ func TestDivIntPanic(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkDivInt(b *testing.B) {
+	for i := 0; b.Loop(); i++ {
+		a := randomNumbers[(i+0)&31]
+		_ = a.DivInt(2)
+	}
+}

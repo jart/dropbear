@@ -2,10 +2,10 @@ package alpaca
 
 import (
 	"bytes"
+	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,58 +13,52 @@ import (
 
 // Order represents an Alpaca order.
 type Order struct {
-	ID             string `json:"id"`
-	Symbol         string `json:"symbol"` // e.g. SOLUSD
-	AssetID        string `json:"asset_id"`
-	ClientOrderID  string `json:"client_order_id"`
-	Status         string `json:"status"` // e.g. filled
-	Type           string `json:"type"`   // e.g. limit, market
-	Side           string `json:"side"`   // e.g. buy, sell
-	Qty            string `json:"qty"`
-	FilledQty      string `json:"filled_qty"`
-	FilledAvgPrice string `json:"filled_avg_price"`
-	LimitPrice     string `json:"limit_price"`
-	CreatedAt      string `json:"created_at"`
-	FilledAt       string `json:"filled_at"`
+	ID             string          `json:"id"`               //
+	Symbol         string          `json:"symbol"`           // e.g. SOLUSD
+	AssetID        string          `json:"asset_id"`         //
+	ClientOrderID  string          `json:"client_order_id"`  //
+	Replaces       string          `json:"replaces"`         // id of the order this order replaces
+	Status         OrderStatus     `json:"status"`           // e.g. filled
+	Class          OrderClass      `json:"order_class"`      // e.g. simple
+	Type           OrderType       `json:"type"`             // e.g. limit, market
+	TimeInForce    TimeInForce     `json:"time_in_force"`    //
+	Side           ds.Side         `json:"side"`             //
+	Notional       decimal.Decimal `json:"notional"`         // ordered notional amount. if entered, qty will be null. can take up to 9 decimal points [rounded to 8].
+	Qty            decimal.Decimal `json:"qty"`              // ordered quantity. if entered, notional will be null. can take up to 9 decimal points [rounded to 8]. required if order class is mleg.
+	FilledQty      decimal.Decimal `json:"filled_qty"`       //
+	FilledAvgPrice decimal.Decimal `json:"filled_avg_price"` //
+	LimitPrice     decimal.Decimal `json:"limit_price"`      //
+	StopPrice      decimal.Decimal `json:"stop_price"`       //
+	CreatedAt      clocky.Time     `json:"created_at"`       //
+	UpdatedAt      clocky.Time     `json:"updated_at"`       //
+	FilledAt       clocky.Time     `json:"filled_at"`        //
+	CanceledAt     clocky.Time     `json:"canceled_at"`      //
+	FailedAt       clocky.Time     `json:"failed_at"`        //
+	ReplacedAt     clocky.Time     `json:"replaced_at"`      //
+	ExtendedHours  bool            `json:"extended_hours"`   // eligible for execution outside regular trading hours
 }
 
-// MarketOrderBuy places a market buy order.
-func (c *Client) MarketOrder(symbol string, qty decimal.Decimal) (*Order, error) {
-	side := "buy"
-	if qty.IsNegative() {
-		side = "sell"
-		qty = qty.Neg()
-	}
-	return c.CreateOrder(map[string]any{
-		"symbol":        symbol,
-		"qty":           qty.String(),
-		"side":          side,
-		"type":          "market",
-		"time_in_force": "ioc",
-	})
-}
-
-// LimitOrderBuy places a GTC limit buy order.
-func (c *Client) LimitOrder(symbol string, side ds.Side, qty, limitPrice decimal.Decimal, strategy ds.OrderStrategy) (*Order, error) {
-	if qty.IsNegative() {
-		return nil, errors.New("quantity must be positive for limit orders")
-	}
-	var time_in_force string
-	switch strategy {
-	case ds.OrderStrategyMarketable:
-		time_in_force = "gtc"
-	case ds.OrderStrategyIOC:
-		time_in_force = "ioc"
-	default:
-		return nil, fmt.Errorf("%v orders not supported by Alpaca", strategy)
-	}
+// MarketOrder places a market order.
+func (c *Client) MarketOrder(symbol string, side ds.Side, qty decimal.Decimal, tif TimeInForce) (*Order, error) {
 	return c.CreateOrder(map[string]any{
 		"symbol":        symbol,
 		"qty":           qty.String(),
 		"side":          side.String(),
-		"type":          "limit",
-		"time_in_force": time_in_force,
-		"limit_price":   limitPrice.String(),
+		"type":          "market",
+		"time_in_force": tif.String(),
+	})
+}
+
+// LimitOrder places a limit order.
+func (c *Client) LimitOrder(symbol string, side ds.Side, qty, limitPrice decimal.Decimal, tif TimeInForce, ext bool) (*Order, error) {
+	return c.CreateOrder(map[string]any{
+		"symbol":         symbol,
+		"qty":            qty.String(),
+		"side":           side.String(),
+		"type":           "limit",
+		"time_in_force":  tif.String(),
+		"limit_price":    limitPrice.String(),
+		"extended_hours": ext,
 	})
 }
 

@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	baseURL = "https://api.alpaca.markets"
+	APIHost  = "api.alpaca.markets"
+	DataHost = "data.alpaca.markets"
 )
 
 // Client is an Alpaca API client.
@@ -29,7 +30,22 @@ func (c *Client) Get(path string) (*http.Response, error) {
 
 // Request makes an authenticated API request with exponential backoff retry on 429.
 // Panics if called during backtesting - no network access allowed.
-func (c *Client) Request(client *http.Client, method, path string, body io.Reader) (*http.Response, error) {
+func (c *Client) Request(client *http.Client, method, urlString string, body io.Reader) (*http.Response, error) {
+
+	// interpret url
+	u, err := url.Parse(urlString)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme == "" {
+		u.Scheme = "https"
+	}
+	if u.Host == "" {
+		u.Host = APIHost
+	}
+	urlString = u.String()
+
+	// schlep body into memory for retries
 	var bodyBytes []byte
 	if body != nil {
 		var err error
@@ -48,12 +64,7 @@ func (c *Client) Request(client *http.Client, method, path string, body io.Reade
 		if bodyBytes != nil {
 			bodyReader = io.NopCloser(ds.NewBytesReader(bodyBytes))
 		}
-		// use path as-is if it's already a full URL, otherwise prepend baseURL
-		requestURL := path
-		if u, err := url.Parse(path); err != nil || u.Scheme == "" || u.Host == "" {
-			requestURL = baseURL + path
-		}
-		req, err := http.NewRequest(method, requestURL, bodyReader)
+		req, err := http.NewRequest(method, urlString, bodyReader)
 		if err != nil {
 			return nil, fmt.Errorf("creating request: %w", err)
 		}

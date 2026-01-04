@@ -48,3 +48,19 @@ func (ac AssetClass) GoString() string {
 		panic("unknown asset class")
 	}
 }
+
+func (ac AssetClass) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + ac.String() + `"`), nil
+}
+
+func (ac *AssetClass) UnmarshalJSON(data []byte) error {
+	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		return fmt.Errorf("invalid asset class: %s", data)
+	}
+	v, err := ParseAssetClass(string(data[1 : len(data)-1]))
+	if err != nil {
+		return err
+	}
+	*ac = v
+	return nil
+}

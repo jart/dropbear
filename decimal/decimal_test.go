@@ -19,31 +19,6 @@ func init() {
 	}
 }
 
-func TestParse(t *testing.T) {
-	tests := []struct {
-		input string
-		want  int64
-	}{
-		{"0", 0},
-		{"1", 100_000_000},
-		{"1.23", 123_000_000},
-		{"123.45", 12_345_000_000},
-		{"-123.45", -12_345_000_000},
-		{"0.01", 1_000_000},
-		{"0.1", 10_000_000},
-		{".5", 50_000_000},
-		{"0.000000001", 0},
-		{"1.123456789", 1_123_456_79},
-		{"1.23456789123456789", 1_234_567_89},
-	}
-	for _, tt := range tests {
-		d := Parse(tt.input)
-		if int64(d) != tt.want {
-			t.Errorf("Parse(%q) = %d, want %d", tt.input, d, tt.want)
-		}
-	}
-}
-
 func TestRoundTrip(t *testing.T) {
 	tests := []struct {
 		input string
@@ -169,7 +144,7 @@ func TestFloat64(t *testing.T) {
 }
 
 func TestQuantizeTruncate(t *testing.T) {
-	q := Parse("0.01")
+	q := Cent
 	tests := []struct {
 		input string
 		want  string
@@ -190,7 +165,7 @@ func TestQuantizeTruncate(t *testing.T) {
 }
 
 func TestQuantizeFloor(t *testing.T) {
-	q := Parse("0.01")
+	q := Cent
 	tests := []struct {
 		input string
 		want  string
@@ -212,7 +187,7 @@ func TestQuantizeFloor(t *testing.T) {
 }
 
 func TestQuantizeCeil(t *testing.T) {
-	q := Parse("0.01")
+	q := Cent
 	tests := []struct {
 		input string
 		want  string
@@ -234,7 +209,7 @@ func TestQuantizeCeil(t *testing.T) {
 }
 
 func TestQuantizeAway(t *testing.T) {
-	q := Parse("0.01")
+	q := Cent
 	tests := []struct {
 		input string
 		want  string
@@ -796,12 +771,6 @@ func TestParseOverflowInMantissa(t *testing.T) {
 	}
 }
 
-func BenchmarkParse(b *testing.B) {
-	for i := 0; b.Loop(); i++ {
-		Parse("12345.678901234")
-	}
-}
-
 func BenchmarkString(b *testing.B) {
 	for i := 0; b.Loop(); i++ {
 		a := randomNumbers[i&31]
@@ -814,20 +783,5 @@ func BenchmarkAdd(b *testing.B) {
 		a := randomNumbers[(i+0)&31]
 		c := randomNumbers[(i+1)&31]
 		_ = a.Add(c)
-	}
-}
-
-func BenchmarkDiv(b *testing.B) {
-	for i := 0; b.Loop(); i++ {
-		a := randomNumbers[(i+0)&31]
-		c := randomNumbers[(i+1)&31]
-		_ = a.Div(c)
-	}
-}
-
-func BenchmarkDivInt(b *testing.B) {
-	for i := 0; b.Loop(); i++ {
-		a := randomNumbers[(i+0)&31]
-		_ = a.DivInt(2)
 	}
 }

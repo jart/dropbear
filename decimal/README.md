@@ -31,7 +31,7 @@ Performance. In benchmarks, this implementation is significantly faster:
 
 | Operation | int64 Decimal | big.Int | Slowdown |
 |-----------|---------------|---------|----------|
-| Parse     | 16ns          | 266ns   | 16x      |
+| Parse     | 19ns          | 266ns   | 14x      |
 | Add       | 2.1ns         | 18.5ns  | 10x      |
 | Mul       | 4.7ns         | 47ns    | 10x      |
 | Div       | 5.2ns         | 50ns    | 10x      |

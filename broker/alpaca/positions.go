@@ -1,6 +1,7 @@
 package alpaca
 
 import (
+	"dropbear/decimal"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,24 +10,24 @@ import (
 
 // Position represents an open position.
 type Position struct {
-	AssetID                string `json:"asset_id"`    // e.g. 904837e3-3b76-4c7d-8534-8e7a3e0a6ed1
-	Symbol                 string `json:"symbol"`      // e.g. AAPL, BTCUSD
-	Exchange               string `json:"exchange"`    // e.g. NASDAQ, CRYPTO
-	AssetClass             string `json:"asset_class"` // e.g. us_equity, us_option, crypto
-	AssetMarginable        bool   `json:"asset_marginable"`
-	Qty                    string `json:"qty"`           // the number of shares
-	QtyAvailable           string `json:"qty_available"` // total number of shares available, minus open orders / locked for options covered call
-	Side                   string `json:"side"`          // e.g. long, short
-	MarketValue            string `json:"market_value"`  // total dollar amount of position
-	AvgEntryPrice          string `json:"avg_entry_price"`
-	CostBasis              string `json:"cost_basis"`               // total cost basis in dollars
-	UnrealizedPL           string `json:"unrealized_pl"`            // in dollars
-	UnrealizedPLPC         string `json:"unrealized_plpc"`          // percent (by a factor of 1)
-	UnrealizedIntradayPL   string `json:"unrealized_intraday_pl"`   // in dollars
-	UnrealizedIntradayPLPC string `json:"unrealized_intraday_plpc"` // percent (by a factor of 1)
-	CurrentPrice           string `json:"current_price"`
-	LastDayPrice           string `json:"lastday_price"`
-	ChangeToday            string `json:"change_today"` // percent change from last day price (by a factor of 1)
+	AssetID                string          `json:"asset_id"`                 // e.g. 904837e3-3b76-4c7d-8534-8e7a3e0a6ed1
+	Symbol                 string          `json:"symbol"`                   // e.g. AAPL, BTCUSD
+	Exchange               Exchange        `json:"exchange"`                 // e.g. NASDAQ, CRYPTO
+	AssetClass             AssetClass      `json:"asset_class"`              // e.g. us_equity, us_option, crypto
+	AssetMarginable        bool            `json:"asset_marginable"`         //
+	Qty                    decimal.Decimal `json:"qty"`                      // the number of shares
+	QtyAvailable           decimal.Decimal `json:"qty_available"`            // total number of shares available, minus open orders / locked for options covered call
+	Side                   string          `json:"side"`                     // e.g. long, short
+	MarketValue            decimal.Decimal `json:"market_value"`             // total dollar amount of position
+	AvgEntryPrice          decimal.Decimal `json:"avg_entry_price"`          //
+	CostBasis              decimal.Decimal `json:"cost_basis"`               // total cost basis in dollars
+	UnrealizedPL           decimal.Decimal `json:"unrealized_pl"`            // in dollars
+	UnrealizedPLPC         decimal.Decimal `json:"unrealized_plpc"`          // percent (by a factor of 1)
+	UnrealizedIntradayPL   decimal.Decimal `json:"unrealized_intraday_pl"`   // in dollars
+	UnrealizedIntradayPLPC decimal.Decimal `json:"unrealized_intraday_plpc"` // percent (by a factor of 1)
+	CurrentPrice           decimal.Decimal `json:"current_price"`            //
+	LastDayPrice           decimal.Decimal `json:"lastday_price"`            //
+	ChangeToday            decimal.Decimal `json:"change_today"`             // percent change from last day price (by a factor of 1)
 }
 
 // GetPositions retrieves all open positions.

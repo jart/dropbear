@@ -2,6 +2,31 @@ package decimal
 
 import "testing"
 
+func TestParse(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int64
+	}{
+		{"0", 0},
+		{"1", 100_000_000},
+		{"1.23", 123_000_000},
+		{"123.45", 12_345_000_000},
+		{"-123.45", -12_345_000_000},
+		{"0.01", 1_000_000},
+		{"0.1", 10_000_000},
+		{".5", 50_000_000},
+		{"0.000000001", 0},
+		{"1.123456789", 1_123_456_79},
+		{"1.23456789123456789", 1_234_567_89},
+	}
+	for _, tt := range tests {
+		d := Parse(tt.input)
+		if int64(d) != tt.want {
+			t.Errorf("Parse(%q) = %d, want %d", tt.input, d, tt.want)
+		}
+	}
+}
+
 func TestParseWithExponent(t *testing.T) {
 	tests := []struct {
 		input   string
@@ -115,6 +140,77 @@ func TestParseLongDecimal(t *testing.T) {
 	wantStr := "2806.30821972"
 	if got := d.String(); got != wantStr {
 		t.Errorf("Parse(%q).String() = %q, want %q", input, got, wantStr)
+	}
+}
+
+func TestParseNegativeExponentRounding(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    int64
+		wantStr string
+	}{
+		// Positive mantissa with negative exponent triggering rem > half
+		{"1.6e-8", 2, "0.00000002"}, // 0.000000016 → rounds up to 0.00000002
+		{"6e-9", 1, "0.00000001"},   // 0.000000006 → rounds up to 0.00000001
+		{"5.1e-8", 5, "0.00000005"}, // 0.000000051 → truncates to 0.00000005
+
+		// Positive mantissa with rem == half && x%2 != 0 (banker's rounds odd up)
+		{"1.5e-8", 2, "0.00000002"}, // 0.000000015 with x=1 (odd) → rounds to 2
+		{"3.5e-8", 4, "0.00000004"}, // 0.000000035 with x=3 (odd) → rounds to 4
+
+		// Negative mantissa with negative exponent (covers rem < 0 branch)
+		{"-1.6e-8", -2, "-0.00000002"}, // -0.000000016 → rounds to -0.00000002
+		{"-6e-9", -1, "-0.00000001"},   // -0.000000006 → rounds to -0.00000001
+		{"-1.5e-8", -2, "-0.00000002"}, // -0.000000015 with x=-1 (odd) → rounds to -2
+		{"-3.5e-8", -4, "-0.00000004"}, // -0.000000035 with x=-3 (odd) → rounds to -4
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			d := Parse(tt.input)
+			if int64(d) != tt.want {
+				t.Errorf("Parse(%q) = %d, want %d", tt.input, d, tt.want)
+			}
+			if got := d.String(); got != tt.wantStr {
+				t.Errorf("Parse(%q).String() = %q, want %q", tt.input, got, tt.wantStr)
+			}
+		})
+	}
+}
+
+func TestMayParseErrors(t *testing.T) {
+	tests := []struct {
+		input   string
+		wantErr error
+	}{
+		{"", ErrEmptyNumber},
+		{"_", ErrMissingNumber},
+		{"1e2.5", ErrBrokenNumber},  // trailing .5 after exponent
+		{"123abc", ErrBrokenNumber}, // trailing garbage
+		{"1.5xyz", ErrBrokenNumber}, // trailing garbage after decimal
+		{"1e5abc", ErrBrokenNumber}, // trailing garbage after exponent
+		{"92233720373483838", ErrIllegalNumber},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			_, err := ParseString(tt.input)
+			if err != tt.wantErr {
+				t.Errorf("ParseString(%q) error = %v, want %v", tt.input, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func BenchmarkParse(b *testing.B) {
+	for i := 0; b.Loop(); i++ {
+		Parse("12345.678901234")
+	}
+}
+
+func BenchmarkParseInteger(b *testing.B) {
+	for i := 0; b.Loop(); i++ {
+		Parse("123456789")
 	}
 }
 

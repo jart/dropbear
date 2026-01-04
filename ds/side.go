@@ -99,3 +99,19 @@ func (s *Side) Decode(b []byte) []byte {
 		panic("failed to deserialize side")
 	}
 }
+
+func (s Side) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + s.String() + `"`), nil
+}
+
+func (s *Side) UnmarshalJSON(data []byte) error {
+	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		return fmt.Errorf("invalid side: %s", data)
+	}
+	v, err := ParseSide(string(data[1 : len(data)-1]))
+	if err != nil {
+		return err
+	}
+	*s = v
+	return nil
+}

@@ -8,10 +8,19 @@ import (
 
 // String returns the decimal as a string with trailing zeros trimmed.
 func (d Decimal) String() string {
-
-	// fast path for zero
 	if d == 0 {
 		return "0"
+	}
+	var b [24]byte
+	return string(d.Append(b[:0]))
+}
+
+// Append appends the string representation of d to dst and returns the result.
+func (d Decimal) Append(dst []byte) []byte {
+
+	// min needs special care
+	if d == Min {
+		return append(dst, stringifyMin()...)
 	}
 
 	// prepare for computation
@@ -20,9 +29,6 @@ func (d Decimal) String() string {
 	v := int64(d)
 	s := v < 0
 	if s {
-		if d == Min {
-			return stringifyMin()
-		}
 		v = -v
 	}
 
@@ -63,7 +69,7 @@ func (d Decimal) String() string {
 		b[i] = '-'
 	}
 
-	return string(b[i:])
+	return append(dst, b[i:]...)
 }
 
 //go:noinline

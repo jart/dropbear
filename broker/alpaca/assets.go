@@ -34,21 +34,6 @@ func (c *Client) SyncAssets() error {
 	}
 	for _, ja := range jsonAssets {
 		shouldDelete[ja.Symbol] = false
-		ac, err := ParseAssetClass(ja.Class)
-		if err != nil {
-			err = fmt.Errorf("unknown asset class for %s: %s", ja.Symbol, ja.Class)
-			continue
-		}
-		ex, err := ParseExchange(ja.Exchange)
-		if err != nil {
-			err = fmt.Errorf("unknown exchange for %s: %s", ja.Symbol, ja.Exchange)
-			continue
-		}
-		as, err := ParseAssetStatus(ja.Status)
-		if err != nil {
-			err = fmt.Errorf("unknown asset status for %s: %s", ja.Symbol, ja.Status)
-			continue
-		}
 		minTradeIncrement := decimal.One
 		if ja.MinTradeIncrement != "" {
 			minTradeIncrement = decimal.Parse(ja.MinTradeIncrement)
@@ -65,9 +50,9 @@ func (c *Client) SyncAssets() error {
 			}
 			asset = &Asset{
 				Symbol:   ja.Symbol,
-				Exchange: ex,
-				Class:    ac,
-				Status:   as,
+				Exchange: ja.Exchange,
+				Class:    ja.Class,
+				Status:   ja.Status,
 				ID:       ja.ID,
 				Name:     name,
 			}
@@ -108,11 +93,11 @@ func (c *Client) SyncAssets() error {
 		asset.Shortable.Store(ja.Shortable)
 		asset.EasyToBorrow.Store(ja.EasyToBorrow)
 		asset.Fractionable.Store(ja.Fractionable)
-		asset.MarginRequirementLong.Store(decimal.Parse(ja.MarginRequirementLong).DivInt(100))
-		asset.MarginRequirementShort.Store(decimal.Parse(ja.MarginRequirementShort).DivInt(100))
+		asset.MarginRequirementLong.Store(ja.MarginRequirementLong.DivInt(100))
+		asset.MarginRequirementShort.Store(ja.MarginRequirementShort.DivInt(100))
 		asset.MinTradeIncrement.Store(minTradeIncrement)
 		asset.PriceIncrement.Store(priceIncrement)
-		asset.Status.Store(as)
+		asset.Status.Store(ja.Status)
 	}
 	for sym, del := range shouldDelete {
 		if del {
@@ -123,22 +108,22 @@ func (c *Client) SyncAssets() error {
 }
 
 type jsonAsset struct {
-	ID                     string   `json:"id"`       // e.g. 60d10d62-7876-415d-9feb-c92cd87076da
-	Class                  string   `json:"class"`    // e.g. us_equity, crypto
-	Exchange               string   `json:"exchange"` // e.g. NYSE, CRYPTO
-	Symbol                 string   `json:"symbol"`   // e.g. BTC/USD
-	Name                   string   `json:"name"`     // e.g. Bitcoin / US Dollar
-	Status                 string   `json:"status"`   // e.g. active
-	Tradable               bool     `json:"tradable"`
-	Marginable             bool     `json:"marginable"`
-	Shortable              bool     `json:"shortable"`
-	EasyToBorrow           bool     `json:"easy_to_borrow"`
-	Fractionable           bool     `json:"fractionable"`
-	MinTradeIncrement      string   `json:"min_trade_increment,omitempty"`
-	PriceIncrement         string   `json:"price_increment,omitempty"`
-	MarginRequirementLong  string   `json:"margin_requirement_long"`  // e.g. "100"
-	MarginRequirementShort string   `json:"margin_requirement_short"` // e.g. "30"
-	Attributes             []string `json:"attributes,omitempty"`
+	ID                     string          `json:"id"`       // e.g. 60d10d62-7876-415d-9feb-c92cd87076da
+	Class                  AssetClass      `json:"class"`    // e.g. us_equity, crypto
+	Exchange               Exchange        `json:"exchange"` // e.g. NYSE, CRYPTO
+	Symbol                 string          `json:"symbol"`   // e.g. BTC/USD
+	Name                   string          `json:"name"`     // e.g. Bitcoin / US Dollar
+	Status                 AssetStatus     `json:"status"`   // e.g. active
+	Tradable               bool            `json:"tradable"`
+	Marginable             bool            `json:"marginable"`
+	Shortable              bool            `json:"shortable"`
+	EasyToBorrow           bool            `json:"easy_to_borrow"`
+	Fractionable           bool            `json:"fractionable"`
+	MinTradeIncrement      string          `json:"min_trade_increment,omitempty"`
+	PriceIncrement         string          `json:"price_increment,omitempty"`
+	MarginRequirementLong  decimal.Decimal `json:"margin_requirement_long"`  // e.g. "100"
+	MarginRequirementShort decimal.Decimal `json:"margin_requirement_short"` // e.g. "30"
+	Attributes             []string        `json:"attributes,omitempty"`
 }
 
 func (c *Client) fetchAssets() ([]jsonAsset, error) {

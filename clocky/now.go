@@ -45,6 +45,6 @@ func RealSleep(d Duration) {
 }
 
 // NoSleep panics because sleeping is not allowed in backtest mode.
-func NoSleep(_ Duration) {
+func FakeSleep(_ Duration) {
 	panic("clocky.Sleep called in backtest mode")
 }

@@ -1,6 +1,8 @@
 package alpaca
 
 import (
+	"dropbear/clocky"
+	"dropbear/decimal"
 	"dropbear/ds"
 	"encoding/json"
 	"log"
@@ -8,13 +10,13 @@ import (
 )
 
 type OrderUpdate struct {
-	Event       string `json:"event"` // e.g. new, fill, partial_fill, canceled, expired, done_for_day, replaced, and many others...
-	ExecutionID string `json:"execution_id"`
-	PositionQty string `json:"position_qty"`
-	Price       string `json:"price"`
-	Qty         string `json:"qty"`
-	Timestamp   string `json:"timestamp"`
-	Order       Order  `json:"order"`
+	Event       OrderEvent      `json:"event"`
+	ExecutionID string          `json:"execution_id"`
+	PositionQty decimal.Decimal `json:"position_qty"`
+	Price       decimal.Decimal `json:"price"`
+	Qty         decimal.Decimal `json:"qty"`
+	Timestamp   clocky.Time     `json:"timestamp"`
+	Order       Order           `json:"order"`
 }
 
 func OrderUpdates() <-chan OrderUpdate {

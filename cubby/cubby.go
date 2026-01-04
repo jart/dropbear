@@ -66,7 +66,8 @@ func Init() {
 		Paper = true
 		ds.SetOffline()
 		clocky.Now = clocky.FakeNow
-		clocky.Sleep = clocky.NoSleep
+		clocky.Sleep = clocky.FakeSleep
+		clocky.NewTicker = clocky.FakeNewTicker
 	}
 }
 

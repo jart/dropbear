@@ -54,3 +54,19 @@ func (as *AssetStatus) Load() AssetStatus {
 func (as *AssetStatus) Store(v AssetStatus) {
 	atomic.StoreInt32((*int32)(as), int32(v))
 }
+
+func (as AssetStatus) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + as.String() + `"`), nil
+}
+
+func (as *AssetStatus) UnmarshalJSON(data []byte) error {
+	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		return fmt.Errorf("invalid asset status: %s", data)
+	}
+	v, err := ParseAssetStatus(string(data[1 : len(data)-1]))
+	if err != nil {
+		return err
+	}
+	*as = v
+	return nil
+}

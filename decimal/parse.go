@@ -1,6 +1,10 @@
 package decimal
 
-import "math"
+import (
+	"errors"
+	"math"
+	"unsafe"
+)
 
 const (
 	maxInt      = math.MaxInt64 / Scale
@@ -9,12 +13,35 @@ const (
 	minIntDiv10 = minInt / 10
 )
 
-// Parse parses a decimal string like "123.45" or "3.6372083e-07".
-// Trimmed to 8 decimal places using Bankers' Rounding.
+var (
+	ErrEmptyNumber     = errors.New("empty number")
+	ErrIllegalNumber   = errors.New("illegal number")
+	ErrForbiddenNumber = errors.New("forbidden number")
+	ErrMissingNumber   = errors.New("missing number")
+	ErrToastedNumber   = errors.New("toasted number")
+	ErrBrokenNumber    = errors.New("broken number")
+)
+
+// Parse parses a decimal string.
 // Panics on invalid input or integer overflow.
+// Trimmed to 8 decimal places using Bankers' Rounding.
 func Parse(str string) Decimal {
+	res, err := ParseBytes(unsafe.Slice(unsafe.StringData(str), len(str)))
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
+
+// ParseString parses a decimal string.
+func ParseString(str string) (Decimal, error) {
+	return ParseBytes(unsafe.Slice(unsafe.StringData(str), len(str)))
+}
+
+// ParseBytes parses a decimal from a byte slice.
+func ParseBytes(str []byte) (Decimal, error) {
 	if len(str) == 0 {
-		panic("empty number")
+		return 0, ErrEmptyNumber
 	}
 
 	// parse sign
@@ -35,7 +62,7 @@ func Parse(str string) Decimal {
 		if str[i] >= '0' && str[i] <= '9' {
 			// sorry you can't do stuff like 9'223'372'036.854'775'807e-9
 			if x > maxIntDiv10 || x < minIntDiv10 {
-				panic("illegal number")
+				return 0, ErrIllegalNumber
 			}
 			x *= 10
 			y := int64(str[i]-'0') * s
@@ -49,7 +76,7 @@ func Parse(str string) Decimal {
 		}
 	}
 	if x > maxInt || x < minInt {
-		panic("forbidden number")
+		return 0, ErrForbiddenNumber
 	}
 
 	// parse fractional part (read Places+1 digits for rounding)
@@ -96,7 +123,7 @@ func Parse(str string) Decimal {
 		x *= Scale
 	}
 	if digits == 0 {
-		panic("missing number")
+		return 0, ErrMissingNumber
 	}
 
 	// parse exponent
@@ -123,7 +150,7 @@ func Parse(str string) Decimal {
 				}
 				mul := pow10[shift]
 				if x > math.MaxInt64/mul || x < math.MinInt64/mul {
-					panic("toasted number")
+					return 0, ErrToastedNumber
 				}
 				x *= mul
 				exp -= shift
@@ -156,8 +183,8 @@ func Parse(str string) Decimal {
 	}
 
 	if i != len(str) {
-		panic("broken number")
+		return 0, ErrBrokenNumber
 	}
 
-	return Decimal(x)
+	return Decimal(x), nil
 }

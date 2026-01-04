@@ -90,3 +90,19 @@ func (ex Exchange) GoString() string {
 		panic("unknown exchange")
 	}
 }
+
+func (ex Exchange) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + ex.String() + `"`), nil
+}
+
+func (ex *Exchange) UnmarshalJSON(data []byte) error {
+	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		return fmt.Errorf("invalid exchange: %s", data)
+	}
+	v, err := ParseExchange(string(data[1 : len(data)-1]))
+	if err != nil {
+		return err
+	}
+	*ex = v
+	return nil
+}

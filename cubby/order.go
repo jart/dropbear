@@ -1,6 +1,7 @@
 package cubby
 
 import (
+	"dropbear/broker/alpaca"
 	"dropbear/decimal"
 	"dropbear/ds"
 )
@@ -10,7 +11,7 @@ type Order struct {
 	ClientOrderID  string
 	Equity         *Equity
 	Side           ds.Side
-	Status         string
+	Status         alpaca.OrderStatus
 	Quantity       decimal.Decimal
 	LimitPrice     decimal.Decimal
 	FilledPrice    decimal.Decimal

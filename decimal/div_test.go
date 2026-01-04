@@ -212,7 +212,15 @@ func TestDivPanic(t *testing.T) {
 func BenchmarkDivBoundary(b *testing.B) {
 	d := Parse("123.456")
 	o := Parse("78.9")
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		_ = d.Div(o)
+	}
+}
+
+func BenchmarkDiv(b *testing.B) {
+	for i := 0; b.Loop(); i++ {
+		a := randomNumbers[(i+0)&31]
+		c := randomNumbers[(i+1)&31]
+		_ = a.Div(c)
 	}
 }
