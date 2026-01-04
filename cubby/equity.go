@@ -6,6 +6,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/indicators"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -30,21 +31,27 @@ type Equity struct {
 // Equities holds all added equities by symbol.
 var Equities = make(map[string]*Equity)
 
+var (
+	ErrUnknownAsset = errors.New("unknown asset")
+	ErrRunning      = errors.New("cubby is running")
+	ErrNotEquity    = errors.New("asset not an equity")
+)
+
 // AddEquity creates and registers a new Equity with the given symbol.
-func AddEquity(symbol string) *Equity {
+func AddEquity(symbol string) (*Equity, error) {
 	if Running {
-		panic("cannot create equity while cubby is running")
+		return nil, fmt.Errorf("cannot add equity while running")
 	}
 	e := Equities[symbol]
 	if e != nil {
-		return e
+		return e, nil
 	}
 	asset := alpaca.GetAsset(symbol)
 	if asset == nil {
-		panic("unknown asset: " + symbol)
+		return nil, ErrUnknownAsset
 	}
 	if asset.Class != alpaca.AssetClassUSEquity {
-		panic("asset is not a US equity: " + symbol)
+		return nil, ErrNotEquity
 	}
 	e = &Equity{
 		Symbol:   symbol,
@@ -52,7 +59,7 @@ func AddEquity(symbol string) *Equity {
 		OnCandle: func(*indicators.Candle) {},
 	}
 	Equities[symbol] = e
-	return e
+	return e, nil
 }
 
 func (e *Equity) String() string {

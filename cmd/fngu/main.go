@@ -1,25 +1,17 @@
 // Command fngu implements a day trading strategy for FNGU (3x FANG+ ETN).
 //
-// Leverage breakdown:
-//   - Reg-T initial margin: 50% = 2x overnight buying power
-//   - PDT intraday margin: 25% = 4x day trading buying power
-//   - FNGU is 3x leveraged ETN
-//   - Effective leverage: 4x (PDT) × 3x (ETN) = 12x intraday
-//
-// The 30% maintenance margin (vs 75% for normal leveraged ETFs) just means
-// less chance of margin calls overnight, not more buying power.
-//
-// Strategy: Intraday momentum breakout
+// Strategy: Intraday momentum breakout scanner
+//   - Monitor multiple symbols for breakout patterns
 //   - Enter long when price breaks above N-minute high
+//   - Priority symbols can preempt lower-priority trades
 //   - Use trailing stop for exits
 //   - Close all positions 15 minutes before market close
-//   - Never hold overnight (avoid gap risk and decay)
+//   - Hold a safe asset overnight (optional)
 //
 // Usage:
 //
-//	go run ./cmd/fngu -backtest              # backtest mode
-//	go run ./cmd/fngu -backtest -lookback 10 # 10-minute breakout
-//	go run ./cmd/fngu -paper                 # paper trading
+//	go run ./cmd/fngu -backtest -symbol "FNGU TQQQ SOXL"
+//	go run ./cmd/fngu -backtest -symbol "$(cat symbols.txt)" -priority "FNGU TQQQ"
 
 package main
 
@@ -30,15 +22,17 @@ import (
 	"dropbear/loggy"
 	"flag"
 	"log"
+	"strings"
 )
 
 var (
-	flagSymbol    = flag.String("symbol", "FNGU", "symbol to trade")
+	flagSymbols   = flag.String("symbol", "FNGU", "symbols to monitor (space-separated)")
+	flagPriority  = flag.String("priority", "", "priority symbols (space-separated, earlier = higher)")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
-	flagHodl      = flag.String("hodl", "", "symbol to hold when not trading")
+	flagHodl      = flag.String("hodl", "", "symbol to hold overnight")
 	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
 	flagLookback  = flag.Int("lookback", 15, "breakout lookback period (minutes)")
-	flagBuffer    = decimal.FlagPercent("buffer", "10", "buffer percentage (10%)")
+	flagBuffer    = decimal.FlagPercent("buffer", "0.5", "buffer percentage")
 	flagTrail     = decimal.FlagPercent("trail", "2.5", "trailing stop percentage (2.5%)")
 	flagMinGap    = decimal.FlagPercent("mingap", "1", "minimum gap to enter (1%)")
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
@@ -49,19 +43,24 @@ const (
 	closeTime = 12_45_00
 )
 
-var (
-	gEquity    *cubby.Equity
-	gHodl      *cubby.Equity
-	gBenchmark *cubby.Equity
+// symbolState tracks per-symbol state for the scanner
+type symbolState struct {
+	equity   *cubby.Equity
+	candles  []indicators.Candle
+	dayHigh  decimal.Decimal
+	dayLow   decimal.Decimal
+	priority int // lower = higher priority; 999999 = not in priority list
+}
 
-	// Intraday state (reset each day)
-	gCandles     []indicators.Candle // rolling window of recent candles
-	gDayHigh     decimal.Decimal     // highest price seen today
-	gDayLow      decimal.Decimal     // lowest price seen today
-	gHighSince   decimal.Decimal     // highest price since entry (for trailing stop)
-	gTradesToday int                 // number of trades executed today
-	gCurrentDate int                 // current trading date
-	gIsOpen      bool                // market is open
+var (
+	gSymbols       map[string]*symbolState
+	gHodl          *cubby.Equity
+	gBenchmark     *cubby.Equity
+	gCurrentEquity *cubby.Equity   // equity we're currently day trading (nil if not trading)
+	gHighSince     decimal.Decimal // highest price since entry (for trailing stop)
+	gTradesToday   int             // number of trades executed today
+	gCurrentDate   int             // current trading date
+	gIsOpen        bool            // market is open
 )
 
 func main() {
@@ -69,19 +68,62 @@ func main() {
 	loggy.Init()
 	cubby.Init()
 
-	gEquity = cubby.AddEquity(*flagSymbol)
-	gBenchmark = cubby.AddEquity(*flagBenchmark)
-	if *flagHodl != "" {
-		gHodl = cubby.AddEquity(*flagHodl)
+	// Parse symbols
+	symbols := strings.Fields(*flagSymbols)
+	if len(symbols) == 0 {
+		log.Fatal("no symbols specified")
 	}
-	gEquity.OnCandle = onCandle
+
+	// Parse priority list and build priority map
+	priorityList := strings.Fields(*flagPriority)
+	priorityMap := make(map[string]int)
+	for i, sym := range priorityList {
+		priorityMap[sym] = i
+	}
+
+	// Create equity for each symbol
+	gSymbols = make(map[string]*symbolState)
+	for _, sym := range symbols {
+		equity, err := cubby.AddEquity(sym)
+		if err != nil {
+			log.Printf("error adding symbol %s: %v", sym, err)
+			continue
+		}
+		priority := 999999 // default: lowest priority
+		if p, ok := priorityMap[sym]; ok {
+			priority = p
+		}
+		state := &symbolState{
+			equity:   equity,
+			priority: priority,
+		}
+		gSymbols[sym] = state
+		// Capture state in closure for callback
+		equity.OnCandle = func(s *symbolState) func(*indicators.Candle) {
+			return func(c *indicators.Candle) {
+				onCandle(s, c)
+			}
+		}(state)
+	}
+
+	// Add benchmark
+	gBenchmark, _ = cubby.AddEquity(*flagBenchmark)
 	cubby.Benchmark = gBenchmark
+
+	// Add hodl symbol if specified
+	if *flagHodl != "" {
+		gHodl, _ = cubby.AddEquity(*flagHodl)
+	}
+
 	cubby.Cash = *flagCash
 
-	log.Printf("FNGU Day Trading Strategy")
-	log.Printf("  Symbol: %s", *flagSymbol)
+	log.Printf("Multi-Symbol Day Trading Strategy")
+	log.Printf("  Symbols: %d total", len(symbols))
+	if len(priorityList) > 0 {
+		log.Printf("  Priority: %s", strings.Join(priorityList, " > "))
+	}
 	if *flagHodl != "" {
-		log.Printf("  Hodl: %s (overnight yield)", *flagHodl)
+		log.Printf("  Hodl: %s (overnight)", *flagHodl)
 	}
 	log.Printf("  Lookback: %d minutes", *flagLookback)
 	log.Printf("  Trail Stop: %s%%", flagTrail.MulInt(100).Format(1))
@@ -90,35 +132,34 @@ func main() {
 	cubby.Run()
 }
 
-func onCandle(c *indicators.Candle) {
-
-	// check for day change
+func onCandle(state *symbolState, c *indicators.Candle) {
+	// Check for day change (only need to do this once per timestamp)
 	date := c.Start.DateInt()
 	if date != gCurrentDate {
 		onDayChange()
 		gCurrentDate = date
 	}
 
-	// update rolling candle window
-	gCandles = append(gCandles, *c)
-	if len(gCandles) > *flagLookback {
-		gCandles = gCandles[1:]
+	// Update this symbol's rolling candle window
+	state.candles = append(state.candles, *c)
+	if len(state.candles) > *flagLookback {
+		state.candles = state.candles[1:]
 	}
 
-	// update day high/low
-	if gDayHigh.IsZero() || c.High.Cmp(gDayHigh) > 0 {
-		gDayHigh = c.High
+	// Update day high/low
+	if state.dayHigh.IsZero() || c.High.Cmp(state.dayHigh) > 0 {
+		state.dayHigh = c.High
 	}
-	if gDayLow.IsZero() || c.Low.Cmp(gDayLow) < 0 {
-		gDayLow = c.Low
+	if state.dayLow.IsZero() || c.Low.Cmp(state.dayLow) < 0 {
+		state.dayLow = c.Low
 	}
 
-	// need at least lookback candles before trading
-	if len(gCandles) < *flagLookback {
+	// Need at least lookback candles before trading
+	if len(state.candles) < *flagLookback {
 		return
 	}
 
-	// only proceed if market is open
+	// Only proceed if market is open
 	time := c.Start.ClockInt()
 	if !gIsOpen {
 		if time >= openTime && time < closeTime {
@@ -135,67 +176,74 @@ func onCandle(c *indicators.Candle) {
 		}
 	}
 
-	// Get current position
-	shares := gEquity.Quantity.Load()
-	invested := !shares.IsZero()
-	price := c.Close
-
-	if invested {
-		// update trailing stop
+	// If we're currently trading this symbol, check trailing stop
+	if gCurrentEquity == state.equity {
+		price := c.Close
 		if price.Cmp(gHighSince) > 0 {
 			gHighSince = price
 		}
-		// check trailing stop
 		stopPrice := gHighSince.Mul(decimal.One.Sub(*flagTrail))
 		if price.Cmp(stopPrice) <= 0 {
-			close(gEquity, "TRAIL_STOP")
+			closePosition(state.equity, "TRAIL_STOP")
+			gCurrentEquity = nil
 		}
-	} else {
-		checkBreakoutEntry(c)
+		return
 	}
+
+	// Check for breakout entry opportunity
+	checkBreakoutEntry(state, c)
 }
 
-func checkBreakoutEntry(c *indicators.Candle) {
-
-	// calculate lookback high (excluding current candle)
+func checkBreakoutEntry(state *symbolState, c *indicators.Candle) {
+	// Calculate lookback high (excluding current candle)
 	var lookbackHigh decimal.Decimal
-	for i := 0; i < len(gCandles)-1; i++ {
-		if lookbackHigh.IsZero() || gCandles[i].High.Cmp(lookbackHigh) > 0 {
-			lookbackHigh = gCandles[i].High
+	for i := 0; i < len(state.candles)-1; i++ {
+		if lookbackHigh.IsZero() || state.candles[i].High.Cmp(lookbackHigh) > 0 {
+			lookbackHigh = state.candles[i].High
 		}
 	}
 	if lookbackHigh.IsZero() {
 		return
 	}
+
 	price := c.Close
 
-	// check for breakout: price above lookback high by minimum gap
+	// Check for breakout: price above lookback high by minimum gap
 	breakoutThreshold := lookbackHigh.Mul(decimal.One.Add(*flagMinGap))
 	if price.Cmp(breakoutThreshold) <= 0 {
 		return
 	}
 
-	// don't enter if we've already traded too much today (limit churn)
+	// Don't enter if we've already traded too much today
 	if gTradesToday >= 3 {
 		return
 	}
 
-	// free up buying power
-	close(gHodl, "FREE_CASH")
+	// If currently trading another symbol, check priority
+	if gCurrentEquity != nil {
+		currentState := gSymbols[gCurrentEquity.Symbol]
+		// Only switch if new symbol has strictly higher priority (lower number)
+		if state.priority >= currentState.priority {
+			return
+		}
+		// Higher priority breakout - dump current position
+		closePosition(gCurrentEquity, "PRIORITY")
+		gCurrentEquity = nil
+	}
 
-	// Calculate position size: use full buying power (margin handled by cubby -margin flag)
-	// PDT rules allow 4x leverage intraday, must close by EOD
-	// Cap max position to $1B to avoid decimal overflow on sale proceeds
-	// (with 40x leverage and big gains, selling can produce multi-billion proceeds)
-	buyingPower := gEquity.GetMaxOrderQuantity()
+	// Free up buying power from hodl position
+	closePosition(gHodl, "FREE_CASH")
+
+	// Calculate position size
+	buyingPower := state.equity.GetMaxOrderQuantity()
 	usableBuyingPower := buyingPower.Mul(decimal.One.Sub(*flagBuffer))
 	quantity := usableBuyingPower.Truncate()
 	if !quantity.IsPositive() {
 		return
 	}
 
-	// enter long position
-	order, err := gEquity.MarketOrder(quantity)
+	// Enter long position
+	order, err := state.equity.MarketOrder(quantity)
 	if err != nil {
 		log.Printf("error placing buy order: %v", err)
 		return
@@ -203,13 +251,16 @@ func checkBreakoutEntry(c *indicators.Candle) {
 	order.Wait()
 	gHighSince = order.FilledPrice
 	gTradesToday++
+	gCurrentEquity = state.equity
 
 	if *flagVerbose {
-		log.Printf("BUY $%s of %s %s at $%s", order.FilledQuantity.Mul(order.FilledPrice).FormatThousand(2), order.FilledQuantity, gEquity.Symbol, order.FilledPrice)
+		log.Printf("BUY $%s of %s %s at $%s",
+			order.FilledQuantity.Mul(order.FilledPrice).FormatThousand(2),
+			order.FilledQuantity.Abs(), state.equity.Symbol, order.FilledPrice)
 	}
 }
 
-func close(equity *cubby.Equity, reason string) {
+func closePosition(equity *cubby.Equity, reason string) {
 	if equity == nil {
 		return
 	}
@@ -224,7 +275,9 @@ func close(equity *cubby.Equity, reason string) {
 	}
 	order.Wait()
 	if *flagVerbose {
-		log.Printf("SELL $%s of %s %s at $%s (%s)", order.FilledQuantity.Neg().Mul(order.FilledPrice).FormatThousand(2), order.FilledQuantity, equity.Symbol, order.FilledPrice, reason)
+		log.Printf("SELL $%s of %s %s at $%s (%s)",
+			order.FilledQuantity.Neg().Mul(order.FilledPrice).FormatThousand(2),
+			order.FilledQuantity.Abs(), equity.Symbol, order.FilledPrice, reason)
 	}
 	gHighSince = decimal.Zero
 }
@@ -233,44 +286,58 @@ func onMarketOpen() {
 }
 
 func onMarketClose() {
-	close(gEquity, "EOD")
+	// Close any open day trade position
+	if gCurrentEquity != nil {
+		closePosition(gCurrentEquity, "EOD")
+		gCurrentEquity = nil
+	}
+	// Buy hodl position for overnight
 	buyHodl()
-	gCandles = nil
-	gDayHigh = decimal.Zero
-	gDayLow = decimal.Zero
+	// Reset intraday state for all symbols
+	for _, state := range gSymbols {
+		state.candles = nil
+		state.dayHigh = decimal.Zero
+		state.dayLow = decimal.Zero
+	}
 	gHighSince = decimal.Zero
 }
 
 func onDayChange() {
-	gCandles = nil
-	gDayHigh = decimal.Zero
-	gDayLow = decimal.Zero
+	// Reset all per-symbol state
+	for _, state := range gSymbols {
+		state.candles = nil
+		state.dayHigh = decimal.Zero
+		state.dayLow = decimal.Zero
+	}
 	gHighSince = decimal.Zero
 	gTradesToday = 0
 }
 
 func buyHodl() {
-	if gHodl != nil {
-		price := gHodl.AskPrice.Load()
-		if price.IsZero() {
-			return
-		}
-		cash := cubby.Cash.Load()
-		if !cash.IsPositive() {
-			return
-		}
-		qty := cash.Div(price).Truncate()
-		if !qty.IsPositive() {
-			return
-		}
-		order, err := gHodl.MarketOrder(qty)
-		if err != nil {
-			log.Printf("error placing buy order: %v", err)
-			return
-		}
-		order.Wait()
-		if *flagVerbose {
-			log.Printf("BUY $%s of %s %s at $%s", order.FilledQuantity.Mul(order.FilledPrice).FormatThousand(2), order.FilledQuantity, gHodl.Symbol, order.FilledPrice)
-		}
+	if gHodl == nil {
+		return
+	}
+	price := gHodl.AskPrice.Load()
+	if price.IsZero() {
+		return
+	}
+	cash := cubby.Cash.Load()
+	if !cash.IsPositive() {
+		return
+	}
+	qty := cash.Div(price).Truncate()
+	if !qty.IsPositive() {
+		return
+	}
+	order, err := gHodl.MarketOrder(qty)
+	if err != nil {
+		log.Printf("error placing buy order: %v", err)
+		return
+	}
+	order.Wait()
+	if *flagVerbose {
+		log.Printf("BUY $%s of %s %s at $%s",
+			order.FilledQuantity.Mul(order.FilledPrice).FormatThousand(2),
+			order.FilledQuantity.Abs(), gHodl.Symbol, order.FilledPrice)
 	}
 }

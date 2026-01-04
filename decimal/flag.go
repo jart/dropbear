@@ -64,8 +64,8 @@ func FlagBPS(name string, value string, usage string) *Decimal {
 type percentValue Decimal
 
 func (d *percentValue) Set(s string) error {
-	v := Parse(s).DivInt(100)
-	*d = percentValue(v)
+	// User provides "10" for 10%, stored as 0.1
+	*d = percentValue(Parse(s).DivInt(100))
 	return nil
 }
 
@@ -77,14 +77,11 @@ func (d *percentValue) String() string {
 	return Decimal(*d).MulInt(100).String()
 }
 
-func VarPercent(p *Decimal, name string, value Decimal, usage string) {
-	*p = value
-	flag.Var((*percentValue)(p), name, usage)
-}
-
-// FlagPercent defines a Decimal percentage flag.
-func FlagPercent(name string, value string, usage string) *Decimal {
+// FlagPercent defines a percentage flag. Default and user values are percentages
+// (e.g., "10" for 10%), stored internally as decimal fractions (0.1).
+func FlagPercent(name string, defaultPercent string, usage string) *Decimal {
 	p := new(Decimal)
-	VarPercent(p, name, Parse(value).DivInt(100), usage)
+	*p = Parse(defaultPercent).DivInt(100)
+	flag.Var((*percentValue)(p), name, usage)
 	return p
 }

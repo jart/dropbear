@@ -11,7 +11,6 @@ import (
 )
 
 func main() {
-	ds.SetOffline()
 	client := alpaca.NewClient()
 	err := client.SyncAssets()
 	if err != nil {
@@ -31,14 +30,13 @@ func main() {
 		if a.Class == alpaca.AssetClassUSEquity &&
 			a.Status == alpaca.AssetStatusActive &&
 			a.Tradable == ds.True && a.PTPNoException == ds.False && a.PTPWithException == ds.False &&
-			a.MarginRequirementLong.Cmp(decimal.Parse("0.3")) == 0 {
+			a.MarginRequirementLong.Cmp(decimal.Parse("0.5")) <= 0 {
 			name := strings.ToLower(a.Name)
-			if (strings.Contains(name, "2x") ||
+			if strings.Contains(name, "2x") ||
 				strings.Contains(name, "3x") ||
 				strings.Contains(name, "ultra") ||
-				strings.Contains(name, "leveraged")) && (!strings.Contains(name, "short") &&
-				!strings.Contains(name, "bear")) {
-				fmt.Printf("%-10s %s\n", a.Symbol, a.Name)
+				strings.Contains(name, "leveraged") {
+				fmt.Printf("%-10s %s %s\n", a.Symbol, a.MarginRequirementLong, a.Name)
 			}
 		}
 	}
