@@ -36,6 +36,10 @@ type Asset struct {
 	PriceIncrement         decimal.Decimal // smallest unit of price movement supported (tick size)
 }
 
+func (asset *Asset) String() string {
+	return asset.Symbol
+}
+
 // GetInitialMargin calculates the initial margin required to open a position.
 func (asset *Asset) GetInitialMargin(quantity, price decimal.Decimal) decimal.Decimal {
 	value := quantity.Abs().Mul(price)

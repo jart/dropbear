@@ -20,11 +20,6 @@ type Bar struct {
 	VWAP       decimal.Decimal `json:"vw"`
 }
 
-type BarsResponse struct {
-	Bars      []Bar  `json:"bars"`
-	NextToken string `json:"next_page_token"`
-}
-
 // barSize is the size of a Bar in bytes.
 const barSize = int(unsafe.Sizeof(Bar{}))
 

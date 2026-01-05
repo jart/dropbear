@@ -486,11 +486,11 @@ func writeOutput(results []Result) error {
 	buf.WriteString("var OptimalParams = map[string]Params{\n")
 
 	for _, r := range results {
-		buf.WriteString(fmt.Sprintf("\t%q: {Trail: decimal.Parse(%q), MinGap: decimal.Parse(%q), Lookback: %d},\n",
+		fmt.Fprintf(&buf, "\t%q: {Trail: decimal.Parse(%q), MinGap: decimal.Parse(%q), Lookback: %d},\n",
 			r.Symbol,
 			r.Trail.String(),
 			r.MinGap.String(),
-			r.Lookback))
+			r.Lookback)
 	}
 
 	buf.WriteString("}\n")

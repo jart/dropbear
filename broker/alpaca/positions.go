@@ -17,7 +17,7 @@ type Position struct {
 	AssetMarginable        bool            `json:"asset_marginable"`         //
 	Qty                    decimal.Decimal `json:"qty"`                      // the number of shares
 	QtyAvailable           decimal.Decimal `json:"qty_available"`            // total number of shares available, minus open orders / locked for options covered call
-	Side                   string          `json:"side"`                     // e.g. long, short
+	Side                   PositionSide    `json:"side"`                     // e.g. long, short
 	MarketValue            decimal.Decimal `json:"market_value"`             // total dollar amount of position
 	AvgEntryPrice          decimal.Decimal `json:"avg_entry_price"`          //
 	CostBasis              decimal.Decimal `json:"cost_basis"`               // total cost basis in dollars

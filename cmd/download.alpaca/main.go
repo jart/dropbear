@@ -34,6 +34,11 @@ const (
 	barSize = int(unsafe.Sizeof(alpaca.Bar{}))
 )
 
+type BarsResponse struct {
+	Bars      []alpaca.Bar `json:"bars"`
+	NextToken string       `json:"next_page_token"`
+}
+
 func main() {
 	flag.Parse()
 	loggy.Init()
@@ -273,7 +278,7 @@ func fetchAll(client *alpaca.Client, symbol string, start, end time.Time, stoppe
 			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 		}
 
-		var data alpaca.BarsResponse
+		var data BarsResponse
 		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 			resp.Body.Close()
 			return nil, fmt.Errorf("decode: %w", err)

@@ -61,6 +61,10 @@ func (oa OrderAlgorithm) MarshalJSON() ([]byte, error) {
 }
 
 func (oa *OrderAlgorithm) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 {
+		*oa = OrderAlgorithmNone
+		return nil
+	}
 	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
 		return fmt.Errorf("invalid order algorithm: %s", data)
 	}

@@ -12,14 +12,16 @@ import (
 )
 
 type backtest struct {
-	interest  *alpaca.InterestCalculator
-	heap      *binaryheap.Heap[*backtestEntry]
-	minTime   clocky.Time
-	maxTime   clocky.Time
-	startCash decimal.Decimal
-	opened    bool
-	closed    bool
-	date      int
+	interest    *alpaca.InterestCalculator
+	heap        *binaryheap.Heap[*backtestEntry]
+	minTime     clocky.Time
+	maxTime     clocky.Time
+	startCash   decimal.Decimal
+	opened      bool
+	closed      bool
+	date        int
+	peakValue   decimal.Decimal // highest portfolio value seen
+	maxDrawdown decimal.Decimal // largest drawdown from peak (as decimal, e.g. 0.10 = 10%)
 }
 
 type backtestEntry struct {
@@ -76,6 +78,7 @@ func newBacktest() *backtest {
 	}
 	gMaxMarginAvailable = Cash
 	gPowerLevel = decimal.FromInt(1) // start with overnight margin (1x)
+	m.peakValue = Cash
 	return m
 }
 
@@ -125,6 +128,17 @@ func (m *backtest) Run() {
 			return
 		}
 
+		// Track max drawdown
+		currentValue := GetPortfolioValue()
+		if currentValue.Cmp(m.peakValue) > 0 {
+			m.peakValue = currentValue
+		} else if m.peakValue.IsPositive() {
+			drawdown := m.peakValue.Sub(currentValue).Div(m.peakValue)
+			if drawdown.Cmp(m.maxDrawdown) > 0 {
+				m.maxDrawdown = drawdown
+			}
+		}
+
 		for _, entry := range entries {
 			entry.bar = entry.bars.Read()
 			if entry.bar == nil || entry.bar.Timestamp >= m.maxTime {
@@ -163,6 +177,7 @@ func (m *backtest) printSummary() {
 		log.Printf("  Slippage: $%s", gTotalSlippage.FormatThousand(2))
 		log.Printf("  Interest: $%s", m.interest.TotalCharged.FormatThousand(2))
 		log.Printf("  Return:   %s%% (%.1f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
+		log.Printf("  Max DD:   %s%%", m.maxDrawdown.MulInt(100).Format(2))
 		log.Printf("  Period:   %.1f days (%.2f years)", days, years)
 	}
 }

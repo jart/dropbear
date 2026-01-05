@@ -3,9 +3,9 @@
 //    | |   |  / \_|  |  / |/ |  |/    / \_|  /  |  |/  |/  |
 //    |/ \_/|_/ \/ |_/|_/  |  |_/|__/   \/ |_/   |_/|__/|__/|_/
 //   /|
-//   \|          investment algorithm x3.162-2025
-//
-// Command fngu implements a multi-position day trading strategy for leveraged ETFs.
+//   \|            trading algorithm x3.100-2026
+
+// fngu implements a multi-position day trading strategy for leveraged etfs
 //
 // Strategy: Intraday momentum breakout scanner
 //   - Monitor multiple symbols for breakout patterns
@@ -16,8 +16,7 @@
 //
 // Usage:
 //
-//	go run ./cmd/fngu -backtest -symbol "NVDL SOXL GUSH"
-//	go run ./cmd/fngu -backtest -symbol "NVDL SOXL" -slip 50 -trail 2.5
+//	go run ./cmd/fngu -backtest -v -start 2025-10-01 -symbol etc/picks/leverage -cash 161844
 
 package main
 
@@ -101,14 +100,9 @@ func main() {
 			log.Printf("error adding symbol %s: %v", sym, err)
 			continue
 		}
-		params := OptimalParams[sym]
-		lookback := params.Lookback
-		if lookback == 0 {
-			lookback = 9 // default
-		}
 		state := &symbolState{
 			equity:  equity,
-			maxHigh: indicators.NewMax(clocky.Duration(lookback)*clocky.Minute - 1),
+			maxHigh: indicators.NewMax(clocky.Duration(OptimalParams[sym].Lookback)*clocky.Minute - 1),
 		}
 		gSymbols[sym] = state
 		equity.OnBar = func(s *symbolState) func(*alpaca.Bar) {
