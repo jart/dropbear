@@ -1,3 +1,10 @@
+//    o               o
+//              , _|_     _  _    _     , _|_  ,_    _   _ _|_
+//    | |   |  / \_|  |  / |/ |  |/    / \_|  /  |  |/  |/  |
+//    |/ \_/|_/ \/ |_/|_/  |  |_/|__/   \/ |_/   |_/|__/|__/|_/
+//   /|
+//   \|          investment algorithm x3.162-2025
+//
 // Command fngu implements a multi-position day trading strategy for leveraged ETFs.
 //
 // Strategy: Intraday momentum breakout scanner
@@ -32,10 +39,9 @@ var (
 	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
 	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay in basis points")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
-	flagMaxDD     = decimal.FlagPercent("maxdd", "5", "max daily drawdown before halting")
+	flagMaxDD     = decimal.FlagPercent("maxdd", "9", "max daily drawdown before halting")
 	flagMaxPos    = decimal.FlagPercent("maxpos", "50", "max position size as percent of portfolio")
 	flagMaxLiq    = decimal.FlagPercent("maxliq", "5", "max position as percent of today's dollar volume")
-	flagVerbose   = flag.Bool("v", false, "verbose logging")
 )
 
 const (
@@ -56,7 +62,7 @@ type symbolState struct {
 	lookbackHigh decimal.Decimal // max high before current bar (for breakout detection)
 	dayHigh      decimal.Decimal
 	dayLow       decimal.Decimal
-	dollarVolume decimal.Decimal // cumulative dollar volume today (in thousands)
+	kiloVolume   decimal.Decimal // cumulative dollar volume today in $1000s
 }
 
 var (
@@ -140,7 +146,7 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 	if vwap.IsZero() {
 		vwap = c.Close
 	}
-	state.dollarVolume = state.dollarVolume.Add(c.Volume.Mul(vwap).DivInt(1000))
+	state.kiloVolume = state.kiloVolume.Add(c.Volume.Mul(vwap).DivInt(1000))
 
 	// Update day high/low
 	if state.dayHigh.IsZero() || c.High.Cmp(state.dayHigh) > 0 {
@@ -172,7 +178,7 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 	// Capture starting portfolio value for drawdown tracking
 	if gDayStart.IsZero() {
 		gDayStart = cubby.GetPortfolioValue()
-		if *flagVerbose {
+		if *cubby.FlagVerbose {
 			log.Printf("\033[1mOPEN: portfolio value $%s\033[0m", gDayStart.FormatThousand(2))
 		}
 	}
@@ -183,7 +189,7 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 		drawdown := gDayStart.Sub(current).Div(gDayStart)
 		if drawdown.Cmp(*flagMaxDD) >= 0 {
 			gHalted = true
-			if *flagVerbose {
+			if *cubby.FlagVerbose {
 				log.Printf("\033[1;31mHALTED: drawdown %.2f%% exceeds max %.2f%%\033[0m",
 					drawdown.MulInt(100).Float64(), flagMaxDD.MulInt(100).Float64())
 			}
@@ -257,20 +263,25 @@ func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
 	}
 
 	// Limit position size to maxliq percent of today's dollar volume (liquidity check)
-	if state.dollarVolume.IsPositive() {
-		maxLiqValue := state.dollarVolume.MulInt(1000).Mul(*flagMaxLiq)
-		maxQtyByLiq := maxLiqValue.Div(limitPrice).QuantizeTruncate(decimal.One)
+	if state.kiloVolume.IsPositive() {
+		maxKiloVol := state.kiloVolume.Mul(*flagMaxLiq)
+		maxQtyByLiq := maxKiloVol.Div(limitPrice.DivInt(1000)).QuantizeTruncate(decimal.One)
 		if maxQtyByLiq.Cmp(maxQty) < 0 {
 			maxQty = maxQtyByLiq
-			if *flagVerbose && maxQty.IsPositive() {
+			if *cubby.FlagVerbose && maxQty.IsPositive() {
 				log.Printf("LIQUIDITY: %s capped to %s shares ($%sk is %s%% of $%sk vol)",
 					state.equity.Symbol, maxQty,
-					maxLiqValue.DivInt(1000).FormatThousand(0),
-					flagMaxLiq.MulInt(100).Format(0),
-					state.dollarVolume.FormatThousand(0))
+					maxKiloVol.FormatThousand(3),
+					flagMaxLiq.MulInt(100).Format(1),
+					state.kiloVolume.FormatThousand(3))
 			}
 		}
 		if !maxQty.IsPositive() {
+			log.Printf("LIQUIDITY: %s no shares can be bought within liquidity limits ($%sk is %s%% of $%sk vol)",
+				state.equity.Symbol,
+				maxKiloVol.FormatThousand(3),
+				flagMaxLiq.MulInt(100).Format(1),
+				state.kiloVolume.FormatThousand(3))
 			return
 		}
 	}
@@ -278,16 +289,14 @@ func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
 	// Place IOC limit order
 	order, err := state.equity.LimitOrder(maxQty, limitPrice, alpaca.TimeInForceIOC)
 	if err != nil {
-		if *flagVerbose {
+		if *cubby.FlagVerbose {
 			log.Printf("\033[31merror placing buy order for %s: %v\033[0m", state.equity.Symbol, err)
 		}
 		return
 	}
+	order.Log()
 
 	if order.FilledQuantity.IsZero() {
-		if *flagVerbose {
-			log.Printf("\033[32mBUY\033[0m order not filled for %s", state.equity.Symbol)
-		}
 		return
 	}
 
@@ -295,12 +304,6 @@ func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
 	gPositions[state.equity.Symbol] = &position{
 		equity:    state.equity,
 		highSince: order.FilledPrice,
-	}
-
-	if *flagVerbose {
-		log.Printf("\033[32mBUY\033[0m %s %s at $%s (limit $%s)",
-			order.FilledQuantity, state.equity.Symbol,
-			order.FilledPrice, limitPrice.Format(2))
 	}
 }
 
@@ -318,17 +321,8 @@ func closePosition(equity *cubby.Equity, reason string) {
 		log.Printf("error closing %s: %v", equity.Symbol, err)
 		return
 	}
-
-	if *flagVerbose {
-		if order.FilledQuantity.IsZero() {
-			log.Printf("\033[31mSELL\033[0m %s failed: 0 filled (limit $%s, status %s)",
-				equity.Symbol, limitPrice.Format(2), order.Status)
-		} else {
-			log.Printf("\033[31mSELL\033[0m %s %s at $%s (%s)",
-				order.FilledQuantity.Abs(), equity.Symbol,
-				order.FilledPrice, reason)
-		}
-	}
+	order.Reason = reason
+	order.Log()
 
 	// If fully closed, remove from positions
 	if equity.Quantity.IsZero() {
@@ -347,7 +341,7 @@ func onDayChange() {
 		state.lookbackHigh = decimal.Zero
 		state.dayHigh = decimal.Zero
 		state.dayLow = decimal.Zero
-		state.dollarVolume = decimal.Zero
+		state.kiloVolume = decimal.Zero
 	}
 	gPositions = make(map[string]*position)
 	gDayStart = decimal.Zero

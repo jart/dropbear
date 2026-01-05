@@ -40,14 +40,14 @@ type periodResult struct {
 }
 
 type stockResult struct {
-	symbol         string
-	periods        []periodResult
-	avgDelta       float64
-	minDelta       float64
-	maxDelta       float64
-	consistency    int // number of periods where removal helped (positive delta)
-	liquidations   int // number of periods where baseline got liquidated
-	totalPeriods   int
+	symbol       string
+	periods      []periodResult
+	avgDelta     float64
+	minDelta     float64
+	maxDelta     float64
+	consistency  int // number of periods where removal helped (positive delta)
+	liquidations int // number of periods where baseline got liquidated
+	totalPeriods int
 }
 
 type job struct {

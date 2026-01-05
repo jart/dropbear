@@ -16,11 +16,17 @@ const (
 )
 
 // Client is an Alpaca API client.
-type Client struct{}
+type Client struct {
+	tokenBucket ds.TokenBucket
+}
 
 // NewClient creates a new Alpaca API Client.
 func NewClient() *Client {
-	return &Client{}
+	return &Client{
+		// should be good for 200/minute limit on order api
+		// data api is basically unlimited for our purposes
+		tokenBucket: ds.NewTokenBucket(3, 20),
+	}
 }
 
 // Get makes an authenticated GET request.

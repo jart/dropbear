@@ -15,6 +15,7 @@ import (
 )
 
 var (
+	FlagVerbose    = flag.Bool("v", false, "verbose logging")
 	flagPaper      = flag.Bool("paper", false, "simulate order execution on live data")
 	flagBacktest   = flag.Bool("backtest", false, "run backtest on historical data")
 	flagStart      = clocky.TimeFlag("start", "1980-01-01", "backtest start date")
@@ -22,7 +23,6 @@ var (
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flagRFR        = decimal.FlagBPS("rfr", "487", "annualized risk-free rate in basis points")
 	flagQuantum    = clocky.DurationFlag("quantum", "1d", "metric sampling interval while backtesting")
-	flagVerbose    = flag.Bool("cubby-verbose", false, "log order simulation decisions")
 	flagSlippage   = decimal.FlagPercent("slippage", "100", "VWAP deviation multiplier (100 = use full VWAP deviation)")
 	flagImpact     = decimal.FlagPercent("impact", "50", "market impact multiplier (% of participation * range)")
 	flagRekt       = decimal.Flag("rekt", "25_000", "portfolio value at which to consider the account liquidated")

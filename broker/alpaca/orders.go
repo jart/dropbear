@@ -42,30 +42,40 @@ type Order struct {
 func (c *Client) MarketOrder(symbol string, side ds.Side, qty decimal.Decimal, tif TimeInForce) (*Order, error) {
 	return c.CreateOrder(map[string]any{
 		"symbol":        symbol,
-		"qty":           qty.String(),
-		"side":          side.String(),
+		"qty":           qty,
+		"side":          side,
 		"type":          "market",
-		"time_in_force": tif.String(),
+		"time_in_force": tif,
 	})
 }
 
 // LimitOrder places a limit order.
-func (c *Client) LimitOrder(symbol string, side ds.Side, qty, limitPrice decimal.Decimal, tif TimeInForce, ext bool) (*Order, error) {
-	return c.CreateOrder(map[string]any{
+func (c *Client) LimitOrder(symbol string, side ds.Side, quantity, limitPrice decimal.Decimal, timeInForce TimeInForce, orderAlgorithm OrderAlgorithm, orderDestination OrderDestination, extendedHours bool) (*Order, error) {
+	request := map[string]any{
 		"symbol":         symbol,
-		"qty":            qty.String(),
-		"side":           side.String(),
+		"qty":            quantity,
+		"side":           side,
 		"type":           "limit",
-		"time_in_force":  tif.String(),
-		"limit_price":    limitPrice.String(),
-		"extended_hours": ext,
-	})
+		"time_in_force":  timeInForce,
+		"limit_price":    limitPrice,
+		"extended_hours": extendedHours,
+	}
+	if orderAlgorithm != OrderAlgorithmNone {
+		request["advanced_instructions"] = map[string]any{
+			"algorithm":   orderAlgorithm,
+			"destination": orderDestination,
+		}
+	}
+	return c.CreateOrder(request)
 }
 
 func (c *Client) CreateOrder(body map[string]any) (*Order, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling order: %w", err)
+	}
+	if !c.tokenBucket.Try() {
+		return nil, ds.ErrTooManyRequests
 	}
 	resp, err := c.Request(ds.FastHTTPClient, "POST", "/v2/orders", bytes.NewReader(jsonBody))
 	if err != nil {
@@ -83,9 +93,10 @@ func (c *Client) CreateOrder(body map[string]any) (*Order, error) {
 		}
 		return nil, fmt.Errorf("order failed %d: %s", resp.StatusCode, string(respBody))
 	}
+	respBody, _ := io.ReadAll(resp.Body)
 	var result Order
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("decoding response: %w\nraw: %s", err, string(respBody))
 	}
 	return &result, nil
 }
@@ -101,6 +112,9 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, limitPrice de
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshaling order: %w", err)
+	}
+	if !c.tokenBucket.Try() {
+		return nil, ds.ErrTooManyRequests
 	}
 	resp, err := c.Request(ds.FastHTTPClient, "PATCH", "/v2/orders/"+orderID, bytes.NewReader(jsonBody))
 	if err != nil {
@@ -144,6 +158,9 @@ var ErrWashTrade = fmt.Errorf("wash trade detected")
 // Returns ErrOrderPendingReplace if order is not cancelable (422 - mid-replacement, etc.).
 // Returns ErrOrderNotFound if order doesn't exist (404 - already filled/canceled).
 func (c *Client) CancelOrder(orderID string) error {
+	if !c.tokenBucket.Try() {
+		return ds.ErrTooManyRequests
+	}
 	resp, err := c.Request(ds.FastHTTPClient, "DELETE", "/v2/orders/"+orderID, nil)
 	if err != nil {
 		return err
@@ -168,6 +185,7 @@ func (c *Client) CancelOrder(orderID string) error {
 
 // CancelAllOrders cancels all open orders.
 func (c *Client) CancelAllOrders() error {
+	c.tokenBucket.Get()
 	resp, err := c.Request(ds.FastHTTPClient, "DELETE", "/v2/orders", nil)
 	if err != nil {
 		return err
@@ -184,8 +202,28 @@ func (c *Client) CancelAllOrders() error {
 	return nil
 }
 
+// GetOrder retrieves a single order by ID.
+func (c *Client) GetOrder(orderID string) (*Order, error) {
+	c.tokenBucket.Get()
+	resp, err := c.Request(ds.BulkHttpClient, "GET", "/v2/orders/"+orderID, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+	var result Order
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	return &result, nil
+}
+
 // GetOrders retrieves open orders.
 func (c *Client) GetOrders() ([]Order, error) {
+	c.tokenBucket.Get()
 	resp, err := c.Request(ds.BulkHttpClient, "GET", "/v2/orders?status=open", nil)
 	if err != nil {
 		return nil, err

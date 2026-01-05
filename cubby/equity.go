@@ -85,6 +85,28 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 	return lo.Mul(decimal.One.Sub(*flagBuffer)).Truncate()
 }
 
+// updatePosition updates the equity position after a fill and returns entry price and realized P/L.
+func (e *Equity) updatePosition(side ds.Side, filledQuantity, fillPrice decimal.Decimal) (entryPrice, realizedPL decimal.Decimal) {
+	entryPrice = e.EntryPrice
+	if side == ds.SideBuy {
+		// Buying: compute weighted average entry price
+		oldNotional := e.EntryPrice.Mul(e.Quantity)
+		newNotional := fillPrice.Mul(filledQuantity)
+		e.Quantity = e.Quantity.Add(filledQuantity)
+		if !e.Quantity.IsZero() {
+			e.EntryPrice = oldNotional.Add(newNotional).Div(e.Quantity)
+		}
+	} else {
+		// Selling: calculate realized P/L and reduce position
+		realizedPL = fillPrice.Sub(entryPrice).Mul(filledQuantity.Abs())
+		e.Quantity = e.Quantity.Add(filledQuantity)
+		if e.Quantity.IsZero() {
+			e.EntryPrice = decimal.Zero
+		}
+	}
+	return entryPrice, realizedPL
+}
+
 // LimitOrder places a limit order for the given quantity of shares.
 // For backtesting, simulates fill based on whether limit price intersects the bar's range.
 func (e *Equity) LimitOrder(quantity, limitPrice decimal.Decimal, timeInForce alpaca.TimeInForce) (*Order, error) {
@@ -244,14 +266,16 @@ func (e *Equity) simulateLimitOrder(side ds.Side, quantity, limitPrice decimal.D
 
 	// Update position and cash
 	notional := fillPrice.Mul(filledQuantity)
-	e.Quantity = e.Quantity.Add(filledQuantity)
 	fee := gFeeCalculator.GetFee(clocky.Now(), filledQuantity, true)
 	Cash = Cash.Sub(fee).Sub(notional)
+	entryPrice, realizedPL := e.updatePosition(side, filledQuantity, fillPrice)
 
 	order.Status = alpaca.OrderStatusFilled
 	order.FilledQuantity = filledQuantity
 	order.FilledPrice = fillPrice
 	order.TotalFees = fee
+	order.EntryPrice = entryPrice
+	order.RealizedPL = realizedPL
 
 	if filledQuantity.Abs().Cmp(quantity.Abs()) < 0 {
 		order.Status = alpaca.OrderStatusPartiallyFilled
@@ -262,7 +286,7 @@ func (e *Equity) simulateLimitOrder(side ds.Side, quantity, limitPrice decimal.D
 
 // executeLimitOrder executes a real limit order through the broker.
 func (e *Equity) executeLimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, timeInForce alpaca.TimeInForce) (*Order, error) {
-	response, err := Client.LimitOrder(e.Symbol, side, quantity.Abs(), limitPrice, timeInForce, false)
+	response, err := Client.LimitOrder(e.Symbol, side, quantity.Abs(), limitPrice, timeInForce, alpaca.OrderAlgorithmNone, alpaca.OrderDestinationNone, false)
 	if err != nil {
 		return nil, err
 	}
@@ -271,9 +295,9 @@ func (e *Equity) executeLimitOrder(side ds.Side, quantity, limitPrice decimal.De
 		filledQuantity = filledQuantity.Neg()
 	}
 	notional := response.FilledAvgPrice.Mul(filledQuantity)
-	e.Quantity = e.Quantity.Add(filledQuantity)
 	fee := gFeeCalculator.GetFee(clocky.Now(), filledQuantity, true)
 	Cash = Cash.Sub(fee).Sub(notional)
+	entryPrice, realizedPL := e.updatePosition(side, filledQuantity, response.FilledAvgPrice)
 	return &Order{
 		OrderID:        response.ID,
 		ClientOrderID:  response.ClientOrderID,
@@ -285,5 +309,7 @@ func (e *Equity) executeLimitOrder(side ds.Side, quantity, limitPrice decimal.De
 		FilledPrice:    response.FilledAvgPrice,
 		FilledQuantity: filledQuantity,
 		TotalFees:      fee,
+		EntryPrice:     entryPrice,
+		RealizedPL:     realizedPL,
 	}, nil
 }

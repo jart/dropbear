@@ -27,6 +27,7 @@ type CryptoTransfer struct {
 // GetCryptoTransfers retrieves crypto wallet funding transactions.
 // This is useful for example to see if money is arriving from the Bitcoin network.
 func (c *Client) GetCryptoTransfers() ([]CryptoTransfer, error) {
+	c.tokenBucket.Get()
 	resp, err := c.Get("/v2/wallets/transfers")
 	if err != nil {
 		return nil, err

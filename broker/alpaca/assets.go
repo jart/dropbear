@@ -127,6 +127,7 @@ type jsonAsset struct {
 }
 
 func (c *Client) fetchAssets() ([]jsonAsset, error) {
+	c.tokenBucket.Get()
 	resp, err := c.Get("/v2/assets")
 	if err != nil {
 		return nil, err

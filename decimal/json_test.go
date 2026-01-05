@@ -89,12 +89,32 @@ func TestDecimalJSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDecimalUnmarshalJSONNullAndEmpty(t *testing.T) {
+	// null and "" should parse as zero (for Alpaca API compatibility)
+	tests := []struct {
+		input string
+		want  Decimal
+	}{
+		{`null`, Zero},
+		{`""`, Zero},
+	}
+
+	for _, tt := range tests {
+		var d Decimal
+		if err := json.Unmarshal([]byte(tt.input), &d); err != nil {
+			t.Errorf("Unmarshal(%s) error: %v", tt.input, err)
+			continue
+		}
+		if d != tt.want {
+			t.Errorf("Unmarshal(%s) = %v, want %v", tt.input, d, tt.want)
+		}
+	}
+}
+
 func TestDecimalUnmarshalJSONErrors(t *testing.T) {
 	tests := []struct {
 		input string
 	}{
-		{``},          // empty string
-		{`""`},        // empty string
 		{`"`},         // unclosed quote
 		{`"abc"`},     // not a number
 		{`"123.abc"`}, // partial garbage
