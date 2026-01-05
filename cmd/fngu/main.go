@@ -25,6 +25,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/cubby"
 	"dropbear/decimal"
+	"dropbear/ds"
 	"dropbear/indicators"
 	"dropbear/loggy"
 	"flag"
@@ -105,8 +106,8 @@ func main() {
 			maxHigh: indicators.NewMax(clocky.Duration(OptimalParams[sym].Lookback)*clocky.Minute - 1),
 		}
 		gSymbols[sym] = state
-		equity.OnBar = func(s *symbolState) func(*alpaca.Bar) {
-			return func(c *alpaca.Bar) {
+		equity.OnBar = func(s *symbolState) func(*ds.Bar) {
+			return func(c *ds.Bar) {
 				onBar(s, c)
 			}
 		}(state)
@@ -124,7 +125,7 @@ func main() {
 	cubby.Run()
 }
 
-func onBar(state *symbolState, c *alpaca.Bar) {
+func onBar(state *symbolState, c *ds.Bar) {
 	date := c.Timestamp.DateInt()
 	if date != gCurrentDate {
 		onDayChange()
@@ -222,7 +223,7 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 	checkBreakoutEntry(state, c)
 }
 
-func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
+func checkBreakoutEntry(state *symbolState, c *ds.Bar) {
 	// Use lookback high (max before current bar, computed in onBar)
 	if state.lookbackHigh.IsZero() {
 		return

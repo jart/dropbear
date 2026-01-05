@@ -4,6 +4,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/netty"
 	"encoding/json"
 	"log"
 	"time"
@@ -54,7 +55,7 @@ func (m *marketData) runOnce() error {
 	url := WSURL()
 
 	// connect to websocket
-	conn, _, err := ds.FastWSDial(url, nil)
+	conn, _, err := netty.FastWSDial(url, nil)
 	if err != nil {
 		return err
 	}
@@ -103,7 +104,7 @@ func (m *marketData) runOnce() error {
 	}
 }
 
-func (m *marketData) sendSubscribe(conn *ds.FastWSConn) error {
+func (m *marketData) sendSubscribe(conn *netty.FastWSConn) error {
 	sub := map[string]any{
 		"type":        "subscribe",
 		"channel":     "level2",

@@ -1,6 +1,8 @@
 package coinbase
 
+import "dropbear/decimal"
+
 type MonetaryAmount struct {
-	Value    string `json:"value"`
-	Currency string `json:"currency"`
+	Value    decimal.Decimal `json:"value"`
+	Currency string          `json:"currency"`
 }

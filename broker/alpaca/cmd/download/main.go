@@ -31,12 +31,12 @@ var (
 
 const (
 	dataURL = "https://data.alpaca.markets"
-	barSize = int(unsafe.Sizeof(alpaca.Bar{}))
+	barSize = int(unsafe.Sizeof(ds.Bar{}))
 )
 
 type BarsResponse struct {
-	Bars      []alpaca.Bar `json:"bars"`
-	NextToken string       `json:"next_page_token"`
+	Bars      []ds.Bar `json:"bars"`
+	NextToken string   `json:"next_page_token"`
 }
 
 func main() {
@@ -135,7 +135,7 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 	if data, err := os.ReadFile(outPath); err == nil && len(data) >= barSize {
 		existingData = data
 		n := len(data) / barSize
-		lastBar := (*alpaca.Bar)(unsafe.Pointer(&data[(n-1)*barSize]))
+		lastBar := (*ds.Bar)(unsafe.Pointer(&data[(n-1)*barSize]))
 		lastTime = lastBar.Timestamp
 	}
 
@@ -248,8 +248,8 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 
 var errInterrupted = fmt.Errorf("interrupted")
 
-func fetchAll(client *alpaca.Client, symbol string, start, end time.Time, stopped *atomic.Bool) ([]alpaca.Bar, error) {
-	var bars []alpaca.Bar
+func fetchAll(client *alpaca.Client, symbol string, start, end time.Time, stopped *atomic.Bool) ([]ds.Bar, error) {
+	var bars []ds.Bar
 	pageToken := ""
 
 	for {

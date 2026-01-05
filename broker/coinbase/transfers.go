@@ -2,7 +2,8 @@ package coinbase
 
 import (
 	"bytes"
-	"dropbear/ds"
+	"dropbear/decimal"
+	"dropbear/netty"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,13 +13,13 @@ import (
 
 // SendCryptoRequest is the request body for sending crypto.
 type SendCryptoRequest struct {
-	Type        string `json:"type"`                  // must be "send"
-	To          string `json:"to"`                    // blockchain address
-	Amount      string `json:"amount"`                // amount to send
-	Currency    string `json:"currency"`              // e.g., "SOL"
-	Idem        string `json:"idem,omitempty"`        // idempotency key
-	Network     string `json:"network,omitempty"`     // e.g., "solana"
-	Description string `json:"description,omitempty"` // optional memo
+	Type        string          `json:"type"`                  // must be "send"
+	To          string          `json:"to"`                    // blockchain address
+	Amount      decimal.Decimal `json:"amount"`                // amount to send
+	Currency    string          `json:"currency"`              // e.g., "SOL"
+	Idem        string          `json:"idem,omitempty"`        // idempotency key
+	Network     string          `json:"network,omitempty"`     // e.g., "solana"
+	Description string          `json:"description,omitempty"` // optional memo
 }
 
 // SendCryptoResponse is the response from sending crypto.
@@ -28,12 +29,12 @@ type SendCryptoResponse struct {
 		Type   string `json:"type"`
 		Status string `json:"status"` // "pending" or "completed"
 		Amount struct {
-			Amount   string `json:"amount"`
-			Currency string `json:"currency"`
+			Amount   decimal.Decimal `json:"amount"`
+			Currency string          `json:"currency"`
 		} `json:"amount"`
 		NativeAmount struct {
-			Amount   string `json:"amount"`
-			Currency string `json:"currency"`
+			Amount   decimal.Decimal `json:"amount"`
+			Currency string          `json:"currency"`
 		} `json:"native_amount"`
 		Network struct {
 			Status string `json:"status"`
@@ -55,7 +56,7 @@ type SendCryptoResponse struct {
 
 // SendCrypto sends cryptocurrency to an external address.
 // accountID is the UUID of the source account (get from GetAccounts).
-func (c *Client) SendCrypto(accountID string, to string, amount string, currency string, network string) (*SendCryptoResponse, error) {
+func (c *Client) SendCrypto(accountID string, to string, amount decimal.Decimal, currency string, network string) (*SendCryptoResponse, error) {
 	req := SendCryptoRequest{
 		Type:     "send",
 		To:       to,
@@ -70,7 +71,7 @@ func (c *Client) SendCrypto(accountID string, to string, amount string, currency
 	}
 	path := fmt.Sprintf("/v2/accounts/%s/transactions", accountID)
 	c.rateLimiter.Get()
-	resp, err := c.Request(ds.BulkHttpClient, "POST", path, bytes.NewReader(jsonBody), true)
+	resp, err := c.Request(netty.BulkHttpClient, "POST", path, bytes.NewReader(jsonBody), true)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/netty"
 	"encoding/json"
 	"log"
 	"strings"
@@ -73,7 +74,7 @@ func (m *marketData) run() {
 func (m *marketData) runOnce() error {
 
 	// connect websocket
-	conn, _, err := ds.FastWSDial(StreamURL, nil)
+	conn, _, err := netty.FastWSDial(StreamURL, nil)
 	if err != nil {
 		return err
 	}

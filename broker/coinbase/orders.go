@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/netty"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -186,7 +187,7 @@ func (c *Client) createOrder(body map[string]any) (string, error) {
 	if !c.rateLimiter.Try() {
 		return "", ds.ErrTooManyRequests
 	}
-	resp, err := c.Request(ds.FastHTTPClient, "POST", "/api/v3/brokerage/orders", bytes.NewReader(jsonBody), false)
+	resp, err := c.Request(netty.FastHTTPClient, "POST", "/api/v3/brokerage/orders", bytes.NewReader(jsonBody), false)
 	if err != nil {
 		return "", err
 	}
@@ -232,7 +233,7 @@ func (c *Client) CancelOrders(orderIDs []string) error {
 	if !c.rateLimiter.Try() {
 		return ds.ErrTooManyRequests
 	}
-	resp, err := c.Request(ds.FastHTTPClient, "POST", "/api/v3/brokerage/orders/batch_cancel", bytes.NewReader(jsonBody), false)
+	resp, err := c.Request(netty.FastHTTPClient, "POST", "/api/v3/brokerage/orders/batch_cancel", bytes.NewReader(jsonBody), false)
 	if err != nil {
 		return err
 	}
@@ -350,7 +351,7 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, price decimal
 	if !c.rateLimiter.Try() {
 		return ds.ErrTooManyRequests
 	}
-	resp, err := c.Request(ds.FastHTTPClient, "POST", "/api/v3/brokerage/orders/edit", bytes.NewReader(jsonBody), false)
+	resp, err := c.Request(netty.FastHTTPClient, "POST", "/api/v3/brokerage/orders/edit", bytes.NewReader(jsonBody), false)
 	if err != nil {
 		return err
 	}

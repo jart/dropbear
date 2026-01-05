@@ -4,6 +4,7 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/ds"
 	"log"
 	"os"
 	"path"
@@ -25,8 +26,8 @@ type backtest struct {
 }
 
 type backtestEntry struct {
-	bar    *alpaca.Bar
-	bars   *alpaca.Bars
+	bar    *ds.Bar
+	bars   *ds.Bars
 	equity *Equity
 }
 
@@ -50,7 +51,7 @@ func newBacktest() *backtest {
 	equityData := getEquityDataDir()
 	for _, equity := range Equities {
 		path := path.Join(equityData, "minutes", equity.Symbol)
-		bars, err := alpaca.OpenBars(path)
+		bars, err := ds.OpenBars(path)
 		if err != nil {
 			panic(err)
 		}
@@ -176,7 +177,7 @@ func (m *backtest) printSummary() {
 		log.Printf("  Fees:     $%s", gFeeCalculator.TotalFees.FormatThousand(2))
 		log.Printf("  Slippage: $%s", gTotalSlippage.FormatThousand(2))
 		log.Printf("  Interest: $%s", m.interest.TotalCharged.FormatThousand(2))
-		log.Printf("  Return:   %s%% (%.1f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
+		log.Printf("  Return:   %s%% (%.2f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
 		log.Printf("  Max DD:   %s%%", m.maxDrawdown.MulInt(100).Format(2))
 		log.Printf("  Period:   %.1f days (%.2f years)", days, years)
 	}

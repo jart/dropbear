@@ -1,6 +1,6 @@
-//go:build linux
+//go:build darwin
 
-package ds
+package netty
 
 import (
 	"context"
@@ -14,6 +14,8 @@ import (
 
 // TFODebug enables debug logging for TCP Fast Open
 var TFODebug = false
+
+const tcpFastopenForceEnable = 0x218
 
 // DialTFO connects to the address and sends initial data in the SYN packet
 // using TCP Fast Open. If data is empty, falls back to normal dial.
@@ -61,22 +63,33 @@ func DialTFO(ctx context.Context, network, address string, data []byte) (*net.TC
 	return nil, firstErr
 }
 
-func dialTFOSingle(ctx context.Context, raddr *net.TCPAddr, data []byte) (*net.TCPConn, error) {
+func dialTFOSingle(_ context.Context, raddr *net.TCPAddr, data []byte) (*net.TCPConn, error) {
 	// Determine address family
 	family := unix.AF_INET
 	if raddr.IP.To4() == nil {
 		family = unix.AF_INET6
 	}
 
-	// Create non-blocking socket
-	fd, err := unix.Socket(family, unix.SOCK_STREAM|unix.SOCK_NONBLOCK|unix.SOCK_CLOEXEC, unix.IPPROTO_TCP)
+	// Create socket (macOS needs ForkLock for CloseOnExec)
+	syscall.ForkLock.RLock()
+	fd, err := unix.Socket(family, unix.SOCK_STREAM, unix.IPPROTO_TCP)
 	if err != nil {
+		syscall.ForkLock.RUnlock()
 		return nil, os.NewSyscallError("socket", err)
+	}
+	unix.CloseOnExec(fd)
+	syscall.ForkLock.RUnlock()
+
+	if err = unix.SetNonblock(fd, true); err != nil {
+		unix.Close(fd)
+		return nil, os.NewSyscallError("setnonblock", err)
 	}
 
 	// Set low-latency socket options
 	unix.SetsockoptInt(fd, unix.IPPROTO_TCP, unix.TCP_NODELAY, 1)
-	unix.SetsockoptInt(fd, unix.IPPROTO_TCP, unix.TCP_QUICKACK, 1)
+
+	// Enable TFO force (disables Darwin's backoff mechanism)
+	unix.SetsockoptInt(fd, unix.IPPROTO_TCP, tcpFastopenForceEnable, 1)
 
 	// Build sockaddr
 	var sa unix.Sockaddr
@@ -99,21 +112,26 @@ func dialTFOSingle(ctx context.Context, raddr *net.TCPAddr, data []byte) (*net.T
 		return nil, err
 	}
 
-	// Connect with TFO using sendmsg(MSG_FASTOPEN)
+	// Connect with TFO using connectx()
 	var n int
 	var connectErr error
 	var done bool
 
 	writeErr := rawConn.Write(func(fd uintptr) bool {
 		if done {
-			return true // Already sent, just waiting for connection
+			return true // Already called connectx, just waiting for connection
 		}
-		n, connectErr = unix.SendmsgN(int(fd), data, nil, sa, unix.MSG_FASTOPEN|unix.MSG_NOSIGNAL)
+		var iov []unix.Iovec
+		if len(data) > 0 {
+			iov = []unix.Iovec{{Base: &data[0], Len: uint64(len(data))}}
+		}
+		var sent uintptr
+		sent, connectErr = unix.Connectx(int(fd), 0, nil, sa, unix.SAE_ASSOCID_ANY, unix.CONNECT_DATA_IDEMPOTENT, iov, nil)
+		n = int(sent)
 		if TFODebug {
-			log.Printf("TFO sendmsg: n=%d, err=%v, datalen=%d", n, connectErr, len(data))
+			log.Printf("TFO connectx: n=%d, err=%v, datalen=%d", n, connectErr, len(data))
 		}
 		if connectErr == unix.EINPROGRESS {
-			// Connection in progress, need to wait for socket to become writable
 			done = true
 			connectErr = nil
 			return false
@@ -125,24 +143,8 @@ func dialTFOSingle(ctx context.Context, raddr *net.TCPAddr, data []byte) (*net.T
 		return nil, writeErr
 	}
 
-	// Check for TFO not supported
-	if connectErr == unix.EOPNOTSUPP || connectErr == unix.EPIPE {
-		// Fall back to normal connect
-		unix.Close(fd)
-		conn, err := Dialer.DialContext(ctx, "tcp", raddr.String())
-		if err != nil {
-			return nil, err
-		}
-		tc := conn.(*net.TCPConn)
-		if _, err := tc.Write(data); err != nil {
-			tc.Close()
-			return nil, err
-		}
-		return tc, nil
-	}
-
 	if connectErr != nil {
-		return nil, os.NewSyscallError("sendmsg", connectErr)
+		return nil, os.NewSyscallError("connectx", connectErr)
 	}
 
 	// Check for socket error after connect
@@ -166,7 +168,7 @@ func dialTFOSingle(ctx context.Context, raddr *net.TCPAddr, data []byte) (*net.T
 	}
 	tc := conn.(*net.TCPConn)
 
-	// Send any remaining data if sendmsg didn't send it all
+	// Send any remaining data if connectx didn't send it all
 	if n < len(data) {
 		if _, err := tc.Write(data[n:]); err != nil {
 			tc.Close()

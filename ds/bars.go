@@ -1,30 +1,16 @@
-package alpaca
+package ds
 
 import (
 	"dropbear/clocky"
-	"dropbear/decimal"
 	"errors"
 	"os"
 	"syscall"
 	"unsafe"
 )
 
-type Bar struct {
-	Timestamp  clocky.Time     `json:"t"`
-	Open       decimal.Decimal `json:"o"`
-	High       decimal.Decimal `json:"h"`
-	Low        decimal.Decimal `json:"l"`
-	Close      decimal.Decimal `json:"c"`
-	Volume     decimal.Decimal `json:"v"`
-	TradeCount int64           `json:"n"`
-	VWAP       decimal.Decimal `json:"vw"`
-}
-
-// barSize is the size of a Bar in bytes.
-const barSize = int(unsafe.Sizeof(Bar{}))
-
 // Bars provides zero-copy iteration over equity bar files.
 type Bars struct {
+	path  string
 	data  []byte
 	count int
 	pos   int
@@ -53,9 +39,15 @@ func OpenBars(path string) (*Bars, error) {
 		return nil, err
 	}
 	return &Bars{
+		path:  path,
 		data:  data,
 		count: count,
 	}, nil
+}
+
+// String returns a string representation of object.
+func (r *Bars) String() string {
+	return "Bars{" + r.path + "}"
 }
 
 // Close closes the bar file.
@@ -114,3 +106,5 @@ func (r *Bars) Seek(target clocky.Time) {
 	}
 	r.pos = lo
 }
+
+const barSize = int(unsafe.Sizeof(Bar{}))

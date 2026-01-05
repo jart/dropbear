@@ -3,7 +3,7 @@ package alpaca
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/ds"
+	"dropbear/netty"
 	"encoding/json"
 	"log"
 	"time"
@@ -52,7 +52,7 @@ func (d *orderUpdatesDaemon) run() {
 func (d *orderUpdatesDaemon) impl() error {
 
 	// open websocket
-	conn, _, err := ds.FastWSDial(TradingWSURL(), nil)
+	conn, _, err := netty.FastWSDial(TradingWSURL(), nil)
 	if err != nil {
 		return err
 	}

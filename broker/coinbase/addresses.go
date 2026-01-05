@@ -1,7 +1,7 @@
 package coinbase
 
 import (
-	"dropbear/ds"
+	"dropbear/netty"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -67,7 +67,7 @@ func (c *Client) GetDepositAddresses(accountID string) ([]V2Address, error) {
 func (c *Client) CreateDepositAddress(accountID string) (*V2Address, error) {
 	path := fmt.Sprintf("/v2/accounts/%s/addresses", accountID)
 	c.rateLimiter.Get()
-	resp, err := c.Request(ds.BulkHttpClient, "POST", path, nil, true)
+	resp, err := c.Request(netty.BulkHttpClient, "POST", path, nil, true)
 	if err != nil {
 		return nil, err
 	}

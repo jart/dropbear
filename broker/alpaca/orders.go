@@ -5,6 +5,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/netty"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -77,7 +78,7 @@ func (c *Client) CreateOrder(body map[string]any) (*Order, error) {
 	if !c.tokenBucket.Try() {
 		return nil, ds.ErrTooManyRequests
 	}
-	resp, err := c.Request(ds.FastHTTPClient, "POST", "/v2/orders", bytes.NewReader(jsonBody))
+	resp, err := c.Request(netty.FastHTTPClient, "POST", "/v2/orders", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +117,7 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, limitPrice de
 	if !c.tokenBucket.Try() {
 		return nil, ds.ErrTooManyRequests
 	}
-	resp, err := c.Request(ds.FastHTTPClient, "PATCH", "/v2/orders/"+orderID, bytes.NewReader(jsonBody))
+	resp, err := c.Request(netty.FastHTTPClient, "PATCH", "/v2/orders/"+orderID, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +162,7 @@ func (c *Client) CancelOrder(orderID string) error {
 	if !c.tokenBucket.Try() {
 		return ds.ErrTooManyRequests
 	}
-	resp, err := c.Request(ds.FastHTTPClient, "DELETE", "/v2/orders/"+orderID, nil)
+	resp, err := c.Request(netty.FastHTTPClient, "DELETE", "/v2/orders/"+orderID, nil)
 	if err != nil {
 		return err
 	}
@@ -186,7 +187,7 @@ func (c *Client) CancelOrder(orderID string) error {
 // CancelAllOrders cancels all open orders.
 func (c *Client) CancelAllOrders() error {
 	c.tokenBucket.Get()
-	resp, err := c.Request(ds.FastHTTPClient, "DELETE", "/v2/orders", nil)
+	resp, err := c.Request(netty.FastHTTPClient, "DELETE", "/v2/orders", nil)
 	if err != nil {
 		return err
 	}
@@ -205,7 +206,7 @@ func (c *Client) CancelAllOrders() error {
 // GetOrder retrieves a single order by ID.
 func (c *Client) GetOrder(orderID string) (*Order, error) {
 	c.tokenBucket.Get()
-	resp, err := c.Request(ds.BulkHttpClient, "GET", "/v2/orders/"+orderID, nil)
+	resp, err := c.Request(netty.BulkHttpClient, "GET", "/v2/orders/"+orderID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +225,7 @@ func (c *Client) GetOrder(orderID string) (*Order, error) {
 // GetOrders retrieves open orders.
 func (c *Client) GetOrders() ([]Order, error) {
 	c.tokenBucket.Get()
-	resp, err := c.Request(ds.BulkHttpClient, "GET", "/v2/orders?status=open", nil)
+	resp, err := c.Request(netty.BulkHttpClient, "GET", "/v2/orders?status=open", nil)
 	if err != nil {
 		return nil, err
 	}

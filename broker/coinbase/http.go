@@ -1,7 +1,7 @@
 package coinbase
 
 import (
-	"dropbear/ds"
+	"dropbear/netty"
 	"io"
 	"net/http"
 	"time"
@@ -23,7 +23,7 @@ func pingFastAPI() {
 	if err != nil {
 		return
 	}
-	resp, err := ds.FastHTTPClient.Do(req)
+	resp, err := netty.FastHTTPClient.Do(req)
 	if err != nil {
 		return
 	}

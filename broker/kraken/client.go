@@ -2,6 +2,7 @@ package kraken
 
 import (
 	"dropbear/ds"
+	"dropbear/netty"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,17 +44,17 @@ type Response struct {
 
 // Get makes a public GET request.
 func (c *Client) Get(path string) (*http.Response, error) {
-	return c.Request(ds.BulkHttpClient, "GET", path, nil, true)
+	return c.Request(netty.BulkHttpClient, "GET", path, nil, true)
 }
 
 // Post makes an authenticated POST request.
 func (c *Client) Post(path string, values url.Values) (*http.Response, error) {
-	return c.Request(ds.BulkHttpClient, "POST", path, values, true)
+	return c.Request(netty.BulkHttpClient, "POST", path, values, true)
 }
 
 // PostFast makes an authenticated POST request using the fast HTTP client.
 func (c *Client) PostFast(path string, values url.Values) (*http.Response, error) {
-	return c.Request(ds.FastHTTPClient, "POST", path, values, false)
+	return c.Request(netty.FastHTTPClient, "POST", path, values, false)
 }
 
 // Request makes an API request to Kraken with rate limiting and retries.
@@ -96,7 +97,7 @@ func (c *Client) Request(client *http.Client, method, path string, values url.Va
 
 		// handle network errors
 		if err != nil {
-			if !shouldRetry || !ds.IsRetryableHTTPError(err) {
+			if !shouldRetry || !netty.IsRetryableHTTPError(err) {
 				return nil, err
 			}
 			delay := time.Duration(1<<min(tries, 10)) * time.Millisecond
@@ -111,7 +112,7 @@ func (c *Client) Request(client *http.Client, method, path string, values url.Va
 		}
 
 		// handle HTTP errors
-		if !shouldRetry || !ds.IsRetryableHTTPStatusCode(resp.StatusCode) {
+		if !shouldRetry || !netty.IsRetryableHTTPStatusCode(resp.StatusCode) {
 			if resp.StatusCode == http.StatusTooManyRequests {
 				return nil, ds.ErrTooManyRequests
 			}

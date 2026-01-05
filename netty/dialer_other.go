@@ -1,6 +1,6 @@
 //go:build !linux
 
-package ds
+package netty
 
 import (
 	"net"

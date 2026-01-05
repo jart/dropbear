@@ -23,8 +23,8 @@ type Equity struct {
 	Quantity   decimal.Decimal // number of shares held (negative if short)
 	Hold       decimal.Decimal // number of shares held up in limit orders
 	EntryPrice decimal.Decimal // average entry price for current position
-	OnBar      func(*alpaca.Bar)
-	nextBar    *alpaca.Bar // next bar (for filling orders without lookahead bias)
+	OnBar      func(*ds.Bar)
+	nextBar    *ds.Bar // next bar (for filling orders without lookahead bias)
 }
 
 // Equities holds all added equities by symbol.
@@ -55,7 +55,7 @@ func AddEquity(symbol string) (*Equity, error) {
 	e = &Equity{
 		Symbol: symbol,
 		Asset:  asset,
-		OnBar:  func(*alpaca.Bar) {},
+		OnBar:  func(*ds.Bar) {},
 	}
 	Equities[symbol] = e
 	return e, nil

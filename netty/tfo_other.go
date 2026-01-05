@@ -1,6 +1,6 @@
 //go:build !linux && !darwin
 
-package ds
+package netty
 
 import (
 	"context"

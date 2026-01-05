@@ -2,6 +2,7 @@ package alpaca
 
 import (
 	"dropbear/ds"
+	"dropbear/netty"
 	"fmt"
 	"io"
 	"log"
@@ -31,7 +32,7 @@ func NewClient() *Client {
 
 // Get makes an authenticated GET request.
 func (c *Client) Get(path string) (*http.Response, error) {
-	return c.Request(ds.BulkHttpClient, "GET", path, nil)
+	return c.Request(netty.BulkHttpClient, "GET", path, nil)
 }
 
 // Request makes an authenticated API request with exponential backoff retry on 429.
@@ -82,7 +83,7 @@ func (c *Client) Request(client *http.Client, method, urlString string, body io.
 
 		// handle network errors
 		if err != nil {
-			if !ds.IsRetryableHTTPError(err) {
+			if !netty.IsRetryableHTTPError(err) {
 				return nil, err
 			}
 			delay := time.Duration(1<<min(tries, 15)) * time.Millisecond
@@ -93,7 +94,7 @@ func (c *Client) Request(client *http.Client, method, urlString string, body io.
 		}
 
 		// handle http errors
-		if !ds.IsRetryableHTTPStatusCode(resp.StatusCode) {
+		if !netty.IsRetryableHTTPStatusCode(resp.StatusCode) {
 			return resp, nil
 		}
 		statusCode := resp.StatusCode

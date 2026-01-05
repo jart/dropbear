@@ -307,7 +307,7 @@ func calculateMetrics(
 	currencies := make(map[string]bool)
 	currentBalances := make(map[string]decimal.Decimal)
 	for _, acc := range accounts {
-		bal := decimal.Parse(acc.AvailableBalance.Value)
+		bal := acc.AvailableBalance.Value
 		if !bal.IsZero() || acc.Currency == "USD" || acc.Currency == benchmarkAsset {
 			currencies[acc.Currency] = true
 			currentBalances[acc.Currency] = bal

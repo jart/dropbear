@@ -84,8 +84,8 @@ func (h *Holding) fetchCoinbaseHolding() {
 		if account.Currency == h.Symbol {
 			h.IsFiat = account.Type == "ACCOUNT_TYPE_FIAT"
 			h.IsCash = h.IsFiat || looksLikeCashSymbol(h.Symbol)
-			quantity := decimal.Parse(account.AvailableBalance.Value)
-			hold := decimal.Parse(account.Hold.Value)
+			quantity := account.AvailableBalance.Value
+			hold := account.Hold.Value
 			h.Quantity.Store(quantity)
 			h.Available.Store(quantity.Sub(hold))
 			if !h.IsFiat {

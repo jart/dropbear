@@ -1,8 +1,8 @@
 package main
 
 import (
-	"dropbear/broker/alpaca"
 	"dropbear/clocky"
+	"dropbear/ds"
 	"flag"
 	"fmt"
 	"log"
@@ -29,7 +29,7 @@ func main() {
 }
 
 func dump(path string) error {
-	bars, err := alpaca.OpenBars(path)
+	bars, err := ds.OpenBars(path)
 	if err != nil {
 		return err
 	}

@@ -46,7 +46,7 @@ The sync command will fetch the latest `coinbase_transactions` table content int
 
 ## equity bars
 
-Files like `~/equitydata/minutes/AAPL` can be read using `alpaca.Bars` which mmaps them into
+Files like `~/equitydata/minutes/AAPL` can be read using `ds.Bars` which mmaps them into
 memory one great big array that can be seeked, indexed, etc. They contain OHLC / VWAP data.
 This is *the* data that drives all our equities trading backtests and algorithms. This code
 is the reason why dropbear goes infinitely faster than quantconnect.

@@ -2,6 +2,7 @@ package binanceusd
 
 import (
 	"dropbear/ds"
+	"dropbear/netty"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -74,11 +75,11 @@ func (c *Client) Request(method, path string, body io.Reader) (*http.Response, e
 			return nil, fmt.Errorf("creating request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := ds.BulkHttpClient.Do(req)
+		resp, err := netty.BulkHttpClient.Do(req)
 
 		// handle network errors
 		if err != nil {
-			if !ds.IsRetryableHTTPError(err) {
+			if !netty.IsRetryableHTTPError(err) {
 				return nil, err
 			}
 			delay := time.Second * time.Duration(1<<tries)
@@ -89,7 +90,7 @@ func (c *Client) Request(method, path string, body io.Reader) (*http.Response, e
 		}
 
 		// handle http errors
-		if !ds.IsRetryableHTTPStatusCode(resp.StatusCode) {
+		if !netty.IsRetryableHTTPStatusCode(resp.StatusCode) {
 			return resp, nil
 		}
 		statusCode := resp.StatusCode

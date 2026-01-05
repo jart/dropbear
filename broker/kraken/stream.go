@@ -4,6 +4,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/netty"
 	"encoding/json"
 	"log"
 	"time"
@@ -52,7 +53,7 @@ func (m *marketData) run() {
 }
 
 func (m *marketData) runOnce() error {
-	conn, _, err := ds.FastWSDial(wsURL, nil)
+	conn, _, err := netty.FastWSDial(wsURL, nil)
 	if err != nil {
 		return err
 	}

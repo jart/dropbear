@@ -4,8 +4,8 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/ds"
 	"dropbear/loggy"
+	"dropbear/netty"
 	"flag"
 	"log"
 	"os"
@@ -68,7 +68,7 @@ func Init() {
 			panic("-paper is implied by -backtest")
 		}
 		Paper = true
-		ds.SetOffline()
+		netty.SetOffline()
 		clocky.Now = clocky.FakeNow
 		clocky.Sleep = clocky.FakeSleep
 		clocky.NewTicker = clocky.FakeNewTicker

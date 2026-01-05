@@ -6,6 +6,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/loggy"
+	"dropbear/netty"
 	"flag"
 	"io"
 	"log"
@@ -32,7 +33,7 @@ func main() {
 		if err != nil {
 			loggy.Fatalf("creating request: %v", err)
 		}
-		resp, err := ds.FastHTTPClient.Do(req)
+		resp, err := netty.FastHTTPClient.Do(req)
 		if err != nil {
 			loggy.Fatalf("ping failed: %v", err)
 		}

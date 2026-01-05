@@ -21,6 +21,7 @@ const (
 	Epsilon = Satoshi                // Satoshi is The One
 	Satoshi = Decimal(1)             // 0.00000001
 	Cent    = Decimal(Scale / 100)   // 0.01
+	Lot     = Decimal(Scale * 100)   // 100
 	Scale   = 100_000_000
 	Places  = 8
 )

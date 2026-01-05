@@ -1,7 +1,7 @@
 package coinbase
 
 import (
-	"dropbear/ds"
+	"dropbear/netty"
 	"encoding/json"
 	"log"
 	"time"
@@ -72,7 +72,7 @@ func (w *orderUpdatesDaemon) run() {
 }
 
 func (w *orderUpdatesDaemon) impl() error {
-	conn, _, err := ds.FastWSDial(WSUserURL(), nil)
+	conn, _, err := netty.FastWSDial(WSUserURL(), nil)
 	if err != nil {
 		return err
 	}

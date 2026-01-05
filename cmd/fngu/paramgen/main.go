@@ -10,9 +10,9 @@
 package main
 
 import (
-	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/ds"
 	"dropbear/indicators"
 	"flag"
 	"fmt"
@@ -341,13 +341,13 @@ func goldenMaxInt(a, b int, f func(int) float64) int {
 	return best
 }
 
-func loadBars(symbol string) (*alpaca.Bars, error) {
+func loadBars(symbol string) (*ds.Bars, error) {
 	path := filepath.Join(*flagDataDir, symbol)
-	return alpaca.OpenBars(path)
+	return ds.OpenBars(path)
 }
 
 // simulate runs the fngu algorithm and returns (sharpe, total_return)
-func simulate(bars *alpaca.Bars, trail, mingap decimal.Decimal, lookback int) (float64, float64) {
+func simulate(bars *ds.Bars, trail, mingap decimal.Decimal, lookback int) (float64, float64) {
 	cash := *flagCash
 	var position decimal.Decimal // shares held
 	var highSince decimal.Decimal

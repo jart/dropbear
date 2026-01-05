@@ -84,7 +84,7 @@ func main() {
 		}
 		if acc.Currency == "USDC" {
 			primaryUSDCAccountUUID = acc.UUID
-			primaryUSDCBalance = decimal.Parse(acc.AvailableBalance.Value)
+			primaryUSDCBalance = acc.AvailableBalance.Value
 			log.Printf("primary USDC balance: %s (account %s)", primaryUSDCBalance, primaryUSDCAccountUUID)
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"dropbear/db"
 	"dropbear/ds"
+	"dropbear/netty"
 	"fmt"
 	"io"
 	"log"
@@ -48,12 +49,12 @@ func (c *Client) Close() error {
 
 // Get makes an authenticated GET request.
 func (c *Client) Get(url string) (*http.Response, error) {
-	return c.Request(ds.BulkHttpClient, "GET", url, nil, true)
+	return c.Request(netty.BulkHttpClient, "GET", url, nil, true)
 }
 
 // Post makes an authenticated POST request.
 func (c *Client) Post(url string, body io.Reader) (*http.Response, error) {
-	return c.Request(ds.BulkHttpClient, "POST", url, body, true)
+	return c.Request(netty.BulkHttpClient, "POST", url, body, true)
 }
 
 // Request makes an authenticated API request to Coinbase with rate limiting.
@@ -105,7 +106,7 @@ func (c *Client) Request(client *http.Client, method, reqURL string, body io.Rea
 
 		// handle network errors
 		if err != nil {
-			if !shouldRetry || !ds.IsRetryableHTTPError(err) {
+			if !shouldRetry || !netty.IsRetryableHTTPError(err) {
 				return nil, err
 			}
 			delay := time.Duration(1<<min(tries, 10)) * time.Millisecond
@@ -116,7 +117,7 @@ func (c *Client) Request(client *http.Client, method, reqURL string, body io.Rea
 		}
 
 		// handle http errors
-		if !shouldRetry || !ds.IsRetryableHTTPStatusCode(resp.StatusCode) {
+		if !shouldRetry || !netty.IsRetryableHTTPStatusCode(resp.StatusCode) {
 			if resp.StatusCode == http.StatusTooManyRequests {
 				return nil, ds.ErrTooManyRequests
 			}
