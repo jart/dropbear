@@ -33,6 +33,7 @@ var (
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
 	flagMaxDD     = decimal.FlagPercent("maxdd", "5", "max daily drawdown before halting")
 	flagMaxPos    = decimal.FlagPercent("maxpos", "60", "max position size as percent of portfolio")
+	flagMaxLiq    = decimal.FlagPercent("maxliq", "5", "max position as percent of today's dollar volume")
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
 )
 
@@ -49,10 +50,11 @@ type position struct {
 
 // symbolState tracks per-symbol state for the scanner
 type symbolState struct {
-	equity  *cubby.Equity
-	bars    []alpaca.Bar
-	dayHigh decimal.Decimal
-	dayLow  decimal.Decimal
+	equity      *cubby.Equity
+	bars        []alpaca.Bar
+	dayHigh     decimal.Decimal
+	dayLow      decimal.Decimal
+	dollarVolume decimal.Decimal // cumulative dollar volume today
 }
 
 var (
@@ -124,6 +126,13 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 	if len(state.bars) > *flagLookback {
 		state.bars = state.bars[1:]
 	}
+
+	// Accumulate dollar volume (volume * VWAP, or volume * close if no VWAP)
+	vwap := c.VWAP
+	if vwap.IsZero() {
+		vwap = c.Close
+	}
+	state.dollarVolume = state.dollarVolume.Add(c.Volume.Mul(vwap))
 
 	// Update day high/low
 	if state.dayHigh.IsZero() || c.High.Cmp(state.dayHigh) > 0 {
@@ -245,6 +254,25 @@ func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
 		return
 	}
 
+	// Limit position size to maxliq percent of today's dollar volume (liquidity check)
+	if state.dollarVolume.IsPositive() {
+		maxLiqValue := state.dollarVolume.Mul(*flagMaxLiq)
+		maxQtyByLiq := maxLiqValue.Div(limitPrice).QuantizeTruncate(decimal.One)
+		if maxQtyByLiq.Cmp(maxQty) < 0 {
+			maxQty = maxQtyByLiq
+			if *flagVerbose && maxQty.IsPositive() {
+				log.Printf("LIQUIDITY: %s capped to %s shares ($%s is %s%% of $%s vol)",
+					state.equity.Symbol, maxQty,
+					maxLiqValue.FormatThousand(0),
+					flagMaxLiq.MulInt(100).Format(0),
+					state.dollarVolume.FormatThousand(0))
+			}
+		}
+		if !maxQty.IsPositive() {
+			return
+		}
+	}
+
 	// Place IOC limit order
 	order, err := state.equity.LimitOrder(maxQty, limitPrice, alpaca.TimeInForceIOC)
 	if err != nil {
@@ -311,6 +339,7 @@ func onDayChange() {
 		state.bars = nil
 		state.dayHigh = decimal.Zero
 		state.dayLow = decimal.Zero
+		state.dollarVolume = decimal.Zero
 	}
 	gPositions = make(map[string]*position)
 	gDayStart = decimal.Zero
