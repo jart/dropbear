@@ -372,7 +372,7 @@ func arbitrage(tradeTime, receivedTime clocky.Time, predictorPrice decimal.Decim
 	if order.Filled.IsPositive() {
 		log.Printf("[trade] %s %s %s of %s at $%s", side, order.Notional, order.Pair.QuoteCurrency, order.Pair.BaseCurrency, order.Price)
 	} else if *flagVerbose {
-		log.Printf("[miss] %s order not filled (state=%s)", side, order.State)
+		log.Printf("[miss] %s order not filled (state=%v)", side, order.State)
 	}
 
 	if teddy.Live {

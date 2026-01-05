@@ -25,13 +25,7 @@ type Equity struct {
 	EntryPrice decimal.Decimal // average entry price for current position
 	OnBar      func(*alpaca.Bar)
 	isReady    bool
-
-	// bar data for slippage calculation during backtesting
-	barHigh       decimal.Decimal // current bar high
-	barLow        decimal.Decimal // current bar low
-	barVolume     decimal.Decimal // current bar volume
-	barVWAP       decimal.Decimal // current bar volume-weighted average price
-	barTradeCount int64           // current bar trade count
+	nextBar    *alpaca.Bar // next bar (for filling orders without lookahead bias)
 }
 
 // Equities holds all added equities by symbol.
@@ -127,7 +121,7 @@ func (e *Equity) LimitOrder(quantity, limitPrice decimal.Decimal, timeInForce al
 			}
 		}
 	}
-	if !e.barHigh.IsPositive() {
+	if e.nextBar == nil {
 		return nil, fmt.Errorf("cannot place order on %s that hasn't received data yet", e.Symbol)
 	}
 	if e.Quantity.Mul(newQty).IsNegative() {
@@ -153,6 +147,7 @@ func (e *Equity) LimitOrder(quantity, limitPrice decimal.Decimal, timeInForce al
 }
 
 // simulateLimitOrder simulates an IOC limit order fill during backtesting.
+// Uses nextBar to avoid lookahead bias - order fills on the bar AFTER the decision.
 func (e *Equity) simulateLimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal) (*Order, error) {
 	orderID := uuid.New().String()
 	order := &Order{
@@ -164,28 +159,35 @@ func (e *Equity) simulateLimitOrder(side ds.Side, quantity, limitPrice decimal.D
 		LimitPrice:    limitPrice,
 	}
 
+	// Use next bar for fill simulation (no lookahead bias)
+	bar := e.nextBar
+	if bar == nil {
+		order.Status = alpaca.OrderStatusCanceled
+		return order, nil
+	}
+
 	var fillPrice decimal.Decimal
 	var fillRatio decimal.Decimal
 
 	if side == ds.SideBuy {
 		// BUY: need price to come down to our limit
 		// limitPrice is max we're willing to pay
-		if limitPrice.Cmp(e.barLow) < 0 {
+		if limitPrice.Cmp(bar.Low) < 0 {
 			// Our limit is below the bar's low - no fill possible
 			order.Status = alpaca.OrderStatusCanceled
 			return order, nil
 		}
-		if limitPrice.Cmp(e.barHigh) >= 0 {
+		if limitPrice.Cmp(bar.High) >= 0 {
 			// We're willing to pay more than bar's high - full fill at VWAP
-			fillPrice = e.barVWAP
+			fillPrice = bar.VWAP
 			fillRatio = decimal.One
 		} else {
 			// Partial fill: our limit is within the bar's range
 			// Estimate fill ratio based on where our limit sits in the range
-			barRange := e.barHigh.Sub(e.barLow)
+			barRange := bar.High.Sub(bar.Low)
 			if barRange.IsPositive() {
 				// How much of the bar traded at or below our limit?
-				fillRatio = limitPrice.Sub(e.barLow).Div(barRange)
+				fillRatio = limitPrice.Sub(bar.Low).Div(barRange)
 			} else {
 				fillRatio = decimal.One
 			}
@@ -195,21 +197,21 @@ func (e *Equity) simulateLimitOrder(side ds.Side, quantity, limitPrice decimal.D
 	} else {
 		// SELL: need price to come up to our limit
 		// limitPrice is min we're willing to accept
-		if limitPrice.Cmp(e.barHigh) > 0 {
+		if limitPrice.Cmp(bar.High) > 0 {
 			// Our limit is above the bar's high - no fill possible
 			order.Status = alpaca.OrderStatusCanceled
 			return order, nil
 		}
-		if limitPrice.Cmp(e.barLow) <= 0 {
+		if limitPrice.Cmp(bar.Low) <= 0 {
 			// We're willing to accept less than bar's low - full fill at VWAP
-			fillPrice = e.barVWAP
+			fillPrice = bar.VWAP
 			fillRatio = decimal.One
 		} else {
 			// Partial fill: our limit is within the bar's range
-			barRange := e.barHigh.Sub(e.barLow)
+			barRange := bar.High.Sub(bar.Low)
 			if barRange.IsPositive() {
 				// How much of the bar traded at or above our limit?
-				fillRatio = e.barHigh.Sub(limitPrice).Div(barRange)
+				fillRatio = bar.High.Sub(limitPrice).Div(barRange)
 			} else {
 				fillRatio = decimal.One
 			}
@@ -219,7 +221,7 @@ func (e *Equity) simulateLimitOrder(side ds.Side, quantity, limitPrice decimal.D
 	}
 
 	// Calculate filled quantity based on fill ratio and available volume
-	maxFillFromVolume := e.barVolume.Mul(fillRatio)
+	maxFillFromVolume := bar.Volume.Mul(fillRatio)
 	filledQuantity := quantity.Abs().Min(maxFillFromVolume).Truncate()
 	if side == ds.SideSell {
 		filledQuantity = filledQuantity.Neg()
@@ -229,6 +231,17 @@ func (e *Equity) simulateLimitOrder(side ds.Side, quantity, limitPrice decimal.D
 		order.Status = alpaca.OrderStatusCanceled
 		return order, nil
 	}
+
+	// Calculate slippage: difference between fill price and expected price (close)
+	// For buys: positive slippage means we paid more than close
+	// For sells: positive slippage means we received less than close
+	var slippage decimal.Decimal
+	if side == ds.SideBuy {
+		slippage = fillPrice.Sub(e.Price).Mul(filledQuantity)
+	} else {
+		slippage = e.Price.Sub(fillPrice).Mul(filledQuantity.Abs())
+	}
+	gTotalSlippage = gTotalSlippage.Add(slippage)
 
 	// Update position and cash
 	notional := fillPrice.Mul(filledQuantity)
