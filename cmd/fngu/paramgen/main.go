@@ -11,7 +11,9 @@ package main
 
 import (
 	"dropbear/broker/alpaca"
+	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/indicators"
 	"flag"
 	"fmt"
 	"log"
@@ -63,21 +65,22 @@ var (
 		decimal.Parse("0.05"),   // 5%
 		decimal.Parse("0.06"),   // 6%
 	}
+	lookbackValues = []int{5, 7, 9, 12, 15, 20, 30}
 )
 
 const (
 	openTime  = 6_45_00
 	closeTime = 12_45_00
-	lookback  = 10
 )
 
 // Result holds the optimal parameters for a symbol
 type Result struct {
-	Symbol string
-	Trail  decimal.Decimal
-	MinGap decimal.Decimal
-	Sharpe float64
-	Return float64
+	Symbol   string
+	Trail    decimal.Decimal
+	MinGap   decimal.Decimal
+	Lookback int
+	Sharpe   float64
+	Return   float64
 }
 
 func main() {
@@ -112,10 +115,11 @@ func main() {
 			}
 			results <- result
 			if *flagVerbose {
-				log.Printf("%s: trail=%.1f%% mingap=%.2f%% sharpe=%.2f return=%.1f%%",
+				log.Printf("%s: trail=%.1f%% mingap=%.2f%% lookback=%d sharpe=%.2f return=%.1f%%",
 					symbol,
 					result.Trail.MulInt(100).Float64(),
 					result.MinGap.MulInt(100).Float64(),
+					result.Lookback,
 					result.Sharpe,
 					result.Return*100)
 			}
@@ -189,14 +193,17 @@ func optimizeSymbol(symbol string) (Result, error) {
 	best.Sharpe = math.Inf(-1)
 
 	// Grid search
-	for _, trail := range trailValues {
-		for _, mingap := range mingapValues {
-			sharpe, ret := simulate(bars, trail, mingap)
-			if sharpe > best.Sharpe {
-				best.Trail = trail
-				best.MinGap = mingap
-				best.Sharpe = sharpe
-				best.Return = ret
+	for _, lookback := range lookbackValues {
+		for _, trail := range trailValues {
+			for _, mingap := range mingapValues {
+				sharpe, ret := simulate(bars, trail, mingap, lookback)
+				if sharpe > best.Sharpe {
+					best.Trail = trail
+					best.MinGap = mingap
+					best.Lookback = lookback
+					best.Sharpe = sharpe
+					best.Return = ret
+				}
 			}
 		}
 	}
@@ -214,14 +221,15 @@ func loadBars(symbol string) (*alpaca.Bars, error) {
 }
 
 // simulate runs the fngu algorithm and returns (sharpe, total_return)
-func simulate(bars *alpaca.Bars, trail, mingap decimal.Decimal) (float64, float64) {
+func simulate(bars *alpaca.Bars, trail, mingap decimal.Decimal, lookback int) (float64, float64) {
 	cash := *flagCash
 	var position decimal.Decimal // shares held
 	var highSince decimal.Decimal
 	var dailyReturns []float64
 	var dayStart decimal.Decimal
 	var currentDate int
-	windowStart := 0
+	var maxHigh *indicators.Max
+	var lookbackHigh decimal.Decimal
 
 	count := bars.Count()
 	for i := 0; i < count; i++ {
@@ -239,20 +247,18 @@ func simulate(bars *alpaca.Bars, trail, mingap decimal.Decimal) (float64, float6
 			}
 			// Reset for new day
 			currentDate = date
-			windowStart = i
+			maxHigh = indicators.NewMax(clocky.Duration(lookback)*clocky.Minute - 1)
+			lookbackHigh = decimal.Zero
 			position = decimal.Zero
 			highSince = decimal.Zero
 			dayStart = cash // portfolio value at start of day (flat)
 		}
 
-		// Window is bars[windowStart:i+1], we need at least lookback bars
-		windowLen := i - windowStart + 1
-		if windowLen > lookback {
-			windowStart = i - lookback + 1
-			windowLen = lookback
-		}
+		// Update rolling max indicator
+		lookbackHigh = maxHigh.Value
+		maxHigh.Add(bar.Timestamp, bar.High)
 
-		if windowLen < lookback {
+		if !maxHigh.IsReady() {
 			continue
 		}
 		if time < openTime {
@@ -289,14 +295,7 @@ func simulate(bars *alpaca.Bars, trail, mingap decimal.Decimal) (float64, float6
 			continue
 		}
 
-		// Check for breakout entry (lookback high excluding current bar)
-		var lookbackHigh decimal.Decimal
-		for j := windowStart; j < i; j++ {
-			h := bars.Get(j).High
-			if lookbackHigh.IsZero() || h.Cmp(lookbackHigh) > 0 {
-				lookbackHigh = h
-			}
-		}
+		// Check for breakout entry
 		if lookbackHigh.IsZero() {
 			continue
 		}
@@ -353,17 +352,19 @@ func writeOutput(results []Result) error {
 	buf.WriteString("import \"dropbear/decimal\"\n\n")
 	buf.WriteString("// Params holds optimized trading parameters for a symbol.\n")
 	buf.WriteString("type Params struct {\n")
-	buf.WriteString("\tTrail  decimal.Decimal\n")
-	buf.WriteString("\tMinGap decimal.Decimal\n")
+	buf.WriteString("\tTrail    decimal.Decimal\n")
+	buf.WriteString("\tMinGap   decimal.Decimal\n")
+	buf.WriteString("\tLookback int\n")
 	buf.WriteString("}\n\n")
 	buf.WriteString("// OptimalParams contains grid-searched optimal parameters per symbol.\n")
 	buf.WriteString("var OptimalParams = map[string]Params{\n")
 
 	for _, r := range results {
-		buf.WriteString(fmt.Sprintf("\t%q: {Trail: decimal.Parse(%q), MinGap: decimal.Parse(%q)},\n",
+		buf.WriteString(fmt.Sprintf("\t%q: {Trail: decimal.Parse(%q), MinGap: decimal.Parse(%q), Lookback: %d},\n",
 			r.Symbol,
 			r.Trail.String(),
-			r.MinGap.String()))
+			r.MinGap.String(),
+			r.Lookback))
 	}
 
 	buf.WriteString("}\n")

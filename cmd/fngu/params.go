@@ -6,8 +6,9 @@ import "dropbear/decimal"
 
 // Params holds optimized trading parameters for a symbol.
 type Params struct {
-	Trail  decimal.Decimal
-	MinGap decimal.Decimal
+	Trail    decimal.Decimal
+	MinGap   decimal.Decimal
+	Lookback int // 0 means use default (9)
 }
 
 // OptimalParams contains grid-searched optimal parameters per symbol.

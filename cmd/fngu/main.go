@@ -30,7 +30,6 @@ var (
 	flagSymbols   = flag.String("symbol", "FNGU", "symbols to monitor")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
-	flagLookback  = flag.Int("lookback", 9, "breakout lookback period (minutes)")
 	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay in basis points")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
 	flagMaxDD     = decimal.FlagPercent("maxdd", "5", "max daily drawdown before halting")
@@ -95,9 +94,14 @@ func main() {
 			log.Printf("error adding symbol %s: %v", sym, err)
 			continue
 		}
+		params := OptimalParams[sym]
+		lookback := params.Lookback
+		if lookback == 0 {
+			lookback = 9 // default
+		}
 		state := &symbolState{
 			equity:  equity,
-			maxHigh: indicators.NewMax(clocky.Duration(*flagLookback)*clocky.Minute - 1),
+			maxHigh: indicators.NewMax(clocky.Duration(lookback)*clocky.Minute - 1),
 		}
 		gSymbols[sym] = state
 		equity.OnBar = func(s *symbolState) func(*alpaca.Bar) {
@@ -114,7 +118,6 @@ func main() {
 
 	log.Printf("Multi-Position Day Trading Strategy")
 	log.Printf("  Symbols: %d", len(gSymbols))
-	log.Printf("  Lookback: %d min", *flagLookback)
 	log.Printf("  Slippage: %s bps", flagSlip.MulInt(10000).Format(0))
 
 	cubby.Run()
@@ -334,7 +337,12 @@ func closePosition(equity *cubby.Equity, reason string) {
 
 func onDayChange() {
 	for _, state := range gSymbols {
-		state.maxHigh = indicators.NewMax(clocky.Duration(*flagLookback)*clocky.Minute - 1)
+		params := OptimalParams[state.equity.Symbol]
+		lookback := params.Lookback
+		if lookback == 0 {
+			lookback = 9 // default
+		}
+		state.maxHigh = indicators.NewMax(clocky.Duration(lookback)*clocky.Minute - 1)
 		state.lookbackHigh = decimal.Zero
 		state.dayHigh = decimal.Zero
 		state.dayLow = decimal.Zero
