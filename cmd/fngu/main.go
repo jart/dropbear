@@ -33,6 +33,7 @@ var (
 	flagTrail     = decimal.FlagPercent("trail", "2.5", "trailing stop percentage")
 	flagMinGap    = decimal.FlagPercent("mingap", "1", "minimum breakout gap to enter")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
+	flagMaxDD     = decimal.FlagPercent("maxdd", "5", "max daily drawdown before halting")
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
 )
 
@@ -60,6 +61,8 @@ var (
 	gPositions   map[string]*position // currently held positions by symbol
 	gCurrentDate int
 	gIsOpen      bool
+	gDayStart    decimal.Decimal // portfolio value at start of day
+	gHalted      bool            // true if we hit max drawdown today
 )
 
 func main() {
@@ -147,6 +150,37 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 
 	gIsOpen = true
 	price := c.Close
+
+	// Capture starting portfolio value for drawdown tracking
+	if gDayStart.IsZero() {
+		gDayStart = cubby.GetPortfolioValue()
+		if *flagVerbose {
+			log.Printf("OPEN: portfolio value $%s", gDayStart.FormatThousand(2))
+		}
+	}
+
+	// Check for max daily drawdown
+	if !gHalted && !gDayStart.IsZero() {
+		current := cubby.GetPortfolioValue()
+		drawdown := gDayStart.Sub(current).Div(gDayStart)
+		if drawdown.Cmp(*flagMaxDD) >= 0 {
+			gHalted = true
+			if *flagVerbose {
+				log.Printf("HALTED: drawdown %.2f%% exceeds max %.2f%%",
+					drawdown.MulInt(100).Float64(), flagMaxDD.MulInt(100).Float64())
+			}
+			// Liquidate all positions
+			for _, pos := range gPositions {
+				closePosition(pos.equity, "DRAWDOWN_HALT")
+			}
+			return
+		}
+	}
+
+	// If halted, only process EOD closes (handled above)
+	if gHalted {
+		return
+	}
 
 	// Check trailing stop if we hold this symbol
 	if pos, ok := gPositions[state.equity.Symbol]; ok {
@@ -266,4 +300,6 @@ func onDayChange() {
 		state.dayLow = decimal.Zero
 	}
 	gPositions = make(map[string]*position)
+	gDayStart = decimal.Zero
+	gHalted = false
 }
