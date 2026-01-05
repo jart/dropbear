@@ -32,6 +32,7 @@ var (
 	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay in basis points")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
 	flagMaxDD     = decimal.FlagPercent("maxdd", "5", "max daily drawdown before halting")
+	flagMaxPos    = decimal.FlagPercent("maxpos", "60", "max position size as percent of portfolio")
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
 )
 
@@ -232,6 +233,16 @@ func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
 	maxQty := state.equity.GetMaxOrderQuantity(limitPrice)
 	if !maxQty.IsPositive() {
 		return // no margin available
+	}
+
+	// Limit position size to maxpos percent of portfolio
+	maxValue := cubby.GetPortfolioValue().Mul(*flagMaxPos)
+	maxQtyByPos := maxValue.Div(limitPrice).QuantizeTruncate(decimal.One)
+	if maxQtyByPos.Cmp(maxQty) < 0 {
+		maxQty = maxQtyByPos
+	}
+	if !maxQty.IsPositive() {
+		return
 	}
 
 	// Place IOC limit order
