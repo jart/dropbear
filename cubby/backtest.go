@@ -37,8 +37,8 @@ func newBacktest() *backtest {
 	m := &backtest{
 		interest:  alpaca.NewInterestCalculator(decimal.Parse("0.01")),
 		heap:      binaryheap.NewWith(compareBacktestEntries),
-		minTime:   *flagStart,
-		maxTime:   *flagEnd,
+		minTime:   clocky.MaxTime,
+		maxTime:   clocky.MinTime,
 		startCash: Cash,
 	}
 	if len(Equities) == 0 {
@@ -54,11 +54,13 @@ func newBacktest() *backtest {
 		}
 		first := bars.Get(0)
 		last := bars.Get(bars.Count() - 1)
-		m.minTime = max(m.minTime, first.Timestamp)
-		m.maxTime = min(m.maxTime, last.Timestamp.Add(clocky.Minute))
+		m.minTime = min(m.minTime, first.Timestamp)
+		m.maxTime = max(m.maxTime, last.Timestamp.Add(clocky.Minute))
 		entry := &backtestEntry{equity: equity, bars: bars}
 		entries = append(entries, entry)
 	}
+	m.minTime = max(m.minTime, *flagStart)
+	m.maxTime = min(m.maxTime, *flagEnd)
 	if !m.minTime.Before(m.maxTime) {
 		panic("no overlapping data range across all registered equities")
 	}
