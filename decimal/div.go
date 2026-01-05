@@ -57,7 +57,7 @@ func (d Decimal) Div(o Decimal) Decimal {
 		if sm == -1 && quo == 1<<63 {
 			return Decimal(math.MinInt64)
 		}
-		panicOverflow()
+		panic("decimal overflow")
 	}
 
 	return Decimal(int64((quo ^ uint64(sm)) - uint64(sm)))

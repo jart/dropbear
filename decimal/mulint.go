@@ -26,7 +26,7 @@ func (d Decimal) MulInt(n int) Decimal {
 		if sm == -1 && hi == 0 && lo == 1<<63 {
 			return Decimal(math.MinInt64)
 		}
-		panicOverflow()
+		panic("decimal overflow")
 	}
 
 	// apply sign

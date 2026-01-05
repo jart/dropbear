@@ -42,7 +42,7 @@ func main() {
 	flag.Parse()
 
 	if *flagSymbol == "" {
-		log.Fatal("usage: fngu.screen -symbol 'SYM1 SYM2 ...' [-start DATE] [-end DATE] [-cash N] [-trail N] [-mingap N]")
+		log.Fatal("usage: screen -symbol 'SYM1 SYM2 ...' [-start DATE] [-end DATE] [-cash N] [-trail N] [-mingap N]")
 	}
 
 	// Parse candidate symbols

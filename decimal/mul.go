@@ -33,7 +33,7 @@ func (d Decimal) Mul(o Decimal) Decimal {
 		if quo == 1<<63 && sm == -1 {
 			return Min
 		}
-		panicOverflow()
+		panic("decimal overflow")
 	}
 
 	// 6. Apply sign

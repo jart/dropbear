@@ -10,7 +10,7 @@ func (d Decimal) DivInt(n int) Decimal {
 
 	// check for overflow
 	if x == math.MinInt64 && y == -1 {
-		panicOverflow()
+		panic("decimal overflow")
 	}
 
 	// get sign and absolute values

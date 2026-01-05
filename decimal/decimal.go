@@ -28,7 +28,7 @@ const (
 // FromInt converts int to Decimal.
 func FromInt(n int) Decimal {
 	if n > math.MaxInt64/Scale || n < math.MinInt64/Scale {
-		panicOverflow()
+		panic("decimal overflow")
 	}
 	return Decimal(int64(n) * Scale)
 }
@@ -36,7 +36,7 @@ func FromInt(n int) Decimal {
 // FromInt64 converts int64 to Decimal.
 func FromInt64(n int64) Decimal {
 	if n > math.MaxInt64/Scale || n < math.MinInt64/Scale {
-		panicOverflow()
+		panic("decimal overflow")
 	}
 	return Decimal(n * Scale)
 }
@@ -74,7 +74,7 @@ func ParseBPS(s string) Decimal {
 func (x Decimal) Add(y Decimal) Decimal {
 	z := x + y
 	if ((z ^ x) & (z ^ y)) < 0 {
-		panicOverflow()
+		panic("decimal overflow")
 	}
 	return z
 }
@@ -83,7 +83,7 @@ func (x Decimal) Add(y Decimal) Decimal {
 func (x Decimal) Sub(y Decimal) Decimal {
 	z := x - y
 	if ((x ^ y) & (z ^ x)) < 0 {
-		panicOverflow()
+		panic("decimal overflow")
 	}
 	return z
 }
@@ -91,7 +91,7 @@ func (x Decimal) Sub(y Decimal) Decimal {
 // Neg returns -d.
 func (d Decimal) Neg() Decimal {
 	if d == Min {
-		panicOverflow()
+		panic("decimal overflow")
 	}
 	return -d
 }
@@ -108,7 +108,7 @@ func (d Decimal) Float64() float64 { return float64(d) / Scale }
 func (d Decimal) Int() int {
 	r := int64(d) / Scale
 	if r > math.MaxInt || r < math.MinInt {
-		panicOverflow()
+		panic("decimal overflow")
 	}
 	return int(r)
 }
@@ -128,7 +128,7 @@ func (d Decimal) Cmp(o Decimal) int {
 func (d Decimal) Abs() Decimal {
 	if d < 0 {
 		if d == Min {
-			panicOverflow()
+			panic("decimal overflow")
 		}
 		return -d
 	}
@@ -188,9 +188,4 @@ func Compare(a, b Decimal) int {
 // CompareReverse compares b to a.
 func CompareReverse(a, b Decimal) int {
 	return b.Cmp(a)
-}
-
-//go:noinline
-func panicOverflow() {
-	panic("decimal overflow")
 }

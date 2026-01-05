@@ -84,12 +84,12 @@ func (d Decimal) QuantizeNearest(q Decimal) Decimal {
 
 	// 1. Check if multiplication wrapped around
 	if qv != 0 && res/qv != quo {
-		panicOverflow()
+		panic("decimal overflow")
 	}
 
 	// 2. Edge case: MinInt64 * -1 (unlikely for quantum, but rigorous)
 	if quo == math.MinInt64 && qv == -1 {
-		panicOverflow()
+		panic("decimal overflow")
 	}
 
 	return Decimal(res)
