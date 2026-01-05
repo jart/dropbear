@@ -30,8 +30,6 @@ var (
 	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
 	flagLookback  = flag.Int("lookback", 10, "breakout lookback period (minutes)")
 	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay in basis points")
-	flagTrail     = decimal.FlagPercent("trail", "2.5", "trailing stop percentage")
-	flagMinGap    = decimal.FlagPercent("mingap", "1", "minimum breakout gap to enter")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
 	flagMaxDD     = decimal.FlagPercent("maxdd", "5", "max daily drawdown before halting")
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
@@ -82,6 +80,10 @@ func main() {
 		if gSymbols[sym] != nil {
 			continue // dedupe
 		}
+		_, ok := OptimalParams[sym]
+		if !ok {
+			log.Fatalf("paramgen tool wasn't run for symbol %s", sym)
+		}
 		equity, err := cubby.AddEquity(sym)
 		if err != nil {
 			log.Printf("error adding symbol %s: %v", sym, err)
@@ -105,8 +107,6 @@ func main() {
 	log.Printf("  Symbols: %d", len(gSymbols))
 	log.Printf("  Lookback: %d min", *flagLookback)
 	log.Printf("  Slippage: %s bps", flagSlip.MulInt(10000).Format(0))
-	log.Printf("  Trail: %s%%", flagTrail.MulInt(100).Format(1))
-	log.Printf("  Min Gap: %s%%", flagMinGap.MulInt(100).Format(1))
 
 	cubby.Run()
 }
@@ -187,7 +187,8 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 		if price.Cmp(pos.highSince) > 0 {
 			pos.highSince = price
 		}
-		stopPrice := pos.highSince.Mul(decimal.One.Sub(*flagTrail))
+		params := OptimalParams[state.equity.Symbol]
+		stopPrice := pos.highSince.Mul(decimal.One.Sub(params.Trail))
 		if price.Cmp(stopPrice) <= 0 {
 			closePosition(state.equity, "TRAIL_STOP")
 		}
@@ -218,7 +219,8 @@ func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
 	price := c.Close
 
 	// Check for breakout: price above lookback high by minimum gap
-	breakoutThreshold := lookbackHigh.Mul(decimal.One.Add(*flagMinGap))
+	params := OptimalParams[state.equity.Symbol]
+	breakoutThreshold := lookbackHigh.Mul(decimal.One.Add(params.MinGap))
 	if price.Cmp(breakoutThreshold) <= 0 {
 		return
 	}

@@ -44,9 +44,15 @@ The `go run ./cmd/sync.coinbase` command defines the following portfolios:
 
 The sync command will fetch the latest `coinbase_transactions` table content into each sqlite db.
 
-## equity minute candles
+## equity bars
 
-For example `~/equitydata/minutes/AAPL` has indicators.Candle binary unsafe mappable bisectable array.
+Files like `~/equitydata/minutes/AAPL` can be read using `alpaca.Bars` which mmaps them into
+memory one great big array that can be seeked, indexed, etc. They contain OHLC / VWAP data.
+This is *the* data that drives all our equities trading backtests and algorithms. This code
+is the reason why dropbear goes infinitely faster than quantconnect.
+
+If you need data for a stock that hasn't been downloaded yet, all you have to do is run a
+command like `go run ./cmd/download.alpaca QQQ SPY`.
 
 ## programs
 

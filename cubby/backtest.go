@@ -24,7 +24,7 @@ type backtest struct {
 
 type backtestEntry struct {
 	bar    *alpaca.Bar
-	bars   *Bars
+	bars   *alpaca.Bars
 	equity *Equity
 }
 
@@ -48,7 +48,7 @@ func newBacktest() *backtest {
 	equityData := getEquityDataDir()
 	for _, equity := range Equities {
 		path := path.Join(equityData, "minutes", equity.Symbol)
-		bars, err := OpenBars(path)
+		bars, err := alpaca.OpenBars(path)
 		if err != nil {
 			panic(err)
 		}
