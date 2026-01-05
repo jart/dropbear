@@ -1,7 +1,7 @@
-// Command paramgen finds optimal trail/mingap parameters for each stock.
+// Command paramgen finds optimal trail/mingap/lookback parameters for each stock.
 //
-// It grid searches over parameter combinations, scores by Sharpe ratio,
-// and outputs Go code with a map of optimal parameters per symbol.
+// Uses coordinate descent with golden section search for efficient optimization
+// over continuous parameter ranges. Scores by Sharpe ratio.
 //
 // Usage:
 //
@@ -25,6 +25,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 var symbolSplitter = regexp.MustCompile(`[ \t,]+`)
@@ -33,40 +35,24 @@ var (
 	flagDataDir  = flag.String("data", os.ExpandEnv("$HOME/equitydata/minutes"), "directory containing bar data")
 	flagOutput   = flag.String("o", "", "output file (empty for stdout)")
 	flagSymbols  = flag.String("symbols", "", "comma-separated symbols to process (empty for all)")
-	flagWorkers  = flag.Int("workers", runtime.NumCPU(), "number of parallel workers")
+	flagWorkers  = flag.Int("workers", runtime.NumCPU()*2, "number of parallel workers")
 	flagCash     = decimal.Flag("cash", "100_000", "initial cash for simulation")
 	flagMinPrice = decimal.Flag("minprice", "10", "minimum share price")
 	flagVerbose  = flag.Bool("v", false, "verbose output")
 )
 
-// Grid search ranges
-var (
-	trailValues = []decimal.Decimal{
-		decimal.Parse("0.005"), // 0.5%
-		decimal.Parse("0.01"),  // 1%
-		decimal.Parse("0.015"), // 1.5%
-		decimal.Parse("0.02"),  // 2%
-		decimal.Parse("0.025"), // 2.5%
-		decimal.Parse("0.03"),  // 3%
-		decimal.Parse("0.04"),  // 4%
-		decimal.Parse("0.05"),  // 5%
-		decimal.Parse("0.06"),  // 6%
-	}
-	mingapValues = []decimal.Decimal{
-		decimal.Parse("0.005"),  // 0.5%
-		decimal.Parse("0.0075"), // 0.75%
-		decimal.Parse("0.01"),   // 1%
-		decimal.Parse("0.015"),  // 1.5%
-		decimal.Parse("0.02"),   // 2%
-		decimal.Parse("0.025"),  // 2.5%
-		decimal.Parse("0.03"),   // 3%
-		decimal.Parse("0.035"),  // 3.5%
-		decimal.Parse("0.04"),   // 4%
-		decimal.Parse("0.05"),   // 5%
-		decimal.Parse("0.06"),   // 6%
-	}
-	lookbackValues = []int{5, 7, 9, 12, 15, 20, 30}
+// Parameter bounds for optimization
+const (
+	trailMin    = 0.001 // 0.1%
+	trailMax    = 0.15  // 15%
+	mingapMin   = 0.001 // 0.1%
+	mingapMax   = 0.15  // 15%
+	lookbackMin = 3     // 3 minutes
+	lookbackMax = 300   // 5 hours (must fit within trading day since we reset daily)
 )
+
+// Golden ratio for golden section search
+const phi = 1.6180339887498949
 
 const (
 	openTime  = 6_45_00
@@ -98,6 +84,33 @@ func main() {
 	results := make(chan Result, len(symbols))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, *flagWorkers)
+	var completed int64
+	total := len(symbols)
+	start := time.Now()
+
+	// Progress logging goroutine
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				n := atomic.LoadInt64(&completed)
+				elapsed := time.Since(start)
+				if n == 0 {
+					log.Printf("Progress: 0/%d (0.0%%) - starting...", total)
+					continue
+				}
+				rate := float64(n) / elapsed.Seconds()
+				remaining := time.Duration(float64(int64(total)-n)/rate) * time.Second
+				log.Printf("Progress: %d/%d (%.1f%%) - %.1f/sec - ETA %v",
+					n, total, float64(n)/float64(total)*100, rate, remaining.Round(time.Second))
+			case <-done:
+				return
+			}
+		}
+	}()
 
 	for _, sym := range symbols {
 		wg.Add(1)
@@ -107,6 +120,7 @@ func main() {
 			defer func() { <-sem }()
 
 			result, err := optimizeSymbol(symbol)
+			atomic.AddInt64(&completed, 1)
 			if err != nil {
 				if *flagVerbose {
 					log.Printf("%s: %v", symbol, err)
@@ -129,6 +143,7 @@ func main() {
 	go func() {
 		wg.Wait()
 		close(results)
+		close(done)
 	}()
 
 	// Collect results
@@ -142,7 +157,7 @@ func main() {
 		return all[i].Symbol < all[j].Symbol
 	})
 
-	log.Printf("Optimized %d symbols", len(all))
+	log.Printf("Optimized %d symbols in %v", len(all), time.Since(start).Round(time.Second))
 
 	// Output
 	if err := writeOutput(all); err != nil {
@@ -188,31 +203,142 @@ func optimizeSymbol(symbol string) (Result, error) {
 		return Result{}, fmt.Errorf("insufficient data: %d bars", bars.Count())
 	}
 
-	var best Result
-	best.Symbol = symbol
-	best.Sharpe = math.Inf(-1)
+	// Objective function
+	eval := func(t, m float64, l int) float64 {
+		sharpe, _ := simulate(bars, decimal.FromFloat64(t), decimal.FromFloat64(m), l)
+		if math.IsInf(sharpe, -1) {
+			return -1e9
+		}
+		return sharpe
+	}
 
-	// Grid search
-	for _, lookback := range lookbackValues {
-		for _, trail := range trailValues {
-			for _, mingap := range mingapValues {
-				sharpe, ret := simulate(bars, trail, mingap, lookback)
-				if sharpe > best.Sharpe {
-					best.Trail = trail
-					best.MinGap = mingap
-					best.Lookback = lookback
-					best.Sharpe = sharpe
-					best.Return = ret
+	// Phase 1: Coarse grid search to find a valid starting region
+	coarseTrail := []float64{0.005, 0.01, 0.02, 0.03, 0.05, 0.08}
+	coarseMingap := []float64{0.005, 0.01, 0.02, 0.03, 0.05}
+	coarseLookback := []int{5, 10, 20, 50, 100, 200}
+
+	var trail, mingap float64
+	var lookback int
+	bestSharpe := -1e9
+
+	for _, t := range coarseTrail {
+		for _, m := range coarseMingap {
+			for _, l := range coarseLookback {
+				if s := eval(t, m, l); s > bestSharpe {
+					bestSharpe = s
+					trail, mingap, lookback = t, m, l
 				}
 			}
 		}
 	}
 
-	if math.IsInf(best.Sharpe, -1) {
+	if bestSharpe <= -1e9 {
+		return Result{}, fmt.Errorf("no valid parameter combination found")
+	}
+
+	if *flagVerbose {
+		log.Printf("  coarse: trail=%.2f%% mingap=%.2f%% lookback=%d sharpe=%.2f",
+			trail*100, mingap*100, lookback, bestSharpe)
+	}
+
+	// Phase 2: Refine with coordinate descent + golden section search
+	// Search in expanding neighborhood around coarse solution
+	bestTrail, bestMingap, bestLookback := trail, mingap, lookback
+	for iter := 0; iter < 3; iter++ {
+		// Define search bounds as neighborhood (expanding each iteration)
+		factor := float64(iter + 1)
+		trailLo := math.Max(trailMin, trail/factor/2)
+		trailHi := math.Min(trailMax, trail*factor*2)
+		mingapLo := math.Max(mingapMin, mingap/factor/2)
+		mingapHi := math.Min(mingapMax, mingap*factor*2)
+		lookbackLo := int(math.Max(float64(lookbackMin), float64(lookback)/factor/2))
+		lookbackHi := int(math.Min(float64(lookbackMax), float64(lookback)*factor*2))
+
+		// Optimize trail
+		trail = goldenMax(trailLo, trailHi, 1e-4, func(t float64) float64 {
+			return eval(t, mingap, lookback)
+		})
+
+		// Optimize mingap
+		mingap = goldenMax(mingapLo, mingapHi, 1e-4, func(m float64) float64 {
+			return eval(trail, m, lookback)
+		})
+
+		// Optimize lookback
+		lookback = goldenMaxInt(lookbackLo, lookbackHi, func(l int) float64 {
+			return eval(trail, mingap, l)
+		})
+
+		// Track best solution
+		if s := eval(trail, mingap, lookback); s > bestSharpe {
+			bestSharpe = s
+			bestTrail, bestMingap, bestLookback = trail, mingap, lookback
+		}
+
+		if *flagVerbose {
+			log.Printf("  iter %d: trail=%.3f%% mingap=%.3f%% lookback=%d sharpe=%.2f",
+				iter, trail*100, mingap*100, lookback, eval(trail, mingap, lookback))
+		}
+	}
+	trail, mingap, lookback = bestTrail, bestMingap, bestLookback
+
+	// Get final score
+	sharpe, ret := simulate(bars, decimal.FromFloat64(trail), decimal.FromFloat64(mingap), lookback)
+	if math.IsInf(sharpe, -1) {
 		return Result{}, fmt.Errorf("no valid results")
 	}
 
-	return best, nil
+	return Result{
+		Symbol:   symbol,
+		Trail:    decimal.FromFloat64(trail),
+		MinGap:   decimal.FromFloat64(mingap),
+		Lookback: lookback,
+		Sharpe:   sharpe,
+		Return:   ret,
+	}, nil
+}
+
+// goldenMax finds the maximum of f on [a, b] using golden section search.
+// Tolerance tol controls when to stop.
+func goldenMax(a, b, tol float64, f func(float64) float64) float64 {
+	c := b - (b-a)/phi
+	d := a + (b-a)/phi
+	for b-a > tol {
+		if f(c) > f(d) {
+			b = d
+		} else {
+			a = c
+		}
+		c = b - (b-a)/phi
+		d = a + (b-a)/phi
+	}
+	return (a + b) / 2
+}
+
+// goldenMaxInt finds the maximum of f on [a, b] for integers using golden section search.
+func goldenMaxInt(a, b int, f func(int) float64) int {
+	for b-a > 2 {
+		c := b - int(float64(b-a)/phi)
+		d := a + int(float64(b-a)/phi)
+		if c == d {
+			d++
+		}
+		if f(c) > f(d) {
+			b = d
+		} else {
+			a = c
+		}
+	}
+	// Check all remaining candidates
+	best := a
+	bestVal := f(a)
+	for x := a + 1; x <= b; x++ {
+		if v := f(x); v > bestVal {
+			best = x
+			bestVal = v
+		}
+	}
+	return best
 }
 
 func loadBars(symbol string) (*alpaca.Bars, error) {
