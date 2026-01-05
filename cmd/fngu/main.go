@@ -16,8 +16,10 @@ package main
 
 import (
 	"dropbear/broker/alpaca"
+	"dropbear/clocky"
 	"dropbear/cubby"
 	"dropbear/decimal"
+	"dropbear/indicators"
 	"dropbear/loggy"
 	"flag"
 	"log"
@@ -28,7 +30,7 @@ var (
 	flagSymbols   = flag.String("symbol", "FNGU", "symbols to monitor")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
-	flagLookback  = flag.Int("lookback", 10, "breakout lookback period (minutes)")
+	flagLookback  = flag.Int("lookback", 9, "breakout lookback period (minutes)")
 	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay in basis points")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
 	flagMaxDD     = decimal.FlagPercent("maxdd", "5", "max daily drawdown before halting")
@@ -50,10 +52,11 @@ type position struct {
 
 // symbolState tracks per-symbol state for the scanner
 type symbolState struct {
-	equity      *cubby.Equity
-	bars        []alpaca.Bar
-	dayHigh     decimal.Decimal
-	dayLow      decimal.Decimal
+	equity       *cubby.Equity
+	maxHigh      *indicators.Max // rolling max of bar highs
+	lookbackHigh decimal.Decimal // max high before current bar (for breakout detection)
+	dayHigh      decimal.Decimal
+	dayLow       decimal.Decimal
 	dollarVolume decimal.Decimal // cumulative dollar volume today
 }
 
@@ -92,7 +95,10 @@ func main() {
 			log.Printf("error adding symbol %s: %v", sym, err)
 			continue
 		}
-		state := &symbolState{equity: equity}
+		state := &symbolState{
+			equity:  equity,
+			maxHigh: indicators.NewMax(clocky.Duration(*flagLookback)*clocky.Minute - 1),
+		}
 		gSymbols[sym] = state
 		equity.OnBar = func(s *symbolState) func(*alpaca.Bar) {
 			return func(c *alpaca.Bar) {
@@ -121,11 +127,9 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 		gCurrentDate = date
 	}
 
-	// Update rolling bar window
-	state.bars = append(state.bars, *c)
-	if len(state.bars) > *flagLookback {
-		state.bars = state.bars[1:]
-	}
+	// Update rolling max indicator (save previous value for breakout detection)
+	state.lookbackHigh = state.maxHigh.Value
+	state.maxHigh.Add(c.Timestamp, c.High)
 
 	// Accumulate dollar volume (volume * VWAP, or volume * close if no VWAP)
 	vwap := c.VWAP
@@ -142,7 +146,7 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 		state.dayLow = c.Low
 	}
 
-	if len(state.bars) < *flagLookback {
+	if !state.maxHigh.IsReady() {
 		return
 	}
 
@@ -215,14 +219,8 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 }
 
 func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
-	// Calculate lookback high (excluding current bar)
-	var lookbackHigh decimal.Decimal
-	for i := 0; i < len(state.bars)-1; i++ {
-		if lookbackHigh.IsZero() || state.bars[i].High.Cmp(lookbackHigh) > 0 {
-			lookbackHigh = state.bars[i].High
-		}
-	}
-	if lookbackHigh.IsZero() {
+	// Use lookback high (max before current bar, computed in onBar)
+	if state.lookbackHigh.IsZero() {
 		return
 	}
 
@@ -230,7 +228,7 @@ func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
 
 	// Check for breakout: price above lookback high by minimum gap
 	params := OptimalParams[state.equity.Symbol]
-	breakoutThreshold := lookbackHigh.Mul(decimal.One.Add(params.MinGap))
+	breakoutThreshold := state.lookbackHigh.Mul(decimal.One.Add(params.MinGap))
 	if price.Cmp(breakoutThreshold) <= 0 {
 		return
 	}
@@ -336,7 +334,8 @@ func closePosition(equity *cubby.Equity, reason string) {
 
 func onDayChange() {
 	for _, state := range gSymbols {
-		state.bars = nil
+		state.maxHigh = indicators.NewMax(clocky.Duration(*flagLookback)*clocky.Minute - 1)
+		state.lookbackHigh = decimal.Zero
 		state.dayHigh = decimal.Zero
 		state.dayLow = decimal.Zero
 		state.dollarVolume = decimal.Zero

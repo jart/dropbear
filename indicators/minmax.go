@@ -24,6 +24,9 @@ type minmaxEntry struct {
 }
 
 func newMinmax(duration clocky.Duration, cmp func(a, b decimal.Decimal) bool) *minmax {
+	if duration <= 0 {
+		panic("duration must be positive")
+	}
 	return &minmax{
 		deque:    make([]minmaxEntry, 0, 64),
 		duration: duration,
