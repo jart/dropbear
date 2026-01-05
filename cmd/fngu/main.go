@@ -25,13 +25,14 @@ import (
 )
 
 var (
-	flagSymbols   = flag.String("symbol", "FNGU", "symbols to monitor (space-separated)")
+	flagSymbols   = flag.String("symbol", "FNGU", "symbols to monitor")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
 	flagLookback  = flag.Int("lookback", 10, "breakout lookback period (minutes)")
-	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay (basis points)")
+	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay in basis points")
 	flagTrail     = decimal.FlagPercent("trail", "2.5", "trailing stop percentage")
 	flagMinGap    = decimal.FlagPercent("mingap", "1", "minimum breakout gap to enter")
+	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
 )
 
@@ -143,12 +144,12 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 		}
 		return
 	}
-	// Market is open
+
 	gIsOpen = true
+	price := c.Close
 
 	// Check trailing stop if we hold this symbol
 	if pos, ok := gPositions[state.equity.Symbol]; ok {
-		price := c.Close
 		if price.Cmp(pos.highSince) > 0 {
 			pos.highSince = price
 		}
@@ -157,6 +158,11 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 			closePosition(state.equity, "TRAIL_STOP")
 		}
 		return // already holding, don't add more
+	}
+
+	// Never enter penny stocks (per-share fees are devastating)
+	if price.Cmp(*flagMinPrice) < 0 {
+		return
 	}
 
 	// Check for breakout entry
