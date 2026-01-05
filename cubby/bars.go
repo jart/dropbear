@@ -12,8 +12,7 @@ import (
 // barSize is the size of a Bar in bytes.
 const barSize = int(unsafe.Sizeof(alpaca.Bar{}))
 
-// barReader provides zero-copy iteration over equity bar files.
-// Files are memory-mapped for efficient access.
+// Bars provides zero-copy iteration over equity bar files.
 type Bars struct {
 	data  []byte
 	count int

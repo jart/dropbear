@@ -24,7 +24,6 @@ type Equity struct {
 	Hold       decimal.Decimal // number of shares held up in limit orders
 	EntryPrice decimal.Decimal // average entry price for current position
 	OnBar      func(*alpaca.Bar)
-	isReady    bool
 	nextBar    *alpaca.Bar // next bar (for filling orders without lookahead bias)
 }
 
@@ -128,7 +127,7 @@ func (e *Equity) LimitOrder(quantity, limitPrice decimal.Decimal, timeInForce al
 		return nil, fmt.Errorf("order quantity %s would flip the %s %s position we hold", quantity, e.Quantity, e.Symbol)
 	}
 
-	// Check margin for new positions
+	// check margin for new positions
 	if newQty.Abs().Cmp(e.Quantity.Abs()) > 0 {
 		marginUsed := GetMarginUsed()
 		equity := GetPortfolioValue().Mul(gPowerLevel)

@@ -28,7 +28,7 @@ var (
 	flagSymbols   = flag.String("symbol", "FNGU", "symbols to monitor (space-separated)")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
-	flagLookback  = flag.Int("lookback", 15, "breakout lookback period (minutes)")
+	flagLookback  = flag.Int("lookback", 10, "breakout lookback period (minutes)")
 	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay (basis points)")
 	flagTrail     = decimal.FlagPercent("trail", "2.5", "trailing stop percentage")
 	flagMinGap    = decimal.FlagPercent("mingap", "1", "minimum breakout gap to enter")
@@ -252,7 +252,6 @@ func closePosition(equity *cubby.Equity, reason string) {
 		delete(gPositions, equity.Symbol)
 	}
 }
-
 
 func onDayChange() {
 	for _, state := range gSymbols {

@@ -49,7 +49,6 @@ func (d Decimal) Div(o Decimal) Decimal {
 	// rem < uo. Max rem is 2^63 - 1.
 	// Max lhs = 2*(2^63-1) + 1 = 2^64 - 1.
 	// This fits exactly in uint64.
-
 	if (rem<<1)+(quo&1) > uo {
 		quo++
 	}

@@ -5,22 +5,22 @@ import "fmt"
 type OrderStatus uint8
 
 const (
-	OrderStatusNew              OrderStatus = iota // order received by Alpaca, routed to exchanges for execution
-	OrderStatusPartiallyFilled                     // order has been partially filled
-	OrderStatusFilled                              // order has been filled, no further updates will occur
-	OrderStatusDoneForDay                          // order is done executing for the day
-	OrderStatusCanceled                            // order has been canceled by user or exchange due to time-in-force
-	OrderStatusExpired                             // order has expired, no further updates will occur
-	OrderStatusReplaced                            // order was replaced by another order or updated due to corporate action
-	OrderStatusPendingCancel                       // order is waiting to be canceled
-	OrderStatusPendingReplace                      // order is waiting to be replaced, will reject cancel requests
-	OrderStatusAccepted                            // order received but not yet routed to execution venue (outside trading hours)
-	OrderStatusPendingNew                          // order routed to exchanges but not yet accepted for execution (rare)
-	OrderStatusAcceptedForBidding                  // order received by exchanges, being evaluated for pricing (rare)
-	OrderStatusStopped                             // trade guaranteed at stated price or better, but not yet occurred (rare)
-	OrderStatusRejected                            // order has been rejected by exchanges (rare)
-	OrderStatusSuspended                           // order has been suspended, not eligible for trading (rare)
-	OrderStatusCalculated                          // order completed but settlement calculations still pending (rare)
+	OrderStatusNew                OrderStatus = iota // order received by Alpaca, routed to exchanges for execution
+	OrderStatusPartiallyFilled                       // order has been partially filled
+	OrderStatusFilled                                // order has been filled, no further updates will occur
+	OrderStatusDoneForDay                            // order is done executing for the day
+	OrderStatusCanceled                              // order has been canceled by user or exchange due to time-in-force
+	OrderStatusExpired                               // order has expired, no further updates will occur
+	OrderStatusReplaced                              // order was replaced by another order or updated due to corporate action
+	OrderStatusPendingCancel                         // order is waiting to be canceled
+	OrderStatusPendingReplace                        // order is waiting to be replaced, will reject cancel requests
+	OrderStatusAccepted                              // order received but not yet routed to execution venue (outside trading hours)
+	OrderStatusPendingNew                            // order routed to exchanges but not yet accepted for execution (rare)
+	OrderStatusAcceptedForBidding                    // order received by exchanges, being evaluated for pricing (rare)
+	OrderStatusStopped                               // trade guaranteed at stated price or better, but not yet occurred (rare)
+	OrderStatusRejected                              // order has been rejected by exchanges (rare)
+	OrderStatusSuspended                             // order has been suspended, not eligible for trading (rare)
+	OrderStatusCalculated                            // order completed but settlement calculations still pending (rare)
 )
 
 func ParseOrderStatus(s string) (OrderStatus, error) {

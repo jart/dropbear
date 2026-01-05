@@ -68,7 +68,9 @@ func newBacktest() *backtest {
 		entry.bars.Seek(m.minTime)
 		entry.bar = entry.bars.Read()
 		if entry.bar == nil || entry.bar.Timestamp.After(m.maxTime) {
-			panic("equity has no data in overlapping range: " + entry.equity.Symbol)
+			log.Printf("equity has no data in overlapping range: %s", entry.equity.Symbol)
+			entry.bars.Close()
+			continue
 		}
 		m.heap.Push(entry)
 	}
@@ -89,9 +91,8 @@ func (m *backtest) Close() {
 
 func (m *backtest) Run() {
 	var entries []*backtestEntry
-	isDone := false
 	iterations := 0
-	for !isDone {
+	for !m.heap.Empty() {
 		iterations++
 		entry, _ := m.heap.Pop()
 		time := entry.bar.Timestamp
@@ -118,18 +119,37 @@ func (m *backtest) Run() {
 		for _, entry := range entries {
 			entry.equity.OnBar(entry.bar)
 		}
+
+		// Check for liquidation after processing bars
+		if m.checkLiquidation() {
+			return
+		}
+
 		for _, entry := range entries {
-			bar := entry.bars.Read()
-			isDone = isDone || bar == nil || bar.Timestamp >= m.maxTime
-			if !isDone {
-				entry.bar = bar
+			entry.bar = entry.bars.Read()
+			if entry.bar == nil || entry.bar.Timestamp >= m.maxTime {
+				entry.bars.Close()
+			} else {
+				m.heap.Push(entry)
 			}
-			m.heap.Push(entry)
 		}
 	}
 	log.Printf("Backtest completed: %d iterations", iterations)
+	m.printSummary()
+}
 
-	// print summary
+func (m *backtest) checkLiquidation() bool {
+	portfolioValue := GetPortfolioValue()
+	if portfolioValue.Cmp(*flagRekt) <= 0 {
+		Liquidated = true
+		log.Printf("portfolio value $%s fell below $%s", portfolioValue.FormatThousand(2), flagRekt.FormatThousand(2))
+		rekt()
+		return true
+	}
+	return false
+}
+
+func (m *backtest) printSummary() {
 	endValue := GetPortfolioValue()
 	totalReturn := endValue.Sub(m.startCash).Div(m.startCash)
 	days := float64(m.maxTime.Sub(m.minTime)) / float64(clocky.Day)
@@ -167,17 +187,16 @@ func (m *backtest) setTime(now clocky.Time) {
 }
 
 func (m *backtest) onMarketOpen() {
-	// Update max margin at market open, when positions should be closed
 	gMaxMarginAvailable = GetPortfolioValue().Sub(GetMarginUsed())
 	if GetPortfolioValue().Cmp(decimal.FromInt(25_000)) > 0 {
-		gPowerLevel = decimal.FromInt(2) // PDT: 4x buying power / 2 (50% margin) = 2x margin multiplier
+		gPowerLevel = decimal.Two
 	} else {
-		gPowerLevel = decimal.FromInt(1) // Reg-T: 2x buying power / 2 (50% margin) = 1x margin multiplier
+		gPowerLevel = decimal.One
 	}
 }
 
 func (m *backtest) onMarketClose(now clocky.Time) {
-	gPowerLevel = decimal.FromInt(1) // overnight: 2x buying power / 2 (50% margin) = 1x
+	gPowerLevel = decimal.One
 	Cash = Cash.Sub(m.interest.GetDailyInterest(now, Cash, *flagRFR))
 }
 
