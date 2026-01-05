@@ -26,6 +26,7 @@ var (
 	flagSlippage   = decimal.FlagPercent("slippage", "100", "VWAP deviation multiplier (100 = use full VWAP deviation)")
 	flagImpact     = decimal.FlagPercent("impact", "50", "market impact multiplier (% of participation * range)")
 	flagRekt       = decimal.Flag("rekt", "25_000", "portfolio value at which to consider the account liquidated")
+	flagBuffer     = decimal.FlagPercent("buffer", "1", "percent of buying power to leave untapped")
 )
 
 var (

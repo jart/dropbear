@@ -33,7 +33,7 @@ var (
 	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay in basis points")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
 	flagMaxDD     = decimal.FlagPercent("maxdd", "5", "max daily drawdown before halting")
-	flagMaxPos    = decimal.FlagPercent("maxpos", "60", "max position size as percent of portfolio")
+	flagMaxPos    = decimal.FlagPercent("maxpos", "50", "max position size as percent of portfolio")
 	flagMaxLiq    = decimal.FlagPercent("maxliq", "5", "max position as percent of today's dollar volume")
 	flagVerbose   = flag.Bool("v", false, "verbose logging")
 )
@@ -56,7 +56,7 @@ type symbolState struct {
 	lookbackHigh decimal.Decimal // max high before current bar (for breakout detection)
 	dayHigh      decimal.Decimal
 	dayLow       decimal.Decimal
-	dollarVolume decimal.Decimal // cumulative dollar volume today
+	dollarVolume decimal.Decimal // cumulative dollar volume today (in thousands)
 }
 
 var (
@@ -87,7 +87,8 @@ func main() {
 		}
 		_, ok := OptimalParams[sym]
 		if !ok {
-			log.Fatalf("paramgen tool wasn't run for symbol %s", sym)
+			log.Printf("paramgen tool wasn't run for symbol %s", sym)
+			continue
 		}
 		equity, err := cubby.AddEquity(sym)
 		if err != nil {
@@ -139,7 +140,7 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 	if vwap.IsZero() {
 		vwap = c.Close
 	}
-	state.dollarVolume = state.dollarVolume.Add(c.Volume.Mul(vwap))
+	state.dollarVolume = state.dollarVolume.Add(c.Volume.Mul(vwap).DivInt(1000))
 
 	// Update day high/low
 	if state.dayHigh.IsZero() || c.High.Cmp(state.dayHigh) > 0 {
@@ -172,7 +173,7 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 	if gDayStart.IsZero() {
 		gDayStart = cubby.GetPortfolioValue()
 		if *flagVerbose {
-			log.Printf("OPEN: portfolio value $%s", gDayStart.FormatThousand(2))
+			log.Printf("\033[1mOPEN: portfolio value $%s\033[0m", gDayStart.FormatThousand(2))
 		}
 	}
 
@@ -183,7 +184,7 @@ func onBar(state *symbolState, c *alpaca.Bar) {
 		if drawdown.Cmp(*flagMaxDD) >= 0 {
 			gHalted = true
 			if *flagVerbose {
-				log.Printf("HALTED: drawdown %.2f%% exceeds max %.2f%%",
+				log.Printf("\033[1;31mHALTED: drawdown %.2f%% exceeds max %.2f%%\033[0m",
 					drawdown.MulInt(100).Float64(), flagMaxDD.MulInt(100).Float64())
 			}
 			// Liquidate all positions
@@ -257,14 +258,14 @@ func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
 
 	// Limit position size to maxliq percent of today's dollar volume (liquidity check)
 	if state.dollarVolume.IsPositive() {
-		maxLiqValue := state.dollarVolume.Mul(*flagMaxLiq)
+		maxLiqValue := state.dollarVolume.MulInt(1000).Mul(*flagMaxLiq)
 		maxQtyByLiq := maxLiqValue.Div(limitPrice).QuantizeTruncate(decimal.One)
 		if maxQtyByLiq.Cmp(maxQty) < 0 {
 			maxQty = maxQtyByLiq
 			if *flagVerbose && maxQty.IsPositive() {
-				log.Printf("LIQUIDITY: %s capped to %s shares ($%s is %s%% of $%s vol)",
+				log.Printf("LIQUIDITY: %s capped to %s shares ($%sk is %s%% of $%sk vol)",
 					state.equity.Symbol, maxQty,
-					maxLiqValue.FormatThousand(0),
+					maxLiqValue.DivInt(1000).FormatThousand(0),
 					flagMaxLiq.MulInt(100).Format(0),
 					state.dollarVolume.FormatThousand(0))
 			}
@@ -278,14 +279,14 @@ func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
 	order, err := state.equity.LimitOrder(maxQty, limitPrice, alpaca.TimeInForceIOC)
 	if err != nil {
 		if *flagVerbose {
-			log.Printf("error placing buy order for %s: %v", state.equity.Symbol, err)
+			log.Printf("\033[31merror placing buy order for %s: %v\033[0m", state.equity.Symbol, err)
 		}
 		return
 	}
 
 	if order.FilledQuantity.IsZero() {
 		if *flagVerbose {
-			log.Printf("BUY order not filled for %s", state.equity.Symbol)
+			log.Printf("\033[32mBUY\033[0m order not filled for %s", state.equity.Symbol)
 		}
 		return
 	}
@@ -297,7 +298,7 @@ func checkBreakoutEntry(state *symbolState, c *alpaca.Bar) {
 	}
 
 	if *flagVerbose {
-		log.Printf("BUY %s %s at $%s (limit $%s)",
+		log.Printf("\033[32mBUY\033[0m %s %s at $%s (limit $%s)",
 			order.FilledQuantity, state.equity.Symbol,
 			order.FilledPrice, limitPrice.Format(2))
 	}
@@ -320,10 +321,10 @@ func closePosition(equity *cubby.Equity, reason string) {
 
 	if *flagVerbose {
 		if order.FilledQuantity.IsZero() {
-			log.Printf("SELL %s failed: 0 filled (limit $%s, status %s)",
+			log.Printf("\033[31mSELL\033[0m %s failed: 0 filled (limit $%s, status %s)",
 				equity.Symbol, limitPrice.Format(2), order.Status)
 		} else {
-			log.Printf("SELL %s %s at $%s (%s)",
+			log.Printf("\033[31mSELL\033[0m %s %s at $%s (%s)",
 				order.FilledQuantity.Abs(), equity.Symbol,
 				order.FilledPrice, reason)
 		}

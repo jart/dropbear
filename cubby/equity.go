@@ -82,7 +82,7 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 			hi = mid.Sub(decimal.One)
 		}
 	}
-	return lo.Truncate()
+	return lo.Mul(decimal.One.Sub(*flagBuffer)).Truncate()
 }
 
 // LimitOrder places a limit order for the given quantity of shares.
