@@ -116,10 +116,11 @@ func (m *backtest) Run() {
 		for _, entry := range entries {
 			entry.equity.Price = entry.bar.Close
 		}
-		m.setTime(time.Add(clocky.Minute))
+		now := time.Add(clocky.Minute)
+		m.setTime(now)
 		for _, entry := range entries {
 			for _, order := range entry.equity.Orders {
-				order.simulateFill(entry.bar)
+				order.simulateFill(now, entry.bar)
 			}
 		}
 		for _, entry := range entries {
@@ -146,7 +147,7 @@ func (m *backtest) Run() {
 			}
 		}
 	}
-	log.Printf("Backtest completed: %d iterations", iterations)
+	log.Printf("backtest completed: %d iterations", iterations)
 	m.printSummary()
 }
 
@@ -168,15 +169,15 @@ func (m *backtest) printSummary() {
 	years := days / 365.25
 	if years > 0 {
 		annualReturn := (endValue.Float64()/m.startCash.Float64() - 1) * 100 / years
-		log.Printf("Summary:")
-		log.Printf("  Start:    $%s", m.startCash.FormatThousand(2))
-		log.Printf("  End:      $%s", endValue.FormatThousand(2))
-		log.Printf("  Fees:     $%s", gFeeCalculator.TotalFees.FormatThousand(2))
-		log.Printf("  Interest: $%s", m.interest.TotalCharged.FormatThousand(2))
-		log.Printf("  Return:   %s%% (%.2f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
-		log.Printf("  Max DD:   %s%%", m.maxDrawdown.MulInt(100).Format(2))
-		log.Printf("  Period:   %.1f days (%.2f years)", days, years)
-		log.Printf("Holdings:")
+		log.Printf("summary:")
+		log.Printf("  start:    $%s", m.startCash.FormatThousand(2))
+		log.Printf("  end:      $%s", endValue.FormatThousand(2))
+		log.Printf("  fees:     $%s", gFeeCalculator.TotalFees.FormatThousand(2))
+		log.Printf("  interest: $%s", m.interest.TotalCharged.FormatThousand(2))
+		log.Printf("  return:   %s%% (%.2f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
+		log.Printf("  max dd:   %s%%", m.maxDrawdown.MulInt(100).Format(2))
+		log.Printf("  period:   %.1f days (%.2f years)", days, years)
+		log.Printf("holdings:")
 		log.Printf("%8s $%s", "USD", Cash.FormatThousand(2))
 		for _, equity := range Equities {
 			if !equity.Quantity.IsZero() {

@@ -30,8 +30,8 @@ var (
 	flagSymbols   = flag.String("symbol", "FNGU", "symbols to monitor")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagRound     = flag.Bool("round", true, "use round lot order quantities")
-	flagSlipOpen  = decimal.FlagBPS("slip-open", "50", "max slippage on opening trade")
-	flagSlipClose = decimal.FlagBPS("slip-close", "150", "max slippage on closing trade")
+	flagSlipOpen  = decimal.FlagBPS("slip-open", "25", "max slippage on opening trade")
+	flagSlipClose = decimal.FlagBPS("slip-close", "25", "max slippage on closing trade")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
 	flagMaxDD     = decimal.FlagPercent("maxdd", "9", "max daily drawdown before halting")
 	flagMaxPos    = decimal.FlagPercent("maxpos", "50", "max position size as percent of portfolio")
@@ -39,8 +39,10 @@ var (
 )
 
 const (
-	openTime  = 6_45_00
-	closeTime = 12_45_00
+	openTime         = 6_30_00
+	stopOpeningTime  = 12_30_00
+	startClosingTime = 12_45_00
+	closeTime        = 13_00_00
 )
 
 var (
@@ -112,14 +114,15 @@ type Trader struct {
 
 func (state *Trader) onBar(c *ds.Bar) {
 
-	// check order status
+	// check any current order status
 	if state.order != nil && state.order.Status.IsFinal() {
 		state.myDayVolume = state.myDayVolume.Add(state.order.FilledQuantity)
 		state.order = nil
 	}
 
-	// check date change
-	date := c.Timestamp.DateInt()
+	// check day
+	now := clocky.Now()
+	date := now.DateInt()
 	if date != gDate {
 		onDayChange()
 		gDate = date
@@ -132,21 +135,19 @@ func (state *Trader) onBar(c *ds.Bar) {
 	if !state.maxHigh.IsReady() {
 		return
 	}
-
-	// check market schedule
-	time := c.Timestamp.ClockInt()
-	if time < openTime {
-		return
-	}
-	if time >= closeTime {
-		// Keep trying to close until flat
-		if !state.equity.Quantity.IsZero() {
-			state.closePosition()
-		}
+	if cubby.IsWarmingUp {
 		return
 	}
 
-	price := c.Close
+	// check time
+	time := now.ClockInt()
+	if time < openTime || time >= closeTime {
+		return
+	}
+	if time >= startClosingTime {
+		state.closePosition()
+		return
+	}
 
 	// capture starting portfolio value for drawdown tracking
 	if gDayStart.IsZero() {
@@ -162,24 +163,23 @@ func (state *Trader) onBar(c *ds.Bar) {
 	}
 
 	// check for max daily drawdown
-	if !gHalted && !gDayStart.IsZero() {
-		current := cubby.GetPortfolioValue()
-		drawdown := gDayStart.Sub(current).Div(gDayStart)
-		if drawdown.Cmp(*flagMaxDD) >= 0 {
-			if cubby.Verbose {
-				log.Printf("halting all trading today because drawdown %.2f%% exceeds max %.2f%%",
-					drawdown.MulInt(100).Float64(), flagMaxDD.MulInt(100).Float64())
-			}
-			// liquidate and suspend trading
-			for _, trader := range gTraders {
-				trader.closePosition()
-			}
-			gHalted = true
-			return
+	portfolioValue := cubby.GetPortfolioValue()
+	drawdown := gDayStart.Sub(portfolioValue).Div(gDayStart)
+	if drawdown.Cmp(*flagMaxDD) >= 0 {
+		if cubby.Verbose {
+			log.Printf("halting all trading today because drawdown %.2f%% exceeds max %.2f%%",
+				drawdown.MulInt(100).Float64(), flagMaxDD.MulInt(100).Float64())
 		}
+		// liquidate and suspend trading
+		for _, trader := range gTraders {
+			trader.closePosition()
+		}
+		gHalted = true
+		return
 	}
 
-	// check trailing stop if we hold this symbol
+	// check trailing stop
+	price := c.Close
 	if !state.equity.Quantity.IsZero() {
 		state.highSince = state.highSince.Max(price)
 		params := OptimalParams[state.equity.Symbol]
@@ -190,7 +190,7 @@ func (state *Trader) onBar(c *ds.Bar) {
 		return // already holding, don't add more
 	}
 
-	// check if we have an open order to open with no fills
+	// check if we already have an open order to open with no fills
 	if state.order != nil {
 		// cancel if we've waited too long
 		if c.Timestamp.Sub(state.order.OrderedAt) >= *cubby.FlagPatience {
@@ -204,8 +204,13 @@ func (state *Trader) onBar(c *ds.Bar) {
 		return
 	}
 
-	// never enter penny stocks (per-share fees are devastating)
+	// don't open new positions on penny stocks
 	if price.Cmp(*flagMinPrice) < 0 {
+		return
+	}
+
+	// don't open new positions near end of the day
+	if time >= stopOpeningTime {
 		return
 	}
 
@@ -257,7 +262,7 @@ func (state *Trader) checkBreakoutEntry(price, high decimal.Decimal) {
 		state.order = nil
 	}
 
-	// don't participate in more than a certain percent of a stock's daily volume
+	// don't participate in too much of stock's daily volume
 	avgDayVolume := state.getAverageDailyVolume()
 	maxQtyByLiq := avgDayVolume.Mul(*flagMaxLiq).Truncate()
 	maxQtyByLiqRemaining := maxQtyByLiq.Sub(state.myDayVolume)
@@ -270,17 +275,17 @@ func (state *Trader) checkBreakoutEntry(price, high decimal.Decimal) {
 		return
 	}
 
-	// round to lot size if needed
+	// round order quantity to lot size
 	maxQty = RoundToLotSize(maxQty, limitPrice)
 	if !maxQty.IsPositive() {
 		return
 	}
 
-	// place IOC limit order
+	// give the order to open position
 	order, err := state.equity.Order(maxQty, limitPrice)
 	if err != nil {
 		if cubby.Verbose {
-			log.Printf("error placing buy order for %s: %v", state.equity.Symbol, err)
+			log.Printf("error placing opening order for %s: %v", state.equity.Symbol, err)
 		}
 		return
 	}
@@ -294,7 +299,7 @@ func (t *Trader) closePosition() {
 		return
 	}
 
-	// cancel existing order if any
+	// cancel any pending order to open position
 	if t.order != nil && t.order.Status.IsOpen() {
 		if t.order.Side == ds.SideSell && shares.IsPositive() {
 			return // already selling to close
@@ -310,8 +315,13 @@ func (t *Trader) closePosition() {
 		t.order = nil
 	}
 
-	// sell with slippage allowance (willing to accept slip% below current price)
-	limitPrice := t.equity.Price.Mul(decimal.One.Sub(*flagSlipClose))
+	// close position with slippage allowance
+	limitPrice := t.equity.Price
+	if shares.IsPositive() {
+		limitPrice = limitPrice.Mul(decimal.One.Sub(*flagSlipClose))
+	} else {
+		limitPrice = limitPrice.Mul(decimal.One.Add(*flagSlipClose))
+	}
 	limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
 	order, err := t.equity.Order(shares.Neg(), limitPrice)
 	if err != nil {

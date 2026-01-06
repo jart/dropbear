@@ -61,7 +61,6 @@ func Init() {
 			panic(err)
 		}
 		loggy.AlsoLogToFile()
-		log.Printf("running %s", loggy.CommandLine())
 	} else {
 		Verbose = *flagVerbose // backtests are fast, so avoid spam
 		if *flagPaper {

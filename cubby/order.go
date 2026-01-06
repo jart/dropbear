@@ -36,7 +36,7 @@ func (o *Order) Cancel() error {
 		return nil
 	}
 	if Paper {
-		o.retire(alpaca.OrderStatusCanceled)
+		o.setStatus(alpaca.OrderStatusCanceled)
 	} else {
 		err := Client.CancelOrder(o.OrderID)
 		if err != nil {
@@ -46,7 +46,7 @@ func (o *Order) Cancel() error {
 	return nil
 }
 
-func (o *Order) simulateFill(bar *ds.Bar) {
+func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 	if !Paper {
 		panic("broken program logic")
 	}
@@ -55,8 +55,13 @@ func (o *Order) simulateFill(bar *ds.Bar) {
 	}
 
 	// check if order is too old
-	if clocky.Now().Sub(o.OrderedAt) > *FlagPatience {
-		o.retire(alpaca.OrderStatusExpired)
+	if now.Sub(o.OrderedAt) > *FlagPatience {
+		o.setStatus(alpaca.OrderStatusExpired)
+		return
+	}
+	time := now.ClockInt()
+	if time < 93000 || time > 160000 {
+		o.setStatus(alpaca.OrderStatusExpired)
 		return
 	}
 
@@ -98,26 +103,52 @@ func (o *Order) simulateFill(bar *ds.Bar) {
 	notional := bar.VWAP.Mul(fillQuantity)
 	if o.Side == ds.SideBuy {
 		Cash = Cash.Sub(notional).Sub(fee)
+		// update average entry price (weighted average)
+		oldValue := o.Equity.EntryPrice.Mul(o.Equity.Quantity)
+		newValue := bar.VWAP.Mul(fillQuantity)
 		o.Equity.Quantity = o.Equity.Quantity.Add(fillQuantity)
+		o.Equity.EntryPrice = oldValue.Add(newValue).Div(o.Equity.Quantity)
 	} else {
 		Cash = Cash.Add(notional).Sub(fee)
 		o.Equity.Quantity = o.Equity.Quantity.Sub(fillQuantity)
+		// reset entry price when position is fully closed
+		if o.Equity.Quantity.IsZero() {
+			o.Equity.EntryPrice = decimal.Zero
+		}
 	}
 
 	// update order status
 	if o.FilledQuantity.Cmp(o.Quantity) == 0 {
-		o.retire(alpaca.OrderStatusFilled)
+		o.setStatus(alpaca.OrderStatusFilled)
 	} else {
-		o.Status = alpaca.OrderStatusPartiallyFilled
+		o.setStatus(alpaca.OrderStatusPartiallyFilled)
 	}
 }
 
-func (o *Order) retire(status alpaca.OrderStatus) {
-	o.Status = status
-	delete(Orders, o.OrderID)
-	delete(o.Equity.Orders, o.OrderID)
+func (o *Order) setStatus(newStatus alpaca.OrderStatus) {
+	oldStatus := o.Status
+	o.Status = newStatus
+	if !oldStatus.IsFinal() && newStatus.IsFinal() {
+		delete(Orders, o.OrderID)
+		delete(o.Equity.Orders, o.OrderID)
+		if Verbose {
+			log.Printf("%s %s %s out of %s %s at %s notional %s fee %s id %s", o.Status, o.Side, o.FilledQuantity, o.Quantity, o.Equity.Symbol, o.FilledPrice, o.FilledPrice.Mul(o.FilledQuantity), o.TotalFees, o.OrderID)
+		}
+	}
+}
+
+func (o *Order) sync(alpacaOrder *alpaca.Order) {
+	if alpacaOrder.FilledQty.Cmp(o.FilledQuantity) > 0 {
+		o.FilledQuantity = alpacaOrder.FilledQty
+		o.FilledPrice = alpacaOrder.FilledAvgPrice
+	}
+	o.setStatus(alpacaOrder.Status)
+}
+
+func (o *Order) logPlacedOrder() {
 	if Verbose {
-		log.Printf("%s %s at %s for %s fee %s id %s", o.Status, o.Side, o.FilledQuantity, o.Equity.Symbol, o.TotalFees, o.OrderID)
+		log.Printf("placed order to %s %s shares of %s at limit $%s notional $%s id %s",
+			o.Side, o.Quantity, o.Equity.Symbol, o.LimitPrice, o.Quantity.Mul(o.LimitPrice), o.OrderID)
 	}
 }
 

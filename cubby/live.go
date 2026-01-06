@@ -3,7 +3,6 @@ package cubby
 import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
-	"dropbear/decimal"
 	"dropbear/ds"
 	"log"
 
@@ -15,11 +14,10 @@ const (
 )
 
 type liveTrader struct {
-	interest *alpaca.InterestCalculator
-	symbols  []string
-	date     int
-	opened   bool
-	closed   bool
+	symbols []string
+	date    int
+	opened  bool
+	closed  bool
 }
 
 func newLiveTrader() *liveTrader {
@@ -30,12 +28,7 @@ func newLiveTrader() *liveTrader {
 	if len(symbols) == 0 {
 		panic("no equities registered for live trading")
 	}
-	gMaxMarginAvailable = Cash
-	gPowerLevel = decimal.One
-	return &liveTrader{
-		interest: alpaca.NewInterestCalculator(decimal.Parse("0.01")),
-		symbols:  symbols,
-	}
+	return &liveTrader{symbols: symbols}
 }
 
 func (lt *liveTrader) Close() error {
@@ -43,8 +36,41 @@ func (lt *liveTrader) Close() error {
 }
 
 func (lt *liveTrader) Run() {
+	lt.sync()
 	lt.warmup()
 	lt.loop()
+}
+
+func (lt *liveTrader) sync() {
+	account, err := Client.GetAccount()
+	if err != nil {
+		log.Printf("error getting alpaca account info: %v", err)
+	} else {
+		Cash = account.Cash
+	}
+	for _, order := range Orders {
+		if order.Status.IsFinal() {
+			panic("broken program logic")
+		}
+		alpacaOrder, err := Client.GetOrder(order.OrderID)
+		if err != nil {
+			log.Printf("error fetching alpaca order %s: %v", order.OrderID, err)
+			continue
+		}
+		order.sync(alpacaOrder)
+	}
+	positions, err := Client.GetPositions()
+	if err != nil {
+		log.Printf("error fetching alpaca positions: %v", err)
+	} else {
+		for _, position := range positions {
+			if equity, ok := Equities[position.Symbol]; ok {
+				equity.Price = position.CurrentPrice
+				equity.Quantity = position.QtyAvailable
+				equity.EntryPrice = position.AvgEntryPrice
+			}
+		}
+	}
 }
 
 // warmup fetches historical bars and replays them to initialize indicators.
@@ -58,7 +84,7 @@ func (lt *liveTrader) warmup() {
 	end := now.Quantize(clocky.Minute)
 	start := end.Add(-clocky.Duration(kWarmupBars) * clocky.Minute)
 
-	log.Printf("Warming up: fetching %d bars from %s to %s", kWarmupBars, start.RFC3339(), end.RFC3339())
+	log.Printf("warming up: fetching %d bars from %s to %s", kWarmupBars, start.RFC3339(), end.RFC3339())
 
 	allBars, err := lt.fetchAllBars(start, end)
 	if err != nil {
@@ -71,19 +97,17 @@ func (lt *liveTrader) warmup() {
 		return
 	}
 
-	// Build a heap to replay bars in chronological order (like backtest)
+	// build a heap to replay bars in chronological order (like backtest)
 	heap := binaryheap.NewWith(compareLiveEntries)
 	for symbol, bars := range allBars {
-		equity := Equities[symbol]
-		if equity == nil {
-			continue
-		}
-		for i := range bars {
-			heap.Push(&liveEntry{bar: &bars[i], equity: equity})
+		if equity, ok := Equities[symbol]; ok {
+			for i := range bars {
+				heap.Push(&liveEntry{bar: &bars[i], equity: equity})
+			}
 		}
 	}
 
-	// Replay bars in order
+	// replay bars in order
 	var entries []*liveEntry
 	for !heap.Empty() {
 		entry, _ := heap.Pop()
@@ -91,7 +115,7 @@ func (lt *liveTrader) warmup() {
 		entries = entries[:0]
 		entries = append(entries, entry)
 
-		// Collect all bars with the same timestamp
+		// collect all bars with the same timestamp
 		for {
 			next, _ := heap.Peek()
 			if next == nil || next.bar.Timestamp != time {
@@ -101,34 +125,33 @@ func (lt *liveTrader) warmup() {
 			entries = append(entries, entry)
 		}
 
-		// Update prices
+		// update prices
 		for _, e := range entries {
 			e.equity.Price = e.bar.Close
 		}
 
-		// Dispatch OnBar callbacks
+		// dispatch OnBar callbacks
 		for _, e := range entries {
 			e.equity.OnBar(e.bar)
 		}
 	}
 
-	log.Printf("Warmup complete: replayed bars for %d symbols", len(allBars))
+	log.Printf("warmup complete: replayed bars for %d symbols", len(allBars))
 }
 
-// loop is the main live trading loop that polls for new bars.
 func (lt *liveTrader) loop() {
-	log.Printf("Starting live trading loop")
+	log.Printf("starting live trading loop")
 
-	// Track the last minute we processed
+	// track the last minute we processed
 	lastProcessed := clocky.Now().Quantize(clocky.Minute)
 
 	for {
-		// Wait until the current minute closes
+		// wait until the current minute closes
 		now := clocky.Now()
 		currentMinute := now.Quantize(clocky.Minute)
 		nextMinute := currentMinute.Add(clocky.Minute)
 
-		// Sleep until a few seconds after the minute closes to ensure data is available
+		// sleep until a few seconds after the minute closes to ensure data is available
 		sleepUntil := nextMinute.Add(2 * clocky.Second)
 		sleepDuration := sleepUntil.Sub(now)
 		if sleepDuration > 0 {
@@ -150,13 +173,15 @@ func (lt *liveTrader) loop() {
 			clocky.Sleep(5 * clocky.Second)
 			continue
 		}
-
 		if len(bars) == 0 {
 			lastProcessed = end
 			continue
 		}
 
-		// Build heap for ordered replay
+		// get latest account information
+		lt.sync()
+
+		// build heap for ordered replay
 		heap := binaryheap.NewWith(compareLiveEntries)
 		for symbol, symbolBars := range bars {
 			equity := Equities[symbol]
@@ -168,39 +193,37 @@ func (lt *liveTrader) loop() {
 			}
 		}
 
-		// Process bars in chronological order
+		// process bars in chronological order
 		var entries []*liveEntry
 		for !heap.Empty() {
 			entry, _ := heap.Pop()
-			time := entry.bar.Timestamp
+			barTime := entry.bar.Timestamp
 			entries = entries[:0]
 			entries = append(entries, entry)
 
-			// Collect all bars with the same timestamp
+			// collect all bars with the same timestamp
 			for {
 				next, _ := heap.Peek()
-				if next == nil || next.bar.Timestamp != time {
+				if next == nil || next.bar.Timestamp != barTime {
 					break
 				}
 				entry, _ = heap.Pop()
 				entries = append(entries, entry)
 			}
 
-			// Update prices
+			// update prices
 			for _, e := range entries {
 				e.equity.Price = e.bar.Close
 			}
 
-			lt.setTime(time.Add(clocky.Minute))
-
-			// Dispatch OnBar callbacks
+			// dispatch callbacks
 			for _, e := range entries {
 				e.equity.OnBar(e.bar)
 			}
 
-			// Update lastProcessed
-			if time.Add(clocky.Minute).After(lastProcessed) {
-				lastProcessed = time.Add(clocky.Minute)
+			// update lastProcessed
+			if barTime.Add(clocky.Minute).After(lastProcessed) {
+				lastProcessed = barTime.Add(clocky.Minute)
 			}
 		}
 	}
@@ -234,46 +257,6 @@ func (lt *liveTrader) fetchAllBars(start, end clocky.Time) (map[string][]ds.Bar,
 		pageToken = nextToken
 	}
 	return allBars, nil
-}
-
-func (lt *liveTrader) setTime(now clocky.Time) {
-	date := now.DateInt()
-	if date != lt.date {
-		lt.date = date
-		lt.opened = false
-		lt.closed = false
-	}
-	time := now.ClockInt()
-	if !lt.opened && time >= openTime && time < closeTime {
-		lt.opened = true
-		lt.onMarketOpen()
-	}
-	if !lt.closed && time >= closeTime {
-		lt.closed = true
-		lt.onMarketClose(now)
-	}
-}
-
-func (lt *liveTrader) onMarketOpen() {
-	gMaxMarginAvailable = GetPortfolioValue().Sub(GetMarginUsed())
-	if GetPortfolioValue().Cmp(decimal.FromInt(25_000)) > 0 {
-		gPowerLevel = decimal.Two
-	} else {
-		gPowerLevel = decimal.One
-	}
-	log.Printf("Market open: portfolio $%s, margin available $%s, power level %sx",
-		GetPortfolioValue().FormatThousand(2),
-		gMaxMarginAvailable.FormatThousand(2),
-		gPowerLevel.Format(0))
-}
-
-func (lt *liveTrader) onMarketClose(now clocky.Time) {
-	gPowerLevel = decimal.One
-	interest := lt.interest.GetDailyInterest(now, Cash, *flagRFR)
-	Cash = Cash.Sub(interest)
-	log.Printf("Market close: portfolio $%s, interest charged $%s",
-		GetPortfolioValue().FormatThousand(2),
-		interest.Format(2))
 }
 
 type liveEntry struct {

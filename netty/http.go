@@ -35,13 +35,13 @@ var BulkHttpClient = &http.Client{
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   20,
 		IdleConnTimeout:       45 * time.Second,
-		TLSHandshakeTimeout:   5 * time.Second,
-		ResponseHeaderTimeout: 5 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
 		ExpectContinueTimeout: 0,
 		ForceAttemptHTTP2:     true,
 		DisableCompression:    false,
 	},
-	Timeout: 20 * time.Second,
+	Timeout: 60 * time.Second,
 }
 
 // FastHTTPClient is optimized for latency-critical order submission.

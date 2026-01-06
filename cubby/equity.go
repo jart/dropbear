@@ -56,9 +56,9 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 	if !Paper {
 		account, err := Client.GetAccount()
 		if err != nil {
-			return account.BuyingPower.Div(e.Price).Truncate()
-		} else {
 			log.Printf("error getting alpaca account info: %v", err)
+		} else {
+			return account.BuyingPower.Div(e.Price).Truncate()
 		}
 	}
 	marginUsed := GetMarginUsed()
@@ -126,9 +126,6 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 		LimitPrice:    limitPrice,
 		OrderedAt:     clocky.Now(),
 	}
-	if Verbose {
-		log.Printf("placing order to %s %s shares of %s at limit $%s notional $%s", side, quantity, e.Symbol, limitPrice, quantity.Mul(limitPrice))
-	}
 	if !Paper {
 		return e.sendOrder(order)
 	}
@@ -147,6 +144,7 @@ func (e *Equity) simulateOrder(order *Order, newQty decimal.Decimal) (*Order, er
 		}
 	}
 	order.OrderID = order.ClientOrderID
+	order.logPlacedOrder()
 	e.Orders[order.OrderID] = order
 	Orders[order.OrderID] = order
 	return order, nil
@@ -174,10 +172,9 @@ func (e *Equity) sendOrder(order *Order) (*Order, error) {
 		return nil, err
 	}
 	order.OrderID = alpacaOrder.ID
-	order.Status = alpacaOrder.Status
-	order.FilledPrice = alpacaOrder.FilledAvgPrice
-	order.FilledQuantity = alpacaOrder.FilledQty
+	order.logPlacedOrder()
 	Orders[order.OrderID] = order
 	e.Orders[order.OrderID] = order
+	order.sync(alpacaOrder)
 	return order, nil
 }
