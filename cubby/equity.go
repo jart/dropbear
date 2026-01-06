@@ -2,11 +2,11 @@ package cubby
 
 import (
 	"dropbear/broker/alpaca"
+	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
 	"fmt"
-
-	"github.com/google/uuid"
+	"log"
 )
 
 var Equities = make(map[string]*Equity)
@@ -53,6 +53,14 @@ func (e *Equity) String() string {
 
 // GetMaxOrderQuantity returns the maximum number of shares that can be ordered.
 func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
+	if !Paper {
+		account, err := Client.GetAccount()
+		if err != nil {
+			return account.BuyingPower.Div(e.Price).Truncate()
+		} else {
+			log.Printf("error getting alpaca account info: %v", err)
+		}
+	}
 	marginUsed := GetMarginUsed()
 	equity := GetPortfolioValue().Mul(gPowerLevel)
 	maxMarginAvailable := gMaxMarginAvailable.Mul(gPowerLevel)
@@ -68,7 +76,7 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 			hi = mid.Sub(decimal.One)
 		}
 	}
-	return lo.Mul(decimal.One.Sub(*flagBuffer)).Truncate()
+	return lo.Mul(decimal.One.Sub(*FlagBuffer)).Truncate()
 }
 
 // Order places a volume weighted limit order for the given quantity of shares.
@@ -88,10 +96,17 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 	if !limitPrice.IsPositive() {
 		return nil, ErrNegativePrice
 	}
-	side := ds.SideBuy
+	if limitPrice.QuantizeTruncate(decimal.Cent).Cmp(limitPrice) != 0 {
+		return nil, ErrPriceNotRounded
+	}
 	newQty := e.Quantity.Add(quantity)
+	if e.Quantity.Mul(newQty).IsNegative() {
+		return nil, ErrOrderOverlapsZero
+	}
+	side := ds.SideBuy
 	if quantity.IsNegative() {
 		side = ds.SideSell
+		quantity = quantity.Abs()
 		if newQty.IsNegative() {
 			if !e.Asset.Shortable.Load() {
 				return nil, ErrNotShortable
@@ -101,74 +116,67 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 			}
 		}
 	}
-	if e.Quantity.Mul(newQty).IsNegative() {
-		return nil, ErrOrderOverlapsZero
+	order := &Order{
+		ClientOrderID: generateOrderID(),
+		Type:          alpaca.OrderTypeLimit,
+		Equity:        e,
+		Side:          side,
+		Status:        alpaca.OrderStatusNew,
+		Quantity:      quantity,
+		LimitPrice:    limitPrice,
+		OrderedAt:     clocky.Now(),
 	}
-	if Paper {
-		return e.simulateOrder(side, quantity, limitPrice, newQty)
+	if Verbose {
+		log.Printf("placing order to %s %s shares of %s at limit $%s notional $%s", side, quantity, e.Symbol, limitPrice, quantity.Mul(limitPrice))
 	}
-	return e.executeOrder(side, quantity, limitPrice)
+	if !Paper {
+		return e.sendOrder(order)
+	}
+	return e.simulateOrder(order, newQty)
 }
 
-func (e *Equity) simulateOrder(side ds.Side, quantity, limitPrice, newQty decimal.Decimal) (*Order, error) {
+func (e *Equity) simulateOrder(order *Order, newQty decimal.Decimal) (*Order, error) {
 	if newQty.Abs().Cmp(e.Quantity.Abs()) > 0 {
 		marginUsed := GetMarginUsed()
 		equity := GetPortfolioValue().Mul(gPowerLevel)
-		marginNeeded := e.Asset.GetInitialMargin(quantity, limitPrice.Min(e.Price))
+		marginNeeded := e.Asset.GetInitialMargin(order.Quantity, order.LimitPrice.Min(e.Price))
 		maxMarginAvailable := gMaxMarginAvailable.Mul(gPowerLevel)
 		marginAvailable := equity.Sub(marginUsed).Min(maxMarginAvailable)
 		if marginNeeded.Cmp(marginAvailable) > 0 {
 			return nil, fmt.Errorf("need %s margin but only %s available", marginNeeded, marginAvailable)
 		}
 	}
-	order := &Order{
-		OrderID:    uuid.New().String(),
-		Side:       side,
-		Status:     alpaca.OrderStatusNew,
-		Equity:     e,
-		Quantity:   quantity,
-		LimitPrice: limitPrice,
-	}
+	order.OrderID = order.ClientOrderID
 	e.Orders[order.OrderID] = order
 	Orders[order.OrderID] = order
 	return order, nil
 }
 
-func (e *Equity) executeOrder(side ds.Side, quantity, limitPrice decimal.Decimal) (*Order, error) {
-	clientOrderID := uuid.New().String()
-	order := &Order{
-		ClientOrderID: clientOrderID,
-		Equity:        e,
-		Side:          side,
-		Status:        alpaca.OrderStatusNew,
-		Quantity:      quantity,
-		LimitPrice:    limitPrice,
-	}
+func (e *Equity) sendOrder(order *Order) (*Order, error) {
+	now := clocky.Now()
 	ordersByCID[order.ClientOrderID] = order
 	alpacaOrder, err := Client.CreateOrder(&alpaca.OrderRequest{
-		Side:        side,
-		Symbol:      e.Symbol,
-		LimitPrice:  limitPrice,
-		Qty:         quantity.Abs(),
-		Type:        alpaca.OrderTypeLimit,
-		TimeInForce: alpaca.TimeInForceDay,
+		Symbol:        e.Symbol,
+		Side:          order.Side,
+		Qty:           order.Quantity,
+		LimitPrice:    order.LimitPrice,
+		ClientOrderID: order.ClientOrderID,
+		Type:          alpaca.OrderTypeLimit,
+		TimeInForce:   alpaca.TimeInForceDay,
 		AdvancedInstructions: &alpaca.AdvancedInstructions{
 			Algorithm:     alpaca.OrderAlgorithmVWAP,
-			MaxPercentage: *flagVWAP,
+			MaxPercentage: *FlagVWAP,
+			StartTime:     now,
+			EndTime:       now.Add(*FlagPatience),
 		},
 	})
 	if err != nil {
-		order.Status = alpaca.OrderStatusRejected
-		delete(ordersByCID, order.ClientOrderID)
 		return nil, err
 	}
 	order.OrderID = alpacaOrder.ID
 	order.Status = alpacaOrder.Status
 	order.FilledPrice = alpacaOrder.FilledAvgPrice
 	order.FilledQuantity = alpacaOrder.FilledQty
-	if order.Quantity.IsNegative() {
-		order.FilledQuantity = order.FilledQuantity.Neg()
-	}
 	Orders[order.OrderID] = order
 	e.Orders[order.OrderID] = order
 	return order, nil

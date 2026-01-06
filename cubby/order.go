@@ -5,7 +5,10 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"fmt"
 	"log"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -17,27 +20,23 @@ type Order struct {
 	OrderID        string
 	ClientOrderID  string
 	Equity         *Equity
-	Side           ds.Side
+	Type           alpaca.OrderType
 	Status         alpaca.OrderStatus
-	Quantity       decimal.Decimal
-	LimitPrice     decimal.Decimal
-	FilledPrice    decimal.Decimal
-	FilledQuantity decimal.Decimal
-	TotalFees      decimal.Decimal
+	Side           ds.Side
+	Quantity       decimal.Decimal // always positive
+	LimitPrice     decimal.Decimal // always positive
+	FilledPrice    decimal.Decimal // average fill price, or zero if unfilled
+	FilledQuantity decimal.Decimal // positive, or zero if unfilled
+	TotalFees      decimal.Decimal // positive, or zero if unfilled
+	OrderedAt      clocky.Time     // local creation time
 }
 
 func (o *Order) Cancel() error {
 	if o.Status.IsFinal() {
 		return nil
 	}
-	if !Paper || *FlagVerbose {
-		log.Printf("%s cancelling order %s %s %s @ $%s", o.OrderID, o.Side, o.Equity.Symbol, o.Quantity.Format(0), o.LimitPrice.Format(2))
-	}
 	if Paper {
-		o.Status = alpaca.OrderStatusCanceled
-		delete(o.Equity.Orders, o.OrderID)
-		delete(Orders, o.OrderID)
-		o.log()
+		o.retire(alpaca.OrderStatusCanceled)
 	} else {
 		err := Client.CancelOrder(o.OrderID)
 		if err != nil {
@@ -48,13 +47,20 @@ func (o *Order) Cancel() error {
 }
 
 func (o *Order) simulateFill(bar *ds.Bar) {
+	if !Paper {
+		panic("broken program logic")
+	}
 	if o.Status.IsFinal() {
-		panic("can't fill a filled order")
+		panic("broken program logic")
 	}
 
-	// check if VWAP crosses limit price
-	// for BUY: we fill if bar.VWAP <= LimitPrice (price is low enough to buy)
-	// for SELL: we fill if bar.VWAP >= LimitPrice (price is high enough to sell)
+	// check if order is too old
+	if clocky.Now().Sub(o.OrderedAt) > *FlagPatience {
+		o.retire(alpaca.OrderStatusExpired)
+		return
+	}
+
+	// check if volume weighted average price crosses limit price
 	if o.Side == ds.SideBuy {
 		if bar.VWAP.Cmp(o.LimitPrice) > 0 {
 			return
@@ -65,87 +71,62 @@ func (o *Order) simulateFill(bar *ds.Bar) {
 		}
 	}
 
-	// calculate how many shares we can take (flagVWAP % of bar volume)
-	maxShares := bar.Volume.Mul(*flagVWAP).Truncate()
-	if maxShares.IsZero() {
+	// calculate how many shares we can take
+	availableQuantity := bar.Volume.Mul(*FlagVWAP).Truncate()
+	if !availableQuantity.IsPositive() {
 		return
 	}
 
 	// calculate remaining quantity to fill
-	remaining := o.Quantity.Sub(o.FilledQuantity).Abs()
-	fillQty := remaining.Min(maxShares)
-	if fillQty.IsZero() {
-		return
+	unfilledQuantity := o.Quantity.Sub(o.FilledQuantity)
+	fillQuantity := unfilledQuantity.Min(availableQuantity)
+	if !fillQuantity.IsPositive() {
+		panic("broken program logic")
 	}
 
 	// calculate weighted average fill price if we already have partial fills
-	oldValue := o.FilledPrice.Mul(o.FilledQuantity.Abs())
-	newValue := bar.VWAP.Mul(fillQty)
-	newFilledQty := o.FilledQuantity.Abs().Add(fillQty)
-	o.FilledPrice = oldValue.Add(newValue).Div(newFilledQty)
-
-	// update filled quantity (preserving sign)
-	if o.Side == ds.SideBuy {
-		o.FilledQuantity = newFilledQty
-	} else {
-		o.FilledQuantity = newFilledQty.Neg()
-	}
+	oldValue := o.FilledPrice.Mul(o.FilledQuantity)
+	newValue := bar.VWAP.Mul(fillQuantity)
+	o.FilledQuantity = o.FilledQuantity.Add(fillQuantity)
+	o.FilledPrice = oldValue.Add(newValue).Div(o.FilledQuantity)
 
 	// calculate and add fees (limit orders are maker orders)
-	fee := gFeeCalculator.GetFee(clocky.Now(), fillQty, false)
+	fee := gFeeCalculator.GetFee(clocky.Now(), fillQuantity, true)
 	o.TotalFees = o.TotalFees.Add(fee)
-	Cash = Cash.Sub(fee)
 
 	// update cash and position
-	tradeValue := bar.VWAP.Mul(fillQty)
+	notional := bar.VWAP.Mul(fillQuantity)
 	if o.Side == ds.SideBuy {
-		Cash = Cash.Sub(tradeValue)
-		o.Equity.Quantity = o.Equity.Quantity.Add(fillQty)
+		Cash = Cash.Sub(notional).Sub(fee)
+		o.Equity.Quantity = o.Equity.Quantity.Add(fillQuantity)
 	} else {
-		Cash = Cash.Add(tradeValue)
-		o.Equity.Quantity = o.Equity.Quantity.Sub(fillQty)
+		Cash = Cash.Add(notional).Sub(fee)
+		o.Equity.Quantity = o.Equity.Quantity.Sub(fillQuantity)
 	}
 
 	// update order status
-	if newFilledQty.Cmp(o.Quantity.Abs()) >= 0 {
-		o.Status = alpaca.OrderStatusFilled
-		delete(o.Equity.Orders, o.OrderID)
-		delete(Orders, o.OrderID)
-		o.log()
+	if o.FilledQuantity.Cmp(o.Quantity) == 0 {
+		o.retire(alpaca.OrderStatusFilled)
 	} else {
 		o.Status = alpaca.OrderStatusPartiallyFilled
 	}
 }
 
-const (
-	kColorNeutral = "\033[33m" // yellow
-	kColorBuy     = "\033[32m" // green
-	kColorSell    = "\033[31m" // red
-	kColorProfit  = "\033[32m" // green
-	kColorLoss    = "\033[31m" // red
-	kColorReset   = "\033[0m"
-)
-
-func (o *Order) log() {
-	if !Paper || *FlagVerbose {
-		if o.FilledQuantity.IsZero() {
-			log.Printf("%s %s%s%s %s order not filled (limit $%s, status %s)",
-				o.OrderID, kColorNeutral, o.Side, kColorReset, o.Equity.Symbol, o.LimitPrice.Format(2), o.Status)
-			return
-		}
-		h, m, s := clocky.Now().Clock()
-		if o.Side == ds.SideBuy {
-			log.Printf("%s %sBUY%s %02d:%02d:%02d %s %s @ $%s (fee $%s)",
-				o.OrderID, kColorBuy, kColorReset,
-				h, m, s,
-				o.FilledQuantity.Abs(), o.Equity.Symbol,
-				o.FilledPrice.Format(2), o.TotalFees.Format(2))
-		} else {
-			log.Printf("%s %sSELL%s %02d:%02d:%02d %s %s @ $%s (fee $%s, P/L)",
-				o.OrderID, kColorSell, kColorReset,
-				h, m, s,
-				o.FilledQuantity.Abs(), o.Equity.Symbol,
-				o.FilledPrice.Format(2), o.TotalFees.Format(2))
-		}
+func (o *Order) retire(status alpaca.OrderStatus) {
+	o.Status = status
+	delete(Orders, o.OrderID)
+	delete(o.Equity.Orders, o.OrderID)
+	if Verbose {
+		log.Printf("%s %s at %s for %s fee %s id %s", o.Status, o.Side, o.FilledQuantity, o.Equity.Symbol, o.TotalFees, o.OrderID)
 	}
+}
+
+var simulatedOrderCount int
+
+func generateOrderID() string {
+	if Live {
+		return uuid.New().String()
+	}
+	simulatedOrderCount++
+	return fmt.Sprintf("%d", simulatedOrderCount)
 }

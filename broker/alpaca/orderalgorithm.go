@@ -7,7 +7,7 @@ type OrderAlgorithm uint8
 const (
 	OrderAlgorithmNone OrderAlgorithm = iota // unspecified algorithm
 	OrderAlgorithmDMA                        // send order directly to exchange
-	OrderAlgorithmTWAP                       // execute orders over time to achieve time-weighted average price
+	OrderAlgorithmTWAP                       // execute order over time to achieve time-weighted average price
 	OrderAlgorithmVWAP                       // execute order over time to achieve volume-weighted average price
 )
 

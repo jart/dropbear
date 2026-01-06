@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	FlagVerbose    = flag.Bool("v", false, "verbose logging")
+	flagVerbose    = flag.Bool("v", false, "verbose logging")
 	flagPaper      = flag.Bool("paper", false, "simulate order execution on live data")
 	flagBacktest   = flag.Bool("backtest", false, "run backtest on historical data")
 	flagCash       = decimal.Flag("cash", "100_000", "initial USD balance")
@@ -21,17 +21,19 @@ var (
 	flagEnd        = clocky.TimeFlag("end", "2099-12-31", "backtest end date")
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flagRFR        = decimal.FlagBPS("rfr", "487", "annualized risk-free rate in basis points")
-	flagQuantum    = clocky.DurationFlag("quantum", "1d", "metric sampling interval while backtesting")
+	FlagQuantum    = clocky.DurationFlag("quantum", "1d", "metric sampling interval while backtesting")
 	flagSlippage   = decimal.FlagPercent("slippage", "100", "VWAP deviation multiplier (100 = use full VWAP deviation)")
 	flagImpact     = decimal.FlagPercent("impact", "50", "market impact multiplier (% of participation * range)")
 	flagRekt       = decimal.Flag("rekt", "25_000", "portfolio value at which to consider the account liquidated")
-	flagBuffer     = decimal.FlagPercent("buffer", "1", "percent of buying power to leave untapped")
-	flagVWAP       = decimal.FlagPercent("vwap", "20", "percent of minute volume we can take")
+	FlagBuffer     = decimal.FlagPercent("buffer", "1", "percent of buying power to leave untapped")
+	FlagVWAP       = decimal.FlagPercent("vwap", "20", "percent of minute volume we can take")
+	FlagPatience   = clocky.DurationFlag("patience", "15m", "time to wait for order fills")
 )
 
 var (
 	Live        bool // true means we're in live trading or paper trading mode
 	Paper       bool // true means orders are simulated
+	Verbose     bool // true means verbose logging is enabled
 	IsWarmingUp bool // true means we're backfilling historical data
 	Liquidated  bool // true if portfolio value dropped to $25k or below
 	Client      *alpaca.Client
@@ -49,6 +51,7 @@ var (
 func Init() {
 	Live = !*flagBacktest
 	if Live {
+		Verbose = true // life is slow, so don't keep secrets
 		if *flagPaper {
 			Paper = true
 		}
@@ -60,6 +63,7 @@ func Init() {
 		loggy.AlsoLogToFile()
 		log.Printf("running %s", loggy.CommandLine())
 	} else {
+		Verbose = *flagVerbose // backtests are fast, so avoid spam
 		if *flagPaper {
 			panic("-paper is implied by -backtest")
 		}

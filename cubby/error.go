@@ -13,6 +13,7 @@ var (
 	ErrZeroQuantity      = errors.New("quantity cannot be zero")
 	ErrNegativePrice     = errors.New("price cannot be negative")
 	ErrNotEasyToBorrow   = errors.New("asset is not easy to borrow")
+	ErrPriceNotRounded   = errors.New("price is not rounded to cent")
 	ErrFractionalShares  = errors.New("quantity cannot be fractional")
 	ErrOrderOverlapsZero = errors.New("order quantity would flip position")
 )

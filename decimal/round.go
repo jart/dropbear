@@ -1,5 +1,11 @@
 package decimal
 
+// Truncate returns the integer part of d (Toward Zero).
+// For example:  1.5 -> 1, -1.5 -> -1.
+func (d Decimal) Truncate() Decimal {
+	return d.QuantizeTruncate(One)
+}
+
 // RoundNearest returns the nearest integer (Half Away From Zero).
 // This has a statistical bias but is often preferred in general usage.
 // For example: 2.5 -> 3, -2.5 -> -3.
@@ -14,6 +20,12 @@ func (d Decimal) RoundEven() Decimal {
 	return d.QuantizeEven(One)
 }
 
+// RoundAway returns the nearest integer (Half Away From Zero).
+// For example: 1.5 -> 2, -1.5 -> -2.
+func (d Decimal) RoundAway() Decimal {
+	return d.QuantizeAway(One)
+}
+
 // Floor returns the greatest integer value less than or equal to d.
 // For example: 1.5 -> 1, -1.5 -> -2
 func (d Decimal) Floor() Decimal {
@@ -24,12 +36,6 @@ func (d Decimal) Floor() Decimal {
 // For example: 1.5 -> 2, -1.5 -> -1
 func (d Decimal) Ceil() Decimal {
 	return d.QuantizeCeil(One)
-}
-
-// Truncate returns the integer part of d (Toward Zero).
-// For example:  1.5 -> 1, -1.5 -> -1.
-func (d Decimal) Truncate() Decimal {
-	return d.QuantizeTruncate(One)
 }
 
 // RoundToNearest returns the nearest integer (Half Away From Zero).
