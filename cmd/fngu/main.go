@@ -21,7 +21,6 @@
 package main
 
 import (
-	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/cubby"
 	"dropbear/decimal"
@@ -36,9 +35,8 @@ import (
 var (
 	flagSymbols   = flag.String("symbol", "FNGU", "symbols to monitor")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
-	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
 	flagRound     = flag.Bool("round", true, "use round lot order quantities")
-	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay in basis points")
+	flagSlip      = decimal.FlagBPS("slip", "100", "max slippage willing to pay in basis points")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
 	flagMaxDD     = decimal.FlagPercent("maxdd", "9", "max daily drawdown before halting")
 	flagMaxPos    = decimal.FlagPercent("maxpos", "50", "max position size as percent of portfolio")
@@ -117,8 +115,6 @@ func main() {
 	benchmark, _ := cubby.AddEquity(*flagBenchmark)
 	cubby.Benchmark = benchmark
 
-	cubby.Cash = *flagCash
-
 	log.Printf("Multi-Position Day Trading Strategy")
 	log.Printf("  Symbols: %d", len(gSymbols))
 	log.Printf("  Slippage: %s bps", flagSlip.MulInt(10000).Format(0))
@@ -163,7 +159,7 @@ func onBar(state *symbolState, c *ds.Bar) {
 	if time >= closeTime {
 		// Keep trying to close until flat
 		if !state.equity.Quantity.IsZero() {
-			closePosition(state.equity, "EOD")
+			closePosition(state.equity)
 		}
 		return
 	}
@@ -191,7 +187,7 @@ func onBar(state *symbolState, c *ds.Bar) {
 			}
 			// Liquidate all positions
 			for _, pos := range gPositions {
-				closePosition(pos.equity, "DRAWDOWN_HALT")
+				closePosition(pos.equity)
 			}
 			return
 		}
@@ -210,7 +206,7 @@ func onBar(state *symbolState, c *ds.Bar) {
 		params := OptimalParams[state.equity.Symbol]
 		stopPrice := pos.highSince.Mul(decimal.One.Sub(params.Trail))
 		if price.Cmp(stopPrice) <= 0 {
-			closePosition(state.equity, "TRAIL_STOP")
+			closePosition(state.equity)
 		}
 		return // already holding, don't add more
 	}
@@ -283,7 +279,7 @@ func checkBreakoutEntry(state *symbolState, c *ds.Bar) {
 	}
 
 	// Place IOC limit order
-	order, err := state.equity.LimitOrder(maxQty, limitPrice, alpaca.TimeInForceIOC)
+	order, err := state.equity.Order(maxQty, limitPrice)
 	if err != nil {
 		if *cubby.FlagVerbose {
 			log.Printf("\033[31merror placing buy order for %s: %v\033[0m", state.equity.Symbol, err)
@@ -311,7 +307,7 @@ func closePosition(equity *cubby.Equity) {
 
 	// Sell with slippage allowance (willing to accept slip% below current price)
 	limitPrice := equity.Price.Mul(decimal.One.Sub(*flagSlip))
-	_, err := equity.LimitOrder(shares.Neg(), limitPrice, alpaca.TimeInForceIOC)
+	_, err := equity.Order(shares.Neg(), limitPrice)
 	if err != nil {
 		log.Printf("error closing %s: %v", equity.Symbol, err)
 		return
@@ -327,9 +323,6 @@ func onDayChange() {
 	for _, state := range gSymbols {
 		params := OptimalParams[state.equity.Symbol]
 		lookback := params.Lookback
-		if lookback == 0 {
-			lookback = 9 // default
-		}
 		state.maxHigh = indicators.NewMax(clocky.Duration(lookback)*clocky.Minute - 1)
 		state.lookbackHigh = decimal.Zero
 		state.dayHigh = decimal.Zero
@@ -343,16 +336,7 @@ func onDayChange() {
 
 func RoundToLotSize(shares, price decimal.Decimal) decimal.Decimal {
 	if *flagRound {
-		// new rules introduced around oct 2025
-		if price.Cmp(decimal.FromInt(250)) <= 0 {
-			return shares.QuantizeTruncate(decimal.FromInt(100))
-		}
-		if price.Cmp(decimal.FromInt(1_000)) <= 0 {
-			return shares.QuantizeTruncate(decimal.FromInt(40))
-		}
-		if price.Cmp(decimal.FromInt(10_000)) <= 0 {
-			return shares.QuantizeTruncate(decimal.FromInt(10))
-		}
+		return shares.QuantizeTruncate(decimal.FromInt(100))
 	}
 	return shares.QuantizeTruncate(decimal.One)
 }

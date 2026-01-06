@@ -19,14 +19,14 @@ type Position struct {
 	QtyAvailable           decimal.Decimal `json:"qty_available"`            // total number of shares available, minus open orders / locked for options covered call
 	Side                   PositionSide    `json:"side"`                     // e.g. long, short
 	MarketValue            decimal.Decimal `json:"market_value"`             // total dollar amount of position
-	AvgEntryPrice          decimal.Decimal `json:"avg_entry_price"`          //
+	AvgEntryPrice          decimal.Decimal `json:"avg_entry_price"`          // average entry price of this position
 	CostBasis              decimal.Decimal `json:"cost_basis"`               // total cost basis in dollars
-	UnrealizedPL           decimal.Decimal `json:"unrealized_pl"`            // in dollars
-	UnrealizedPLPC         decimal.Decimal `json:"unrealized_plpc"`          // percent (by a factor of 1)
-	UnrealizedIntradayPL   decimal.Decimal `json:"unrealized_intraday_pl"`   // in dollars
-	UnrealizedIntradayPLPC decimal.Decimal `json:"unrealized_intraday_plpc"` // percent (by a factor of 1)
-	CurrentPrice           decimal.Decimal `json:"current_price"`            //
-	LastDayPrice           decimal.Decimal `json:"lastday_price"`            //
+	UnrealizedPL           decimal.Decimal `json:"unrealized_pl"`            // unrealized profit/loss in dollars
+	UnrealizedPLPC         decimal.Decimal `json:"unrealized_plpc"`          // unrealized profit/loss percent (by a factor of 1)
+	UnrealizedIntradayPL   decimal.Decimal `json:"unrealized_intraday_pl"`   // unrealized profit/loss in dollars for the day
+	UnrealizedIntradayPLPC decimal.Decimal `json:"unrealized_intraday_plpc"` // unrealized profit/loss percent (by a factor of 1) for the day
+	CurrentPrice           decimal.Decimal `json:"current_price"`            // current asset price per share
+	LastDayPrice           decimal.Decimal `json:"lastday_price"`            // last day’s asset price per share based on the closing value of the last trading day
 	ChangeToday            decimal.Decimal `json:"change_today"`             // percent change from last day price (by a factor of 1)
 }
 

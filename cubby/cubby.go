@@ -16,6 +16,7 @@ var (
 	FlagVerbose    = flag.Bool("v", false, "verbose logging")
 	flagPaper      = flag.Bool("paper", false, "simulate order execution on live data")
 	flagBacktest   = flag.Bool("backtest", false, "run backtest on historical data")
+	flagCash       = decimal.Flag("cash", "100_000", "initial USD balance")
 	flagStart      = clocky.TimeFlag("start", "1980-01-01", "backtest start date")
 	flagEnd        = clocky.TimeFlag("end", "2099-12-31", "backtest end date")
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
@@ -31,11 +32,11 @@ var (
 	Live        bool // true means we're in live trading or paper trading mode
 	Paper       bool // true means orders are simulated
 	IsWarmingUp bool // true means we're backfilling historical data
+	Liquidated  bool // true if portfolio value dropped to $25k or below
 	Client      *alpaca.Client
 	Running     bool
 	Benchmark   *Equity
-	Cash        decimal.Decimal = decimal.FromInt(100_000)
-	Hold        decimal.Decimal
+	Cash        decimal.Decimal
 )
 
 var (
@@ -43,7 +44,6 @@ var (
 	gPowerLevel         decimal.Decimal
 	gFeeCalculator      *alpaca.FeeCalculator
 	gTotalSlippage      decimal.Decimal
-	Liquidated          bool // true if portfolio value dropped to $25k or below
 )
 
 func Init() {
@@ -84,6 +84,7 @@ func Run() {
 		defer liveTrader.Close()
 		liveTrader.Run()
 	} else {
+		Cash = *flagCash
 		backtest := newBacktest()
 		defer backtest.Close()
 		if *flagCPUProfile != "" {

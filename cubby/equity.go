@@ -5,36 +5,18 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 )
 
-var (
-	Equities                  = make(map[string]*Equity)
-	ErrUnknown                = errors.New("unknown symbol")
-	ErrRunning                = errors.New("cubby is running")
-	ErrNoData                 = errors.New("no data for equity")
-	ErrNotEquity              = errors.New("asset not an equity")
-	ErrIsRunning              = errors.New("cubby is running")
-	ErrIsWarmingUp            = errors.New("cubby is warming up")
-	ErrNotTradable            = errors.New("asset is not tradable")
-	ErrNotShortable           = errors.New("asset is not shortable")
-	ErrZeroQuantity           = errors.New("quantity cannot be zero")
-	ErrNegativePrice          = errors.New("price cannot be negative")
-	ErrNotEasyToBorrow        = errors.New("asset is not easy to borrow")
-	ErrFractionalShares       = errors.New("quantity cannot be fractional")
-	ErrOrderOverlapsZero      = errors.New("order quantity would flip position")
-	ErrUnsupportedTimeInForce = errors.New("unsupported time in force")
-)
+var Equities = make(map[string]*Equity)
 
 type Equity struct {
 	Symbol     string // e.g. "GOOG", "BRK.B", etc.
 	Asset      *alpaca.Asset
 	Price      decimal.Decimal // current midpoint
 	Quantity   decimal.Decimal // number of shares held (negative if short)
-	Hold       decimal.Decimal // number of shares held up in limit orders
 	EntryPrice decimal.Decimal // average entry price for current position
 	OnBar      func(*ds.Bar)
 	nextBar    *ds.Bar // next bar (for filling orders without lookahead bias)
@@ -89,9 +71,8 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 	return lo.Mul(decimal.One.Sub(*flagBuffer)).Truncate()
 }
 
-// LimitOrder places a limit order for the given quantity of shares.
-// For backtesting, simulates fill based on whether limit price intersects the bar's range.
-func (e *Equity) LimitOrder(quantity, limitPrice decimal.Decimal, timeInForce alpaca.TimeInForce) (*Order, error) {
+// Order places a volume weighted limit order for the given quantity of shares.
+func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 	if IsWarmingUp {
 		return nil, ErrIsWarmingUp
 	}
@@ -106,9 +87,6 @@ func (e *Equity) LimitOrder(quantity, limitPrice decimal.Decimal, timeInForce al
 	}
 	if !limitPrice.IsPositive() {
 		return nil, ErrNegativePrice
-	}
-	if timeInForce != alpaca.TimeInForceIOC {
-		return nil, ErrUnsupportedTimeInForce
 	}
 
 	side := ds.SideBuy
@@ -143,7 +121,7 @@ func (e *Equity) LimitOrder(quantity, limitPrice decimal.Decimal, timeInForce al
 	if Paper {
 		return e.simulateLimitOrder(side, quantity, limitPrice)
 	}
-	return e.executeLimitOrder(side, quantity, limitPrice, timeInForce)
+	return e.executeLimitOrder(side, quantity, limitPrice)
 }
 
 // updatePosition updates the equity position after a fill and returns entry price and realized P/L.
@@ -286,6 +264,7 @@ func (e *Equity) simulateLimitOrder(side ds.Side, quantity, limitPrice decimal.D
 		order.Status = alpaca.OrderStatusPartiallyFilled
 	}
 
+	order.log()
 	return order, nil
 }
 
@@ -295,9 +274,9 @@ const (
 )
 
 // executeLimitOrder executes a real limit order through the broker.
-func (e *Equity) executeLimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal, timeInForce alpaca.TimeInForce) (*Order, error) {
+func (e *Equity) executeLimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal) (*Order, error) {
 TryAgain:
-	alpacaOrder, err := Client.LimitOrder(e.Symbol, side, quantity.Abs(), limitPrice, timeInForce, alpaca.OrderAlgorithmNone, alpaca.OrderDestinationNone, false)
+	alpacaOrder, err := Client.LimitOrder(e.Symbol, side, quantity.Abs(), limitPrice, alpaca.TimeInForceDay, alpaca.OrderAlgorithmNone, alpaca.OrderDestinationNone, false)
 	if err != nil {
 		if err == ds.ErrTooManyRequests {
 			clocky.Sleep(1 * clocky.Second)

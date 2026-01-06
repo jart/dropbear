@@ -60,6 +60,7 @@ func (c *Client) LimitOrder(symbol string, side ds.Side, quantity, limitPrice de
 		"time_in_force":  timeInForce,
 		"limit_price":    limitPrice,
 		"extended_hours": extendedHours,
+		"order_class":    "simple",
 	}
 	if orderAlgorithm != OrderAlgorithmNone {
 		request["advanced_instructions"] = map[string]any{
