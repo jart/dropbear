@@ -9,9 +9,7 @@ import (
 	"flag"
 	"log"
 	"os"
-	"os/signal"
 	"runtime/pprof"
-	"syscall"
 )
 
 var (
@@ -30,17 +28,17 @@ var (
 )
 
 var (
-	Live      bool // true means we're in live trading or paper trading mode
-	Paper     bool // true means orders are simulated
-	Client    *alpaca.Client
-	Running   bool
-	Benchmark *Equity
-	Cash      decimal.Decimal = decimal.FromInt(100_000)
-	Hold      decimal.Decimal
+	Live        bool // true means we're in live trading or paper trading mode
+	Paper       bool // true means orders are simulated
+	IsWarmingUp bool // true means we're backfilling historical data
+	Client      *alpaca.Client
+	Running     bool
+	Benchmark   *Equity
+	Cash        decimal.Decimal = decimal.FromInt(100_000)
+	Hold        decimal.Decimal
 )
 
 var (
-	gSigChan            chan os.Signal
 	gMaxMarginAvailable decimal.Decimal
 	gPowerLevel         decimal.Decimal
 	gFeeCalculator      *alpaca.FeeCalculator
@@ -59,8 +57,6 @@ func Init() {
 		if err != nil {
 			panic(err)
 		}
-		gSigChan = make(chan os.Signal, 1)
-		signal.Notify(gSigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 		loggy.AlsoLogToFile()
 		log.Printf("running %s", loggy.CommandLine())
 	} else {
@@ -84,15 +80,9 @@ func Run() {
 	}
 	gFeeCalculator = alpaca.NewFeeCalculator()
 	if Live {
-		defer Client.CancelAllOrders()
-		for {
-			if <-gSigChan == syscall.SIGUSR1 {
-				// report.Print()
-			} else {
-				break
-			}
-		}
-		log.Printf("goodbye")
+		liveTrader := newLiveTrader()
+		defer liveTrader.Close()
+		liveTrader.Run()
 	} else {
 		backtest := newBacktest()
 		defer backtest.Close()
@@ -109,7 +99,6 @@ func Run() {
 		}
 		backtest.Run()
 	}
-	// report.Print()
 }
 
 func GetPortfolioValue() decimal.Decimal {

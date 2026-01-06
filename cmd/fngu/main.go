@@ -290,7 +290,6 @@ func checkBreakoutEntry(state *symbolState, c *ds.Bar) {
 		}
 		return
 	}
-	order.Log()
 
 	if order.FilledQuantity.IsZero() {
 		return
@@ -303,7 +302,7 @@ func checkBreakoutEntry(state *symbolState, c *ds.Bar) {
 	}
 }
 
-func closePosition(equity *cubby.Equity, reason string) {
+func closePosition(equity *cubby.Equity) {
 	shares := equity.Quantity
 	if shares.IsZero() {
 		delete(gPositions, equity.Symbol)
@@ -312,13 +311,11 @@ func closePosition(equity *cubby.Equity, reason string) {
 
 	// Sell with slippage allowance (willing to accept slip% below current price)
 	limitPrice := equity.Price.Mul(decimal.One.Sub(*flagSlip))
-	order, err := equity.LimitOrder(shares.Neg(), limitPrice, alpaca.TimeInForceIOC)
+	_, err := equity.LimitOrder(shares.Neg(), limitPrice, alpaca.TimeInForceIOC)
 	if err != nil {
 		log.Printf("error closing %s: %v", equity.Symbol, err)
 		return
 	}
-	order.Reason = reason
-	order.Log()
 
 	// If fully closed, remove from positions
 	if equity.Quantity.IsZero() {

@@ -115,8 +115,6 @@ func (m *backtest) Run() {
 		}
 		for _, entry := range entries {
 			entry.equity.Price = entry.bar.Close
-			entry.equity.AskPrice = entry.bar.Close.Add(decimal.Cent)
-			entry.equity.BidPrice = entry.bar.Close.Sub(decimal.Cent)
 			entry.equity.nextBar = entry.bars.Peek()
 		}
 		m.setTime(time.Add(clocky.Minute))
