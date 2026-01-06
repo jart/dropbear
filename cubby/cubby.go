@@ -26,6 +26,7 @@ var (
 	flagImpact     = decimal.FlagPercent("impact", "50", "market impact multiplier (% of participation * range)")
 	flagRekt       = decimal.Flag("rekt", "25_000", "portfolio value at which to consider the account liquidated")
 	flagBuffer     = decimal.FlagPercent("buffer", "1", "percent of buying power to leave untapped")
+	flagVWAP       = decimal.FlagPercent("vwap", "20", "percent of minute volume we can take")
 )
 
 var (
@@ -43,7 +44,6 @@ var (
 	gMaxMarginAvailable decimal.Decimal
 	gPowerLevel         decimal.Decimal
 	gFeeCalculator      *alpaca.FeeCalculator
-	gTotalSlippage      decimal.Decimal
 )
 
 func Init() {

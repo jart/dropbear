@@ -39,46 +39,42 @@ type Order struct {
 	ExtendedHours  bool            `json:"extended_hours"`   // eligible for execution outside regular trading hours
 }
 
-// MarketOrder places a market order.
-func (c *Client) MarketOrder(symbol string, side ds.Side, qty decimal.Decimal, tif TimeInForce) (*Order, error) {
-	return c.CreateOrder(map[string]any{
-		"symbol":        symbol,
-		"qty":           qty,
-		"side":          side,
-		"type":          "market",
-		"time_in_force": tif,
-	})
+type OrderRequest struct {
+	Symbol               string                `json:"symbol"`
+	Qty                  decimal.Decimal       `json:"qty"`
+	Side                 ds.Side               `json:"side"`
+	Type                 OrderType             `json:"type"`
+	TimeInForce          TimeInForce           `json:"time_in_force"`
+	ExtendedHours        bool                  `json:"extended_hours,omitempty"` // only works with type limit and time_in_force day
+	OrderClass           OrderClass            `json:"order_class,omitempty"`
+	LimitPrice           decimal.Decimal       `json:"limit_price,omitempty"`
+	StopPrice            decimal.Decimal       `json:"stop_price,omitempty"`
+	TrailPrice           decimal.Decimal       `json:"trail_price,omitempty"`
+	TrailPercent         decimal.Decimal       `json:"trail_percent,omitempty"`
+	Notional             decimal.Decimal       `json:"notional,omitempty"`
+	ClientOrderID        string                `json:"client_order_id,omitempty"` // unique identifier for the order; automatically generated if not sent (<= 128 characters)
+	AdvancedInstructions *AdvancedInstructions `json:"advanced_instructions,omitempty"`
 }
 
-// LimitOrder places a limit order.
-func (c *Client) LimitOrder(symbol string, side ds.Side, quantity, limitPrice decimal.Decimal, timeInForce TimeInForce, orderAlgorithm OrderAlgorithm, orderDestination OrderDestination, extendedHours bool) (*Order, error) {
-	request := map[string]any{
-		"symbol":         symbol,
-		"qty":            quantity,
-		"side":           side,
-		"type":           "limit",
-		"time_in_force":  timeInForce,
-		"limit_price":    limitPrice,
-		"extended_hours": extendedHours,
-		"order_class":    "simple",
-	}
-	if orderAlgorithm != OrderAlgorithmNone {
-		request["advanced_instructions"] = map[string]any{
-			"algorithm":   orderAlgorithm,
-			"destination": orderDestination,
-		}
-	}
-	return c.CreateOrder(request)
+// https://docs.alpaca.markets/docs/alpaca-elite-smart-router?ref=alpaca.markets
+// https://alpaca.markets/learn/optimize-your-orders-with-vwap-and-twap-on-alpaca
+// https://thehedgefundjournal.com/dash-financial-agency-and-algorithmic-trading/
+type AdvancedInstructions struct {
+	Algorithm     OrderAlgorithm   `json:"algorithm"`                // the advanced routing algorithm to use for the order
+	Destination   OrderDestination `json:"destination,omitempty"`    // target exchange for order execution
+	DisplayQty    decimal.Decimal  `json:"display_qty,omitempty"`    // maximum shares/contracts displayed on the exchange at any time. Must be in round lot increments
+	StartTime     clocky.Time      `json:"start_time,omitempty"`     // when the algorithm is to start executing. must be within current market trading hours. defaults to now or market open. does not participate in open auction
+	EndTime       clocky.Time      `json:"end_time,omitempty"`       // when the algorithm is to be done executing. must be within current market trading hours. defaults to market close. does not participate in close auction
+	MaxPercentage decimal.Decimal  `json:"max_percentage,omitempty"` // maximum percentage of the ticker's period volume this order might participate in. Must be 0 < max_percentage < 1, with up to 3 decimal points precision
 }
 
-func (c *Client) CreateOrder(body map[string]any) (*Order, error) {
+// CreateOrder places a new order.
+func (c *Client) CreateOrder(body *OrderRequest) (*Order, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling order: %w", err)
 	}
-	if !c.APITokenBucket.Try() {
-		return nil, ds.ErrTooManyRequests
-	}
+	c.APITokenBucket.Get()
 	resp, err := c.Request(netty.FastHTTPClient, "POST", "/v2/orders", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, err
@@ -115,9 +111,7 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, limitPrice de
 	if err != nil {
 		return nil, fmt.Errorf("marshaling order: %w", err)
 	}
-	if !c.APITokenBucket.Try() {
-		return nil, ds.ErrTooManyRequests
-	}
+	c.APITokenBucket.Get()
 	resp, err := c.Request(netty.FastHTTPClient, "PATCH", "/v2/orders/"+orderID, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, err
@@ -160,9 +154,7 @@ var ErrWashTrade = fmt.Errorf("wash trade detected")
 // Returns ErrOrderPendingReplace if order is not cancelable (422 - mid-replacement, etc.).
 // Returns ErrOrderNotFound if order doesn't exist (404 - already filled/canceled).
 func (c *Client) CancelOrder(orderID string) error {
-	if !c.APITokenBucket.Try() {
-		return ds.ErrTooManyRequests
-	}
+	c.APITokenBucket.Get()
 	resp, err := c.Request(netty.FastHTTPClient, "DELETE", "/v2/orders/"+orderID, nil)
 	if err != nil {
 		return err

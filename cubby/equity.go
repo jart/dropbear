@@ -2,7 +2,6 @@ package cubby
 
 import (
 	"dropbear/broker/alpaca"
-	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
 	"fmt"
@@ -19,7 +18,7 @@ type Equity struct {
 	Quantity   decimal.Decimal // number of shares held (negative if short)
 	EntryPrice decimal.Decimal // average entry price for current position
 	OnBar      func(*ds.Bar)
-	nextBar    *ds.Bar // next bar (for filling orders without lookahead bias)
+	Orders     map[string]*Order
 }
 
 // AddEquity creates and registers a new Equity with the given symbol.
@@ -42,6 +41,7 @@ func AddEquity(symbol string) (*Equity, error) {
 		Symbol: symbol,
 		Asset:  asset,
 		OnBar:  func(*ds.Bar) {},
+		Orders: make(map[string]*Order),
 	}
 	Equities[symbol] = e
 	return e, nil
@@ -88,7 +88,6 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 	if !limitPrice.IsPositive() {
 		return nil, ErrNegativePrice
 	}
-
 	side := ds.SideBuy
 	newQty := e.Quantity.Add(quantity)
 	if quantity.IsNegative() {
@@ -105,233 +104,72 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 	if e.Quantity.Mul(newQty).IsNegative() {
 		return nil, ErrOrderOverlapsZero
 	}
+	if Paper {
+		return e.simulateOrder(side, quantity, limitPrice, newQty)
+	}
+	return e.executeOrder(side, quantity, limitPrice)
+}
 
-	// check margin for new positions
+func (e *Equity) simulateOrder(side ds.Side, quantity, limitPrice, newQty decimal.Decimal) (*Order, error) {
 	if newQty.Abs().Cmp(e.Quantity.Abs()) > 0 {
 		marginUsed := GetMarginUsed()
 		equity := GetPortfolioValue().Mul(gPowerLevel)
-		marginNeeded := e.Asset.GetInitialMargin(quantity, limitPrice)
+		marginNeeded := e.Asset.GetInitialMargin(quantity, limitPrice.Min(e.Price))
 		maxMarginAvailable := gMaxMarginAvailable.Mul(gPowerLevel)
 		marginAvailable := equity.Sub(marginUsed).Min(maxMarginAvailable)
 		if marginNeeded.Cmp(marginAvailable) > 0 {
 			return nil, fmt.Errorf("need %s margin but only %s available", marginNeeded, marginAvailable)
 		}
 	}
-
-	if Paper {
-		return e.simulateLimitOrder(side, quantity, limitPrice)
-	}
-	return e.executeLimitOrder(side, quantity, limitPrice)
-}
-
-// updatePosition updates the equity position after a fill and returns entry price and realized P/L.
-func (e *Equity) updatePosition(side ds.Side, filledQuantity, fillPrice decimal.Decimal) (entryPrice, realizedPL decimal.Decimal) {
-	entryPrice = e.EntryPrice
-	if side == ds.SideBuy {
-		// Buying: compute weighted average entry price
-		oldNotional := e.EntryPrice.Mul(e.Quantity)
-		newNotional := fillPrice.Mul(filledQuantity)
-		e.Quantity = e.Quantity.Add(filledQuantity)
-		if !e.Quantity.IsZero() {
-			e.EntryPrice = oldNotional.Add(newNotional).Div(e.Quantity)
-		}
-	} else {
-		// Selling: calculate realized P/L and reduce position
-		realizedPL = fillPrice.Sub(entryPrice).Mul(filledQuantity.Abs())
-		e.Quantity = e.Quantity.Add(filledQuantity)
-		if e.Quantity.IsZero() {
-			e.EntryPrice = decimal.Zero
-		}
-	}
-	return entryPrice, realizedPL
-}
-
-// simulateLimitOrder simulates an IOC limit order fill during backtesting.
-// Uses nextBar to avoid lookahead bias - order fills on the bar AFTER the decision.
-func (e *Equity) simulateLimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal) (*Order, error) {
-	if e.nextBar == nil {
-		return nil, ErrNoData
-	}
-
-	orderID := uuid.New().String()
 	order := &Order{
-		OrderID:       orderID,
-		ClientOrderID: orderID,
-		Side:          side,
-		Equity:        e,
-		Quantity:      quantity,
-		LimitPrice:    limitPrice,
+		OrderID:    uuid.New().String(),
+		Side:       side,
+		Status:     alpaca.OrderStatusNew,
+		Equity:     e,
+		Quantity:   quantity,
+		LimitPrice: limitPrice,
 	}
-
-	// Use next bar for fill simulation (no lookahead bias)
-	bar := e.nextBar
-	if bar == nil {
-		order.Status = alpaca.OrderStatusCanceled
-		return order, nil
-	}
-
-	var fillPrice decimal.Decimal
-	var fillRatio decimal.Decimal
-
-	if side == ds.SideBuy {
-		// BUY: need price to come down to our limit
-		// limitPrice is max we're willing to pay
-		if limitPrice.Cmp(bar.Low) < 0 {
-			// Our limit is below the bar's low - no fill possible
-			order.Status = alpaca.OrderStatusCanceled
-			return order, nil
-		}
-		if limitPrice.Cmp(bar.High) >= 0 {
-			// We're willing to pay more than bar's high - full fill at VWAP
-			fillPrice = bar.VWAP
-			fillRatio = decimal.One
-		} else {
-			// Partial fill: our limit is within the bar's range
-			// Estimate fill ratio based on where our limit sits in the range
-			barRange := bar.High.Sub(bar.Low)
-			if barRange.IsPositive() {
-				// How much of the bar traded at or below our limit?
-				fillRatio = limitPrice.Sub(bar.Low).Div(barRange)
-			} else {
-				fillRatio = decimal.One
-			}
-			// Fill at our limit price (we got what we asked for)
-			fillPrice = limitPrice
-		}
-	} else {
-		// SELL: need price to come up to our limit
-		// limitPrice is min we're willing to accept
-		if limitPrice.Cmp(bar.High) > 0 {
-			// Our limit is above the bar's high - no fill possible
-			order.Status = alpaca.OrderStatusCanceled
-			return order, nil
-		}
-		if limitPrice.Cmp(bar.Low) <= 0 {
-			// We're willing to accept less than bar's low - full fill at VWAP
-			fillPrice = bar.VWAP
-			fillRatio = decimal.One
-		} else {
-			// Partial fill: our limit is within the bar's range
-			barRange := bar.High.Sub(bar.Low)
-			if barRange.IsPositive() {
-				// How much of the bar traded at or above our limit?
-				fillRatio = bar.High.Sub(limitPrice).Div(barRange)
-			} else {
-				fillRatio = decimal.One
-			}
-			// Fill at our limit price
-			fillPrice = limitPrice
-		}
-	}
-
-	// Calculate filled quantity based on fill ratio and available volume
-	maxFillFromVolume := bar.Volume.Mul(fillRatio)
-	filledQuantity := quantity.Abs().Min(maxFillFromVolume).Truncate()
-	if side == ds.SideSell {
-		filledQuantity = filledQuantity.Neg()
-	}
-
-	if filledQuantity.IsZero() {
-		order.Status = alpaca.OrderStatusCanceled
-		return order, nil
-	}
-
-	// Calculate slippage: difference between fill price and expected price (close)
-	// For buys: positive slippage means we paid more than close
-	// For sells: positive slippage means we received less than close
-	var slippage decimal.Decimal
-	if side == ds.SideBuy {
-		slippage = fillPrice.Sub(e.Price).Mul(filledQuantity)
-	} else {
-		slippage = e.Price.Sub(fillPrice).Mul(filledQuantity.Abs())
-	}
-	gTotalSlippage = gTotalSlippage.Add(slippage)
-
-	// Update position and cash
-	notional := fillPrice.Mul(filledQuantity)
-	fee := gFeeCalculator.GetFee(clocky.Now(), filledQuantity, true)
-	Cash = Cash.Sub(fee).Sub(notional)
-	entryPrice, realizedPL := e.updatePosition(side, filledQuantity, fillPrice)
-
-	order.Status = alpaca.OrderStatusFilled
-	order.FilledQuantity = filledQuantity
-	order.FilledPrice = fillPrice
-	order.TotalFees = fee
-	order.EntryPrice = entryPrice
-	order.RealizedPL = realizedPL
-
-	if filledQuantity.Abs().Cmp(quantity.Abs()) < 0 {
-		order.Status = alpaca.OrderStatusPartiallyFilled
-	}
-
-	order.log()
+	e.Orders[order.OrderID] = order
+	Orders[order.OrderID] = order
 	return order, nil
 }
 
-const (
-	kIOCWait  = 23 * clocky.Second
-	kIOCSleep = 1 * clocky.Second
-)
-
-// executeLimitOrder executes a real limit order through the broker.
-func (e *Equity) executeLimitOrder(side ds.Side, quantity, limitPrice decimal.Decimal) (*Order, error) {
-TryAgain:
-	alpacaOrder, err := Client.LimitOrder(e.Symbol, side, quantity.Abs(), limitPrice, alpaca.TimeInForceDay, alpaca.OrderAlgorithmNone, alpaca.OrderDestinationNone, false)
+func (e *Equity) executeOrder(side ds.Side, quantity, limitPrice decimal.Decimal) (*Order, error) {
+	clientOrderID := uuid.New().String()
+	order := &Order{
+		ClientOrderID: clientOrderID,
+		Equity:        e,
+		Side:          side,
+		Status:        alpaca.OrderStatusNew,
+		Quantity:      quantity,
+		LimitPrice:    limitPrice,
+	}
+	ordersByCID[order.ClientOrderID] = order
+	alpacaOrder, err := Client.CreateOrder(&alpaca.OrderRequest{
+		Side:        side,
+		Symbol:      e.Symbol,
+		LimitPrice:  limitPrice,
+		Qty:         quantity.Abs(),
+		Type:        alpaca.OrderTypeLimit,
+		TimeInForce: alpaca.TimeInForceDay,
+		AdvancedInstructions: &alpaca.AdvancedInstructions{
+			Algorithm:     alpaca.OrderAlgorithmVWAP,
+			MaxPercentage: *flagVWAP,
+		},
+	})
 	if err != nil {
-		if err == ds.ErrTooManyRequests {
-			clocky.Sleep(1 * clocky.Second)
-			goto TryAgain
-		}
+		order.Status = alpaca.OrderStatusRejected
+		delete(ordersByCID, order.ClientOrderID)
 		return nil, err
 	}
-	waitUntil := clocky.Now().Add(kIOCWait)
-	for {
-		if alpacaOrder.Status.IsFinal() {
-			order := e.convertAlpacaOrder(side, quantity, limitPrice, alpacaOrder)
-			order.log()
-			return order, nil
-		}
-		if clocky.Now().After(waitUntil) {
-		TryAgain2:
-			err := Client.CancelOrder(alpacaOrder.ID)
-			if err != nil {
-				if err == ds.ErrTooManyRequests {
-					clocky.Sleep(1 * clocky.Second)
-					goto TryAgain2
-				}
-				return nil, fmt.Errorf("error cancelling order %s: %v", alpacaOrder.ID, err)
-			}
-		} else {
-			clocky.Sleep(kIOCSleep)
-		}
-		alpacaOrder, err = Client.GetOrder(alpacaOrder.ID)
-		if err != nil {
-			return nil, fmt.Errorf("error fetching order %s: %v", alpacaOrder.ID, err)
-		}
+	order.OrderID = alpacaOrder.ID
+	order.Status = alpacaOrder.Status
+	order.FilledPrice = alpacaOrder.FilledAvgPrice
+	order.FilledQuantity = alpacaOrder.FilledQty
+	if order.Quantity.IsNegative() {
+		order.FilledQuantity = order.FilledQuantity.Neg()
 	}
-}
-
-func (e *Equity) convertAlpacaOrder(side ds.Side, quantity, limitPrice decimal.Decimal, alpacaOrder *alpaca.Order) *Order {
-	filledQuantity := alpacaOrder.FilledQty
-	if quantity.IsNegative() {
-		filledQuantity = filledQuantity.Neg()
-	}
-	notional := alpacaOrder.FilledAvgPrice.Mul(filledQuantity)
-	fee := gFeeCalculator.GetFee(clocky.Now(), filledQuantity, true)
-	Cash = Cash.Sub(fee).Sub(notional)
-	entryPrice, realizedPL := e.updatePosition(side, filledQuantity, alpacaOrder.FilledAvgPrice)
-	return &Order{
-		OrderID:        alpacaOrder.ID,
-		ClientOrderID:  alpacaOrder.ClientOrderID,
-		Equity:         e,
-		Side:           side,
-		Status:         alpacaOrder.Status,
-		Quantity:       quantity,
-		LimitPrice:     limitPrice,
-		FilledPrice:    alpacaOrder.FilledAvgPrice,
-		FilledQuantity: filledQuantity,
-		TotalFees:      fee,
-		EntryPrice:     entryPrice,
-		RealizedPL:     realizedPL,
-	}
+	Orders[order.OrderID] = order
+	e.Orders[order.OrderID] = order
+	return order, nil
 }

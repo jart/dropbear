@@ -1,8 +1,11 @@
 package alpaca
 
-import "fmt"
+import (
+	"fmt"
+	"sync/atomic"
+)
 
-type OrderStatus uint8
+type OrderStatus int32
 
 const (
 	OrderStatusNew                OrderStatus = iota // order received by Alpaca, routed to exchanges for execution
@@ -174,4 +177,14 @@ func (os OrderStatus) IsOpen() bool {
 	default:
 		return false
 	}
+}
+
+// Store atomically stores v into d.
+func (d *OrderStatus) Store(v OrderStatus) {
+	atomic.StoreInt32((*int32)(d), int32(v))
+}
+
+// Load atomically loads and returns the value of d.
+func (d *OrderStatus) Load() OrderStatus {
+	return OrderStatus(atomic.LoadInt32((*int32)(d)))
 }

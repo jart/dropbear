@@ -48,25 +48,8 @@ const (
 	closeTime = 12_45_00
 )
 
-// position tracks an open position with its trailing stop state
-type position struct {
-	equity    *cubby.Equity
-	highSince decimal.Decimal // highest price since entry (for trailing stop)
-}
-
-// symbolState tracks per-symbol state for the scanner
-type symbolState struct {
-	equity       *cubby.Equity
-	maxHigh      *indicators.Max // rolling max of bar highs
-	lookbackHigh decimal.Decimal // max high before current bar (for breakout detection)
-	dayHigh      decimal.Decimal
-	dayLow       decimal.Decimal
-	kiloVolume   decimal.Decimal // cumulative dollar volume today in $1000s
-}
-
 var (
-	gSymbols     map[string]*symbolState
-	gPositions   map[string]*position // currently held positions by symbol
+	gTraders     map[string]*Trader
 	gCurrentDate int
 	gIsOpen      bool
 	gDayStart    decimal.Decimal // portfolio value at start of day
@@ -83,11 +66,10 @@ func main() {
 		log.Fatal("no symbols specified")
 	}
 
-	gSymbols = make(map[string]*symbolState)
-	gPositions = make(map[string]*position)
+	gTraders = make(map[string]*Trader)
 
 	for _, sym := range symbols {
-		if gSymbols[sym] != nil {
+		if gTraders[sym] != nil {
 			continue // dedupe
 		}
 		_, ok := OptimalParams[sym]
@@ -100,47 +82,61 @@ func main() {
 			log.Printf("error adding symbol %s: %v", sym, err)
 			continue
 		}
-		state := &symbolState{
-			equity:  equity,
-			maxHigh: indicators.NewMax(clocky.Duration(OptimalParams[sym].Lookback)*clocky.Minute - 1),
+		state := &Trader{
+			equity:      equity,
+			maxHigh:     indicators.NewMax(clocky.Duration(OptimalParams[sym].Lookback)*clocky.Minute - 1),
+			dayVolumeMA: indicators.NewWWMA(12),
 		}
-		gSymbols[sym] = state
-		equity.OnBar = func(s *symbolState) func(*ds.Bar) {
-			return func(c *ds.Bar) {
-				onBar(s, c)
-			}
-		}(state)
+		gTraders[sym] = state
+		equity.OnBar = state.onBar
 	}
 
 	benchmark, _ := cubby.AddEquity(*flagBenchmark)
 	cubby.Benchmark = benchmark
 
 	log.Printf("Multi-Position Day Trading Strategy")
-	log.Printf("  Symbols: %d", len(gSymbols))
+	log.Printf("  Symbols: %d", len(gTraders))
 	log.Printf("  Slippage: %s bps", flagSlip.MulInt(10000).Format(0))
 
 	cubby.Run()
 }
 
-func onBar(state *symbolState, c *ds.Bar) {
+type Trader struct {
+	equity       *cubby.Equity
+	maxHigh      *indicators.Max // rolling max of bar highs
+	highSince    decimal.Decimal // highest price since entry (for trailing stop)
+	lookbackHigh decimal.Decimal // max high before current bar (for breakout detection)
+	dayHigh      decimal.Decimal
+	dayLow       decimal.Decimal
+	dayVolume    decimal.Decimal
+	myDayVolume  decimal.Decimal
+	dayVolumeMA  *indicators.WWMA
+	order        *cubby.Order
+}
+
+func (state *Trader) onBar(c *ds.Bar) {
+
+	// check order status
+	if state.order != nil && state.order.Status.IsFinal() {
+		state.myDayVolume = state.myDayVolume.Add(state.order.FilledQuantity)
+		state.order = nil
+	}
+
+	// check date change
 	date := c.Timestamp.DateInt()
 	if date != gCurrentDate {
 		onDayChange()
 		gCurrentDate = date
 	}
 
-	// Update rolling max indicator (save previous value for breakout detection)
+	// update rolling max indicator (save previous value for breakout detection)
 	state.lookbackHigh = state.maxHigh.Value
 	state.maxHigh.Add(c.Timestamp, c.High)
 
-	// Accumulate dollar volume (volume * VWAP, or volume * close if no VWAP)
-	vwap := c.VWAP
-	if vwap.IsZero() {
-		vwap = c.Close
-	}
-	state.kiloVolume = state.kiloVolume.Add(c.Volume.Mul(vwap).DivInt(1000))
+	// accumulate volume
+	state.dayVolume = state.dayVolume.Add(c.Volume)
 
-	// Update day high/low
+	// update day high/low
 	if state.dayHigh.IsZero() || c.High.Cmp(state.dayHigh) > 0 {
 		state.dayHigh = c.High
 	}
@@ -159,7 +155,7 @@ func onBar(state *symbolState, c *ds.Bar) {
 	if time >= closeTime {
 		// Keep trying to close until flat
 		if !state.equity.Quantity.IsZero() {
-			closePosition(state.equity)
+			state.closePosition()
 		}
 		return
 	}
@@ -167,7 +163,7 @@ func onBar(state *symbolState, c *ds.Bar) {
 	gIsOpen = true
 	price := c.Close
 
-	// Capture starting portfolio value for drawdown tracking
+	// capture starting portfolio value for drawdown tracking
 	if gDayStart.IsZero() {
 		gDayStart = cubby.GetPortfolioValue()
 		if *cubby.FlagVerbose {
@@ -175,7 +171,7 @@ func onBar(state *symbolState, c *ds.Bar) {
 		}
 	}
 
-	// Check for max daily drawdown
+	// check for max daily drawdown
 	if !gHalted && !gDayStart.IsZero() {
 		current := cubby.GetPortfolioValue()
 		drawdown := gDayStart.Sub(current).Div(gDayStart)
@@ -186,99 +182,97 @@ func onBar(state *symbolState, c *ds.Bar) {
 					drawdown.MulInt(100).Float64(), flagMaxDD.MulInt(100).Float64())
 			}
 			// Liquidate all positions
-			for _, pos := range gPositions {
-				closePosition(pos.equity)
+			for _, trader := range gTraders {
+				trader.closePosition()
 			}
 			return
 		}
 	}
 
-	// If halted, only process EOD closes (handled above)
+	// if halted, only process EOD closes (handled above)
 	if gHalted {
 		return
 	}
 
-	// Check trailing stop if we hold this symbol
-	if pos, ok := gPositions[state.equity.Symbol]; ok {
-		if price.Cmp(pos.highSince) > 0 {
-			pos.highSince = price
-		}
+	// check trailing stop if we hold this symbol
+	if !state.equity.Quantity.IsZero() {
+		state.highSince = state.highSince.Max(price)
 		params := OptimalParams[state.equity.Symbol]
-		stopPrice := pos.highSince.Mul(decimal.One.Sub(params.Trail))
+		stopPrice := state.highSince.Mul(decimal.One.Sub(params.Trail))
 		if price.Cmp(stopPrice) <= 0 {
-			closePosition(state.equity)
+			state.closePosition()
 		}
 		return // already holding, don't add more
 	}
 
-	// Never enter penny stocks (per-share fees are devastating)
+	// never enter penny stocks (per-share fees are devastating)
 	if price.Cmp(*flagMinPrice) < 0 {
 		return
 	}
 
-	// Check for breakout entry
-	checkBreakoutEntry(state, c)
+	// check for breakout entry
+	state.checkBreakoutEntry(c)
 }
 
-func checkBreakoutEntry(state *symbolState, c *ds.Bar) {
-	// Use lookback high (max before current bar, computed in onBar)
+func (state *Trader) checkBreakoutEntry(c *ds.Bar) {
+
+	// use lookback high (max before current bar, computed in onBar)
 	if state.lookbackHigh.IsZero() {
 		return
 	}
 
 	price := c.Close
 
-	// Check for breakout: price above lookback high by minimum gap
+	// check for breakout: price above lookback high by minimum gap
 	params := OptimalParams[state.equity.Symbol]
 	breakoutThreshold := state.lookbackHigh.Mul(decimal.One.Add(params.MinGap))
 	if price.Cmp(breakoutThreshold) <= 0 {
 		return
 	}
 
-	// Calculate limit price with slippage allowance
+	// calculate limit price with slippage allowance
 	limitPrice := price.Mul(decimal.One.Add(*flagSlip))
 
-	// Calculate position size based on available margin
+	// calculate position size based on available margin
 	maxQty := state.equity.GetMaxOrderQuantity(limitPrice)
 	if !maxQty.IsPositive() {
 		return // no margin available
 	}
 
-	// Limit position size to maxpos percent of portfolio
+	// limit position size to maxpos percent of portfolio
 	maxValue := cubby.GetPortfolioValue().Mul(*flagMaxPos)
-	maxQtyByPos := RoundToLotSize(maxValue.Div(limitPrice), limitPrice)
-	if maxQtyByPos.Cmp(maxQty) < 0 {
-		maxQty = maxQtyByPos
-	}
+	maxQtyByPos := maxValue.Div(limitPrice)
+	maxQty = maxQty.Min(maxQtyByPos)
 	if !maxQty.IsPositive() {
 		return
 	}
 
-	// Limit position size to maxliq percent of today's dollar volume (liquidity check)
-	if state.kiloVolume.IsPositive() {
-		maxKiloVol := state.kiloVolume.Mul(*flagMaxLiq)
-		maxQtyByLiq := RoundToLotSize(maxKiloVol.Div(limitPrice.DivInt(1000)), limitPrice)
-		if maxQtyByLiq.Cmp(maxQty) < 0 {
-			maxQty = maxQtyByLiq
-			if *cubby.FlagVerbose && maxQty.IsPositive() {
-				log.Printf("LIQUIDITY: %s capped to %s shares ($%sk is %s%% of $%sk vol)",
-					state.equity.Symbol, maxQty,
-					maxKiloVol.FormatThousand(3),
-					flagMaxLiq.MulInt(100).Format(1),
-					state.kiloVolume.FormatThousand(3))
-			}
+	// cancel existing order if any
+	if state.order != nil && state.order.Status.IsOpen() {
+		err := state.order.Cancel()
+		if err != nil {
+			log.Printf("error cancelling existing order for %s: %v", state.equity.Symbol, err)
 		}
-		if !maxQty.IsPositive() {
-			log.Printf("LIQUIDITY: %s no shares can be bought within liquidity limits ($%sk is %s%% of $%sk vol)",
-				state.equity.Symbol,
-				maxKiloVol.FormatThousand(3),
-				flagMaxLiq.MulInt(100).Format(1),
-				state.kiloVolume.FormatThousand(3))
-			return
-		}
+		state.myDayVolume = state.myDayVolume.Add(state.order.FilledQuantity)
+		state.order = nil
 	}
 
-	// Place IOC limit order
+	// don't participate in more than a certain percent of a stock's daily volume
+	avgDayVolume := state.getAverageDailyVolume()
+	maxQtyByLiq := avgDayVolume.Mul(*flagMaxLiq).Truncate()
+	maxQtyByLiqRemaining := maxQtyByLiq.Sub(state.myDayVolume)
+	maxQty = maxQty.Min(maxQtyByLiqRemaining)
+	if !maxQty.IsPositive() {
+		return
+	}
+
+	// round to lot size if needed
+	maxQty = RoundToLotSize(maxQty, limitPrice)
+	if !maxQty.IsPositive() {
+		return
+	}
+
+	// place IOC limit order
 	order, err := state.equity.Order(maxQty, limitPrice)
 	if err != nil {
 		if *cubby.FlagVerbose {
@@ -286,50 +280,55 @@ func checkBreakoutEntry(state *symbolState, c *ds.Bar) {
 		}
 		return
 	}
-
-	if order.FilledQuantity.IsZero() {
-		return
-	}
-
-	// Track position with trailing stop
-	gPositions[state.equity.Symbol] = &position{
-		equity:    state.equity,
-		highSince: order.FilledPrice,
-	}
+	state.highSince = state.equity.Price
+	state.order = order
 }
 
-func closePosition(equity *cubby.Equity) {
-	shares := equity.Quantity
+func (t *Trader) closePosition() {
+	shares := t.equity.Quantity
 	if shares.IsZero() {
-		delete(gPositions, equity.Symbol)
 		return
 	}
 
-	// Sell with slippage allowance (willing to accept slip% below current price)
-	limitPrice := equity.Price.Mul(decimal.One.Sub(*flagSlip))
-	_, err := equity.Order(shares.Neg(), limitPrice)
+	// cancel existing order if any
+	if t.order != nil && t.order.Status.IsOpen() {
+		err := t.order.Cancel()
+		if err != nil {
+			log.Printf("error cancelling existing order for %s: %v", t.equity.Symbol, err)
+		}
+		t.myDayVolume = t.myDayVolume.Add(t.order.FilledQuantity)
+		t.order = nil
+	}
+
+	// sell with slippage allowance (willing to accept slip% below current price)
+	limitPrice := t.equity.Price.Mul(decimal.One.Sub(*flagSlip))
+	order, err := t.equity.Order(shares.Neg(), limitPrice)
 	if err != nil {
-		log.Printf("error closing %s: %v", equity.Symbol, err)
+		log.Printf("error closing %s: %v", t.equity.Symbol, err)
 		return
 	}
+	t.order = order
+}
 
-	// If fully closed, remove from positions
-	if equity.Quantity.IsZero() {
-		delete(gPositions, equity.Symbol)
+func (t *Trader) getAverageDailyVolume() decimal.Decimal {
+	if t.dayVolumeMA.Value.IsPositive() {
+		return t.dayVolumeMA.Value
 	}
+	return t.dayVolume // first day
 }
 
 func onDayChange() {
-	for _, state := range gSymbols {
+	for _, state := range gTraders {
 		params := OptimalParams[state.equity.Symbol]
 		lookback := params.Lookback
 		state.maxHigh = indicators.NewMax(clocky.Duration(lookback)*clocky.Minute - 1)
 		state.lookbackHigh = decimal.Zero
 		state.dayHigh = decimal.Zero
 		state.dayLow = decimal.Zero
-		state.kiloVolume = decimal.Zero
+		state.myDayVolume = decimal.Zero
+		state.dayVolumeMA.Add(state.dayVolume)
+		state.dayVolume = decimal.Zero
 	}
-	gPositions = make(map[string]*position)
 	gDayStart = decimal.Zero
 	gHalted = false
 }

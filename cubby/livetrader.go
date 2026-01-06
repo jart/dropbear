@@ -189,7 +189,6 @@ func (lt *liveTrader) loop() {
 			// Update prices
 			for _, e := range entries {
 				e.equity.Price = e.bar.Close
-				e.equity.nextBar = nil
 			}
 
 			lt.setTime(time.Add(clocky.Minute))

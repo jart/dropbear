@@ -112,7 +112,13 @@ func main() {
 
 		// place market order through default smart router
 		fmt.Printf("[SMART] placing %s %s\n", side, qty)
-		order, err := client.MarketOrder(sym, side, qty, alpaca.TimeInForceDay)
+		order, err := client.CreateOrder(&alpaca.OrderRequest{
+			Symbol:      sym,
+			Qty:         qty,
+			Side:        side,
+			Type:        alpaca.OrderTypeMarket,
+			TimeInForce: alpaca.TimeInForceDay,
+		})
 		if err != nil {
 			fmt.Printf("[SMART] error placing order: %v\n", err)
 			continue

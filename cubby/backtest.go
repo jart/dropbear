@@ -33,7 +33,7 @@ type backtestEntry struct {
 
 const (
 	openTime  = 6_30_00
-	closeTime = 13_00_00
+	closeTime = 10_00_00
 )
 
 func newBacktest() *backtest {
@@ -115,19 +115,19 @@ func (m *backtest) Run() {
 		}
 		for _, entry := range entries {
 			entry.equity.Price = entry.bar.Close
-			entry.equity.nextBar = entry.bars.Peek()
 		}
 		m.setTime(time.Add(clocky.Minute))
 		for _, entry := range entries {
+			for _, order := range entry.equity.Orders {
+				order.simulateFill(entry.bar)
+			}
+		}
+		for _, entry := range entries {
 			entry.equity.OnBar(entry.bar)
 		}
-
-		// Check for liquidation after processing bars
 		if m.checkLiquidation() {
 			return
 		}
-
-		// Track max drawdown
 		currentValue := GetPortfolioValue()
 		if currentValue.Cmp(m.peakValue) > 0 {
 			m.peakValue = currentValue
@@ -137,7 +137,6 @@ func (m *backtest) Run() {
 				m.maxDrawdown = drawdown
 			}
 		}
-
 		for _, entry := range entries {
 			entry.bar = entry.bars.Read()
 			if entry.bar == nil || entry.bar.Timestamp >= m.maxTime {
@@ -173,11 +172,17 @@ func (m *backtest) printSummary() {
 		log.Printf("  Start:    $%s", m.startCash.FormatThousand(2))
 		log.Printf("  End:      $%s", endValue.FormatThousand(2))
 		log.Printf("  Fees:     $%s", gFeeCalculator.TotalFees.FormatThousand(2))
-		log.Printf("  Slippage: $%s", gTotalSlippage.FormatThousand(2))
 		log.Printf("  Interest: $%s", m.interest.TotalCharged.FormatThousand(2))
 		log.Printf("  Return:   %s%% (%.2f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
 		log.Printf("  Max DD:   %s%%", m.maxDrawdown.MulInt(100).Format(2))
 		log.Printf("  Period:   %.1f days (%.2f years)", days, years)
+		log.Printf("Holdings:")
+		log.Printf("%8s $%s", "USD", Cash.FormatThousand(2))
+		for _, equity := range Equities {
+			if !equity.Quantity.IsZero() {
+				log.Printf("%8s %8s shares @ $%s = $%s", equity.Symbol, equity.Quantity.Format(0), equity.Price.Format(2), equity.Price.Mul(equity.Quantity).FormatThousand(2))
+			}
+		}
 	}
 }
 
@@ -210,6 +215,9 @@ func (m *backtest) onMarketOpen() {
 }
 
 func (m *backtest) onMarketClose(now clocky.Time) {
+	for _, order := range Orders {
+		order.Cancel()
+	}
 	gPowerLevel = decimal.One
 	Cash = Cash.Sub(m.interest.GetDailyInterest(now, Cash, *flagRFR))
 }

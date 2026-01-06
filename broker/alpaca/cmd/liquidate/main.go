@@ -287,7 +287,18 @@ func liquidateOnExchange(symbol string, side ds.Side, qty, price decimal.Decimal
 	var order *alpaca.Order
 	for {
 		var err error
-		order, err = client.LimitOrder(symbol, side, qty, price, alpaca.TimeInForceDay, alpaca.OrderAlgorithmDMA, dest, false)
+		order, err = client.CreateOrder(&alpaca.OrderRequest{
+			Symbol:      symbol,
+			Qty:         qty,
+			Side:        side,
+			Type:        alpaca.OrderTypeLimit,
+			TimeInForce: alpaca.TimeInForceDay,
+			LimitPrice:  price,
+			AdvancedInstructions: &alpaca.AdvancedInstructions{
+				Algorithm:   alpaca.OrderAlgorithmDMA,
+				Destination: dest,
+			},
+		})
 		if err != nil {
 			if err == ds.ErrTooManyRequests {
 				clocky.Sleep(clocky.Second)
@@ -358,7 +369,14 @@ func liquidateCrypto(symbol string, side ds.Side, qty, price decimal.Decimal) (d
 	var order *alpaca.Order
 	for {
 		var err error
-		order, err = client.LimitOrder(symbol, side, qty, price, alpaca.TimeInForceGTC, alpaca.OrderAlgorithmNone, alpaca.OrderDestinationNone, false)
+		order, err = client.CreateOrder(&alpaca.OrderRequest{
+			Symbol:      symbol,
+			Qty:         qty,
+			Side:        side,
+			Type:        alpaca.OrderTypeLimit,
+			TimeInForce: alpaca.TimeInForceGTC,
+			LimitPrice:  price,
+		})
 		if err != nil {
 			if err == ds.ErrTooManyRequests {
 				clocky.Sleep(clocky.Second)
