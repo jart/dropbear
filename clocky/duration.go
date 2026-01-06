@@ -16,6 +16,7 @@ const (
 	Hour        Duration = 60 * Minute
 	Day         Duration = 24 * Hour
 	Week        Duration = 7 * Day
+	Month       Duration = 30 * Day
 	Year        Duration = 365 * Day
 )
 

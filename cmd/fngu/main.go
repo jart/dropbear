@@ -37,6 +37,7 @@ var (
 	flagSymbols   = flag.String("symbol", "FNGU", "symbols to monitor")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagCash      = decimal.Flag("cash", "100_000", "initial USD balance")
+	flagRound     = flag.Bool("round", true, "use round lot order quantities")
 	flagSlip      = decimal.FlagBPS("slip", "50", "max slippage willing to pay in basis points")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum share price to trade")
 	flagMaxDD     = decimal.FlagPercent("maxdd", "9", "max daily drawdown before halting")
@@ -249,7 +250,7 @@ func checkBreakoutEntry(state *symbolState, c *ds.Bar) {
 
 	// Limit position size to maxpos percent of portfolio
 	maxValue := cubby.GetPortfolioValue().Mul(*flagMaxPos)
-	maxQtyByPos := maxValue.Div(limitPrice).QuantizeTruncate(decimal.One)
+	maxQtyByPos := RoundToLotSize(maxValue.Div(limitPrice), limitPrice)
 	if maxQtyByPos.Cmp(maxQty) < 0 {
 		maxQty = maxQtyByPos
 	}
@@ -260,7 +261,7 @@ func checkBreakoutEntry(state *symbolState, c *ds.Bar) {
 	// Limit position size to maxliq percent of today's dollar volume (liquidity check)
 	if state.kiloVolume.IsPositive() {
 		maxKiloVol := state.kiloVolume.Mul(*flagMaxLiq)
-		maxQtyByLiq := maxKiloVol.Div(limitPrice.DivInt(1000)).QuantizeTruncate(decimal.One)
+		maxQtyByLiq := RoundToLotSize(maxKiloVol.Div(limitPrice.DivInt(1000)), limitPrice)
 		if maxQtyByLiq.Cmp(maxQty) < 0 {
 			maxQty = maxQtyByLiq
 			if *cubby.FlagVerbose && maxQty.IsPositive() {
@@ -341,4 +342,20 @@ func onDayChange() {
 	gPositions = make(map[string]*position)
 	gDayStart = decimal.Zero
 	gHalted = false
+}
+
+func RoundToLotSize(shares, price decimal.Decimal) decimal.Decimal {
+	if *flagRound {
+		// new rules introduced around oct 2025
+		if price.Cmp(decimal.FromInt(250)) <= 0 {
+			return shares.QuantizeTruncate(decimal.FromInt(100))
+		}
+		if price.Cmp(decimal.FromInt(1_000)) <= 0 {
+			return shares.QuantizeTruncate(decimal.FromInt(40))
+		}
+		if price.Cmp(decimal.FromInt(10_000)) <= 0 {
+			return shares.QuantizeTruncate(decimal.FromInt(10))
+		}
+	}
+	return shares.QuantizeTruncate(decimal.One)
 }

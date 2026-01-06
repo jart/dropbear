@@ -32,7 +32,7 @@ type Position struct {
 
 // GetPositions retrieves all open positions.
 func (c *Client) GetPositions() ([]Position, error) {
-	c.tokenBucket.Get()
+	c.APITokenBucket.Get()
 	resp, err := c.Get("/v2/positions")
 	if err != nil {
 		return nil, err

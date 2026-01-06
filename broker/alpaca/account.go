@@ -47,7 +47,7 @@ type Account struct {
 
 // GetAccount retrieves account info.
 func (c *Client) GetAccount() (*Account, error) {
-	c.tokenBucket.Get()
+	c.APITokenBucket.Get()
 	resp, err := c.Get("/v2/account")
 	if err != nil {
 		return nil, err

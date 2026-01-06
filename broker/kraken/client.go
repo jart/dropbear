@@ -17,22 +17,20 @@ const baseURL = "https://api.kraken.com"
 
 // Client is a Kraken REST API client.
 type Client struct {
-	restLimiter    rateLimiter // for GetBalance, GetAssetPairs, etc.
-	tradingLimiter rateLimiter // for AddOrder, CancelOrder, etc.
+	restLimiter    netty.TokenBucket // for GetBalance, GetAssetPairs, etc.
+	tradingLimiter netty.TokenBucket // for AddOrder, CancelOrder, etc.
 }
 
 // NewClient creates a new Client.
 func NewClient() *Client {
 	return &Client{
-		restLimiter:    newRateLimiter(),
+		restLimiter:    NewRateLimiter(),
 		tradingLimiter: NewTradingRateLimiter(),
 	}
 }
 
 // Close closes any resources used by the client.
 func (c *Client) Close() error {
-	c.tradingLimiter.Close()
-	c.restLimiter.Close()
 	return nil
 }
 

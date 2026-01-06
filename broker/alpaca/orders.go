@@ -75,7 +75,7 @@ func (c *Client) CreateOrder(body map[string]any) (*Order, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshaling order: %w", err)
 	}
-	if !c.tokenBucket.Try() {
+	if !c.APITokenBucket.Try() {
 		return nil, ds.ErrTooManyRequests
 	}
 	resp, err := c.Request(netty.FastHTTPClient, "POST", "/v2/orders", bytes.NewReader(jsonBody))
@@ -114,7 +114,7 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, limitPrice de
 	if err != nil {
 		return nil, fmt.Errorf("marshaling order: %w", err)
 	}
-	if !c.tokenBucket.Try() {
+	if !c.APITokenBucket.Try() {
 		return nil, ds.ErrTooManyRequests
 	}
 	resp, err := c.Request(netty.FastHTTPClient, "PATCH", "/v2/orders/"+orderID, bytes.NewReader(jsonBody))
@@ -159,7 +159,7 @@ var ErrWashTrade = fmt.Errorf("wash trade detected")
 // Returns ErrOrderPendingReplace if order is not cancelable (422 - mid-replacement, etc.).
 // Returns ErrOrderNotFound if order doesn't exist (404 - already filled/canceled).
 func (c *Client) CancelOrder(orderID string) error {
-	if !c.tokenBucket.Try() {
+	if !c.APITokenBucket.Try() {
 		return ds.ErrTooManyRequests
 	}
 	resp, err := c.Request(netty.FastHTTPClient, "DELETE", "/v2/orders/"+orderID, nil)
@@ -186,7 +186,7 @@ func (c *Client) CancelOrder(orderID string) error {
 
 // CancelAllOrders cancels all open orders.
 func (c *Client) CancelAllOrders() error {
-	c.tokenBucket.Get()
+	c.APITokenBucket.Get()
 	resp, err := c.Request(netty.FastHTTPClient, "DELETE", "/v2/orders", nil)
 	if err != nil {
 		return err
@@ -205,7 +205,7 @@ func (c *Client) CancelAllOrders() error {
 
 // GetOrder retrieves a single order by ID.
 func (c *Client) GetOrder(orderID string) (*Order, error) {
-	c.tokenBucket.Get()
+	c.APITokenBucket.Get()
 	resp, err := c.Request(netty.BulkHttpClient, "GET", "/v2/orders/"+orderID, nil)
 	if err != nil {
 		return nil, err
@@ -224,7 +224,7 @@ func (c *Client) GetOrder(orderID string) (*Order, error) {
 
 // GetOrders retrieves open orders.
 func (c *Client) GetOrders() ([]Order, error) {
-	c.tokenBucket.Get()
+	c.APITokenBucket.Get()
 	resp, err := c.Request(netty.BulkHttpClient, "GET", "/v2/orders?status=open", nil)
 	if err != nil {
 		return nil, err

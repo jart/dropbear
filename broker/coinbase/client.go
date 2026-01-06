@@ -18,7 +18,7 @@ import (
 type Client struct {
 	db                  *sql.DB
 	authKey             *Key
-	rateLimiter         rateLimiter
+	rateLimiter         netty.TokenBucket
 	dayCandlesOnce      sync.Once
 	dayCandlesUpsert    *sql.Stmt
 	dayCandlesErr       error
@@ -43,7 +43,6 @@ func NewClientWith(authKey *Key, db *sql.DB) *Client {
 
 // Close closes the client.
 func (c *Client) Close() error {
-	c.rateLimiter.Close()
 	return nil
 }
 

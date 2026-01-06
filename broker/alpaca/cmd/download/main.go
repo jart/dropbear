@@ -2,10 +2,8 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -24,24 +22,32 @@ import (
 )
 
 var (
-	flagFeed       = flag.String("feed", "sip", "market data feed (sip, iex)")
+	flagFeed       = flag.String("feed", "sip", "market data feed (sip, iex, otc, boats)")
 	flagWorkers    = flag.Int("workers", 20, "number of parallel download workers")
-	flagAdjustment = flag.String("adjustment", "all", "price adjustment (raw, split, dividend, all)")
+	flagAdjustment = flag.String("adjustment", "all", "price adjustment (raw, split, dividend, spin-off, all)")
 )
 
-const (
-	dataURL = "https://data.alpaca.markets"
-	barSize = int(unsafe.Sizeof(ds.Bar{}))
+var (
+	feed       alpaca.DataFeed
+	adjustment alpaca.BarAdjustment
 )
 
-type BarsResponse struct {
-	Bars      []ds.Bar `json:"bars"`
-	NextToken string   `json:"next_page_token"`
-}
+const barSize = int(unsafe.Sizeof(ds.Bar{}))
 
 func main() {
 	flag.Parse()
 	loggy.Init()
+
+	// Parse flags into typed values
+	var err error
+	feed, err = alpaca.ParseDataFeed(*flagFeed)
+	if err != nil {
+		log.Fatalf("invalid feed: %v", err)
+	}
+	adjustment, err = alpaca.ParseBarAdjustment(*flagAdjustment)
+	if err != nil {
+		log.Fatalf("invalid adjustment: %v", err)
+	}
 
 	// Clean up any leftover temp files from interrupted runs
 	cleanupTempFiles()
@@ -140,20 +146,20 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 	}
 
 	// Determine start time
-	loc, _ := time.LoadLocation("America/New_York")
-	var start time.Time
+	var start clocky.Time
 	if lastTime != 0 {
 		// Resume from 1 minute after last bar
-		start = time.UnixMicro(int64(lastTime)).Add(time.Minute)
+		start = lastTime.Add(clocky.Minute)
 	} else {
 		// Start from beginning of Alpaca's data
-		start = time.Date(2016, 1, 1, 0, 0, 0, 0, loc)
+		loc, _ := time.LoadLocation("America/New_York")
+		start = clocky.Time(time.Date(2016, 1, 1, 0, 0, 0, 0, loc).UnixMicro())
 	}
 
 	// End at now
-	end := time.Now().In(loc)
+	end := clocky.RealNow()
 
-	if !start.Before(end) {
+	if start >= end {
 		log.Printf("%s: already up to date", symbol)
 		return
 	}
@@ -248,52 +254,22 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 
 var errInterrupted = fmt.Errorf("interrupted")
 
-func fetchAll(client *alpaca.Client, symbol string, start, end time.Time, stopped *atomic.Bool) ([]ds.Bar, error) {
+func fetchAll(client *alpaca.Client, symbol string, start, end clocky.Time, stopped *atomic.Bool) ([]ds.Bar, error) {
 	var bars []ds.Bar
 	pageToken := ""
-
 	for {
 		if stopped.Load() {
 			return nil, errInterrupted
 		}
-
-		url := fmt.Sprintf("%s/v2/stocks/%s/bars?timeframe=1Min&start=%s&end=%s&feed=%s&adjustment=%s&limit=10000",
-			dataURL, symbol,
-			start.UTC().Format(time.RFC3339),
-			end.UTC().Format(time.RFC3339),
-			*flagFeed,
-			*flagAdjustment)
-		if pageToken != "" {
-			url += "&page_token=" + pageToken
-		}
-
-		resp, err := client.Get(url)
+		pageBars, nextToken, err := client.GetBars(symbol, clocky.Minute, start, end, feed, adjustment, 10000, false, pageToken)
 		if err != nil {
 			return nil, err
 		}
-
-		if resp.StatusCode != 200 {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-		}
-
-		var data BarsResponse
-		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-			resp.Body.Close()
-			return nil, fmt.Errorf("decode: %w", err)
-		}
-		resp.Body.Close()
-
-		for _, bar := range data.Bars {
-			bars = append(bars, bar)
-		}
-
-		if data.NextToken == "" {
+		bars = append(bars, pageBars...)
+		if nextToken == "" {
 			break
 		}
-		pageToken = data.NextToken
+		pageToken = nextToken
 	}
-
 	return bars, nil
 }

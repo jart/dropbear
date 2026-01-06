@@ -23,6 +23,7 @@ type Quote struct {
 // GetQuote fetches the latest NBBO quote for a stock symbol.
 // https://docs.alpaca.markets/reference/stocklatestquotesingle-1
 func (c *Client) GetQuote(symbol string) (*Quote, error) {
+	c.DataTokenBucket.Get()
 	resp, err := c.Get(fmt.Sprintf("https://%s/v2/stocks/%s/quotes/latest", DataHost, symbol))
 	if err != nil {
 		return nil, err
@@ -46,6 +47,7 @@ func (c *Client) GetQuote(symbol string) (*Quote, error) {
 // Symbol should be in Alpaca format (e.g., "BTCUSD") - it will be converted to "BTC/USD".
 // https://docs.alpaca.markets/reference/cryptolatestquotes-1
 func (c *Client) GetCryptoQuote(symbol string) (*Quote, error) {
+	c.DataTokenBucket.Get()
 	// Convert BTCUSD -> BTC/USD format for the API
 	apiSymbol := symbol
 	if len(symbol) >= 6 && symbol[len(symbol)-3:] == "USD" {
