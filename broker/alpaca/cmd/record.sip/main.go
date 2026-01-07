@@ -110,7 +110,7 @@ func (d *recordDaemon) impl() error {
 			"trades":   batch,
 			"quotes":   batch,
 			"bars":     batch,
-			"statuses": "*",
+			"statuses": batch,
 		}
 		if err := conn.WriteJSON(subscribe); err != nil {
 			return err
@@ -130,10 +130,11 @@ func (d *recordDaemon) impl() error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	for {
-		_, message, err := conn.ReadMessage()
+		messageType, message, err := conn.ReadMessage()
 		if err != nil {
 			return err
 		}
+		log.Printf("got message type %d: %s", messageType, string(message))
 
 		// parse the message array
 		var msgs []json.RawMessage

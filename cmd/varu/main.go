@@ -19,11 +19,11 @@ import (
 	"dropbear/cubby"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/symbols"
 	"dropbear/indicators"
 	"dropbear/loggy"
 	"flag"
 	"log"
-	"strings"
 )
 
 var (
@@ -57,14 +57,14 @@ func main() {
 	loggy.Init()
 	cubby.Init()
 
-	symbols := strings.Fields(*flagSymbols)
-	if len(symbols) == 0 {
+	syms := symbols.Expand(*flagSymbols)
+	if len(syms) == 0 {
 		log.Fatal("no symbols specified")
 	}
 
 	gTraders = make(map[string]*Trader)
 
-	for _, sym := range symbols {
+	for _, sym := range syms {
 		if gTraders[sym] != nil {
 			continue // dedupe
 		}

@@ -88,7 +88,7 @@ func TestSIPParserRoundtrip(t *testing.T) {
 }
 
 func verifyTradeRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseSIPTradeFast(data)
+	fast, err := ParseSIPTrade(data)
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func verifyTradeRoundtrip(t *testing.T, data []byte, lineNum int) error {
 }
 
 func verifyQuoteRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseSIPQuoteFast(data)
+	fast, err := ParseSIPQuote(data)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func verifyQuoteRoundtrip(t *testing.T, data []byte, lineNum int) error {
 }
 
 func verifyBarRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseSIPBarFast(data)
+	fast, err := ParseSIPBar(data)
 	if err != nil {
 		return err
 	}
@@ -253,7 +253,7 @@ func verifyBarRoundtrip(t *testing.T, data []byte, lineNum int) error {
 }
 
 func verifyStatusRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseSIPStatusFast(data)
+	fast, err := ParseSIPStatus(data)
 	if err != nil {
 		return err
 	}

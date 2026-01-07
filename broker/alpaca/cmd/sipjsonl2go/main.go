@@ -66,28 +66,28 @@ func main() {
 			msgType := alpaca.GetSIPMessageType(line)
 			switch msgType {
 			case 't':
-				t, err := alpaca.ParseSIPTradeFast(line)
+				t, err := alpaca.ParseSIPTrade(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: trade parse error: %v\n", path, lineNum, err)
 					continue
 				}
 				trades = append(trades, t)
 			case 'q':
-				q, err := alpaca.ParseSIPQuoteFast(line)
+				q, err := alpaca.ParseSIPQuote(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: quote parse error: %v\n", path, lineNum, err)
 					continue
 				}
 				quotes = append(quotes, q)
 			case 'b', 'd', 'u':
-				b, err := alpaca.ParseSIPBarFast(line)
+				b, err := alpaca.ParseSIPBar(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: bar parse error: %v\n", path, lineNum, err)
 					continue
 				}
 				bars = append(bars, b)
 			case 's':
-				s, err := alpaca.ParseSIPStatusFast(line)
+				s, err := alpaca.ParseSIPStatus(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: status parse error: %v\n", path, lineNum, err)
 					continue

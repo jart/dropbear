@@ -56,7 +56,7 @@ func TestParseTimestampFast(t *testing.T) {
 			t.Fatalf("clocky.ParseTime(%s) error: %v", tt.want, err)
 		}
 		if got != want {
-			t.Errorf("parseTimestampFast(%s) = %d, want %d (diff: %d µs)", 
+			t.Errorf("parseTimestampFast(%s) = %d, want %d (diff: %d µs)",
 				tt.input, got, want, got-want)
 		}
 	}

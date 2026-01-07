@@ -1,45 +1,5 @@
 package alpaca
 
-import (
-	"encoding/json"
-)
-
-// ParseSIPTrade parses a raw JSON message into a SIPTrade.
-func ParseSIPTrade(data []byte) (*SIPTrade, error) {
-	var trade SIPTrade
-	if err := json.Unmarshal(data, &trade); err != nil {
-		return nil, err
-	}
-	return &trade, nil
-}
-
-// ParseSIPQuote parses a raw JSON message into a SIPQuote.
-func ParseSIPQuote(data []byte) (*SIPQuote, error) {
-	var quote SIPQuote
-	if err := json.Unmarshal(data, &quote); err != nil {
-		return nil, err
-	}
-	return &quote, nil
-}
-
-// ParseSIPBar parses a raw JSON message into a SIPBar.
-func ParseSIPBar(data []byte) (*SIPBar, error) {
-	var bar SIPBar
-	if err := json.Unmarshal(data, &bar); err != nil {
-		return nil, err
-	}
-	return &bar, nil
-}
-
-// ParseSIPStatus parses a raw JSON message into a SIPStatus.
-func ParseSIPStatus(data []byte) (*SIPStatus, error) {
-	var status SIPStatus
-	if err := json.Unmarshal(data, &status); err != nil {
-		return nil, err
-	}
-	return &status, nil
-}
-
 // GetSIPMessageType extracts the message type from a JSON message without full parsing.
 // Returns 0 if the type cannot be determined.
 func GetSIPMessageType(data []byte) byte {

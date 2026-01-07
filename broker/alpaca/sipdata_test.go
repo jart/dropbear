@@ -44,33 +44,6 @@ func BenchmarkParseSIPBar(b *testing.B) {
 	}
 }
 
-func BenchmarkParseSIPTradeFast(b *testing.B) {
-	for b.Loop() {
-		_, err := ParseSIPTradeFast(tradeJSON)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkParseSIPQuoteFast(b *testing.B) {
-	for b.Loop() {
-		_, err := ParseSIPQuoteFast(quoteJSON)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkParseSIPBarFast(b *testing.B) {
-	for b.Loop() {
-		_, err := ParseSIPBarFast(barJSON)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
 func BenchmarkSIPExchange_MarshalJSON(b *testing.B) {
 	e := SIPExchangeNASDAQ
 	for b.Loop() {
@@ -287,22 +260,6 @@ func TestSIPTape_IsUTP(t *testing.T) {
 	}
 }
 
-func TestParseSIPTrade(t *testing.T) {
-	trade, err := ParseSIPTrade(tradeJSON)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if trade.Symbol != "AAPL" {
-		t.Errorf("Symbol = %s, want AAPL", trade.Symbol)
-	}
-	if trade.Conditions != TradeCondRegularSale|TradeCondISO {
-		t.Errorf("Conditions = %v, want %v", trade.Conditions, TradeCondRegularSale|TradeCondISO)
-	}
-	if !trade.IsRegularSale() {
-		t.Error("should be regular sale")
-	}
-}
-
 func TestParseSIPQuote(t *testing.T) {
 	quote, err := ParseSIPQuote(quoteJSON)
 	if err != nil {
@@ -316,8 +273,8 @@ func TestParseSIPQuote(t *testing.T) {
 	}
 }
 
-func TestParseSIPTradeFast(t *testing.T) {
-	trade, err := ParseSIPTradeFast(tradeJSON)
+func TestParseSIPTrade(t *testing.T) {
+	trade, err := ParseSIPTrade(tradeJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,8 +304,8 @@ func TestParseSIPTradeFast(t *testing.T) {
 	}
 }
 
-func TestParseSIPQuoteFast(t *testing.T) {
-	quote, err := ParseSIPQuoteFast(quoteJSON)
+func TestParseSIPQuote2(t *testing.T) {
+	quote, err := ParseSIPQuote(quoteJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,8 +341,8 @@ func TestParseSIPQuoteFast(t *testing.T) {
 	}
 }
 
-func TestParseSIPBarFast(t *testing.T) {
-	bar, err := ParseSIPBarFast(barJSON)
+func TestParseSIPBar(t *testing.T) {
+	bar, err := ParseSIPBar(barJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,9 +440,9 @@ func TestSIPReasonCode_ParseReasonCode_Unknown(t *testing.T) {
 	}
 }
 
-func TestParseSIPStatusFast(t *testing.T) {
+func TestParseSIPStatus(t *testing.T) {
 	statusJSON := []byte(`{"T":"s","S":"AAPL","sc":"H","sm":"Trading Halted","rc":"T1","t":"2024-01-15T14:30:00Z"}`)
-	status, err := ParseSIPStatusFast(statusJSON)
+	status, err := ParseSIPStatus(statusJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,10 +483,10 @@ func BenchmarkSIPReasonCode_ParseReasonCode(b *testing.B) {
 	}
 }
 
-func BenchmarkParseSIPStatusFast(b *testing.B) {
+func BenchmarkParseSIPStatus(b *testing.B) {
 	statusJSON := []byte(`{"T":"s","S":"AAPL","sc":"H","sm":"Trading Halted","rc":"T1","t":"2024-01-15T14:30:00Z"}`)
 	for b.Loop() {
-		_, err := ParseSIPStatusFast(statusJSON)
+		_, err := ParseSIPStatus(statusJSON)
 		if err != nil {
 			b.Fatal(err)
 		}

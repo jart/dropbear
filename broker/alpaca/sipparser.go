@@ -14,9 +14,9 @@ func InternSymbol(b []byte) string {
 	return string(b)
 }
 
-// ParseSIPTradeFast parses a SIP trade message with minimal allocations.
+// ParseSIPTrade parses a SIP trade message with minimal allocations.
 // Uses symbol interning and avoids json.Unmarshal overhead.
-func ParseSIPTradeFast(data []byte) (SIPTrade, error) {
+func ParseSIPTrade(data []byte) (SIPTrade, error) {
 	var t SIPTrade
 	var err error
 	i := 0
@@ -127,8 +127,8 @@ func key2(a, b byte) uint16 {
 	return uint16(a) | uint16(b)<<8
 }
 
-// ParseSIPQuoteFast parses a SIP quote message with minimal allocations.
-func ParseSIPQuoteFast(data []byte) (SIPQuote, error) {
+// ParseSIPQuote parses a SIP quote message with minimal allocations.
+func ParseSIPQuote(data []byte) (SIPQuote, error) {
 	var q SIPQuote
 	var err error
 	i := 0
@@ -253,8 +253,8 @@ func ParseSIPQuoteFast(data []byte) (SIPQuote, error) {
 	return q, nil
 }
 
-// ParseSIPBarFast parses a SIP bar message with minimal allocations.
-func ParseSIPBarFast(data []byte) (SIPBar, error) {
+// ParseSIPBar parses a SIP bar message with minimal allocations.
+func ParseSIPBar(data []byte) (SIPBar, error) {
 	var b SIPBar
 	var err error
 	i := 0
@@ -595,8 +595,8 @@ func skipValue(data []byte, i int) int {
 	return i
 }
 
-// ParseSIPStatusFast parses a SIP status message with minimal allocations.
-func ParseSIPStatusFast(data []byte) (SIPStatus, error) {
+// ParseSIPStatus parses a SIP status message with minimal allocations.
+func ParseSIPStatus(data []byte) (SIPStatus, error) {
 	var s SIPStatus
 	var err error
 	i := 0
