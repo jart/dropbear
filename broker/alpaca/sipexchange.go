@@ -13,6 +13,8 @@ const (
 	SIPExchangeNationalStock  SIPExchange = 'C' // National Stock Exchange
 	SIPExchangeFINRAADF       SIPExchange = 'D' // FINRA ADF
 	SIPExchangeMarketIndep    SIPExchange = 'E' // Market Independent
+	SIPExchangeNasdaqGMX      SIPExchange = 'F' // Nasdaq Global/Select Market (?)
+	SIPExchangeMIAXPearl      SIPExchange = 'G' // MIAX Pearl (?)
 	SIPExchangeMIAX           SIPExchange = 'H' // MIAX
 	SIPExchangeISE            SIPExchange = 'I' // International Securities Exchange
 	SIPExchangeCboeEDGA       SIPExchange = 'J' // Cboe EDGA
@@ -44,51 +46,55 @@ func init() {
 func (e SIPExchange) GoString() string {
 	switch e {
 	case SIPExchangeNYSEAmerican:
-		return "SIPExchangeNYSEAmerican"
+		return "alpaca.SIPExchangeNYSEAmerican"
 	case SIPExchangeNASDAQBX:
-		return "SIPExchangeNASDAQBX"
+		return "alpaca.SIPExchangeNASDAQBX"
 	case SIPExchangeNationalStock:
-		return "SIPExchangeNationalStock"
+		return "alpaca.SIPExchangeNationalStock"
 	case SIPExchangeFINRAADF:
-		return "SIPExchangeFINRAADF"
+		return "alpaca.SIPExchangeFINRAADF"
 	case SIPExchangeMarketIndep:
-		return "SIPExchangeMarketIndep"
+		return "alpaca.SIPExchangeMarketIndep"
+	case SIPExchangeNasdaqGMX:
+		return "alpaca.SIPExchangeNasdaqGMX"
+	case SIPExchangeMIAXPearl:
+		return "alpaca.SIPExchangeMIAXPearl"
 	case SIPExchangeMIAX:
-		return "SIPExchangeMIAX"
+		return "alpaca.SIPExchangeMIAX"
 	case SIPExchangeISE:
-		return "SIPExchangeISE"
+		return "alpaca.SIPExchangeISE"
 	case SIPExchangeCboeEDGA:
-		return "SIPExchangeCboeEDGA"
+		return "alpaca.SIPExchangeCboeEDGA"
 	case SIPExchangeCboeEDGX:
-		return "SIPExchangeCboeEDGX"
+		return "alpaca.SIPExchangeCboeEDGX"
 	case SIPExchangeLTSE:
-		return "SIPExchangeLTSE"
+		return "alpaca.SIPExchangeLTSE"
 	case SIPExchangeChicago:
-		return "SIPExchangeChicago"
+		return "alpaca.SIPExchangeChicago"
 	case SIPExchangeNYSE:
-		return "SIPExchangeNYSE"
+		return "alpaca.SIPExchangeNYSE"
 	case SIPExchangeNYSEArca:
-		return "SIPExchangeNYSEArca"
+		return "alpaca.SIPExchangeNYSEArca"
 	case SIPExchangeNASDAQ:
-		return "SIPExchangeNASDAQ"
+		return "alpaca.SIPExchangeNASDAQ"
 	case SIPExchangeNASDAQSmallCap:
-		return "SIPExchangeNASDAQSmallCap"
+		return "alpaca.SIPExchangeNASDAQSmallCap"
 	case SIPExchangeNASDAQInt:
-		return "SIPExchangeNASDAQInt"
+		return "alpaca.SIPExchangeNASDAQInt"
 	case SIPExchangeMEMX:
-		return "SIPExchangeMEMX"
+		return "alpaca.SIPExchangeMEMX"
 	case SIPExchangeIEX:
-		return "SIPExchangeIEX"
+		return "alpaca.SIPExchangeIEX"
 	case SIPExchangeCBOE:
-		return "SIPExchangeCBOE"
+		return "alpaca.SIPExchangeCBOE"
 	case SIPExchangeNASDAQPSX:
-		return "SIPExchangeNASDAQPSX"
+		return "alpaca.SIPExchangeNASDAQPSX"
 	case SIPExchangeCboeBYX:
-		return "SIPExchangeCboeBYX"
+		return "alpaca.SIPExchangeCboeBYX"
 	case SIPExchangeCboeBZX:
-		return "SIPExchangeCboeBZX"
+		return "alpaca.SIPExchangeCboeBZX"
 	default:
-		return fmt.Sprintf("SIPExchange(%c)", byte(e))
+		return fmt.Sprintf("alpaca.SIPExchange(%d)", byte(e))
 	}
 }
 

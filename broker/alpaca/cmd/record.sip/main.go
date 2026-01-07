@@ -102,17 +102,15 @@ func (d *recordDaemon) impl() error {
 	// subscribe to all symbols in batches (websocket might have limits)
 	batchSize := 500
 	for i := 0; i < len(d.symbols); i += batchSize {
-		end := i + batchSize
-		if end > len(d.symbols) {
-			end = len(d.symbols)
-		}
+		end := min(i+batchSize, len(d.symbols))
 		batch := d.symbols[i:end]
 
 		subscribe := map[string]any{
-			"action": "subscribe",
-			"trades": batch,
-			"quotes": batch,
-			"bars":   batch,
+			"action":   "subscribe",
+			"trades":   batch,
+			"quotes":   batch,
+			"bars":     batch,
+			"statuses": "*",
 		}
 		if err := conn.WriteJSON(subscribe); err != nil {
 			return err

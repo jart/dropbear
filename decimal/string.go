@@ -15,6 +15,11 @@ func (d Decimal) String() string {
 	return string(d.Append(b[:0]))
 }
 
+// GoString returns Go syntax for the decimal, e.g. decimal.Parse("22.36").
+func (d Decimal) GoString() string {
+	return "decimal.Parse(\"" + d.String() + "\")"
+}
+
 // Append appends the string representation of d to dst and returns the result.
 func (d Decimal) Append(dst []byte) []byte {
 

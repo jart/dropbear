@@ -12,29 +12,29 @@ type SIPReasonCode uint8
 
 // Reason codes - arbitrary numbers mapped to actual string codes
 const (
-	ReasonCodeUnknown         SIPReasonCode = iota
-	ReasonCodeNewsReleased                  // "D" - News Released
-	ReasonCodeOrderImb                      // "I" - Order Imbalance
-	ReasonCodeLULD                          // "M" - Limit Up-Limit Down Trading Pause
-	ReasonCodeNewsPending                   // "P" - News Pending
-	ReasonCodeOperational                   // "X" - Operational
-	ReasonCodeSubPenny                      // "Y" - Sub-Penny Trading
-	ReasonCodeCircuitLvl1                   // "1" - Market-Wide Circuit Breaker Level 1
-	ReasonCodeCircuitLvl2                   // "2" - Market-Wide Circuit Breaker Level 2
-	ReasonCodeCircuitLvl3                   // "3" - Market-Wide Circuit Breaker Level 3
-	ReasonCodeHaltNewsPending               // "T1" - Halt News Pending
-	ReasonCodeHaltNewsDissem                // "T2" - Halt News Dissemination
-	ReasonCodeHaltSECOrderSIP               // "T5" - Single Stock Trading Pause
-	ReasonCodeHaltInfoRequested             // "T12" - Trading Halted; Info Requested
-	ReasonCodeHaltNonCompliance             // "H4" - Halt Non Compliance
-	ReasonCodeHaltFilingsNotCurr            // "H9" - Halt Filings Not Current
-	ReasonCodeHaltSECOrderNotSIP            // "H10" - SEC Trading Suspension
-	ReasonCodeHaltRegConcern                // "H11" - Halt Regulatory Concern
-	ReasonCodeIPONotYetTrading              // "IPO1" - IPO Issue not yet Trading
-	ReasonCodeCorporateAction               // "M1" - Corporate Action
-	ReasonCodeQuotationNotAvail             // "M2" - Quotation Not Available
-	ReasonCodeLULDPause                     // "LUDP" - Limit Up-Limit Down Pause
-	ReasonCodeVolatilityPause               // "MWCB" - Market Wide Circuit Breaker
+	ReasonCodeUnknown            SIPReasonCode = iota
+	ReasonCodeNewsReleased                     // "D" - News Released
+	ReasonCodeOrderImb                         // "I" - Order Imbalance
+	ReasonCodeLULD                             // "M" - Limit Up-Limit Down Trading Pause
+	ReasonCodeNewsPending                      // "P" - News Pending
+	ReasonCodeOperational                      // "X" - Operational
+	ReasonCodeSubPenny                         // "Y" - Sub-Penny Trading
+	ReasonCodeCircuitLvl1                      // "1" - Market-Wide Circuit Breaker Level 1
+	ReasonCodeCircuitLvl2                      // "2" - Market-Wide Circuit Breaker Level 2
+	ReasonCodeCircuitLvl3                      // "3" - Market-Wide Circuit Breaker Level 3
+	ReasonCodeHaltNewsPending                  // "T1" - Halt News Pending
+	ReasonCodeHaltNewsDissem                   // "T2" - Halt News Dissemination
+	ReasonCodeHaltSECOrderSIP                  // "T5" - Single Stock Trading Pause
+	ReasonCodeHaltInfoRequested                // "T12" - Trading Halted; Info Requested
+	ReasonCodeHaltNonCompliance                // "H4" - Halt Non Compliance
+	ReasonCodeHaltFilingsNotCurr               // "H9" - Halt Filings Not Current
+	ReasonCodeHaltSECOrderNotSIP               // "H10" - SEC Trading Suspension
+	ReasonCodeHaltRegConcern                   // "H11" - Halt Regulatory Concern
+	ReasonCodeIPONotYetTrading                 // "IPO1" - IPO Issue not yet Trading
+	ReasonCodeCorporateAction                  // "M1" - Corporate Action
+	ReasonCodeQuotationNotAvail                // "M2" - Quotation Not Available
+	ReasonCodeLULDPause                        // "LUDP" - Limit Up-Limit Down Pause
+	ReasonCodeVolatilityPause                  // "MWCB" - Market Wide Circuit Breaker
 	reasonCodeCount
 )
 
@@ -54,21 +54,21 @@ var reasonCodeFromString = map[string]SIPReasonCode{
 
 // LUT for code -> string
 var reasonCodeToString = [reasonCodeCount]string{
-	ReasonCodeUnknown:           "",
-	ReasonCodeNewsReleased:      "D",
-	ReasonCodeOrderImb:          "I",
-	ReasonCodeLULD:              "M",
-	ReasonCodeNewsPending:       "P",
-	ReasonCodeOperational:       "X",
-	ReasonCodeSubPenny:          "Y",
-	ReasonCodeCircuitLvl1:       "1",
-	ReasonCodeCircuitLvl2:       "2",
-	ReasonCodeCircuitLvl3:       "3",
-	ReasonCodeHaltNewsPending:   "T1",
-	ReasonCodeHaltNewsDissem:    "T2",
-	ReasonCodeHaltSECOrderSIP:   "T5",
-	ReasonCodeHaltInfoRequested: "T12",
-	ReasonCodeHaltNonCompliance: "H4",
+	ReasonCodeUnknown:            "",
+	ReasonCodeNewsReleased:       "D",
+	ReasonCodeOrderImb:           "I",
+	ReasonCodeLULD:               "M",
+	ReasonCodeNewsPending:        "P",
+	ReasonCodeOperational:        "X",
+	ReasonCodeSubPenny:           "Y",
+	ReasonCodeCircuitLvl1:        "1",
+	ReasonCodeCircuitLvl2:        "2",
+	ReasonCodeCircuitLvl3:        "3",
+	ReasonCodeHaltNewsPending:    "T1",
+	ReasonCodeHaltNewsDissem:     "T2",
+	ReasonCodeHaltSECOrderSIP:    "T5",
+	ReasonCodeHaltInfoRequested:  "T12",
+	ReasonCodeHaltNonCompliance:  "H4",
 	ReasonCodeHaltFilingsNotCurr: "H9",
 	ReasonCodeHaltSECOrderNotSIP: "H10",
 	ReasonCodeHaltRegConcern:     "H11",
@@ -143,59 +143,59 @@ func (rc SIPReasonCode) String() string {
 	if rc < reasonCodeCount {
 		return reasonCodeToString[rc]
 	}
-	return fmt.Sprintf("SIPReasonCode(%d)", rc)
+	return fmt.Sprintf("alpaca.SIPReasonCode(%d)", rc)
 }
 
 func (rc SIPReasonCode) GoString() string {
 	switch rc {
 	case ReasonCodeUnknown:
-		return "ReasonCodeUnknown"
+		return "alpaca.ReasonCodeUnknown"
 	case ReasonCodeNewsReleased:
-		return "ReasonCodeNewsReleased"
+		return "alpaca.ReasonCodeNewsReleased"
 	case ReasonCodeOrderImb:
-		return "ReasonCodeOrderImb"
+		return "alpaca.ReasonCodeOrderImb"
 	case ReasonCodeLULD:
-		return "ReasonCodeLULD"
+		return "alpaca.ReasonCodeLULD"
 	case ReasonCodeNewsPending:
-		return "ReasonCodeNewsPending"
+		return "alpaca.ReasonCodeNewsPending"
 	case ReasonCodeOperational:
-		return "ReasonCodeOperational"
+		return "alpaca.ReasonCodeOperational"
 	case ReasonCodeSubPenny:
-		return "ReasonCodeSubPenny"
+		return "alpaca.ReasonCodeSubPenny"
 	case ReasonCodeCircuitLvl1:
-		return "ReasonCodeCircuitLvl1"
+		return "alpaca.ReasonCodeCircuitLvl1"
 	case ReasonCodeCircuitLvl2:
-		return "ReasonCodeCircuitLvl2"
+		return "alpaca.ReasonCodeCircuitLvl2"
 	case ReasonCodeCircuitLvl3:
-		return "ReasonCodeCircuitLvl3"
+		return "alpaca.ReasonCodeCircuitLvl3"
 	case ReasonCodeHaltNewsPending:
-		return "ReasonCodeHaltNewsPending"
+		return "alpaca.ReasonCodeHaltNewsPending"
 	case ReasonCodeHaltNewsDissem:
-		return "ReasonCodeHaltNewsDissem"
+		return "alpaca.ReasonCodeHaltNewsDissem"
 	case ReasonCodeHaltSECOrderSIP:
-		return "ReasonCodeHaltSECOrderSIP"
+		return "alpaca.ReasonCodeHaltSECOrderSIP"
 	case ReasonCodeHaltInfoRequested:
-		return "ReasonCodeHaltInfoRequested"
+		return "alpaca.ReasonCodeHaltInfoRequested"
 	case ReasonCodeHaltNonCompliance:
-		return "ReasonCodeHaltNonCompliance"
+		return "alpaca.ReasonCodeHaltNonCompliance"
 	case ReasonCodeHaltFilingsNotCurr:
-		return "ReasonCodeHaltFilingsNotCurr"
+		return "alpaca.ReasonCodeHaltFilingsNotCurr"
 	case ReasonCodeHaltSECOrderNotSIP:
-		return "ReasonCodeHaltSECOrderNotSIP"
+		return "alpaca.ReasonCodeHaltSECOrderNotSIP"
 	case ReasonCodeHaltRegConcern:
-		return "ReasonCodeHaltRegConcern"
+		return "alpaca.ReasonCodeHaltRegConcern"
 	case ReasonCodeIPONotYetTrading:
-		return "ReasonCodeIPONotYetTrading"
+		return "alpaca.ReasonCodeIPONotYetTrading"
 	case ReasonCodeCorporateAction:
-		return "ReasonCodeCorporateAction"
+		return "alpaca.ReasonCodeCorporateAction"
 	case ReasonCodeQuotationNotAvail:
-		return "ReasonCodeQuotationNotAvail"
+		return "alpaca.ReasonCodeQuotationNotAvail"
 	case ReasonCodeLULDPause:
-		return "ReasonCodeLULDPause"
+		return "alpaca.ReasonCodeLULDPause"
 	case ReasonCodeVolatilityPause:
-		return "ReasonCodeVolatilityPause"
+		return "alpaca.ReasonCodeVolatilityPause"
 	default:
-		return fmt.Sprintf("SIPReasonCode(%d)", rc)
+		return fmt.Sprintf("alpaca.SIPReasonCode(%d)", rc)
 	}
 }
 

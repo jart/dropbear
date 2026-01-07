@@ -152,7 +152,57 @@ func (c SIPTradeCond) String() string {
 }
 
 func (c SIPTradeCond) GoString() string {
-	return fmt.Sprintf("SIPTradeCond(0x%x)", uint64(c))
+	if c == 0 {
+		return "0"
+	}
+	var parts []string
+	for _, cond := range []struct {
+		mask SIPTradeCond
+		name string
+	}{
+		{TradeCondRegularSaleCTA, "alpaca.TradeCondRegularSaleCTA"},
+		{TradeCondRegularSale, "alpaca.TradeCondRegularSale"},
+		{TradeCondStoppedStock, "alpaca.TradeCondStoppedStock"},
+		{TradeCondDerivativelyPriced, "alpaca.TradeCondDerivativelyPriced"},
+		{TradeCondReopening, "alpaca.TradeCondReopening"},
+		{TradeCondClosing, "alpaca.TradeCondClosing"},
+		{TradeCondQCT, "alpaca.TradeCondQCT"},
+		{TradeCondReserved, "alpaca.TradeCondReserved"},
+		{TradeCondCorrectedClose, "alpaca.TradeCondCorrectedClose"},
+		{TradeCondAcquisition, "alpaca.TradeCondAcquisition"},
+		{TradeCondB, "alpaca.TradeCondB"},
+		{TradeCondCash, "alpaca.TradeCondCash"},
+		{TradeCondDistribution, "alpaca.TradeCondDistribution"},
+		{TradeCondE, "alpaca.TradeCondE"},
+		{TradeCondISO, "alpaca.TradeCondISO"},
+		{TradeCondBunchedSold, "alpaca.TradeCondBunchedSold"},
+		{TradeCondPriceVariation, "alpaca.TradeCondPriceVariation"},
+		{TradeCondOddLot, "alpaca.TradeCondOddLot"},
+		{TradeCondRule127, "alpaca.TradeCondRule127"},
+		{TradeCondSoldLast, "alpaca.TradeCondSoldLast"},
+		{TradeCondOfficialClose, "alpaca.TradeCondOfficialClose"},
+		{TradeCondNextDay, "alpaca.TradeCondNextDay"},
+		{TradeCondOpening, "alpaca.TradeCondOpening"},
+		{TradeCondPriorRefPrice, "alpaca.TradeCondPriorRefPrice"},
+		{TradeCondOfficialOpen, "alpaca.TradeCondOfficialOpen"},
+		{TradeCondSeller, "alpaca.TradeCondSeller"},
+		{TradeCondSplit, "alpaca.TradeCondSplit"},
+		{TradeCondExtendedHours, "alpaca.TradeCondExtendedHours"},
+		{TradeCondExtendedHoursOOS, "alpaca.TradeCondExtendedHoursOOS"},
+		{TradeCondContingent, "alpaca.TradeCondContingent"},
+		{TradeCondAveragePriceUTP, "alpaca.TradeCondAveragePriceUTP"},
+		{TradeCondCross, "alpaca.TradeCondCross"},
+		{TradeCondYellowFlag, "alpaca.TradeCondYellowFlag"},
+		{TradeCondSoldOOS, "alpaca.TradeCondSoldOOS"},
+	} {
+		if c&cond.mask != 0 {
+			parts = append(parts, cond.name)
+		}
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("alpaca.SIPTradeCond(0x%x)", uint64(c))
+	}
+	return strings.Join(parts, "|")
 }
 
 func (c *SIPTradeCond) UnmarshalJSON(data []byte) error {

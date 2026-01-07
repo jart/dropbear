@@ -1,0 +1,34 @@
+package alpaca
+
+import (
+	"dropbear/clocky"
+	"dropbear/decimal"
+)
+
+// SIPTrade represents a trade execution from the SIP feed.
+type SIPTrade struct {
+	Type       SIPMessageType  `json:"T"` // SIPMessageTypeTrade
+	Tape       SIPTape         `json:"z"` // tape designation (A, B, C)
+	Symbol     string          `json:"S"` // stock symbol
+	TradeID    int64           `json:"i"` // unique trade identifier
+	Exchange   SIPExchange     `json:"x"` // exchange code
+	Price      decimal.Decimal `json:"p"` // execution price
+	Size       int64           `json:"s"` // quantity traded
+	Conditions SIPTradeCond    `json:"c"` // trade conditions (bitmask)
+	Timestamp  clocky.Time     `json:"t"` // RFC-3339 timestamp
+}
+
+// IsRegularSale returns true if this is a normal trade (no special conditions).
+func (t *SIPTrade) IsRegularSale() bool {
+	return t.Conditions.IsRegularSale() || t.Conditions == 0
+}
+
+// IsOddLot returns true if this is an odd lot trade.
+func (t *SIPTrade) IsOddLot() bool {
+	return t.Conditions.IsOddLot()
+}
+
+// IsExtendedHours returns true if this is an extended hours trade.
+func (t *SIPTrade) IsExtendedHours() bool {
+	return t.Conditions.IsExtendedHours()
+}

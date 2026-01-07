@@ -58,41 +58,41 @@ func (c SIPStatusCode) IsImbalance() bool {
 func (c SIPStatusCode) GoString() string {
 	switch c {
 	case StatusCodeTradingHaltCTA:
-		return "StatusCodeTradingHaltCTA"
+		return "alpaca.StatusCodeTradingHaltCTA"
 	case StatusCodeResumeCTA:
-		return "StatusCodeResumeCTA"
+		return "alpaca.StatusCodeResumeCTA"
 	case StatusCodePriceIndication:
-		return "StatusCodePriceIndication"
+		return "alpaca.StatusCodePriceIndication"
 	case StatusCodeTradingRangeIndication:
-		return "StatusCodeTradingRangeIndication"
+		return "alpaca.StatusCodeTradingRangeIndication"
 	case StatusCodeMarketImbalanceBuy:
-		return "StatusCodeMarketImbalanceBuy"
+		return "alpaca.StatusCodeMarketImbalanceBuy"
 	case StatusCodeMarketImbalanceSell:
-		return "StatusCodeMarketImbalanceSell"
+		return "alpaca.StatusCodeMarketImbalanceSell"
 	case StatusCodeMOCImbalanceBuy:
-		return "StatusCodeMOCImbalanceBuy"
+		return "alpaca.StatusCodeMOCImbalanceBuy"
 	case StatusCodeMOCImbalanceSell:
-		return "StatusCodeMOCImbalanceSell"
+		return "alpaca.StatusCodeMOCImbalanceSell"
 	case StatusCodeNoMarketImbalance:
-		return "StatusCodeNoMarketImbalance"
+		return "alpaca.StatusCodeNoMarketImbalance"
 	case StatusCodeNoMOCImbalance:
-		return "StatusCodeNoMOCImbalance"
+		return "alpaca.StatusCodeNoMOCImbalance"
 	case StatusCodeShortSaleRestriction:
-		return "StatusCodeShortSaleRestriction"
+		return "alpaca.StatusCodeShortSaleRestriction"
 	case StatusCodeLimitUpLimitDown:
-		return "StatusCodeLimitUpLimitDown"
+		return "alpaca.StatusCodeLimitUpLimitDown"
 	case StatusCodeTradingHaltUTP:
-		return "StatusCodeTradingHaltUTP"
+		return "alpaca.StatusCodeTradingHaltUTP"
 	case StatusCodeVolatilityPause:
-		return "StatusCodeVolatilityPause"
+		return "alpaca.StatusCodeVolatilityPause"
 	case StatusCodeQuotationResumption:
-		return "StatusCodeQuotationResumption"
+		return "alpaca.StatusCodeQuotationResumption"
 	case StatusCodeTradingResumptionUTP:
-		return "StatusCodeTradingResumptionUTP"
+		return "alpaca.StatusCodeTradingResumptionUTP"
 	case 0:
 		return "SIPStatusCode(0)"
 	default:
-		return fmt.Sprintf("SIPStatusCode(%c)", byte(c))
+		return fmt.Sprintf("alpaca.SIPStatusCode(%c)", byte(c))
 	}
 }
 

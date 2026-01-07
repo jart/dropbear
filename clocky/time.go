@@ -105,6 +105,11 @@ func (t Time) String() string {
 	return string(buf[:])
 }
 
+// GoString returns Go syntax for the time, e.g. clocky.MustParseTime("2026-01-06T20:12:33.059744Z").
+func (t Time) GoString() string {
+	return "clocky.MustParseTime(\"" + t.RFC3339() + "\")"
+}
+
 // String returns formatted RFC3339 UTC timestamp.
 // This is intended for Internet protocols that need it.
 func (t Time) RFC3339() string {

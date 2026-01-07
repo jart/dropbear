@@ -6,13 +6,13 @@ import "fmt"
 type SIPMessageType byte
 
 const (
-	SIPMessageTypeUnknown   SIPMessageType = 0
-	SIPMessageTypeTrade     SIPMessageType = 't' // trade execution
-	SIPMessageTypeQuote     SIPMessageType = 'q' // quote update
-	SIPMessageTypeBar       SIPMessageType = 'b' // minute bar
-	SIPMessageTypeDailyBar  SIPMessageType = 'd' // daily bar
+	SIPMessageTypeUnknown    SIPMessageType = 0
+	SIPMessageTypeTrade      SIPMessageType = 't' // trade execution
+	SIPMessageTypeQuote      SIPMessageType = 'q' // quote update
+	SIPMessageTypeBar        SIPMessageType = 'b' // minute bar
+	SIPMessageTypeDailyBar   SIPMessageType = 'd' // daily bar
 	SIPMessageTypeUpdatedBar SIPMessageType = 'u' // updated bar (correction)
-	SIPMessageTypeStatus    SIPMessageType = 's' // trading status
+	SIPMessageTypeStatus     SIPMessageType = 's' // trading status
 )
 
 // Pre-computed JSON representations (no allocation on marshal)
@@ -27,19 +27,19 @@ func init() {
 func (t SIPMessageType) GoString() string {
 	switch t {
 	case SIPMessageTypeTrade:
-		return "SIPMessageTypeTrade"
+		return "alpaca.SIPMessageTypeTrade"
 	case SIPMessageTypeQuote:
-		return "SIPMessageTypeQuote"
+		return "alpaca.SIPMessageTypeQuote"
 	case SIPMessageTypeBar:
-		return "SIPMessageTypeBar"
+		return "alpaca.SIPMessageTypeBar"
 	case SIPMessageTypeDailyBar:
-		return "SIPMessageTypeDailyBar"
+		return "alpaca.SIPMessageTypeDailyBar"
 	case SIPMessageTypeUpdatedBar:
-		return "SIPMessageTypeUpdatedBar"
+		return "alpaca.SIPMessageTypeUpdatedBar"
 	case SIPMessageTypeStatus:
-		return "SIPMessageTypeStatus"
+		return "alpaca.SIPMessageTypeStatus"
 	default:
-		return fmt.Sprintf("SIPMessageType(%c)", byte(t))
+		return fmt.Sprintf("alpaca.SIPMessageType(%c)", byte(t))
 	}
 }
 

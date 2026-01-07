@@ -99,7 +99,40 @@ func (c SIPQuoteCond) String() string {
 }
 
 func (c SIPQuoteCond) GoString() string {
-	return fmt.Sprintf("SIPQuoteCond(0x%x)", uint64(c))
+	if c == 0 {
+		return "0"
+	}
+	var parts []string
+	for _, cond := range []struct {
+		mask SIPQuoteCond
+		name string
+	}{
+		{QuoteCondOnDemandAuction, "alpaca.QuoteCondOnDemandAuction"},
+		{QuoteCondA, "alpaca.QuoteCondA"},
+		{QuoteCondB, "alpaca.QuoteCondB"},
+		{QuoteCondClosing, "alpaca.QuoteCondClosing"},
+		{QuoteCondSlowLRPBid, "alpaca.QuoteCondSlowLRPBid"},
+		{QuoteCondF, "alpaca.QuoteCondF"},
+		{QuoteCondH, "alpaca.QuoteCondH"},
+		{QuoteCondOrderImbalance, "alpaca.QuoteCondOrderImbalance"},
+		{QuoteCondClosed, "alpaca.QuoteCondClosed"},
+		{QuoteCondNonFirm, "alpaca.QuoteCondNonFirm"},
+		{QuoteCondOpening, "alpaca.QuoteCondOpening"},
+		{QuoteCondR, "alpaca.QuoteCondR"},
+		{QuoteCondU, "alpaca.QuoteCondU"},
+		{QuoteCondSlowSetSlowList, "alpaca.QuoteCondSlowSetSlowList"},
+		{QuoteCondOrderInflux, "alpaca.QuoteCondOrderInflux"},
+		{QuoteCondOneSidedOpen, "alpaca.QuoteCondOneSidedOpen"},
+		{QuoteCondNoOpenNoResume, "alpaca.QuoteCondNoOpenNoResume"},
+	} {
+		if c&cond.mask != 0 {
+			parts = append(parts, cond.name)
+		}
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("alpaca.SIPQuoteCond(0x%x)", uint64(c))
+	}
+	return strings.Join(parts, "|")
 }
 
 func (c *SIPQuoteCond) UnmarshalJSON(data []byte) error {

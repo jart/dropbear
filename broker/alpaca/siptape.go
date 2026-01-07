@@ -32,13 +32,13 @@ func init() {
 func (t SIPTape) GoString() string {
 	switch t {
 	case SIPTapeA:
-		return "SIPTapeA"
+		return "alpaca.SIPTapeA"
 	case SIPTapeB:
-		return "SIPTapeB"
+		return "alpaca.SIPTapeB"
 	case SIPTapeC:
-		return "SIPTapeC"
+		return "alpaca.SIPTapeC"
 	default:
-		return fmt.Sprintf("SIPTape(%c)", byte(t))
+		return fmt.Sprintf("alpaca.SIPTape(%c)", byte(t))
 	}
 }
 
