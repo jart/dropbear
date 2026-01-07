@@ -131,7 +131,7 @@ func (o *Order) setStatus(newStatus alpaca.OrderStatus) {
 	if !oldStatus.IsFinal() && newStatus.IsFinal() {
 		delete(Orders, o.OrderID)
 		delete(o.Equity.Orders, o.OrderID)
-		if Verbose {
+		if Verbose || o.FilledQuantity.IsPositive() {
 			log.Printf("%s %s %s out of %s %s at %s notional %s fee %s id %s", o.Status, o.Side, o.FilledQuantity, o.Quantity, o.Equity.Symbol, o.FilledPrice, o.FilledPrice.Mul(o.FilledQuantity), o.TotalFees, o.OrderID)
 		}
 	}
