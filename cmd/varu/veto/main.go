@@ -25,7 +25,7 @@ var (
 	flagMingap    = flag.String("mingap", "", "minimum gap percentage (optional)")
 	flagLookback  = flag.String("lookback", "10", "lookback period in minutes")
 	flagRekt      = flag.String("rekt", "", "liquidation threshold (optional)")
-	flagPicks     = flag.String("picks", "fngu", "picks file name in etc/picks/ (default: fngu)")
+	flagPicks     = flag.String("picks", "varu", "picks file name in etc/picks/ (default: varu)")
 	flagWorkers   = flag.Int("workers", 0, "number of parallel workers (default: CPU/2)")
 	flagVerbose   = flag.Bool("v", false, "verbose output")
 )
@@ -61,7 +61,7 @@ type job struct {
 func main() {
 	flag.Parse()
 
-	// Load standard fngu picks
+	// Load standard varu picks
 	standardPicks, err := loadStandardPicks()
 	if err != nil {
 		log.Fatalf("failed to load standard picks: %v", err)
@@ -76,13 +76,13 @@ func main() {
 	periods := generatePeriods(*flagStartYear)
 	log.Printf("Testing %d 6-month periods from %d to now", len(periods), *flagStartYear)
 
-	// Build fngu binary
-	fnguBinary, err := buildFngu()
+	// Build varu binary
+	varuBinary, err := buildVaru()
 	if err != nil {
-		log.Fatalf("failed to build fngu: %v", err)
+		log.Fatalf("failed to build varu: %v", err)
 	}
-	defer os.Remove(fnguBinary)
-	log.Printf("Built fngu binary: %s", fnguBinary)
+	defer os.Remove(varuBinary)
+	log.Printf("Built varu binary: %s", varuBinary)
 
 	// Determine worker count
 	workers := *flagWorkers
@@ -99,7 +99,7 @@ func main() {
 	baselines := make(map[string]float64)
 	baselineLiquidated := make(map[string]bool)
 	for _, p := range periods {
-		result := runBacktest(fnguBinary, standardPicks, p.start, p.end)
+		result := runBacktest(varuBinary, standardPicks, p.start, p.end)
 		if result.err != nil {
 			log.Printf("  %s: ERROR: %v", p.label, result.err)
 			baselines[p.label] = 0
@@ -163,7 +163,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for j := range jobChan {
-				r := runBacktest(fnguBinary, j.symbols, j.startDate, j.endDate)
+				r := runBacktest(varuBinary, j.symbols, j.startDate, j.endDate)
 				resultChan <- jobResult{
 					symbol: j.symbol,
 					period: j.period,
@@ -429,15 +429,15 @@ func loadStandardPicks() ([]string, error) {
 	return picks, scanner.Err()
 }
 
-func buildFngu() (string, error) {
-	tmpFile, err := os.CreateTemp("", "fngu-*")
+func buildVaru() (string, error) {
+	tmpFile, err := os.CreateTemp("", "varu-*")
 	if err != nil {
 		return "", err
 	}
 	tmpFile.Close()
 	binaryPath := tmpFile.Name()
 
-	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/fngu")
+	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/varu")
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		os.Remove(binaryPath)

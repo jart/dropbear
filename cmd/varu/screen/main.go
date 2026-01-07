@@ -51,12 +51,12 @@ func main() {
 		log.Fatal("no candidate symbols provided")
 	}
 
-	// Load standard fngu picks
+	// Load standard varu picks
 	standardPicks, err := loadStandardPicks()
 	if err != nil {
 		log.Fatalf("failed to load standard picks: %v", err)
 	}
-	log.Printf("Loaded %d standard picks from etc/picks/fngu", len(standardPicks))
+	log.Printf("Loaded %d standard picks from etc/picks/varu", len(standardPicks))
 
 	// Create set of standard picks for deduplication
 	standardSet := make(map[string]bool)
@@ -80,13 +80,13 @@ func main() {
 	}
 	log.Printf("Screening %d candidate symbols", len(candidates))
 
-	// Build fngu binary
-	fnguBinary, err := buildFngu()
+	// Build varu binary
+	varuBinary, err := buildVaru()
 	if err != nil {
-		log.Fatalf("failed to build fngu: %v", err)
+		log.Fatalf("failed to build varu: %v", err)
 	}
-	defer os.Remove(fnguBinary)
-	log.Printf("Built fngu binary: %s", fnguBinary)
+	defer os.Remove(varuBinary)
+	log.Printf("Built varu binary: %s", varuBinary)
 
 	// Determine worker count
 	workers := *flagWorkers
@@ -100,7 +100,7 @@ func main() {
 
 	// First, run baseline (standard picks only)
 	log.Printf("Running baseline with standard picks only...")
-	baselineResult := runBacktest(fnguBinary, standardPicks, "BASELINE")
+	baselineResult := runBacktest(varuBinary, standardPicks, "BASELINE")
 	if baselineResult.err != nil {
 		log.Fatalf("baseline backtest failed: %v\n%s", baselineResult.err, baselineResult.output)
 	}
@@ -118,7 +118,7 @@ func main() {
 				// Create symbol list: standard + candidate
 				symbols := append([]string{}, standardPicks...)
 				symbols = append(symbols, symbol)
-				r := runBacktest(fnguBinary, symbols, symbol)
+				r := runBacktest(varuBinary, symbols, symbol)
 				r.baselinePct = baselinePct
 				r.deltaPct = r.annualizedPct - baselinePct
 				results <- r
@@ -231,7 +231,7 @@ func loadStandardPicks() ([]string, error) {
 		dir = parent
 	}
 
-	picksPath := filepath.Join(dir, "etc/picks/fngu")
+	picksPath := filepath.Join(dir, "etc/picks/varu")
 	f, err := os.Open(picksPath)
 	if err != nil {
 		return nil, err
@@ -249,16 +249,16 @@ func loadStandardPicks() ([]string, error) {
 	return picks, scanner.Err()
 }
 
-func buildFngu() (string, error) {
+func buildVaru() (string, error) {
 	// Create temp file for binary
-	tmpFile, err := os.CreateTemp("", "fngu-*")
+	tmpFile, err := os.CreateTemp("", "varu-*")
 	if err != nil {
 		return "", err
 	}
 	tmpFile.Close()
 	binaryPath := tmpFile.Name()
 
-	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/fngu")
+	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/varu")
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		os.Remove(binaryPath)
@@ -268,7 +268,7 @@ func buildFngu() (string, error) {
 	return binaryPath, nil
 }
 
-// annualizedRegex matches "X% annualized" in fngu output
+// annualizedRegex matches "X% annualized" in varu output
 var annualizedRegex = regexp.MustCompile(`([-\d.]+)% annualized`)
 
 func runBacktest(binary string, symbols []string, label string) result {
