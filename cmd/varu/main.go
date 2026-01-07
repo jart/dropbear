@@ -103,13 +103,15 @@ func main() {
 }
 
 type Trader struct {
-	order       *cubby.Order
-	equity      *cubby.Equity
-	maxHigh     *indicators.Max // rolling max of bar highs
-	highSince   decimal.Decimal // highest price since entry (for trailing stop)
-	dayVolume   decimal.Decimal
-	myDayVolume decimal.Decimal
-	dayVolumeMA *indicators.WWMA
+	order          *cubby.Order
+	equity         *cubby.Equity
+	maxHigh        *indicators.Max // rolling max of bar highs
+	highSince      decimal.Decimal // highest price since entry (for trailing stop)
+	dayVolume      decimal.Decimal
+	myDayVolume    decimal.Decimal
+	dayVolumeMA    *indicators.WWMA
+	dayVolumeSince clocky.Time
+	monotonicTime  clocky.Time
 }
 
 func (state *Trader) onBar(c *ds.Bar) {
@@ -120,9 +122,14 @@ func (state *Trader) onBar(c *ds.Bar) {
 		state.order = nil
 	}
 
+	// only pay attention to monotonic time bars
+	if !c.Timestamp.After(state.monotonicTime) {
+		return
+	}
+	state.monotonicTime = c.Timestamp
+
 	// check day
-	now := clocky.Now()
-	date := now.DateInt()
+	date := c.Timestamp.DateInt()
 	if date != gDate {
 		onDayChange()
 		gDate = date
@@ -132,6 +139,9 @@ func (state *Trader) onBar(c *ds.Bar) {
 	lastHigh := state.maxHigh.Value
 	state.maxHigh.Add(c.Timestamp, c.High)
 	state.dayVolume = state.dayVolume.Add(c.Volume)
+	if state.dayVolumeSince.IsZero() {
+		state.dayVolumeSince = c.Timestamp
+	}
 	if !state.maxHigh.IsReady() {
 		return
 	}
@@ -140,6 +150,7 @@ func (state *Trader) onBar(c *ds.Bar) {
 	}
 
 	// check time
+	now := clocky.Now()
 	time := now.ClockInt()
 	if time < openTime || time >= closeTime {
 		return
@@ -340,14 +351,14 @@ func (t *Trader) getAverageDailyVolume() decimal.Decimal {
 
 func onDayChange() {
 	for _, state := range gTraders {
-		params := OptimalParams[state.equity.Symbol]
-		lookback := params.Lookback
-		state.maxHigh = indicators.NewMax(clocky.Duration(lookback)*clocky.Minute - 1)
-		state.myDayVolume = decimal.Zero
-		state.dayVolumeMA.Add(state.dayVolume)
-		state.dayVolume = decimal.Zero
+		if state.dayVolumeSince.ClockInt() <= openTime {
+			state.dayVolumeMA.Add(state.dayVolume)
+		}
+		state.dayVolumeSince = 0
+		state.myDayVolume = 0
+		state.dayVolume = 0
 	}
-	gDayStart = decimal.Zero
+	gDayStart = 0
 	gHalted = false
 }
 

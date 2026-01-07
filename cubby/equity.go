@@ -133,6 +133,11 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 }
 
 func (e *Equity) simulateOrder(order *Order, newQty decimal.Decimal) (*Order, error) {
+	now := clocky.Now()
+	time := now.ClockInt()
+	if time < 06_30_00 || time >= 12_59_55 {
+		return nil, ErrMarketNotOpen
+	}
 	if newQty.Abs().Cmp(e.Quantity.Abs()) > 0 {
 		marginUsed := GetMarginUsed()
 		equity := GetPortfolioValue().Mul(gPowerLevel)
@@ -151,7 +156,20 @@ func (e *Equity) simulateOrder(order *Order, newQty decimal.Decimal) (*Order, er
 }
 
 func (e *Equity) sendOrder(order *Order) (*Order, error) {
+	var startTime, endTime clocky.Time
 	now := clocky.Now()
+	time := now.ClockInt()
+	if time < 06_30_00 || time >= 12_59_55 {
+		return nil, ErrMarketNotOpen
+	}
+	startTime = now
+	endTime = now.Add(*FlagPatience)
+	if endTime.ClockInt() >= 13_00_00 {
+		// just rely on the default behavior of lasting until close
+		// todo: will alpaca do the right thing if we overlap market close?
+		startTime = 0
+		endTime = 0
+	}
 	ordersByCID[order.ClientOrderID] = order
 	alpacaOrder, err := Client.CreateOrder(&alpaca.OrderRequest{
 		Symbol:        e.Symbol,
@@ -164,8 +182,8 @@ func (e *Equity) sendOrder(order *Order) (*Order, error) {
 		AdvancedInstructions: &alpaca.AdvancedInstructions{
 			Algorithm:     alpaca.OrderAlgorithmVWAP,
 			MaxPercentage: *FlagVWAP,
-			StartTime:     now,
-			EndTime:       now.Add(*FlagPatience),
+			StartTime:     startTime,
+			EndTime:       endTime,
 		},
 	})
 	if err != nil {

@@ -11,6 +11,7 @@ var (
 	ErrNotTradable       = errors.New("asset is not tradable")
 	ErrNotShortable      = errors.New("asset is not shortable")
 	ErrZeroQuantity      = errors.New("quantity cannot be zero")
+	ErrMarketNotOpen     = errors.New("market is not open")
 	ErrNegativePrice     = errors.New("price cannot be negative")
 	ErrNotEasyToBorrow   = errors.New("asset is not easy to borrow")
 	ErrPriceNotRounded   = errors.New("price is not rounded to cent")
