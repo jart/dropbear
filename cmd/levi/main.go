@@ -5,7 +5,7 @@
 //   /|
 //   \|             trading algorithm x3.100-2026
 
-// varu implements an intraday momentum breakout strategy
+// levi implements an intraday momentum breakout strategy
 // - Monitor numerous stocks for breakout patterns
 // - Enter long when price breaks above N-minute high
 // - Hold multiple positions concurrently until margin exhausted
@@ -27,7 +27,7 @@ import (
 )
 
 var (
-	flagSymbols   = flag.String("symbol", "VARU", "symbols to monitor")
+	flagSymbols   = flag.String("symbol", "LEVI", "symbols to monitor")
 	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagRound     = flag.Bool("round", true, "use round lot order quantities")
 	flagSlipOpen  = decimal.FlagBPS("slip-open", "25", "max slippage on opening trade")

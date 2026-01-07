@@ -51,12 +51,12 @@ func main() {
 		log.Fatal("no candidate symbols provided")
 	}
 
-	// Load standard varu picks
+	// Load standard levi picks
 	standardPicks, err := loadStandardPicks()
 	if err != nil {
 		log.Fatalf("failed to load standard picks: %v", err)
 	}
-	log.Printf("Loaded %d standard picks from etc/picks/varu", len(standardPicks))
+	log.Printf("Loaded %d standard picks from etc/picks/levi", len(standardPicks))
 
 	// Create set of standard picks for deduplication
 	standardSet := make(map[string]bool)
@@ -80,13 +80,13 @@ func main() {
 	}
 	log.Printf("Screening %d candidate symbols", len(candidates))
 
-	// Build varu binary
-	varuBinary, err := buildVaru()
+	// Build levi binary
+	leviBinary, err := buildLevi()
 	if err != nil {
-		log.Fatalf("failed to build varu: %v", err)
+		log.Fatalf("failed to build levi: %v", err)
 	}
-	defer os.Remove(varuBinary)
-	log.Printf("Built varu binary: %s", varuBinary)
+	defer os.Remove(leviBinary)
+	log.Printf("Built levi binary: %s", leviBinary)
 
 	// Determine worker count
 	workers := *flagWorkers
@@ -100,7 +100,7 @@ func main() {
 
 	// First, run baseline (standard picks only)
 	log.Printf("Running baseline with standard picks only...")
-	baselineResult := runBacktest(varuBinary, standardPicks, "BASELINE")
+	baselineResult := runBacktest(leviBinary, standardPicks, "BASELINE")
 	if baselineResult.err != nil {
 		log.Fatalf("baseline backtest failed: %v\n%s", baselineResult.err, baselineResult.output)
 	}
@@ -118,7 +118,7 @@ func main() {
 				// Create symbol list: standard + candidate
 				symbols := append([]string{}, standardPicks...)
 				symbols = append(symbols, symbol)
-				r := runBacktest(varuBinary, symbols, symbol)
+				r := runBacktest(leviBinary, symbols, symbol)
 				r.baselinePct = baselinePct
 				r.deltaPct = r.annualizedPct - baselinePct
 				results <- r
@@ -231,7 +231,7 @@ func loadStandardPicks() ([]string, error) {
 		dir = parent
 	}
 
-	picksPath := filepath.Join(dir, "etc/picks/varu")
+	picksPath := filepath.Join(dir, "etc/picks/levi")
 	f, err := os.Open(picksPath)
 	if err != nil {
 		return nil, err
@@ -249,16 +249,16 @@ func loadStandardPicks() ([]string, error) {
 	return picks, scanner.Err()
 }
 
-func buildVaru() (string, error) {
+func buildLevi() (string, error) {
 	// Create temp file for binary
-	tmpFile, err := os.CreateTemp("", "varu-*")
+	tmpFile, err := os.CreateTemp("", "levi-*")
 	if err != nil {
 		return "", err
 	}
 	tmpFile.Close()
 	binaryPath := tmpFile.Name()
 
-	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/varu")
+	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/levi")
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		os.Remove(binaryPath)
@@ -268,7 +268,7 @@ func buildVaru() (string, error) {
 	return binaryPath, nil
 }
 
-// annualizedRegex matches "X% annualized" in varu output
+// annualizedRegex matches "X% annualized" in levi output
 var annualizedRegex = regexp.MustCompile(`([-\d.]+)% annualized`)
 
 func runBacktest(binary string, symbols []string, label string) result {

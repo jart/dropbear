@@ -125,7 +125,7 @@ a binary-encoded array of `ds/tick.go` structures.
 our best alpaca etf day trading strategy
 
 ```bash
-go run ./cmd/varu -backtest -v -lookback 10 -start 2025-01-01 -symbol "etc/picks/varu" -cash 161845
+go run ./cmd/levi -backtest -v -lookback 10 -start 2025-01-01 -symbol "etc/picks/levi" -cash 161845
 ```
 
 our best crypto trading strategy
