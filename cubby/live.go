@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	kWarmupBars = 1000 // number of historical bars to fetch for warmup
+	kWarmupBars = 10000 // number of historical bars to fetch for warmup
 )
 
 type liveTrader struct {
@@ -47,6 +47,8 @@ func (lt *liveTrader) sync() {
 		log.Printf("error getting alpaca account info: %v", err)
 	} else {
 		Cash = account.Cash
+		gLiveInvested = account.LongMarketValue.Add(account.ShortMarketValue)
+		gLiveMarginUsed = account.MaintenanceMargin
 	}
 	for _, order := range Orders {
 		if order.Status.IsFinal() {

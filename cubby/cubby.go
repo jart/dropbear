@@ -46,6 +46,8 @@ var (
 	gMaxMarginAvailable decimal.Decimal
 	gPowerLevel         decimal.Decimal
 	gFeeCalculator      *alpaca.FeeCalculator
+	gLiveInvested       decimal.Decimal
+	gLiveMarginUsed     decimal.Decimal
 )
 
 func Init() {
@@ -110,16 +112,34 @@ func GetPortfolioValue() decimal.Decimal {
 }
 
 func GetInvestedValue() decimal.Decimal {
+	if !gLiveInvested.IsZero() {
+		return gLiveInvested
+	}
 	total := decimal.Zero
 	for _, equity := range Equities {
+		if equity.Quantity.IsZero() {
+			continue
+		}
+		if !equity.Price.IsPositive() {
+			loggy.Fatalf("can't compute GetInvestedValue() because %s has non-positive price %s", equity.Symbol, equity.Price)
+		}
 		total = total.Add(equity.Price.Mul(equity.Quantity.Abs()))
 	}
 	return total
 }
 
 func GetMarginUsed() decimal.Decimal {
+	if !gLiveMarginUsed.IsZero() {
+		return gLiveMarginUsed
+	}
 	total := decimal.Zero
 	for _, equity := range Equities {
+		if equity.Quantity.IsZero() {
+			continue
+		}
+		if !equity.Price.IsPositive() {
+			loggy.Fatalf("can't compute GetMarginUsed() because %s has non-positive price %s", equity.Symbol, equity.Price)
+		}
 		margin := equity.Asset.GetMaintenanceMargin(equity.Quantity, equity.Price)
 		total = total.Add(margin)
 	}

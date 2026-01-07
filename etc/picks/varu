@@ -1,4 +1,5 @@
-# varu stock picks - reviewed 2026-01-07
+# varu stock picks
+# reviewed 2026-01-07
 
 # starbucks - coffee chain, stable large cap
 SBUX
@@ -14,8 +15,6 @@ ARM
 
 # sempra energy - california utility
 SRE
-
-# REMOVED: SIJ is ProShares UltraShort Industrials (INVERSE ETF - bets against!)
 
 # on semiconductor - power/sensor chips for auto/industrial
 ON
@@ -51,8 +50,6 @@ PYPL
 
 # linde - industrial gases, largest in world
 LIN
-
-# REMOVED: RGTZ is Defiance 2x SHORT Rigetti (INVERSE ETF - bets against!)
 
 # ionq - quantum computing, highly speculative pre-profit
 IONQ
@@ -252,9 +249,6 @@ OKLO
 # argan - power plant construction
 AGX
 
-# interdigital - wireless patent licensing
-IDCC
-
 # terawulf - bitcoin miner with AI pivot
 WULF
 
@@ -281,3 +275,6 @@ LABX
 
 # 2x leveraged Datadog ETF
 DOGD
+
+# REMOVED: SIJ is ProShares UltraShort Industrials (INVERSE ETF - bets against!)
+# REMOVED: RGTZ is Defiance 2x SHORT Rigetti (INVERSE ETF - bets against!)

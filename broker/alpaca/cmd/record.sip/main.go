@@ -7,8 +7,8 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/loggy"
 	"dropbear/netty"
-	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -27,11 +27,11 @@ func main() {
 	// get symbols from directory listing
 	symbols, err := getSymbols(*flagDir)
 	if err != nil {
-		log.Fatalf("error getting symbols: %v", err)
+		fmt.Fprintf(os.Stderr, "error getting symbols: %v", err)
+		os.Exit(1)
 	}
-	log.Printf("found %d symbols", len(symbols))
 
-	// run the recording daemon
+	// run recording daemon
 	daemon := &recordDaemon{symbols: symbols}
 	daemon.run()
 }
@@ -92,67 +92,28 @@ func (d *recordDaemon) impl() error {
 		return err
 	}
 
-	// read auth response
-	_, msg, err := conn.ReadMessage()
-	if err != nil {
+	subscribe := map[string]any{
+		"action":       "subscribe",
+		"trades":       d.symbols,
+		"quotes":       d.symbols,
+		"bars":         d.symbols,
+		"updatedBars":  d.symbols,
+		"statuses":     d.symbols,
+		"lulds":        d.symbols,
+		"corrections":  d.symbols,
+		"cancelErrors": d.symbols,
+	}
+	if err := conn.WriteJSON(subscribe); err != nil {
 		return err
 	}
-	log.Printf("alpaca sip ws: auth response: %s", string(msg))
 
-	// subscribe to all symbols in batches (websocket might have limits)
-	batchSize := 500
-	for i := 0; i < len(d.symbols); i += batchSize {
-		end := min(i+batchSize, len(d.symbols))
-		batch := d.symbols[i:end]
-
-		subscribe := map[string]any{
-			"action":   "subscribe",
-			"trades":   batch,
-			"quotes":   batch,
-			"bars":     batch,
-			"statuses": batch,
-		}
-		if err := conn.WriteJSON(subscribe); err != nil {
-			return err
-		}
-
-		// read subscription confirmation
-		_, msg, err := conn.ReadMessage()
-		if err != nil {
-			return err
-		}
-		log.Printf("alpaca sip ws: subscribed batch %d-%d: %s", i, end, string(msg))
-	}
-
-	log.Printf("alpaca sip ws: subscribed to %d symbols for trades, quotes, bars", len(d.symbols))
-
-	// read messages forever and write to stdout
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
+	// relay messages to stdout
 	for {
-		messageType, message, err := conn.ReadMessage()
+		_, message, err := conn.ReadMessage()
 		if err != nil {
 			return err
 		}
-		log.Printf("got message type %d: %s", messageType, string(message))
-
-		// parse the message array
-		var msgs []json.RawMessage
-		if err := json.Unmarshal(message, &msgs); err != nil {
-			// single message, not array
-			var single any
-			json.Unmarshal(message, &single)
-			enc.Encode(single)
-			os.Stdout.Sync()
-			continue
-		}
-
-		// write each message pretty-printed
-		for _, m := range msgs {
-			var parsed any
-			json.Unmarshal(m, &parsed)
-			enc.Encode(parsed)
-		}
+		fmt.Printf("%s\n", message)
 		os.Stdout.Sync()
 	}
 }

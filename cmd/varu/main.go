@@ -3,7 +3,7 @@
 //    | |   |  / \_|  |  / |/ |  |/    / \_|  /  |  |/  |/  |
 //    |/ \_/|_/ \/ |_/|_/  |  |_/|__/   \/ |_/   |_/|__/|__/|_/
 //   /|
-//   \|             trading algorithm x3.101-2026
+//   \|             trading algorithm x3.100-2026
 
 // varu implements an intraday momentum breakout strategy
 // - Monitor numerous stocks for breakout patterns
@@ -170,6 +170,7 @@ func (state *Trader) onBar(c *ds.Bar) {
 
 	// if halted, only process EOD closes (handled above)
 	if gHalted {
+		state.closePosition()
 		return
 	}
 
