@@ -128,6 +128,7 @@ type Holding struct {
 	momentum      *indicators.Momentum
 	targetWeight  decimal.Decimal // 0-1, portion of portfolio
 	barCount      int
+	lastDate      int // track last date seen for per-holding reset
 }
 
 func NewHolding(equity *cubby.Equity) *Holding {
@@ -145,11 +146,10 @@ func (h *Holding) onBar(bar *ds.Bar) {
 	}
 	h.monotonicTime = bar.Timestamp
 
-	// new day reset
+	// new day reset (global close times + per-holding barCount)
 	date := bar.Timestamp.DateInt()
 	if date != gDate {
 		gDate = date
-		h.barCount = 0
 		if earlyCloseDates[date] {
 			gCloseTime = earlyCloseTime
 			gMarginCheckTime = earlyMarginCheckTime
@@ -157,6 +157,10 @@ func (h *Holding) onBar(bar *ds.Bar) {
 			gCloseTime = normalCloseTime
 			gMarginCheckTime = normalMarginCheckTime
 		}
+	}
+	if date != h.lastDate {
+		h.lastDate = date
+		h.barCount = 0
 	}
 
 	if cubby.IsWarmingUp {
@@ -195,6 +199,9 @@ func (h *Holding) onBar(bar *ds.Bar) {
 
 // updateWeights calculates momentum-weighted target allocations
 func updateWeights() {
+	n := len(gHoldings)
+	equalWeight := decimal.One.DivInt(n)
+
 	// calculate total positive momentum
 	gTotalMomentum = decimal.Zero
 	for _, h := range gHoldings {
@@ -203,14 +210,14 @@ func updateWeights() {
 		}
 	}
 
-	// assign weights based on momentum
-	minWeight := *flagMinWeight
-	remainingWeight := decimal.One.Sub(minWeight.MulInt(len(gHoldings)))
+	// clamp minWeight so that minWeight * n <= 0.5 (leave room for momentum)
+	minWeight := (*flagMinWeight).Min(decimal.Parse("0.5").DivInt(n))
+	remainingWeight := decimal.One.Sub(minWeight.MulInt(n))
 
 	for _, h := range gHoldings {
 		if !h.momentum.IsReady() || gTotalMomentum.IsZero() {
 			// equal weight if no momentum data
-			h.targetWeight = decimal.One.DivInt(len(gHoldings))
+			h.targetWeight = equalWeight
 		} else if h.momentum.Value.IsPositive() {
 			// momentum-weighted: min weight + share of remaining based on momentum
 			momentumShare := h.momentum.Value.Div(gTotalMomentum)
@@ -221,12 +228,17 @@ func updateWeights() {
 		}
 	}
 
-	// normalize weights to sum to 1
+	// always normalize weights to sum to 1
 	totalWeight := decimal.Zero
 	for _, h := range gHoldings {
 		totalWeight = totalWeight.Add(h.targetWeight)
 	}
-	if totalWeight.IsPositive() {
+	if !totalWeight.IsPositive() {
+		// fallback to equal weights if something went wrong
+		for _, h := range gHoldings {
+			h.targetWeight = equalWeight
+		}
+	} else {
 		for _, h := range gHoldings {
 			h.targetWeight = h.targetWeight.Div(totalWeight)
 		}
