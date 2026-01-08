@@ -2,6 +2,7 @@ package symbol
 
 import (
 	"errors"
+	"fmt"
 	"unsafe"
 )
 
@@ -56,7 +57,33 @@ func (s Symbol) String() string {
 }
 
 func (s Symbol) GoString() string {
-	return "symbol.ParseString(\"" + s.String() + "\")"
+	return "symbol.MustParse(\"" + s.String() + "\")"
+}
+
+func (s Symbol) Format(f fmt.State, verb rune) {
+	// reconstruct format string from flags
+	var format []byte
+	format = append(format, '%')
+	for _, flag := range [...]int{'-', '+', '#', ' ', '0'} {
+		if f.Flag(flag) {
+			format = append(format, byte(flag))
+		}
+	}
+	if w, ok := f.Width(); ok {
+		format = append(format, fmt.Sprint(w)...)
+	}
+	if p, ok := f.Precision(); ok {
+		format = append(format, '.')
+		format = append(format, fmt.Sprint(p)...)
+	}
+	format = append(format, byte(verb))
+
+	switch verb {
+	case 's', 'v':
+		fmt.Fprintf(f, string(format), s.String())
+	default:
+		fmt.Fprintf(f, string(format), uint64(s))
+	}
 }
 
 func (s Symbol) MarshalJSON() ([]byte, error) {

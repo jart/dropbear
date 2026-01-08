@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"sort"
+	"slices"
 )
 
 func main() {
@@ -25,9 +25,7 @@ func main() {
 	for sym := range alpaca.Assets {
 		symbols = append(symbols, sym)
 	}
-	sort.Slice(symbols, func(i, j int) bool {
-		return symbols[i] < symbols[j]
-	})
+	slices.Sort(symbols)
 
 	// now open assetsdata.go for writing
 	path := "broker/alpaca/assetsdata.go"
