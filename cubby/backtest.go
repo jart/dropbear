@@ -33,9 +33,33 @@ type backtestEntry struct {
 }
 
 const (
-	openTime  = 6_30_00
-	closeTime = 13_00_00
+	openTime    = 6_30_00
+	normalClose = 13_00_00
+	earlyClose  = 10_00_00 // half-days close at 1pm ET = 10am PT
 )
+
+// Early close dates (half-days): market closes at 1pm ET = 10am PT
+var earlyCloseDates = map[int]bool{
+	// 2024
+	20240703: true, // July 3 (day before July 4)
+	20241129: true, // Black Friday
+	20241224: true, // Christmas Eve
+	// 2025
+	20250703: true, // July 3
+	20251128: true, // Black Friday
+	20251224: true, // Christmas Eve
+	// 2026
+	20260703: true, // July 3
+	20261127: true, // Black Friday
+	20261224: true, // Christmas Eve
+}
+
+func getCloseTime(date int) int {
+	if earlyCloseDates[date] {
+		return earlyClose
+	}
+	return normalClose
+}
 
 func newBacktest() *backtest {
 	m := &backtest{
@@ -196,6 +220,7 @@ func (m *backtest) setTime(now clocky.Time) {
 		m.closed = false
 	}
 	time := now.ClockInt()
+	closeTime := getCloseTime(date)
 	if !m.opened && time >= openTime && time < closeTime {
 		m.opened = true
 		m.onMarketOpen()
