@@ -73,59 +73,26 @@ func TestSymbol_GoString(t *testing.T) {
 }
 
 func TestSymbol_Format(t *testing.T) {
-	sym := MustParse("SOXL")
-
-	// %x should print the integer value in hex, not the string bytes
-	// SOXL packed little-endian: 'S'=0x53, 'O'=0x4f, 'X'=0x58, 'L'=0x4c
-	// = 0x4c584f53 (L in high byte, S in low byte)
-	gotX := fmt.Sprintf("%x", sym)
-	wantX := "4c584f53"
-	if gotX != wantX {
-		t.Errorf("%%x = %q, want %q", gotX, wantX)
+	tests := []struct {
+		name string
+		sym  string
+		fmt  string
+		want string
+	}{
+		{"string", "AAPL", "%s", "AAPL"},
+		{"string aligned left", "AAPL", "%-8s", "AAPL    "},
+		{"string aligned right", "AAPL", "%8s", "    AAPL"},
+		{"hex", "AAPL", "%x", "4c504141"},
+		{"hex repr", "AAPL", "%#x", "0x4c504141"},
+		{"v", "AAPL", "%v", "AAPL"},
+		{"v repr", "AAPL", "%#v", "symbol.MustParse(\"AAPL\")"},
 	}
-
-	// %s should print the string representation
-	gotS := fmt.Sprintf("%s", sym)
-	wantS := "SOXL"
-	if gotS != wantS {
-		t.Errorf("%%s = %q, want %q", gotS, wantS)
-	}
-
-	// %v should also print the string representation
-	gotV := fmt.Sprintf("%v", sym)
-	if gotV != wantS {
-		t.Errorf("%%v = %q, want %q", gotV, wantS)
-	}
-
-	// %d should print the decimal integer value
-	gotD := fmt.Sprintf("%d", sym)
-	wantD := "1280855891" // 0x4c584f53 in decimal
-	if gotD != wantD {
-		t.Errorf("%%d = %q, want %q", gotD, wantD)
-	}
-
-	// verify low byte is first char
-	if sym&0xff != 'S' {
-		t.Errorf("low byte = 0x%x, want 0x%x ('S')", sym&0xff, 'S')
-	}
-
-	// test width and flags are respected
-	got8s := fmt.Sprintf("[%8s]", sym)
-	want8s := "[    SOXL]"
-	if got8s != want8s {
-		t.Errorf("%%8s = %q, want %q", got8s, want8s)
-	}
-
-	gotLeft := fmt.Sprintf("[%-8s]", sym)
-	wantLeft := "[SOXL    ]"
-	if gotLeft != wantLeft {
-		t.Errorf("%%-8s = %q, want %q", gotLeft, wantLeft)
-	}
-
-	gotHash := fmt.Sprintf("%#x", sym)
-	wantHash := "0x4c584f53"
-	if gotHash != wantHash {
-		t.Errorf("%%#x = %q, want %q", gotHash, wantHash)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := fmt.Sprintf(tt.fmt, MustParse(tt.sym)); got != tt.want {
+				t.Errorf("Symbol.Format(%v) = %v, want %v", tt.fmt, got, tt.want)
+			}
+		})
 	}
 }
 

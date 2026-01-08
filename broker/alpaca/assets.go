@@ -48,11 +48,11 @@ func (c *Client) SyncAssets() error {
 			priceIncrement = decimal.Parse(ja.PriceIncrement)
 		}
 		asset := Assets[sym]
+		name := ja.Name
+		if name == "" {
+			name = ja.Symbol
+		}
 		if asset == nil {
-			name := ja.Name
-			if name == "" {
-				name = ja.Symbol
-			}
 			asset = &Asset{
 				Symbol:   sym,
 				Exchange: ja.Exchange,
@@ -87,6 +87,9 @@ func (c *Client) SyncAssets() error {
 				err = fmt.Errorf("unknown asset attribute for %s: %s", ja.Symbol, attr)
 			}
 		}
+		asset.Name = name
+		asset.Status = ja.Status
+		asset.Exchange = ja.Exchange
 		asset.IPO.Store(IPO)
 		asset.HasOptions.Store(HasOptions)
 		asset.PTPNoException.Store(PTPNoException)

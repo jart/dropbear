@@ -31,6 +31,8 @@ func ParseBytes(ticker []byte) (Symbol, error) {
 		return Symbol(uint64(ticker[0]) | uint64(ticker[1])<<8 | uint64(ticker[2])<<16 | uint64(ticker[3])<<24 | uint64(ticker[4])<<32 | uint64(ticker[5])<<40), nil
 	case 7:
 		return Symbol(uint64(ticker[0]) | uint64(ticker[1])<<8 | uint64(ticker[2])<<16 | uint64(ticker[3])<<24 | uint64(ticker[4])<<32 | uint64(ticker[5])<<40 | uint64(ticker[6])<<48), nil
+	case 8:
+		return Symbol(uint64(ticker[0]) | uint64(ticker[1])<<8 | uint64(ticker[2])<<16 | uint64(ticker[3])<<24 | uint64(ticker[4])<<32 | uint64(ticker[5])<<40 | uint64(ticker[6])<<48 | uint64(ticker[7])<<56), nil
 	default:
 		return 0, ErrInvalidSymbol
 	}
@@ -45,7 +47,7 @@ func MustParse(ticker string) Symbol {
 }
 
 func (s Symbol) String() string {
-	var buf [7]byte
+	var buf [8]byte
 	n := 0
 	v := uint64(s)
 	for v != 0 {
@@ -77,10 +79,15 @@ func (s Symbol) Format(f fmt.State, verb rune) {
 		format = append(format, fmt.Sprint(p)...)
 	}
 	format = append(format, byte(verb))
-
 	switch verb {
-	case 's', 'v':
+	case 's':
 		fmt.Fprintf(f, string(format), s.String())
+	case 'v':
+		if f.Flag('#') {
+			fmt.Fprint(f, s.GoString())
+		} else {
+			fmt.Fprint(f, s.String())
+		}
 	default:
 		fmt.Fprintf(f, string(format), uint64(s))
 	}
@@ -115,6 +122,9 @@ func (s *Symbol) UnmarshalJSON(data []byte) error {
 		return nil
 	case 9:
 		*s = Symbol(uint64(data[1]) | uint64(data[2])<<8 | uint64(data[3])<<16 | uint64(data[4])<<24 | uint64(data[5])<<32 | uint64(data[6])<<40 | uint64(data[7])<<48)
+		return nil
+	case 10:
+		*s = Symbol(uint64(data[1]) | uint64(data[2])<<8 | uint64(data[3])<<16 | uint64(data[4])<<24 | uint64(data[5])<<32 | uint64(data[6])<<40 | uint64(data[7])<<48 | uint64(data[8])<<56)
 		return nil
 	default:
 		return ErrInvalidSymbol
