@@ -34,9 +34,10 @@ var (
 	flagBenchmark     = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagMomentum      = flag.Int("momentum", 20, "momentum lookback period in bars")
 	flagRebalance     = flag.Int("rebalance", 30, "minutes between rebalance checks")
-	flagDayLeverage   = decimal.Flag("day-leverage", "4", "max intraday leverage")
-	flagNightLeverage = decimal.Flag("night-leverage", "1.5", "overnight leverage (leave room for day trading)")
+	flagDayLeverage   = decimal.Flag("day-leverage", "2", "max intraday leverage")
+	flagNightLeverage = decimal.Flag("night-leverage", "2", "overnight leverage (leave room for day trading)")
 	flagMinWeight     = decimal.Flag("min-weight", "0.1", "minimum weight per symbol (0-1)")
+	flagEqualWeight   = flag.Bool("equal-weight", false, "use equal weights instead of momentum-weighted")
 )
 
 const (
@@ -193,7 +194,10 @@ func (h *Holding) onBar(bar *ds.Bar) {
 	if now.Sub(gLastRebalance) >= clocky.Duration(*flagRebalance)*clocky.Minute {
 		gLastRebalance = now
 		updateWeights()
-		h.rebalanceToLeverage(*flagDayLeverage)
+		// rebalance ALL holdings, not just the one that triggered
+		for _, holding := range gHoldings {
+			holding.rebalanceToLeverage(*flagDayLeverage)
+		}
 	}
 }
 
@@ -201,6 +205,17 @@ func (h *Holding) onBar(bar *ds.Bar) {
 func updateWeights() {
 	n := len(gHoldings)
 	equalWeight := decimal.One.DivInt(n)
+
+	// equal weight mode: skip momentum calculations entirely
+	if *flagEqualWeight {
+		for _, h := range gHoldings {
+			h.targetWeight = equalWeight
+		}
+		if cubby.Verbose {
+			log.Printf("updated weights: equal %.2f%% each", equalWeight.MulInt(100).Float64())
+		}
+		return
+	}
 
 	// calculate total positive momentum
 	gTotalMomentum = decimal.Zero
