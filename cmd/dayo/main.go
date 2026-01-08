@@ -27,15 +27,16 @@ import (
 )
 
 var (
-	flagSymbols   = flag.String("symbol", "", "symbols to trade (space-separated)")
-	flagBenchmark = flag.String("benchmark", "SPY", "benchmark symbol")
-	flagSlippage  = decimal.FlagBPS("slip", "25", "max slippage on orders")
+	flagSymbols   = flag.String("symbol", "GOOG AMZN", "symbols to trade (space-separated)")
+	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
+	flagSlipOpen  = decimal.FlagBPS("slip-open", "0", "max slippage on open orders")
+	flagSlipClose = decimal.FlagBPS("slip-close", "0", "max slippage on close orders")
 )
 
 const (
-	openTime       = 6_30_00  // 6:30 AM PT - market open
-	startCloseTime = 12_58_00 // 12:58 PM PT - start closing (2 min before close)
-	closeTime      = 13_00_00 // 1:00 PM PT - market close
+	openTime       = 6_30_00
+	startCloseTime = 12_58_00
+	closeTime      = 13_00_00
 )
 
 var (
@@ -51,7 +52,7 @@ func main() {
 	cubby.Init()
 
 	if *flagSymbols == "" {
-		log.Fatal("usage: dayo -symbol \"GOOG PM\" [-backtest] [-start DATE]")
+		log.Fatal("usage: dayo -symbol \"GOOG AMZN\" [-backtest] [-start DATE]")
 	}
 
 	syms, err := symbol.Expand(*flagSymbols)
@@ -176,7 +177,7 @@ func (t *Trader) tryOpen() {
 	}
 
 	// calculate limit price with slippage
-	limitPrice := t.equity.Price.Mul(decimal.One.Add(*flagSlippage))
+	limitPrice := t.equity.Price.Mul(decimal.One.Add(*flagSlipOpen))
 	limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
 
 	// divide max order quantity equally among all symbols
@@ -215,9 +216,9 @@ func (t *Trader) closePosition() {
 	// calculate limit price with slippage
 	limitPrice := t.equity.Price
 	if shares.IsPositive() {
-		limitPrice = limitPrice.Mul(decimal.One.Sub(*flagSlippage))
+		limitPrice = limitPrice.Mul(decimal.One.Sub(*flagSlipClose))
 	} else {
-		limitPrice = limitPrice.Mul(decimal.One.Add(*flagSlippage))
+		limitPrice = limitPrice.Mul(decimal.One.Add(*flagSlipClose))
 	}
 	limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
 

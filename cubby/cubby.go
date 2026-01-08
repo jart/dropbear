@@ -45,6 +45,7 @@ var (
 var (
 	gMaxMarginAvailable decimal.Decimal
 	gPowerLevel         decimal.Decimal
+	gMarginHold         decimal.Decimal // margin reserved by pending orders
 	gFeeCalculator      *alpaca.FeeCalculator
 	gLiveInvested       decimal.Decimal
 	gLiveMarginUsed     decimal.Decimal

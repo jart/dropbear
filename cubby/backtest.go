@@ -130,14 +130,16 @@ func (m *backtest) Run() {
 		for _, entry := range entries {
 			entry.equity.OnBar(entry.bar)
 		}
-		if m.checkLiquidation() {
-			return
+		portfolioValue := GetPortfolioValue()
+		if portfolioValue.Cmp(*flagRekt) <= 0 {
+			Liquidated = true
+			log.Printf("rekt: portfolio value $%s fell below $%s", portfolioValue.FormatThousand(2), flagRekt.FormatThousand(2))
+			rekt()
 		}
-		currentValue := GetPortfolioValue()
-		if currentValue.Cmp(m.peakValue) > 0 {
-			m.peakValue = currentValue
+		if portfolioValue.Cmp(m.peakValue) > 0 {
+			m.peakValue = portfolioValue
 		} else if m.peakValue.IsPositive() {
-			drawdown := m.peakValue.Sub(currentValue).Div(m.peakValue)
+			drawdown := m.peakValue.Sub(portfolioValue).Div(m.peakValue)
 			if drawdown.Cmp(m.maxDrawdown) > 0 {
 				m.maxDrawdown = drawdown
 			}
@@ -153,17 +155,6 @@ func (m *backtest) Run() {
 	}
 	log.Printf("backtest completed: %d iterations", iterations)
 	m.printSummary()
-}
-
-func (m *backtest) checkLiquidation() bool {
-	portfolioValue := GetPortfolioValue()
-	if portfolioValue.Cmp(*flagRekt) <= 0 {
-		Liquidated = true
-		log.Printf("portfolio value $%s fell below $%s", portfolioValue.FormatThousand(2), flagRekt.FormatThousand(2))
-		rekt()
-		return true
-	}
-	return false
 }
 
 func (m *backtest) printSummary() {
@@ -187,7 +178,7 @@ func (m *backtest) printSummary() {
 		}
 		log.Printf("  period:   %.1f days (%.2f years)", days, years)
 		log.Printf("holdings:")
-		log.Printf("%8s $%s", "USD", Cash.FormatThousand(2))
+		log.Printf("%8s $%s margin $%s", "USD", Cash.FormatThousand(2), GetMarginUsed().FormatThousand(2))
 		for _, equity := range Equities {
 			if !equity.Quantity.IsZero() {
 				log.Printf("%8s %8s shares @ $%s = $%s", equity.Symbol, equity.Quantity.Format(0), equity.Price.Format(2), equity.Price.Mul(equity.Quantity).FormatThousand(2))
@@ -230,6 +221,12 @@ func (m *backtest) onMarketClose(now clocky.Time) {
 	}
 	gPowerLevel = decimal.One
 	Cash = Cash.Sub(m.interest.GetDailyInterest(now, Cash, *flagRFR))
+	margin := GetMarginUsed()
+	equity := GetPortfolioValue()
+	if margin.Cmp(equity) > 0 {
+		log.Printf("margin call: margin after close $%s exceeds equity $%s", margin.FormatThousand(2), equity.FormatThousand(2))
+		os.Exit(1)
+	}
 }
 
 func compareBacktestEntries(a, b *backtestEntry) int {

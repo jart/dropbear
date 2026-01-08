@@ -28,6 +28,7 @@ type Order struct {
 	FilledPrice    decimal.Decimal // average fill price, or zero if unfilled
 	FilledQuantity decimal.Decimal // positive, or zero if unfilled
 	TotalFees      decimal.Decimal // positive, or zero if unfilled
+	MarginHeld     decimal.Decimal // margin reserved for this order
 	OrderedAt      clocky.Time     // local creation time
 }
 
@@ -131,6 +132,7 @@ func (o *Order) setStatus(newStatus alpaca.OrderStatus) {
 	if !oldStatus.IsFinal() && newStatus.IsFinal() {
 		delete(Orders, o.OrderID)
 		delete(o.Equity.Orders, o.OrderID)
+		gMarginHold = gMarginHold.Sub(o.MarginHeld)
 		if Verbose || o.FilledQuantity.IsPositive() {
 			log.Printf("%s %s %s out of %s %s at %s notional %s fee %s id %s", o.Status, o.Side, o.FilledQuantity, o.Quantity, o.Equity.Symbol, o.FilledPrice, o.FilledPrice.Mul(o.FilledQuantity), o.TotalFees, o.OrderID)
 		}

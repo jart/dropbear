@@ -65,7 +65,7 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 	marginUsed := GetMarginUsed()
 	equity := GetPortfolioValue().Mul(gPowerLevel)
 	maxMarginAvailable := gMaxMarginAvailable.Mul(gPowerLevel)
-	marginAvailable := equity.Sub(marginUsed).Min(maxMarginAvailable)
+	marginAvailable := equity.Sub(marginUsed).Sub(gMarginHold).Min(maxMarginAvailable)
 	lo := decimal.Zero
 	hi := decimal.FromInt(100_000)
 	for lo.Cmp(hi) < 0 {
@@ -101,9 +101,6 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 		return nil, ErrPriceNotRounded
 	}
 	newQty := e.Quantity.Add(quantity)
-	if e.Quantity.Mul(newQty).IsNegative() {
-		return nil, ErrOrderOverlapsZero
-	}
 	side := ds.SideBuy
 	if quantity.IsNegative() {
 		side = ds.SideSell
@@ -139,15 +136,20 @@ func (e *Equity) simulateOrder(order *Order, newQty decimal.Decimal) (*Order, er
 	if time < 06_30_00 || time >= 12_59_55 {
 		return nil, ErrMarketNotOpen
 	}
-	if newQty.Abs().Cmp(e.Quantity.Abs()) > 0 {
+	price := order.LimitPrice.Min(e.Price)
+	newMargin := e.Asset.GetInitialMargin(newQty, price)
+	oldMargin := e.Asset.GetMaintenanceMargin(e.Quantity, price)
+	if newMargin.Cmp(oldMargin) > 0 {
+		marginNeeded := newMargin.Sub(oldMargin)
 		marginUsed := GetMarginUsed()
 		equity := GetPortfolioValue().Mul(gPowerLevel)
-		marginNeeded := e.Asset.GetInitialMargin(order.Quantity, order.LimitPrice.Min(e.Price))
 		maxMarginAvailable := gMaxMarginAvailable.Mul(gPowerLevel)
-		marginAvailable := equity.Sub(marginUsed).Min(maxMarginAvailable)
+		marginAvailable := equity.Sub(marginUsed).Sub(gMarginHold).Min(maxMarginAvailable)
 		if marginNeeded.Cmp(marginAvailable) > 0 {
 			return nil, fmt.Errorf("need %s margin but only %s available", marginNeeded, marginAvailable)
 		}
+		gMarginHold = gMarginHold.Add(marginNeeded)
+		order.MarginHeld = marginNeeded
 	}
 	order.OrderID = order.ClientOrderID
 	order.logPlacedOrder()
