@@ -13,16 +13,17 @@ import (
 )
 
 type backtest struct {
-	interest    *alpaca.InterestCalculator
-	heap        *binaryheap.Heap[*backtestEntry]
-	minTime     clocky.Time
-	maxTime     clocky.Time
-	startCash   decimal.Decimal
-	opened      bool
-	closed      bool
-	date        int
-	peakValue   decimal.Decimal // highest portfolio value seen
-	maxDrawdown decimal.Decimal // largest drawdown from peak (as decimal, e.g. 0.10 = 10%)
+	interest       *alpaca.InterestCalculator
+	heap           *binaryheap.Heap[*backtestEntry]
+	minTime        clocky.Time
+	maxTime        clocky.Time
+	startCash      decimal.Decimal
+	opened         bool
+	closed         bool
+	date           int
+	peakValue      decimal.Decimal // highest portfolio value seen
+	maxDrawdown    decimal.Decimal // largest drawdown from peak (as decimal, e.g. 0.10 = 10%)
+	benchmarkStart decimal.Decimal // benchmark price at start of backtest
 }
 
 type backtestEntry struct {
@@ -33,7 +34,7 @@ type backtestEntry struct {
 
 const (
 	openTime  = 6_30_00
-	closeTime = 10_00_00
+	closeTime = 13_00_00
 )
 
 func newBacktest() *backtest {
@@ -116,6 +117,9 @@ func (m *backtest) Run() {
 		for _, entry := range entries {
 			entry.equity.Price = entry.bar.Close
 		}
+		if m.benchmarkStart.IsZero() && Benchmark != nil && Benchmark.Price.IsPositive() {
+			m.benchmarkStart = Benchmark.Price
+		}
 		now := time.Add(clocky.Minute)
 		m.setTime(now)
 		for _, entry := range entries {
@@ -174,8 +178,13 @@ func (m *backtest) printSummary() {
 		log.Printf("  end:      $%s", endValue.FormatThousand(2))
 		log.Printf("  fees:     $%s", gFeeCalculator.TotalFees.FormatThousand(2))
 		log.Printf("  interest: $%s", m.interest.TotalCharged.FormatThousand(2))
-		log.Printf("  return:   %s%% (%.2f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
 		log.Printf("  max dd:   %s%%", m.maxDrawdown.MulInt(100).Format(2))
+		log.Printf("  return:   %s%% (%.2f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
+		if Benchmark != nil && m.benchmarkStart.IsPositive() {
+			benchReturn := Benchmark.Price.Sub(m.benchmarkStart).Div(m.benchmarkStart)
+			benchAnnual := (Benchmark.Price.Float64()/m.benchmarkStart.Float64() - 1) * 100 / years
+			log.Printf("  bench:    %s%% (%.2f%% annualized) [%s]", benchReturn.MulInt(100).Format(2), benchAnnual, Benchmark.Symbol)
+		}
 		log.Printf("  period:   %.1f days (%.2f years)", days, years)
 		log.Printf("holdings:")
 		log.Printf("%8s $%s", "USD", Cash.FormatThousand(2))

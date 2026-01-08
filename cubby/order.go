@@ -60,7 +60,7 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 		return
 	}
 	time := now.ClockInt()
-	if time < 93000 || time > 160000 {
+	if time < 6_30_00 || time > 13_00_00 {
 		o.setStatus(alpaca.OrderStatusExpired)
 		return
 	}
@@ -96,7 +96,7 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 	o.FilledPrice = oldValue.Add(newValue).Div(o.FilledQuantity)
 
 	// calculate and add fees (limit orders are maker orders)
-	fee := gFeeCalculator.GetFee(clocky.Now(), fillQuantity, true)
+	fee := gFeeCalculator.GetFee(clocky.Now(), fillQuantity, false)
 	o.TotalFees = o.TotalFees.Add(fee)
 
 	// update cash and position
