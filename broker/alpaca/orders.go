@@ -54,6 +54,7 @@ type OrderRequest struct {
 	TrailPrice           decimal.Decimal       `json:"trail_price,omitempty"`
 	TrailPercent         decimal.Decimal       `json:"trail_percent,omitempty"`
 	Notional             decimal.Decimal       `json:"notional,omitempty"`
+	PositionIntent       PositionIntent        `json:"position_intent,omitempty"`
 	ClientOrderID        string                `json:"client_order_id,omitempty"` // unique identifier for the order; automatically generated if not sent (<= 128 characters)
 	AdvancedInstructions *AdvancedInstructions `json:"advanced_instructions,omitempty"`
 }

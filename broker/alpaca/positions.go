@@ -49,3 +49,22 @@ func (c *Client) GetPositions() ([]Position, error) {
 	}
 	return result, nil
 }
+
+// GetPosition retrieves an open position.
+func (c *Client) GetPosition(symbolOrAssetID fmt.Stringer) (*Position, error) {
+	c.APITokenBucket.Get()
+	resp, err := c.Get("/v2/positions/" + symbolOrAssetID.String())
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+	var result Position
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	return &result, nil
+}

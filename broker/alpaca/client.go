@@ -3,6 +3,7 @@ package alpaca
 import (
 	"dropbear/ds"
 	"dropbear/netty"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -38,6 +39,32 @@ func (c *Client) Close() error {
 // Get makes an authenticated GET request.
 func (c *Client) Get(path string) (*http.Response, error) {
 	return c.Request(netty.BulkHttpClient, "GET", path, nil)
+}
+
+// RequestJSON performs a GET request and decodes the JSON response into data.
+func (c *Client) RequestJSON(client *http.Client, method, url string, body io.Reader, response any) error {
+	resp, err := c.Request(client, method, url, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	decoder := json.NewDecoder(resp.Body)
+	if resp.StatusCode == http.StatusOK {
+		if err := decoder.Decode(response); err != nil {
+			return fmt.Errorf("failed to decode json response from %s: %w", url, err)
+		}
+		return nil
+	} else {
+		var err Error
+		if err := decoder.Decode(&err); err != nil {
+			return fmt.Errorf("failed to decode error response from %s: %w", url, err)
+		}
+		canonicalAPIErrorObject := canonicalizeError(err.Code)
+		if canonicalAPIErrorObject != nil {
+			return canonicalAPIErrorObject
+		}
+		return &err
+	}
 }
 
 // Request makes an authenticated API request with exponential backoff retry on 429.
