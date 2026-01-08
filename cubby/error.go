@@ -16,4 +16,5 @@ var (
 	ErrNotEasyToBorrow  = errors.New("asset is not easy to borrow")
 	ErrPriceNotRounded  = errors.New("price is not rounded to cent")
 	ErrFractionalShares = errors.New("quantity cannot be fractional")
+	ErrLOOTooLate       = errors.New("LOO order too late (must submit before 6:28 AM PT)")
 )

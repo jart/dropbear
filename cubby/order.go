@@ -21,6 +21,7 @@ type Order struct {
 	ClientOrderID  string
 	Equity         *Equity
 	Type           alpaca.OrderType
+	TimeInForce    alpaca.TimeInForce
 	Status         alpaca.OrderStatus
 	Side           ds.Side
 	Quantity       decimal.Decimal // always positive
@@ -55,12 +56,41 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 		panic("broken program logic")
 	}
 
-	// check if order is too old
+	// handle LOO (Limit On Open) orders
+	if o.TimeInForce == alpaca.TimeInForceOPG {
+		time := bar.Timestamp.ClockInt()
+		// LOO orders only execute at the opening bar (first bar >= 6:30)
+		if time < 6_30_00 {
+			return // pre-market, wait for open
+		}
+		if time > 6_31_00 {
+			// missed the open, cancel
+			o.setStatus(alpaca.OrderStatusCanceled)
+			return
+		}
+		// execute at opening price if limit is acceptable
+		fillPrice := bar.Open
+		if o.Side == ds.SideBuy {
+			if fillPrice.Cmp(o.LimitPrice) > 0 {
+				o.setStatus(alpaca.OrderStatusCanceled) // limit not met
+				return
+			}
+		} else {
+			if fillPrice.Cmp(o.LimitPrice) < 0 {
+				o.setStatus(alpaca.OrderStatusCanceled) // limit not met
+				return
+			}
+		}
+		o.fillAtPrice(fillPrice, o.Quantity)
+		return
+	}
+
+	// regular day orders
+	time := bar.Timestamp.ClockInt()
 	if now.Sub(o.OrderedAt) > *FlagPatience {
 		o.setStatus(alpaca.OrderStatusExpired)
 		return
 	}
-	time := now.ClockInt()
 	if time < 6_30_00 || time > 13_00_00 {
 		o.setStatus(alpaca.OrderStatusExpired)
 		return
@@ -90,28 +120,32 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 		panic("broken program logic")
 	}
 
+	o.fillAtPrice(bar.VWAP, fillQuantity)
+}
+
+func (o *Order) fillAtPrice(price, quantity decimal.Decimal) {
 	// calculate weighted average fill price if we already have partial fills
 	oldValue := o.FilledPrice.Mul(o.FilledQuantity)
-	newValue := bar.VWAP.Mul(fillQuantity)
-	o.FilledQuantity = o.FilledQuantity.Add(fillQuantity)
+	newValue := price.Mul(quantity)
+	o.FilledQuantity = o.FilledQuantity.Add(quantity)
 	o.FilledPrice = oldValue.Add(newValue).Div(o.FilledQuantity)
 
 	// calculate and add fees (limit orders are maker orders)
-	fee := gFeeCalculator.GetFee(clocky.Now(), fillQuantity, false)
+	fee := gFeeCalculator.GetFee(clocky.Now(), quantity, false)
 	o.TotalFees = o.TotalFees.Add(fee)
 
 	// update cash and position
-	notional := bar.VWAP.Mul(fillQuantity)
+	notional := price.Mul(quantity)
 	if o.Side == ds.SideBuy {
 		Cash = Cash.Sub(notional).Sub(fee)
 		// update average entry price (weighted average)
 		oldValue := o.Equity.EntryPrice.Mul(o.Equity.Quantity)
-		newValue := bar.VWAP.Mul(fillQuantity)
-		o.Equity.Quantity = o.Equity.Quantity.Add(fillQuantity)
+		newValue := price.Mul(quantity)
+		o.Equity.Quantity = o.Equity.Quantity.Add(quantity)
 		o.Equity.EntryPrice = oldValue.Add(newValue).Div(o.Equity.Quantity)
 	} else {
 		Cash = Cash.Add(notional).Sub(fee)
-		o.Equity.Quantity = o.Equity.Quantity.Sub(fillQuantity)
+		o.Equity.Quantity = o.Equity.Quantity.Sub(quantity)
 		// reset entry price when position is fully closed
 		if o.Equity.Quantity.IsZero() {
 			o.Equity.EntryPrice = decimal.Zero
