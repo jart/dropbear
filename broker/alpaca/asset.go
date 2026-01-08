@@ -37,6 +37,21 @@ type Asset struct {
 	PriceIncrement         decimal.Decimal // smallest unit of price movement supported (tick size)
 }
 
+var stardardMarginRate = decimal.Parse("0.3")
+
+func (a *Asset) IsHealthy() bool {
+	return a.Class == AssetClassUSEquity &&
+		a.Status == AssetStatusActive &&
+		a.Tradable.Load() &&
+		a.Marginable.Load() &&
+		a.HasOptions.Load() &&
+		a.EasyToBorrow.Load() &&
+		!a.PTPNoException.Load() &&
+		!a.PTPWithException.Load() &&
+		a.MarginRequirementLong.Load().Cmp(stardardMarginRate) == 0 &&
+		a.MarginRequirementShort.Load().Cmp(stardardMarginRate) == 0
+}
+
 func (asset *Asset) String() string {
 	return asset.Symbol.String()
 }

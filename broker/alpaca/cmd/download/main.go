@@ -56,23 +56,21 @@ func main() {
 	// get symbols from args, otherwise fetch everything
 	var symbols []symbol.Symbol
 	if len(flag.Args()) == 0 {
-		log.Println("No symbols specified, fetching all tradable US equities...")
+		log.Println("No symbols specified, fetching the healthiest US equities...")
 		client := alpaca.NewClient()
 		err := client.SyncAssets()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to sync assets: %v\n", err)
 			os.Exit(1)
 		}
+		count := 0
 		for _, a := range alpaca.Assets {
-			if a.Class == alpaca.AssetClassUSEquity &&
-				a.Status == alpaca.AssetStatusActive &&
-				a.Tradable == ds.True &&
-				a.PTPNoException == ds.False &&
-				a.PTPWithException == ds.False {
+			if a.IsHealthy() {
 				symbols = append(symbols, a.Symbol)
+				count++
 			}
 		}
-		log.Printf("Found %d tradable US equities", len(symbols))
+		log.Printf("Found %d healthy US equities", count)
 	} else {
 		for _, arg := range flag.Args() {
 			sym, err := symbol.Parse(arg)
