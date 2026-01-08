@@ -1,11 +1,11 @@
-package alpaca
+package sip
 
 import (
 	"dropbear/clocky"
 	"testing"
 )
 
-func TestParseTimestampFast(t *testing.T) {
+func TestParseTimestamp(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string // expected time as RFC3339
@@ -45,9 +45,9 @@ func TestParseTimestampFast(t *testing.T) {
 	}
 	for _, tt := range tests {
 		data := []byte(tt.input)
-		got, _, err := parseTimestampFast(data, 0)
+		got, _, err := parseTimestamp(data, 0)
 		if err != nil {
-			t.Errorf("parseTimestampFast(%s) error: %v", tt.input, err)
+			t.Errorf("parseTimestamp(%s) error: %v", tt.input, err)
 			continue
 		}
 		// Compare with clocky.ParseTime
@@ -56,7 +56,7 @@ func TestParseTimestampFast(t *testing.T) {
 			t.Fatalf("clocky.ParseTime(%s) error: %v", tt.want, err)
 		}
 		if got != want {
-			t.Errorf("parseTimestampFast(%s) = %d, want %d (diff: %d µs)",
+			t.Errorf("parseTimestamp(%s) = %d, want %d (diff: %d µs)",
 				tt.input, got, want, got-want)
 		}
 	}
@@ -65,15 +65,15 @@ func TestParseTimestampFast(t *testing.T) {
 var tsBenchData = []byte(`"2026-01-06T20:12:59.99839309Z"`)
 var tsBenchDataShort = []byte(`"2026-01-06T20:12:00Z"`)
 
-func BenchmarkParseTimestampFast(b *testing.B) {
+func BenchmarkParseTimestamp(b *testing.B) {
 	for b.Loop() {
-		parseTimestampFast(tsBenchData, 0)
+		parseTimestamp(tsBenchData, 0)
 	}
 }
 
-func BenchmarkParseTimestampFastShort(b *testing.B) {
+func BenchmarkParseTimestampShort(b *testing.B) {
 	for b.Loop() {
-		parseTimestampFast(tsBenchDataShort, 0)
+		parseTimestamp(tsBenchDataShort, 0)
 	}
 }
 

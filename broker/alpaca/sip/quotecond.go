@@ -1,4 +1,4 @@
-package alpaca
+package sip
 
 import (
 	"fmt"
@@ -6,29 +6,29 @@ import (
 	"strings"
 )
 
-// SIPQuoteCond is a bitmask of quote conditions from the SIP feed.
+// QuoteCond is a bitmask of quote conditions from the SIP feed.
 // Multiple conditions can be OR'd together.
-type SIPQuoteCond uint64
+type QuoteCond uint64
 
 // Individual quote condition bits. Each corresponds to a single-character code.
 const (
-	QuoteCondOnDemandAuction SIPQuoteCond = 1 << iota // code '4' - On Demand Intra Day Auction
-	QuoteCondA                                        // code 'A' - Slow Offer (CTA) / Manual Ask Auto Bid (UTP)
-	QuoteCondB                                        // code 'B' - Slow Bid (CTA) / Manual Bid Auto Ask (UTP)
-	QuoteCondClosing                                  // code 'C' - Closing Quote (CTA)
-	QuoteCondSlowLRPBid                               // code 'E' - Slow LRP Bid (CTA)
-	QuoteCondF                                        // code 'F' - Slow LRP Offer (CTA) / Fast Trading (UTP)
-	QuoteCondH                                        // code 'H' - Slow Bid And Offer (CTA) / Manual Bid Ask (UTP)
-	QuoteCondOrderImbalance                           // code 'I' - Order Imbalance (UTP)
-	QuoteCondClosed                                   // code 'L' - MM Closed (CTA) / Closed Quote (UTP)
-	QuoteCondNonFirm                                  // code 'N' - Non Firm Quote
-	QuoteCondOpening                                  // code 'O' - Opening Quote
-	QuoteCondR                                        // code 'R' - MM Open (CTA) / Two Sided Open (UTP)
-	QuoteCondU                                        // code 'U' - Slow LRP Bid And Offer (CTA) / Manual Non Firm (UTP)
-	QuoteCondSlowSetSlowList                          // code 'W' - Slow Set Slow List (CTA)
-	QuoteCondOrderInflux                              // code 'X' - Order Influx (UTP)
-	QuoteCondOneSidedOpen                             // code 'Y' - One Sided Open (UTP)
-	QuoteCondNoOpenNoResume                           // code 'Z' - No Open No Resume (UTP)
+	QuoteCondOnDemandAuction QuoteCond = 1 << iota // code '4' - On Demand Intra Day Auction
+	QuoteCondA                                     // code 'A' - Slow Offer (CTA) / Manual Ask Auto Bid (UTP)
+	QuoteCondB                                     // code 'B' - Slow Bid (CTA) / Manual Bid Auto Ask (UTP)
+	QuoteCondClosing                               // code 'C' - Closing Quote (CTA)
+	QuoteCondSlowLRPBid                            // code 'E' - Slow LRP Bid (CTA)
+	QuoteCondF                                     // code 'F' - Slow LRP Offer (CTA) / Fast Trading (UTP)
+	QuoteCondH                                     // code 'H' - Slow Bid And Offer (CTA) / Manual Bid Ask (UTP)
+	QuoteCondOrderImbalance                        // code 'I' - Order Imbalance (UTP)
+	QuoteCondClosed                                // code 'L' - MM Closed (CTA) / Closed Quote (UTP)
+	QuoteCondNonFirm                               // code 'N' - Non Firm Quote
+	QuoteCondOpening                               // code 'O' - Opening Quote
+	QuoteCondR                                     // code 'R' - MM Open (CTA) / Two Sided Open (UTP)
+	QuoteCondU                                     // code 'U' - Slow LRP Bid And Offer (CTA) / Manual Non Firm (UTP)
+	QuoteCondSlowSetSlowList                       // code 'W' - Slow Set Slow List (CTA)
+	QuoteCondOrderInflux                           // code 'X' - Order Influx (UTP)
+	QuoteCondOneSidedOpen                          // code 'Y' - One Sided Open (UTP)
+	QuoteCondNoOpenNoResume                        // code 'Z' - No Open No Resume (UTP)
 )
 
 // Composite condition masks for common checks
@@ -37,12 +37,8 @@ const (
 	QuoteCondSlowMask    = QuoteCondA | QuoteCondB | QuoteCondSlowLRPBid | QuoteCondF | QuoteCondH | QuoteCondU | QuoteCondSlowSetSlowList
 )
 
-var (
-	ErrInvalidSIPQuoteCond = fmt.Errorf("invalid SIP quote condition")
-)
-
 // LUT for converting character code to bit
-var quoteCondFromChar [256]SIPQuoteCond
+var quoteCondFromChar [256]QuoteCond
 
 func init() {
 	quoteCondFromChar['4'] = QuoteCondOnDemandAuction
@@ -71,23 +67,23 @@ var quoteCondToChar = [64]byte{
 }
 
 // Has returns true if this condition set contains the given condition(s).
-func (c SIPQuoteCond) Has(cond SIPQuoteCond) bool {
+func (c QuoteCond) Has(cond QuoteCond) bool {
 	return c&cond != 0
 }
 
 // IsNonFirm returns true if this contains a non-firm quote condition.
-func (c SIPQuoteCond) IsNonFirm() bool {
+func (c QuoteCond) IsNonFirm() bool {
 	return c&QuoteCondNonFirmMask != 0
 }
 
 // IsSlow returns true if this contains a slow quote condition.
-func (c SIPQuoteCond) IsSlow() bool {
+func (c QuoteCond) IsSlow() bool {
 	return c&QuoteCondSlowMask != 0
 }
 
-func (c SIPQuoteCond) String() string {
+func (c QuoteCond) String() string {
 	if c == 0 {
-		return "SIPQuoteCond(0)"
+		return "QuoteCond(0)"
 	}
 	var codes []string
 	for c != 0 {
@@ -98,56 +94,56 @@ func (c SIPQuoteCond) String() string {
 	return strings.Join(codes, ",")
 }
 
-func (c SIPQuoteCond) GoString() string {
+func (c QuoteCond) GoString() string {
 	if c == 0 {
 		return "0"
 	}
 	var parts []string
 	for _, cond := range []struct {
-		mask SIPQuoteCond
+		mask QuoteCond
 		name string
 	}{
-		{QuoteCondOnDemandAuction, "alpaca.QuoteCondOnDemandAuction"},
-		{QuoteCondA, "alpaca.QuoteCondA"},
-		{QuoteCondB, "alpaca.QuoteCondB"},
-		{QuoteCondClosing, "alpaca.QuoteCondClosing"},
-		{QuoteCondSlowLRPBid, "alpaca.QuoteCondSlowLRPBid"},
-		{QuoteCondF, "alpaca.QuoteCondF"},
-		{QuoteCondH, "alpaca.QuoteCondH"},
-		{QuoteCondOrderImbalance, "alpaca.QuoteCondOrderImbalance"},
-		{QuoteCondClosed, "alpaca.QuoteCondClosed"},
-		{QuoteCondNonFirm, "alpaca.QuoteCondNonFirm"},
-		{QuoteCondOpening, "alpaca.QuoteCondOpening"},
-		{QuoteCondR, "alpaca.QuoteCondR"},
-		{QuoteCondU, "alpaca.QuoteCondU"},
-		{QuoteCondSlowSetSlowList, "alpaca.QuoteCondSlowSetSlowList"},
-		{QuoteCondOrderInflux, "alpaca.QuoteCondOrderInflux"},
-		{QuoteCondOneSidedOpen, "alpaca.QuoteCondOneSidedOpen"},
-		{QuoteCondNoOpenNoResume, "alpaca.QuoteCondNoOpenNoResume"},
+		{QuoteCondOnDemandAuction, "sip.QuoteCondOnDemandAuction"},
+		{QuoteCondA, "sip.QuoteCondA"},
+		{QuoteCondB, "sip.QuoteCondB"},
+		{QuoteCondClosing, "sip.QuoteCondClosing"},
+		{QuoteCondSlowLRPBid, "sip.QuoteCondSlowLRPBid"},
+		{QuoteCondF, "sip.QuoteCondF"},
+		{QuoteCondH, "sip.QuoteCondH"},
+		{QuoteCondOrderImbalance, "sip.QuoteCondOrderImbalance"},
+		{QuoteCondClosed, "sip.QuoteCondClosed"},
+		{QuoteCondNonFirm, "sip.QuoteCondNonFirm"},
+		{QuoteCondOpening, "sip.QuoteCondOpening"},
+		{QuoteCondR, "sip.QuoteCondR"},
+		{QuoteCondU, "sip.QuoteCondU"},
+		{QuoteCondSlowSetSlowList, "sip.QuoteCondSlowSetSlowList"},
+		{QuoteCondOrderInflux, "sip.QuoteCondOrderInflux"},
+		{QuoteCondOneSidedOpen, "sip.QuoteCondOneSidedOpen"},
+		{QuoteCondNoOpenNoResume, "sip.QuoteCondNoOpenNoResume"},
 	} {
 		if c&cond.mask != 0 {
 			parts = append(parts, cond.name)
 		}
 	}
 	if len(parts) == 0 {
-		return fmt.Sprintf("alpaca.SIPQuoteCond(0x%x)", uint64(c))
+		return fmt.Sprintf("sip.QuoteCond(0x%x)", uint64(c))
 	}
 	return strings.Join(parts, "|")
 }
 
-func (c *SIPQuoteCond) UnmarshalJSON(data []byte) error {
+func (c *QuoteCond) UnmarshalJSON(data []byte) error {
 	// Parse JSON array like ["R","N"]
 	if len(data) < 2 {
-		return ErrInvalidSIPQuoteCond
+		return ErrInvalidQuoteCond
 	}
 	if data[0] == 'n' && string(data) == "null" {
 		*c = 0
 		return nil
 	}
 	if data[0] != '[' {
-		return ErrInvalidSIPQuoteCond
+		return ErrInvalidQuoteCond
 	}
-	var result SIPQuoteCond
+	var result QuoteCond
 	i := 1
 	for i < len(data) {
 		// Skip whitespace and commas
@@ -159,17 +155,17 @@ func (c *SIPQuoteCond) UnmarshalJSON(data []byte) error {
 		}
 		// Expect "X"
 		if data[i] != '"' {
-			return ErrInvalidSIPQuoteCond
+			return ErrInvalidQuoteCond
 		}
 		i++
 		if i >= len(data) {
-			return ErrInvalidSIPQuoteCond
+			return ErrInvalidQuoteCond
 		}
 		ch := data[i]
 		result |= quoteCondFromChar[ch]
 		i++
 		if i >= len(data) || data[i] != '"' {
-			return ErrInvalidSIPQuoteCond
+			return ErrInvalidQuoteCond
 		}
 		i++
 	}
@@ -187,7 +183,7 @@ func init() {
 	}
 }
 
-func (c SIPQuoteCond) MarshalJSON() ([]byte, error) {
+func (c QuoteCond) MarshalJSON() ([]byte, error) {
 	if c == 0 {
 		return quoteCondJSONEmpty, nil
 	}

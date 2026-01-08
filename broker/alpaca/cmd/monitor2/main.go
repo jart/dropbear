@@ -4,7 +4,7 @@ package main
 
 import (
 	"bufio"
-	"dropbear/broker/alpaca"
+	"dropbear/broker/alpaca/sip"
 	"dropbear/ds/symbol"
 	"dropbear/loggy"
 	"flag"
@@ -115,11 +115,11 @@ func processLine(data []byte, symbols map[symbol.Symbol]bool) {
 }
 
 func processMessage(data []byte, symbols map[symbol.Symbol]bool) {
-	msgType := alpaca.GetSIPMessageType(data)
+	msgType := sip.GetMessageType(data)
 	switch msgType {
 	case 't': // trade
 		if *flagTrade {
-			trade, err := alpaca.ParseSIPTrade(data)
+			trade, err := sip.ParseTrade(data)
 			if err != nil {
 				return
 			}
@@ -130,7 +130,7 @@ func processMessage(data []byte, symbols map[symbol.Symbol]bool) {
 		}
 	case 'q': // quote
 		if *flagQuote {
-			quote, err := alpaca.ParseSIPQuote(data)
+			quote, err := sip.ParseQuote(data)
 			if err != nil {
 				return
 			}
@@ -141,7 +141,7 @@ func processMessage(data []byte, symbols map[symbol.Symbol]bool) {
 		}
 	case 's': // status
 		if *flagStatus {
-			status, err := alpaca.ParseSIPStatus(data)
+			status, err := sip.ParseStatus(data)
 			if err != nil {
 				return
 			}
@@ -152,7 +152,7 @@ func processMessage(data []byte, symbols map[symbol.Symbol]bool) {
 		}
 	case 'l': // LULD
 		if *flagLULD {
-			luld, err := alpaca.ParseSIPLULD(data)
+			luld, err := sip.ParseLULD(data)
 			if err != nil {
 				return
 			}

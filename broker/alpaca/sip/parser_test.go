@@ -1,4 +1,4 @@
-package alpaca
+package sip
 
 import (
 	"bufio"
@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-//go:embed siptest.jsonl
+//go:embed test.jsonl
 var sipTestData []byte
 
 func TestSIPParserRoundtrip(t *testing.T) {
@@ -27,7 +27,7 @@ func TestSIPParserRoundtrip(t *testing.T) {
 			continue
 		}
 
-		msgType := GetSIPMessageType(line)
+		msgType := GetMessageType(line)
 
 		switch msgType {
 		case 't':
@@ -88,7 +88,7 @@ func TestSIPParserRoundtrip(t *testing.T) {
 }
 
 func verifyTradeRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseSIPTrade(data)
+	fast, err := ParseTrade(data)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func verifyTradeRoundtrip(t *testing.T, data []byte, lineNum int) error {
 		return err
 	}
 
-	var original SIPTrade
+	var original Trade
 	if err := json.Unmarshal(data, &original); err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func verifyTradeRoundtrip(t *testing.T, data []byte, lineNum int) error {
 		t.Errorf("line %d: Tape mismatch: fast=%v original=%v", lineNum, fast.Tape, original.Tape)
 	}
 
-	var roundtrip SIPTrade
+	var roundtrip Trade
 	if err := json.Unmarshal(remarshaled, &roundtrip); err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func verifyTradeRoundtrip(t *testing.T, data []byte, lineNum int) error {
 }
 
 func verifyQuoteRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseSIPQuote(data)
+	fast, err := ParseQuote(data)
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func verifyQuoteRoundtrip(t *testing.T, data []byte, lineNum int) error {
 		return err
 	}
 
-	var original SIPQuote
+	var original Quote
 	if err := json.Unmarshal(data, &original); err != nil {
 		return err
 	}
@@ -189,7 +189,7 @@ func verifyQuoteRoundtrip(t *testing.T, data []byte, lineNum int) error {
 		t.Errorf("line %d: Tape mismatch: fast=%v original=%v", lineNum, fast.Tape, original.Tape)
 	}
 
-	var roundtrip SIPQuote
+	var roundtrip Quote
 	if err := json.Unmarshal(remarshaled, &roundtrip); err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func verifyQuoteRoundtrip(t *testing.T, data []byte, lineNum int) error {
 }
 
 func verifyBarRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseSIPBar(data)
+	fast, err := ParseBar(data)
 	if err != nil {
 		return err
 	}
@@ -208,7 +208,7 @@ func verifyBarRoundtrip(t *testing.T, data []byte, lineNum int) error {
 		return err
 	}
 
-	var original SIPBar
+	var original Bar
 	if err := json.Unmarshal(data, &original); err != nil {
 		return err
 	}
@@ -244,7 +244,7 @@ func verifyBarRoundtrip(t *testing.T, data []byte, lineNum int) error {
 		t.Errorf("line %d: Timestamp mismatch: fast=%v original=%v", lineNum, fast.Timestamp, original.Timestamp)
 	}
 
-	var roundtrip SIPBar
+	var roundtrip Bar
 	if err := json.Unmarshal(remarshaled, &roundtrip); err != nil {
 		return err
 	}
@@ -253,7 +253,7 @@ func verifyBarRoundtrip(t *testing.T, data []byte, lineNum int) error {
 }
 
 func verifyStatusRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseSIPStatus(data)
+	fast, err := ParseStatus(data)
 	if err != nil {
 		return err
 	}
@@ -263,7 +263,7 @@ func verifyStatusRoundtrip(t *testing.T, data []byte, lineNum int) error {
 		return err
 	}
 
-	var original SIPStatus
+	var original Status
 	if err := json.Unmarshal(data, &original); err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func verifyStatusRoundtrip(t *testing.T, data []byte, lineNum int) error {
 		t.Errorf("line %d: Timestamp mismatch: fast=%v original=%v", lineNum, fast.Timestamp, original.Timestamp)
 	}
 
-	var roundtrip SIPStatus
+	var roundtrip Status
 	if err := json.Unmarshal(remarshaled, &roundtrip); err != nil {
 		return err
 	}

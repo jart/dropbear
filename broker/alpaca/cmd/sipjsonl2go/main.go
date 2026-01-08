@@ -10,7 +10,7 @@ package main
 
 import (
 	"bufio"
-	"dropbear/broker/alpaca"
+	"dropbear/broker/alpaca/sip"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,16 +33,16 @@ func main() {
 	fmt.Println(")")
 	fmt.Println()
 	fmt.Println("var (")
-	fmt.Println("\t_ = alpaca.SIPMessageTypeTrade")
+	fmt.Println("\t_ = sip.MessageTypeTrade")
 	fmt.Println("\t_ = clocky.Time(0)")
 	fmt.Println("\t_ = decimal.Zero")
 	fmt.Println(")")
 	fmt.Println()
 
-	var trades []alpaca.SIPTrade
-	var quotes []alpaca.SIPQuote
-	var bars []alpaca.SIPBar
-	var statuses []alpaca.SIPStatus
+	var trades []sip.Trade
+	var quotes []sip.Quote
+	var bars []sip.Bar
+	var statuses []sip.Status
 
 	for _, path := range os.Args[1:] {
 		f, err := os.Open(path)
@@ -63,31 +63,31 @@ func main() {
 				continue
 			}
 
-			msgType := alpaca.GetSIPMessageType(line)
+			msgType := sip.GetMessageType(line)
 			switch msgType {
 			case 't':
-				t, err := alpaca.ParseSIPTrade(line)
+				t, err := sip.ParseTrade(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: trade parse error: %v\n", path, lineNum, err)
 					continue
 				}
 				trades = append(trades, t)
 			case 'q':
-				q, err := alpaca.ParseSIPQuote(line)
+				q, err := sip.ParseQuote(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: quote parse error: %v\n", path, lineNum, err)
 					continue
 				}
 				quotes = append(quotes, q)
 			case 'b', 'd', 'u':
-				b, err := alpaca.ParseSIPBar(line)
+				b, err := sip.ParseBar(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: bar parse error: %v\n", path, lineNum, err)
 					continue
 				}
 				bars = append(bars, b)
 			case 's':
-				s, err := alpaca.ParseSIPStatus(line)
+				s, err := sip.ParseStatus(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: status parse error: %v\n", path, lineNum, err)
 					continue
@@ -107,7 +107,7 @@ func main() {
 	}
 
 	if len(trades) > 0 {
-		fmt.Printf("var Trades = []alpaca.SIPTrade{\n")
+		fmt.Printf("var Trades = []sip.Trade{\n")
 		for _, t := range trades {
 			fmt.Printf("\t%#v,\n", t)
 		}
@@ -116,7 +116,7 @@ func main() {
 	}
 
 	if len(quotes) > 0 {
-		fmt.Printf("var Quotes = []alpaca.SIPQuote{\n")
+		fmt.Printf("var Quotes = []sip.Quote{\n")
 		for _, q := range quotes {
 			fmt.Printf("\t%#v,\n", q)
 		}
@@ -125,7 +125,7 @@ func main() {
 	}
 
 	if len(bars) > 0 {
-		fmt.Printf("var Bars = []alpaca.SIPBar{\n")
+		fmt.Printf("var Bars = []sip.Bar{\n")
 		for _, b := range bars {
 			fmt.Printf("\t%#v,\n", b)
 		}
@@ -134,7 +134,7 @@ func main() {
 	}
 
 	if len(statuses) > 0 {
-		fmt.Printf("var Statuses = []alpaca.SIPStatus{\n")
+		fmt.Printf("var Statuses = []sip.Status{\n")
 		for _, s := range statuses {
 			fmt.Printf("\t%#v,\n", s)
 		}

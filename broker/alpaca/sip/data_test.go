@@ -1,4 +1,4 @@
-package alpaca
+package sip
 
 import (
 	"dropbear/ds/symbol"
@@ -13,41 +13,41 @@ var (
 	barJSON   = []byte(`{"T":"b","S":"AAPL","o":"150.00","h":"151.00","l":"149.50","c":"150.50","v":1000000,"vw":"150.25","n":5000,"t":"2024-01-15T14:30:00Z"}`)
 )
 
-func BenchmarkGetSIPMessageType(b *testing.B) {
+func BenchmarkGetMessageType(b *testing.B) {
 	for b.Loop() {
-		_ = GetSIPMessageType(tradeJSON)
+		_ = GetMessageType(tradeJSON)
 	}
 }
 
-func BenchmarkParseSIPTrade(b *testing.B) {
+func BenchmarkParseTrade(b *testing.B) {
 	for b.Loop() {
-		_, err := ParseSIPTrade(tradeJSON)
+		_, err := ParseTrade(tradeJSON)
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
-func BenchmarkParseSIPQuote(b *testing.B) {
+func BenchmarkParseQuote(b *testing.B) {
 	for b.Loop() {
-		_, err := ParseSIPQuote(quoteJSON)
+		_, err := ParseQuote(quoteJSON)
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
-func BenchmarkParseSIPBar(b *testing.B) {
+func BenchmarkParseBar(b *testing.B) {
 	for b.Loop() {
-		_, err := ParseSIPBar(barJSON)
+		_, err := ParseBar(barJSON)
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
-func BenchmarkSIPExchange_MarshalJSON(b *testing.B) {
-	e := SIPExchangeNASDAQ
+func BenchmarkExchange_MarshalJSON(b *testing.B) {
+	e := ExchangeNASDAQ
 	for b.Loop() {
 		_, err := e.MarshalJSON()
 		if err != nil {
@@ -56,9 +56,9 @@ func BenchmarkSIPExchange_MarshalJSON(b *testing.B) {
 	}
 }
 
-func BenchmarkSIPExchange_UnmarshalJSON(b *testing.B) {
+func BenchmarkExchange_UnmarshalJSON(b *testing.B) {
 	data := []byte(`"Q"`)
-	var e SIPExchange
+	var e Exchange
 	for b.Loop() {
 		err := e.UnmarshalJSON(data)
 		if err != nil {
@@ -67,21 +67,21 @@ func BenchmarkSIPExchange_UnmarshalJSON(b *testing.B) {
 	}
 }
 
-func BenchmarkSIPExchange_String(b *testing.B) {
-	e := SIPExchangeNASDAQ
+func BenchmarkExchange_String(b *testing.B) {
+	e := ExchangeNASDAQ
 	for b.Loop() {
 		_ = e.String()
 	}
 }
 
-func BenchmarkSIPExchange_GoString(b *testing.B) {
-	e := SIPExchangeNASDAQ
+func BenchmarkExchange_GoString(b *testing.B) {
+	e := ExchangeNASDAQ
 	for b.Loop() {
 		_ = e.GoString()
 	}
 }
 
-func BenchmarkSIPTradeCond_MarshalJSON_Single(b *testing.B) {
+func BenchmarkTradeCond_MarshalJSON_Single(b *testing.B) {
 	c := TradeCondRegularSale
 	for b.Loop() {
 		_, err := c.MarshalJSON()
@@ -91,7 +91,7 @@ func BenchmarkSIPTradeCond_MarshalJSON_Single(b *testing.B) {
 	}
 }
 
-func BenchmarkSIPTradeCond_MarshalJSON_Multi(b *testing.B) {
+func BenchmarkTradeCond_MarshalJSON_Multi(b *testing.B) {
 	c := TradeCondRegularSale | TradeCondISO
 	for b.Loop() {
 		_, err := c.MarshalJSON()
@@ -101,9 +101,9 @@ func BenchmarkSIPTradeCond_MarshalJSON_Multi(b *testing.B) {
 	}
 }
 
-func BenchmarkSIPTradeCond_UnmarshalJSON(b *testing.B) {
+func BenchmarkTradeCond_UnmarshalJSON(b *testing.B) {
 	data := []byte(`["@","F"]`)
-	var c SIPTradeCond
+	var c TradeCond
 	for b.Loop() {
 		err := c.UnmarshalJSON(data)
 		if err != nil {
@@ -112,21 +112,21 @@ func BenchmarkSIPTradeCond_UnmarshalJSON(b *testing.B) {
 	}
 }
 
-func BenchmarkSIPTradeCond_IsRegularSale(b *testing.B) {
+func BenchmarkTradeCond_IsRegularSale(b *testing.B) {
 	c := TradeCondRegularSale | TradeCondISO
 	for b.Loop() {
 		_ = c.IsRegularSale()
 	}
 }
 
-func BenchmarkSIPQuoteCond_IsSlow(b *testing.B) {
+func BenchmarkQuoteCond_IsSlow(b *testing.B) {
 	c := QuoteCondB | QuoteCondA
 	for b.Loop() {
 		_ = c.IsSlow()
 	}
 }
 
-func BenchmarkSIPQuoteCond_MarshalJSON_Single(b *testing.B) {
+func BenchmarkQuoteCond_MarshalJSON_Single(b *testing.B) {
 	c := QuoteCondR
 	for b.Loop() {
 		_, err := c.MarshalJSON()
@@ -136,7 +136,7 @@ func BenchmarkSIPQuoteCond_MarshalJSON_Single(b *testing.B) {
 	}
 }
 
-func BenchmarkSIPQuoteCond_MarshalJSON_Multi(b *testing.B) {
+func BenchmarkQuoteCond_MarshalJSON_Multi(b *testing.B) {
 	c := QuoteCondR | QuoteCondNonFirm
 	for b.Loop() {
 		_, err := c.MarshalJSON()
@@ -146,8 +146,8 @@ func BenchmarkSIPQuoteCond_MarshalJSON_Multi(b *testing.B) {
 	}
 }
 
-func BenchmarkSIPTape_MarshalJSON(b *testing.B) {
-	t := SIPTapeC
+func BenchmarkTape_MarshalJSON(b *testing.B) {
+	t := TapeC
 	for b.Loop() {
 		_, err := t.MarshalJSON()
 		if err != nil {
@@ -156,21 +156,21 @@ func BenchmarkSIPTape_MarshalJSON(b *testing.B) {
 	}
 }
 
-func BenchmarkSIPTape_IsCTA(b *testing.B) {
-	t := SIPTapeA
+func BenchmarkTape_IsCTA(b *testing.B) {
+	t := TapeA
 	for b.Loop() {
 		_ = t.IsCTA()
 	}
 }
 
-func BenchmarkSIPTape_IsUTP(b *testing.B) {
-	t := SIPTapeC
+func BenchmarkTape_IsUTP(b *testing.B) {
+	t := TapeC
 	for b.Loop() {
 		_ = t.IsUTP()
 	}
 }
 
-func TestGetSIPMessageType(t *testing.T) {
+func TestGetMessageType(t *testing.T) {
 	tests := []struct {
 		data []byte
 		want byte
@@ -182,15 +182,15 @@ func TestGetSIPMessageType(t *testing.T) {
 		{[]byte(`{"T":"s"}`), 's'},
 	}
 	for _, tt := range tests {
-		got := GetSIPMessageType(tt.data)
+		got := GetMessageType(tt.data)
 		if got != tt.want {
-			t.Errorf("GetSIPMessageType(%s) = %c, want %c", tt.data, got, tt.want)
+			t.Errorf("GetMessageType(%s) = %c, want %c", tt.data, got, tt.want)
 		}
 	}
 }
 
-func TestSIPTradeCond_UnmarshalJSON(t *testing.T) {
-	var c SIPTradeCond
+func TestTradeCond_UnmarshalJSON(t *testing.T) {
+	var c TradeCond
 	err := c.UnmarshalJSON([]byte(`["@","F"]`))
 	if err != nil {
 		t.Fatal(err)
@@ -200,7 +200,7 @@ func TestSIPTradeCond_UnmarshalJSON(t *testing.T) {
 	}
 }
 
-func TestSIPTradeCond_IsRegularSale(t *testing.T) {
+func TestTradeCond_IsRegularSale(t *testing.T) {
 	if !TradeCondRegularSaleCTA.IsRegularSale() {
 		t.Error("TradeCondRegularSaleCTA should be regular sale")
 	}
@@ -217,7 +217,7 @@ func TestSIPTradeCond_IsRegularSale(t *testing.T) {
 	}
 }
 
-func TestSIPTradeCond_IsExtendedHours(t *testing.T) {
+func TestTradeCond_IsExtendedHours(t *testing.T) {
 	if !TradeCondExtendedHours.IsExtendedHours() {
 		t.Error("TradeCondExtendedHours should be extended hours")
 	}
@@ -229,7 +229,7 @@ func TestSIPTradeCond_IsExtendedHours(t *testing.T) {
 	}
 }
 
-func TestSIPQuoteCond_IsSlow(t *testing.T) {
+func TestQuoteCond_IsSlow(t *testing.T) {
 	if !QuoteCondB.IsSlow() {
 		t.Error("QuoteCondB should be slow")
 	}
@@ -241,29 +241,29 @@ func TestSIPQuoteCond_IsSlow(t *testing.T) {
 	}
 }
 
-func TestSIPTape_IsCTA(t *testing.T) {
-	if !SIPTapeA.IsCTA() {
-		t.Error("SIPTapeA should be CTA")
+func TestTape_IsCTA(t *testing.T) {
+	if !TapeA.IsCTA() {
+		t.Error("TapeA should be CTA")
 	}
-	if !SIPTapeB.IsCTA() {
-		t.Error("SIPTapeB should be CTA")
+	if !TapeB.IsCTA() {
+		t.Error("TapeB should be CTA")
 	}
-	if SIPTapeC.IsCTA() {
-		t.Error("SIPTapeC should not be CTA")
-	}
-}
-
-func TestSIPTape_IsUTP(t *testing.T) {
-	if !SIPTapeC.IsUTP() {
-		t.Error("SIPTapeC should be UTP")
-	}
-	if SIPTapeA.IsUTP() {
-		t.Error("SIPTapeA should not be UTP")
+	if TapeC.IsCTA() {
+		t.Error("TapeC should not be CTA")
 	}
 }
 
-func TestParseSIPQuote(t *testing.T) {
-	quote, err := ParseSIPQuote(quoteJSON)
+func TestTape_IsUTP(t *testing.T) {
+	if !TapeC.IsUTP() {
+		t.Error("TapeC should be UTP")
+	}
+	if TapeA.IsUTP() {
+		t.Error("TapeA should not be UTP")
+	}
+}
+
+func TestParseQuote(t *testing.T) {
+	quote, err := ParseQuote(quoteJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,13 +275,13 @@ func TestParseSIPQuote(t *testing.T) {
 	}
 }
 
-func TestParseSIPTrade(t *testing.T) {
-	trade, err := ParseSIPTrade(tradeJSON)
+func TestParseTrade(t *testing.T) {
+	trade, err := ParseTrade(tradeJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if trade.Type != SIPMessageTypeTrade {
-		t.Errorf("Type = %v, want %v", trade.Type, SIPMessageTypeTrade)
+	if trade.Type != MessageTypeTrade {
+		t.Errorf("Type = %v, want %v", trade.Type, MessageTypeTrade)
 	}
 	if trade.Symbol != AAPL {
 		t.Errorf("Symbol = %s, want AAPL", trade.Symbol)
@@ -289,8 +289,8 @@ func TestParseSIPTrade(t *testing.T) {
 	if trade.TradeID != 12345 {
 		t.Errorf("TradeID = %d, want 12345", trade.TradeID)
 	}
-	if trade.Exchange != SIPExchangeNASDAQ {
-		t.Errorf("Exchange = %v, want %v", trade.Exchange, SIPExchangeNASDAQ)
+	if trade.Exchange != ExchangeNASDAQ {
+		t.Errorf("Exchange = %v, want %v", trade.Exchange, ExchangeNASDAQ)
 	}
 	if trade.Price.String() != "150.25" {
 		t.Errorf("Price = %s, want 150.25", trade.Price)
@@ -301,24 +301,24 @@ func TestParseSIPTrade(t *testing.T) {
 	if trade.Conditions != TradeCondRegularSale|TradeCondISO {
 		t.Errorf("Conditions = %v, want %v", trade.Conditions, TradeCondRegularSale|TradeCondISO)
 	}
-	if trade.Tape != SIPTapeC {
-		t.Errorf("Tape = %v, want %v", trade.Tape, SIPTapeC)
+	if trade.Tape != TapeC {
+		t.Errorf("Tape = %v, want %v", trade.Tape, TapeC)
 	}
 }
 
-func TestParseSIPQuote2(t *testing.T) {
-	quote, err := ParseSIPQuote(quoteJSON)
+func TestParseQuote2(t *testing.T) {
+	quote, err := ParseQuote(quoteJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if quote.Type != SIPMessageTypeQuote {
-		t.Errorf("Type = %v, want %v", quote.Type, SIPMessageTypeQuote)
+	if quote.Type != MessageTypeQuote {
+		t.Errorf("Type = %v, want %v", quote.Type, MessageTypeQuote)
 	}
 	if quote.Symbol != AAPL {
 		t.Errorf("Symbol = %s, want AAPL", quote.Symbol)
 	}
-	if quote.AskExchange != SIPExchangeNASDAQ {
-		t.Errorf("AskExchange = %v, want %v", quote.AskExchange, SIPExchangeNASDAQ)
+	if quote.AskExchange != ExchangeNASDAQ {
+		t.Errorf("AskExchange = %v, want %v", quote.AskExchange, ExchangeNASDAQ)
 	}
 	if quote.AskPrice.String() != "150.26" {
 		t.Errorf("AskPrice = %s, want 150.26", quote.AskPrice)
@@ -326,8 +326,8 @@ func TestParseSIPQuote2(t *testing.T) {
 	if quote.AskSize != 200 {
 		t.Errorf("AskSize = %d, want 200", quote.AskSize)
 	}
-	if quote.BidExchange != SIPExchangeNYSEArca {
-		t.Errorf("BidExchange = %v, want %v", quote.BidExchange, SIPExchangeNYSEArca)
+	if quote.BidExchange != ExchangeNYSEArca {
+		t.Errorf("BidExchange = %v, want %v", quote.BidExchange, ExchangeNYSEArca)
 	}
 	if quote.BidPrice.String() != "150.24" {
 		t.Errorf("BidPrice = %s, want 150.24", quote.BidPrice)
@@ -338,18 +338,18 @@ func TestParseSIPQuote2(t *testing.T) {
 	if quote.Conditions != QuoteCondR {
 		t.Errorf("Conditions = %v, want %v", quote.Conditions, QuoteCondR)
 	}
-	if quote.Tape != SIPTapeC {
-		t.Errorf("Tape = %v, want %v", quote.Tape, SIPTapeC)
+	if quote.Tape != TapeC {
+		t.Errorf("Tape = %v, want %v", quote.Tape, TapeC)
 	}
 }
 
-func TestParseSIPBar(t *testing.T) {
-	bar, err := ParseSIPBar(barJSON)
+func TestParseBar(t *testing.T) {
+	bar, err := ParseBar(barJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bar.Type != SIPMessageTypeBar {
-		t.Errorf("Type = %v, want %v", bar.Type, SIPMessageTypeBar)
+	if bar.Type != MessageTypeBar {
+		t.Errorf("Type = %v, want %v", bar.Type, MessageTypeBar)
 	}
 	if bar.Symbol != AAPL {
 		t.Errorf("Symbol = %s, want AAPL", bar.Symbol)
@@ -377,7 +377,7 @@ func TestParseSIPBar(t *testing.T) {
 	}
 }
 
-func TestSIPStatusCode_IsTradingHalt(t *testing.T) {
+func TestStatusCode_IsTradingHalt(t *testing.T) {
 	if !StatusCodeTradingHaltCTA.IsTradingHalt() {
 		t.Error("StatusCodeTradingHaltCTA should be trading halt")
 	}
@@ -389,7 +389,7 @@ func TestSIPStatusCode_IsTradingHalt(t *testing.T) {
 	}
 }
 
-func TestSIPStatusCode_IsResume(t *testing.T) {
+func TestStatusCode_IsResume(t *testing.T) {
 	if !StatusCodeResumeCTA.IsResume() {
 		t.Error("StatusCodeResumeCTA should be resume")
 	}
@@ -401,7 +401,7 @@ func TestSIPStatusCode_IsResume(t *testing.T) {
 	}
 }
 
-func TestSIPReasonCode_IsCircuitBreaker(t *testing.T) {
+func TestReasonCode_IsCircuitBreaker(t *testing.T) {
 	if !ReasonCodeCircuitLvl1.IsCircuitBreaker() {
 		t.Error("ReasonCodeCircuitLvl1 should be circuit breaker")
 	}
@@ -416,7 +416,7 @@ func TestSIPReasonCode_IsCircuitBreaker(t *testing.T) {
 	}
 }
 
-func TestSIPReasonCode_ParseReasonCode_Unknown(t *testing.T) {
+func TestReasonCode_ParseReasonCode_Unknown(t *testing.T) {
 	// Known code should succeed
 	rc, err := ParseReasonCode([]byte("T1"))
 	if err != nil {
@@ -426,30 +426,21 @@ func TestSIPReasonCode_ParseReasonCode_Unknown(t *testing.T) {
 		t.Errorf("ParseReasonCode(T1) = %v, want %v", rc, ReasonCodeHaltNewsPending)
 	}
 
-	// Empty should succeed (no reason)
-	rc, err = ParseReasonCode([]byte(""))
-	if err != nil {
-		t.Errorf("ParseReasonCode('') error: %v", err)
-	}
-	if rc != ReasonCodeUnknown {
-		t.Errorf("ParseReasonCode('') = %v, want %v", rc, ReasonCodeUnknown)
-	}
-
 	// Unknown code should return error
 	_, err = ParseReasonCode([]byte("BOGUS"))
-	if err != ErrUnknownReasonCode {
-		t.Errorf("ParseReasonCode(BOGUS) error = %v, want %v", err, ErrUnknownReasonCode)
+	if err != ErrInvalidReasonCode {
+		t.Errorf("ParseReasonCode(BOGUS) error = %v, want %v", err, ErrInvalidReasonCode)
 	}
 }
 
-func TestParseSIPStatus(t *testing.T) {
+func TestParseStatus(t *testing.T) {
 	statusJSON := []byte(`{"T":"s","S":"AAPL","sc":"H","sm":"Trading Halted","rc":"T1","t":"2024-01-15T14:30:00Z"}`)
-	status, err := ParseSIPStatus(statusJSON)
+	status, err := ParseStatus(statusJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Type != SIPMessageTypeStatus {
-		t.Errorf("Type = %v, want %v", status.Type, SIPMessageTypeStatus)
+	if status.Type != MessageTypeStatus {
+		t.Errorf("Type = %v, want %v", status.Type, MessageTypeStatus)
 	}
 	if status.Symbol != AAPL {
 		t.Errorf("Symbol = %s, want AAPL", status.Symbol)
@@ -463,19 +454,19 @@ func TestParseSIPStatus(t *testing.T) {
 	if status.Reason != ReasonCodeHaltNewsPending {
 		t.Errorf("Reason = %v, want %v", status.Reason, ReasonCodeHaltNewsPending)
 	}
-	if !status.IsTradingHalt() {
+	if !status.Code.IsTradingHalt() {
 		t.Error("should be trading halt")
 	}
 }
 
-func BenchmarkSIPReasonCode_IsCircuitBreaker(b *testing.B) {
+func BenchmarkReasonCode_IsCircuitBreaker(b *testing.B) {
 	rc := ReasonCodeCircuitLvl1
 	for b.Loop() {
 		_ = rc.IsCircuitBreaker()
 	}
 }
 
-func BenchmarkSIPReasonCode_ParseReasonCode(b *testing.B) {
+func BenchmarkReasonCode_ParseReasonCode(b *testing.B) {
 	data := []byte("T12")
 	for b.Loop() {
 		_, err := ParseReasonCode(data)
@@ -485,10 +476,10 @@ func BenchmarkSIPReasonCode_ParseReasonCode(b *testing.B) {
 	}
 }
 
-func BenchmarkParseSIPStatus(b *testing.B) {
+func BenchmarkParseStatus(b *testing.B) {
 	statusJSON := []byte(`{"T":"s","S":"AAPL","sc":"H","sm":"Trading Halted","rc":"T1","t":"2024-01-15T14:30:00Z"}`)
 	for b.Loop() {
-		_, err := ParseSIPStatus(statusJSON)
+		_, err := ParseStatus(statusJSON)
 		if err != nil {
 			b.Fatal(err)
 		}

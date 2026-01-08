@@ -1,8 +1,8 @@
-package alpaca
+package sip
 
-// GetSIPMessageType extracts the message type from a JSON message without full parsing.
+// GetMessageType extracts the message type from a JSON message without full parsing.
 // Returns 0 if the type cannot be determined.
-func GetSIPMessageType(data []byte) byte {
+func GetMessageType(data []byte) byte {
 	// Look for "T":"X" pattern where X is a single-char message type
 	for i := 0; i < len(data)-6; i++ {
 		if data[i] == '"' && data[i+1] == 'T' && data[i+2] == '"' && data[i+3] == ':' && data[i+4] == '"' {

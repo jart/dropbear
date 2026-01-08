@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"dropbear/broker/alpaca"
+	"dropbear/broker/alpaca/sip"
 	"dropbear/loggy"
 	"dropbear/netty"
 	"flag"
@@ -198,11 +199,11 @@ func (d *monitorDaemon) processMessages(data []byte) {
 }
 
 func (d *monitorDaemon) processMessage(data []byte) {
-	msgType := alpaca.GetSIPMessageType(data)
+	msgType := sip.GetMessageType(data)
 	switch msgType {
 	case 't': // trade
 		if *flagTrade {
-			trade, err := alpaca.ParseSIPTrade(data)
+			trade, err := sip.ParseTrade(data)
 			if err != nil {
 				log.Printf("parse trade error: %v", err)
 				return
@@ -211,7 +212,7 @@ func (d *monitorDaemon) processMessage(data []byte) {
 		}
 	case 'q': // quote
 		if *flagQuote {
-			quote, err := alpaca.ParseSIPQuote(data)
+			quote, err := sip.ParseQuote(data)
 			if err != nil {
 				log.Printf("parse quote error: %v", err)
 				return
@@ -220,7 +221,7 @@ func (d *monitorDaemon) processMessage(data []byte) {
 		}
 	case 's': // status
 		if *flagStatus {
-			status, err := alpaca.ParseSIPStatus(data)
+			status, err := sip.ParseStatus(data)
 			if err != nil {
 				log.Printf("parse status error: %v", err)
 				return
@@ -229,7 +230,7 @@ func (d *monitorDaemon) processMessage(data []byte) {
 		}
 	case 'l': // LULD
 		if *flagLULD {
-			luld, err := alpaca.ParseSIPLULD(data)
+			luld, err := sip.ParseLULD(data)
 			if err != nil {
 				log.Printf("parse LULD error: %v", err)
 				return
