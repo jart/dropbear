@@ -10,15 +10,9 @@
 // Usage:
 //
 //	go run ./cmd/dayo -backtest -start 2025-12-01
-//	go run ./cmd/dayo -backtest -start 2025-12-01 -auction  # opening auction mode
 //
-// In default mode, it waits for positive momentum before entering, uses trailing
-// stops, and liquidates before market close with adaptive pricing.
-//
-// In auction mode (-auction), it participates in the opening auction:
-//   - If pre-market GOOG > previous close: buy GOOG at open
-//   - If pre-market GOOG < previous close: buy GLD instead (safe haven)
-//   - Uses trailing stops and EOD liquidation same as default mode
+// It waits for positive momentum before entering, uses trailing stops,
+// and liquidates before market close with adaptive pricing.
 package main
 
 import (
@@ -34,8 +28,7 @@ import (
 )
 
 var (
-	flagSymbols    = flag.String("symbol", "GOOG", "primary symbol to trade")
-	flagFallback   = flag.String("fallback", "GLD", "fallback symbol when primary looks weak")
+	flagSymbols    = flag.String("symbol", "GOOG", "symbols to trade (space-separated)")
 	flagBenchmark  = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagSlipOpen   = decimal.FlagBPS("slip-open", "25", "slippage on open orders")
 	flagSlipClose  = decimal.FlagBPS("slip-close", "50", "slippage on close orders")
@@ -45,15 +38,12 @@ var (
 	flagWarmup     = flag.Int("warmup", 30, "warmup bars before trading")
 	flagEntryStart = flag.Int("entry-start", 6_45_00, "earliest time to enter (HHMMSS)")
 	flagEntryEnd   = flag.Int("entry-end", 11_00_00, "latest time to enter (HHMMSS)")
-	flagBOP        = flag.Bool("bop", false, "enable BOP filter")
-	flagNoMomentum = flag.Bool("no-momentum", false, "disable momentum filter")
-	flagAuction    = flag.Bool("auction", false, "enable opening auction mode")
-	flagStopDelay  = flag.Int("stop-delay", 0, "minutes after entry before stop becomes active (0=immediate)")
+	flagBOP        = flag.Bool("bop", false, "enable BOP filter (skip entry when sellers in control)")
+	flagNoMomentum = flag.Bool("no-momentum", false, "disable momentum filter (buy at open every day)")
 )
 
 const (
 	openTime         = 6_30_00
-	preAuctionCutoff = 6_28_00 // must submit LOO before this
 	normalClose      = 13_00_00
 	normalStartClose = 12_50_00
 	earlyClose       = 10_00_00
@@ -61,16 +51,12 @@ const (
 )
 
 var (
-	gPrimaryTrader  *Trader
-	gFallbackTrader *Trader
-	gAllTraders     []*Trader
+	gTraders        []*Trader
 	gDate           int
 	gCloseTime      int
 	gStartCloseTime int
 	gOpened         bool
 	gClosing        bool
-	gAuctionDone    bool // have we submitted our LOO order today?
-	gPrevClose      decimal.Decimal
 )
 
 var earlyCloseDates = map[int]bool{
@@ -89,51 +75,40 @@ func main() {
 	cubby.Init()
 
 	if *flagSymbols == "" {
-		log.Fatal("usage: dayo -symbol GOOG [-backtest] [-start DATE]")
+		log.Fatal("usage: dayo -symbol \"GOOG AMZN\" [-backtest] [-start DATE]")
 	}
 
-	// Parse primary symbol
-	primarySym, err := symbol.Parse(*flagSymbols)
+	syms, err := symbol.Expand(*flagSymbols)
 	if err != nil {
-		log.Fatalf("invalid symbol: %v", err)
+		log.Fatalf("invalid symbols: %v", err)
+	}
+	if len(syms) == 0 {
+		log.Fatal("no symbols specified")
 	}
 
-	primaryEquity, err := cubby.AddEquity(primarySym)
-	if err != nil {
-		log.Fatalf("error adding symbol %s: %v", primarySym, err)
+	for _, sym := range syms {
+		equity, err := cubby.AddEquity(sym)
+		if err != nil {
+			log.Printf("error adding symbol %s: %v", sym, err)
+			continue
+		}
+		trader := NewTrader(equity)
+		gTraders = append(gTraders, trader)
+		equity.OnBar = trader.onBar
 	}
-	gPrimaryTrader = NewTrader(primaryEquity)
-	gAllTraders = append(gAllTraders, gPrimaryTrader)
-	primaryEquity.OnBar = gPrimaryTrader.onBar
 
-	// Parse fallback symbol (for auction mode)
-	if *flagAuction && *flagFallback != "" {
-		fallbackSym, err := symbol.Parse(*flagFallback)
-		if err != nil {
-			log.Fatalf("invalid fallback symbol: %v", err)
-		}
-		fallbackEquity, err := cubby.AddEquity(fallbackSym)
-		if err != nil {
-			log.Fatalf("error adding fallback %s: %v", fallbackSym, err)
-		}
-		gFallbackTrader = NewTrader(fallbackEquity)
-		gAllTraders = append(gAllTraders, gFallbackTrader)
-		fallbackEquity.OnBar = gFallbackTrader.onBar
+	if len(gTraders) == 0 {
+		log.Fatal("no valid symbols to trade")
 	}
 
 	benchSym := symbol.MustParse(*flagBenchmark)
 	benchEquity, _ := cubby.AddEquity(benchSym)
 	cubby.Benchmark = benchEquity
 
-	if *flagAuction {
-		log.Printf("Opening Auction Day Trading Strategy")
-		log.Printf("  Primary:  %s", gPrimaryTrader.equity.Symbol)
-		if gFallbackTrader != nil {
-			log.Printf("  Fallback: %s", gFallbackTrader.equity.Symbol)
-		}
-	} else {
-		log.Printf("Momentum Day Trading Strategy")
-		log.Printf("  Symbol: %s", gPrimaryTrader.equity.Symbol)
+	log.Printf("Momentum Day Trading Strategy")
+	log.Printf("  Symbols: %d", len(gTraders))
+	for _, t := range gTraders {
+		log.Printf("    %s", t.equity.Symbol)
 	}
 
 	cubby.Run()
@@ -153,7 +128,6 @@ type Trader struct {
 	entryPrice decimal.Decimal
 	highSince  decimal.Decimal
 	stopPrice  decimal.Decimal
-	entryTime  clocky.Time // when position was entered (skip stop check on entry bar)
 	barCount   int
 }
 
@@ -175,19 +149,13 @@ func (t *Trader) onBar(bar *ds.Bar) {
 	// new day reset
 	date := bar.Timestamp.DateInt()
 	if date != gDate {
-		// save previous close before resetting
-		if gPrimaryTrader.equity.Price.IsPositive() {
-			gPrevClose = gPrimaryTrader.equity.Price
-		}
 		gDate = date
 		gOpened = false
 		gClosing = false
-		gAuctionDone = false
 		t.barCount = 0
 		t.entryPrice = decimal.Zero
 		t.highSince = decimal.Zero
 		t.stopPrice = decimal.Zero
-		t.entryTime = 0
 		if isEarlyCloseDay(date) {
 			gCloseTime = earlyClose
 			gStartCloseTime = earlyStartClose
@@ -221,48 +189,23 @@ func (t *Trader) onBar(bar *ds.Bar) {
 	}
 
 	// track high since entry for trailing stop
-	if !t.equity.Quantity.IsZero() {
-		// detect entry (transition from no position to having position)
-		if t.entryTime == 0 {
-			t.entryTime = bar.Timestamp
-			t.entryPrice = t.equity.Price
-			t.highSince = bar.High
-			if t.atr.IsReady() {
-				t.stopPrice = bar.High.Sub(t.atr.Value.Mul(*flagStopATR))
-			}
-		} else if bar.High.Cmp(t.highSince) > 0 {
-			// update trailing stop on new highs
-			t.highSince = bar.High
-			if t.atr.IsReady() {
-				t.stopPrice = t.highSince.Sub(t.atr.Value.Mul(*flagStopATR))
-			}
-		}
-	} else {
-		// position closed, reset tracking
-		if t.entryTime != 0 {
-			t.entryTime = 0
-			t.entryPrice = decimal.Zero
-			t.highSince = decimal.Zero
-			t.stopPrice = decimal.Zero
+	if !t.equity.Quantity.IsZero() && bar.High.Cmp(t.highSince) > 0 {
+		t.highSince = bar.High
+		// update trailing stop
+		if t.atr.IsReady() {
+			t.stopPrice = t.highSince.Sub(t.atr.Value.Mul(*flagStopATR))
 		}
 	}
 
 	now := clocky.Now()
 	time := now.ClockInt()
 
-	// auction mode: submit LOO order before market open
-	if *flagAuction && !gAuctionDone && time < preAuctionCutoff {
-		t.tryAuctionOrder(time)
-		return
-	}
-
 	if time < openTime || time >= gCloseTime {
 		return
 	}
 
-	// check stop loss (skip on entry bar and during stop delay period)
-	stopDelayOver := t.entryTime == 0 || bar.Timestamp.Sub(t.entryTime) >= clocky.Duration(*flagStopDelay)*clocky.Minute
-	if !t.equity.Quantity.IsZero() && t.stopPrice.IsPositive() && bar.Timestamp != t.entryTime && stopDelayOver {
+	// check stop loss
+	if !t.equity.Quantity.IsZero() && t.stopPrice.IsPositive() {
 		if bar.Low.Cmp(t.stopPrice) <= 0 {
 			if cubby.Verbose {
 				log.Printf("stop loss triggered for %s at %s (stop: %s)",
@@ -285,80 +228,11 @@ func (t *Trader) onBar(bar *ds.Bar) {
 		return
 	}
 
-	// try to open (only in non-auction mode, or if auction order didn't fill)
+	// try to open
 	if !gOpened {
 		gOpened = true
 	}
-	if !*flagAuction {
-		t.tryOpen(time)
-	}
-}
-
-func (t *Trader) tryAuctionOrder(time int) {
-	// only the primary trader makes the auction decision
-	if t != gPrimaryTrader {
-		return
-	}
-
-	// need a previous close to compare against
-	if !gPrevClose.IsPositive() {
-		return
-	}
-
-	// need current price (pre-market)
-	if !t.equity.Price.IsPositive() {
-		return
-	}
-
-	gAuctionDone = true
-
-	// mean reversion: buy primary when gapped DOWN, buy safe haven when gapped UP
-	var targetTrader *Trader
-	gapPct := t.equity.Price.Sub(gPrevClose).Div(gPrevClose).MulInt(100)
-	if t.equity.Price.Cmp(gPrevClose) < 0 {
-		// pre-market < previous close: gap down, buy the dip
-		targetTrader = gPrimaryTrader
-		if cubby.Verbose {
-			log.Printf("auction: %s gap %.2f%% (premarket $%s < prev $%s), buying the dip",
-				t.equity.Symbol, gapPct.Float64(), t.equity.Price, gPrevClose)
-		}
-	} else {
-		// pre-market >= previous close: gap up or flat, buy safe haven instead
-		if gFallbackTrader != nil {
-			targetTrader = gFallbackTrader
-			if cubby.Verbose {
-				log.Printf("auction: %s gap %.2f%% (premarket $%s >= prev $%s), buying %s instead",
-					t.equity.Symbol, gapPct.Float64(), t.equity.Price, gPrevClose, targetTrader.equity.Symbol)
-			}
-		} else {
-			// no fallback configured, skip today
-			if cubby.Verbose {
-				log.Printf("auction: %s gap %.2f%% (premarket $%s >= prev $%s), no fallback, skipping",
-					t.equity.Symbol, gapPct.Float64(), t.equity.Price, gPrevClose)
-			}
-			return
-		}
-	}
-
-	// calculate limit price (generous to ensure fill at auction)
-	limitPrice := targetTrader.equity.Price.Mul(decimal.One.Add(*flagSlipOpen))
-	limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
-
-	// use full buying power for the auction order
-	qty := targetTrader.equity.GetMaxOrderQuantity(limitPrice).Truncate()
-	if !qty.IsPositive() {
-		return
-	}
-
-	order, err := targetTrader.equity.OrderAtOpen(qty, limitPrice)
-	if err != nil {
-		if cubby.Verbose {
-			log.Printf("auction: error placing LOO order for %s: %v", targetTrader.equity.Symbol, err)
-		}
-		return
-	}
-	targetTrader.order = order
-	// Note: don't set stopPrice here - wait until fill is confirmed and set based on actual price
+	t.tryOpen(time)
 }
 
 func (t *Trader) tryOpen(time int) {
@@ -409,7 +283,8 @@ func (t *Trader) tryOpen(time int) {
 	limitPrice := t.equity.Price.Mul(decimal.One.Add(*flagSlipOpen))
 	limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
 
-	qty := t.equity.GetMaxOrderQuantity(limitPrice).Truncate()
+	// divide equally among symbols
+	qty := t.equity.GetMaxOrderQuantity(limitPrice).DivInt(len(gTraders)).Truncate()
 	if !qty.IsPositive() {
 		return
 	}
@@ -422,7 +297,11 @@ func (t *Trader) tryOpen(time int) {
 		return
 	}
 	t.order = order
-	// Note: entryTime, entryPrice, highSince, and stopPrice are set when fill is detected in onBar
+	t.entryPrice = t.equity.Price
+	t.highSince = t.equity.Price
+	if t.atr.IsReady() {
+		t.stopPrice = t.equity.Price.Sub(t.atr.Value.Mul(*flagStopATR))
+	}
 }
 
 func (t *Trader) closePosition(time, startClose, closeTime int) {
