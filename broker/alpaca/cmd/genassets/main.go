@@ -3,6 +3,7 @@ package main
 import (
 	"dropbear/broker/alpaca"
 	"dropbear/decimal"
+	"dropbear/ds/symbol"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,11 +21,13 @@ func main() {
 	}
 
 	// sort symbols for deterministic output
-	symbols := make([]string, 0, len(alpaca.Assets))
+	symbols := make([]symbol.Symbol, 0, len(alpaca.Assets))
 	for sym := range alpaca.Assets {
 		symbols = append(symbols, sym)
 	}
-	sort.Strings(symbols)
+	sort.Slice(symbols, func(i, j int) bool {
+		return symbols[i] < symbols[j]
+	})
 
 	// now open assetsdata.go for writing
 	path := "broker/alpaca/assetsdata.go"
@@ -40,14 +43,15 @@ func main() {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "import (")
 	fmt.Fprintln(out, "\t\"dropbear/ds\"")
+	fmt.Fprintln(out, "\t\"dropbear/ds/symbol\"")
 	fmt.Fprintln(out, ")")
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "var Assets = map[string]*Asset{")
+	fmt.Fprintln(out, "var Assets = map[symbol.Symbol]*Asset{")
 
 	for _, sym := range symbols {
 		a := alpaca.Assets[sym]
-		fmt.Fprintf(out, "\t%q: {\n", sym)
-		fmt.Fprintf(out, "\t\tSymbol: %q,\n", a.Symbol)
+		fmt.Fprintf(out, "\t0x%x: { // %s\n", sym, sym)
+		fmt.Fprintf(out, "\t\tSymbol: 0x%x,\n", a.Symbol)
 		fmt.Fprintf(out, "\t\tExchange: %#v,\n", a.Exchange)
 		fmt.Fprintf(out, "\t\tClass: %#v,\n", a.Class)
 		fmt.Fprintf(out, "\t\tStatus: %#v,\n", a.Status)

@@ -1,25 +1,35 @@
-package symbols
+package symbol
 
 import (
 	"reflect"
 	"testing"
 )
 
-func TestParse(t *testing.T) {
+var (
+	AAPL  = MustParse("AAPL")
+	GOOG  = MustParse("GOOG")
+	GOOGL = MustParse("GOOGL")
+	MSFT  = MustParse("MSFT")
+	GLD   = MustParse("GLD")
+	PM    = MustParse("PM")
+	NVDA  = MustParse("NVDA")
+)
+
+func TestParseFile(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
-		want    []string
+		want    []Symbol
 	}{
 		{
 			name:    "simple list",
 			content: "AAPL\nGOOG\nMSFT\n",
-			want:    []string{"AAPL", "GOOG", "MSFT"},
+			want:    []Symbol{AAPL, GOOG, MSFT},
 		},
 		{
 			name:    "with full line comments",
 			content: "# stock picks\nAAPL\n# skipped\nGOOG\n",
-			want:    []string{"AAPL", "GOOG"},
+			want:    []Symbol{AAPL, GOOG},
 		},
 		{
 			name: "with inline comments",
@@ -28,17 +38,17 @@ GOOGL # better than treasury bonds
 GLD   # shiny rocks
 PM    # good beta synergy
 `,
-			want: []string{"GOOGL", "GLD", "PM"},
+			want: []Symbol{GOOGL, GLD, PM},
 		},
 		{
 			name:    "empty lines ignored",
 			content: "AAPL\n\n\nGOOG\n\n",
-			want:    []string{"AAPL", "GOOG"},
+			want:    []Symbol{AAPL, GOOG},
 		},
 		{
 			name:    "whitespace trimmed",
 			content: "  AAPL  \n\tGOOG\t\n",
-			want:    []string{"AAPL", "GOOG"},
+			want:    []Symbol{AAPL, GOOG},
 		},
 		{
 			name:    "empty file",
@@ -53,15 +63,17 @@ PM    # good beta synergy
 		{
 			name:    "comment hash in middle",
 			content: "AAPL#inline\n",
-			want:    []string{"AAPL"},
+			want:    []Symbol{AAPL},
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Parse(tt.content)
+			got, err := ParseFile(tt.content)
+			if err != nil {
+				t.Fatalf("ParseFile() error = %v", err)
+			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Parse() = %v, want %v", got, tt.want)
+				t.Errorf("ParseFile() = %v, want %v", got, tt.want)
 			}
 		})
 	}

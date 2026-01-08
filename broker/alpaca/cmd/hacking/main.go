@@ -4,6 +4,7 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 	"fmt"
 	"os"
 	"sort"
@@ -19,14 +20,16 @@ func main() {
 	}
 
 	// now sort keys before iterating over assets
-	keys := make([]string, 0, len(alpaca.Assets))
-	for _, a := range alpaca.Assets {
-		keys = append(keys, a.Symbol)
+	keys := make([]symbol.Symbol, 0, len(alpaca.Assets))
+	for sym := range alpaca.Assets {
+		keys = append(keys, sym)
 	}
-	sort.Strings(keys)
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
 
-	for _, symbol := range keys {
-		a := alpaca.Assets[symbol]
+	for _, sym := range keys {
+		a := alpaca.Assets[sym]
 		if a.Class == alpaca.AssetClassUSEquity &&
 			a.Status == alpaca.AssetStatusActive &&
 			a.Tradable == ds.True && a.PTPNoException == ds.False && a.PTPWithException == ds.False &&

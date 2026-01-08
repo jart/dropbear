@@ -4,6 +4,7 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 	"log"
 
 	"github.com/emirpasic/gods/v2/trees/binaryheap"
@@ -14,16 +15,16 @@ const (
 )
 
 type liveTrader struct {
-	symbols []string
+	symbols []symbol.Symbol
 	date    int
 	opened  bool
 	closed  bool
 }
 
 func newLiveTrader() *liveTrader {
-	symbols := make([]string, 0, len(Equities))
-	for symbol := range Equities {
-		symbols = append(symbols, symbol)
+	symbols := make([]symbol.Symbol, 0, len(Equities))
+	for sym := range Equities {
+		symbols = append(symbols, sym)
 	}
 	if len(symbols) == 0 {
 		panic("no equities registered for live trading")
@@ -66,7 +67,8 @@ func (lt *liveTrader) sync() {
 		log.Printf("error fetching alpaca positions: %v", err)
 	} else {
 		for _, position := range positions {
-			if equity, ok := Equities[position.Symbol]; ok {
+			equity := Equities[position.Symbol]
+			if equity != nil {
 				equity.Price = position.CurrentPrice
 				equity.Quantity = position.QtyAvailable
 				equity.EntryPrice = position.AvgEntryPrice
@@ -101,8 +103,9 @@ func (lt *liveTrader) warmup() {
 
 	// build a heap to replay bars in chronological order (like backtest)
 	heap := binaryheap.NewWith(compareLiveEntries)
-	for symbol, bars := range allBars {
-		if equity, ok := Equities[symbol]; ok {
+	for sym, bars := range allBars {
+		equity := Equities[sym]
+		if equity != nil {
 			for i := range bars {
 				heap.Push(&liveEntry{bar: &bars[i], equity: equity})
 			}
@@ -185,8 +188,8 @@ func (lt *liveTrader) loop() {
 
 		// build heap for ordered replay
 		heap := binaryheap.NewWith(compareLiveEntries)
-		for symbol, symbolBars := range bars {
-			equity := Equities[symbol]
+		for sym, symbolBars := range bars {
+			equity := Equities[sym]
 			if equity == nil {
 				continue
 			}
@@ -232,8 +235,8 @@ func (lt *liveTrader) loop() {
 }
 
 // fetchAllBars fetches all bars for all symbols, handling pagination.
-func (lt *liveTrader) fetchAllBars(start, end clocky.Time) (map[string][]ds.Bar, error) {
-	allBars := make(map[string][]ds.Bar)
+func (lt *liveTrader) fetchAllBars(start, end clocky.Time) (map[symbol.Symbol][]ds.Bar, error) {
+	allBars := make(map[symbol.Symbol][]ds.Bar)
 	pageToken := ""
 	for {
 		bars, nextToken, err := Client.GetBarsForSymbols(
@@ -250,8 +253,8 @@ func (lt *liveTrader) fetchAllBars(start, end clocky.Time) (map[string][]ds.Bar,
 		if err != nil {
 			return nil, err
 		}
-		for symbol, symbolBars := range bars {
-			allBars[symbol] = append(allBars[symbol], symbolBars...)
+		for sym, symbolBars := range bars {
+			allBars[sym] = append(allBars[sym], symbolBars...)
 		}
 		if nextToken == "" {
 			break

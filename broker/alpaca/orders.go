@@ -5,17 +5,19 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 	"dropbear/netty"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 )
 
 // Order represents an Alpaca order.
 type Order struct {
 	ID             string          `json:"id"`               //
-	Symbol         string          `json:"symbol"`           // e.g. SOLUSD
+	Symbol         symbol.Symbol   `json:"symbol"`           // e.g. SOLUSD
 	AssetID        string          `json:"asset_id"`         //
 	ClientOrderID  string          `json:"client_order_id"`  //
 	Replaces       string          `json:"replaces"`         // id of the order this order replaces
@@ -40,7 +42,7 @@ type Order struct {
 }
 
 type OrderRequest struct {
-	Symbol               string                `json:"symbol"`
+	Symbol               symbol.Symbol         `json:"symbol"`
 	Qty                  decimal.Decimal       `json:"qty"`
 	Side                 ds.Side               `json:"side"`
 	Type                 OrderType             `json:"type"`
@@ -87,6 +89,7 @@ func (c *Client) CreateOrder(body *OrderRequest) (*Order, error) {
 			respBody = compact.Bytes()
 		}
 		if resp.StatusCode == http.StatusForbidden {
+			log.Printf("forbidden trade: %s", string(respBody))
 			return nil, ErrWashTrade
 		}
 		return nil, fmt.Errorf("order failed %d: %s", resp.StatusCode, string(respBody))

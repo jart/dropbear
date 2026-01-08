@@ -5,6 +5,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 	"flag"
 	"fmt"
 	"os"
@@ -34,7 +35,7 @@ func main() {
 	}
 
 	// turn positions into a map for easy lookup
-	positionsMap := make(map[string]*alpaca.Position)
+	positionsMap := make(map[symbol.Symbol]*alpaca.Position)
 	for i := range positions {
 		if positions[i].AssetClass == alpaca.AssetClassUSEquity {
 			positionsMap[positions[i].Symbol] = &positions[i]
@@ -43,8 +44,8 @@ func main() {
 
 	// get list of stocks to liquidate
 	// we default to everything if you pass nothing
-	symbols := flag.Args()
-	if len(symbols) == 0 {
+	var symbols []symbol.Symbol
+	if len(flag.Args()) == 0 {
 		for _, pos := range positions {
 			symbols = append(symbols, pos.Symbol)
 		}
@@ -57,21 +58,30 @@ func main() {
 			fmt.Printf("Liquidation cancelled.\n")
 			return
 		}
+	} else {
+		for _, arg := range flag.Args() {
+			sym, err := symbol.Parse(arg)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "invalid symbol %q: %v\n", arg, err)
+				os.Exit(1)
+			}
+			symbols = append(symbols, sym)
+		}
 	}
 
 	// ensure for each symbol we have a position
-	for _, symbol := range symbols {
-		if positionsMap[symbol] == nil {
-			fmt.Fprintf(os.Stderr, "no open position for symbol %s\n", symbol)
+	for _, sym := range symbols {
+		if positionsMap[sym] == nil {
+			fmt.Fprintf(os.Stderr, "no open position for symbol %s\n", sym)
 			os.Exit(1)
 		}
 	}
 
 	// liquidate each position using a twap order
 	exitCode := 0
-	for _, symbol := range symbols {
+	for _, sym := range symbols {
 		var side ds.Side
-		position := positionsMap[symbol]
+		position := positionsMap[sym]
 		limitPrice := position.CurrentPrice
 		if position.Side == alpaca.PositionSideLong {
 			side = ds.SideSell
@@ -83,7 +93,7 @@ func main() {
 			limitPrice = limitPrice.QuantizeTruncate(decimal.Cent)
 		}
 		_, err := client.CreateOrder(&alpaca.OrderRequest{
-			Symbol:      symbol,
+			Symbol:      sym,
 			Side:        side,
 			Qty:         position.Qty,
 			LimitPrice:  limitPrice,

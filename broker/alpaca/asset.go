@@ -3,6 +3,7 @@ package alpaca
 import (
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 )
 
 var (
@@ -13,7 +14,7 @@ var (
 )
 
 type Asset struct {
-	Symbol                 string          // e.g. GOOG, BRK.B, BTC/USD
+	Symbol                 symbol.Symbol   // e.g. GOOG, BRK.B, BTC/USD
 	Name                   string          // e.g. Alphabet Inc. Class C Capital Stock, Bitcoin / US Dollar
 	ID                     string          // e.g. 60d10d62-7876-415d-9feb-c92cd87076da
 	Exchange               Exchange        // e.g. ExchangeNYSE, ExchangeNASDAQ, ExchangeCrypto
@@ -37,7 +38,7 @@ type Asset struct {
 }
 
 func (asset *Asset) String() string {
-	return asset.Symbol
+	return asset.Symbol.String()
 }
 
 // GetInitialMargin calculates the initial margin required to open a position.

@@ -1,4 +1,4 @@
-package symbols
+package symbol
 
 import (
 	"os"
@@ -18,26 +18,26 @@ GOOG
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-
 	tests := []struct {
 		name      string
 		flagValue string
-		want      []string
+		want      []Symbol
+		broken    bool
 	}{
 		{
 			name:      "plain symbols",
 			flagValue: "AAPL GOOG MSFT",
-			want:      []string{"AAPL", "GOOG", "MSFT"},
+			want:      []Symbol{AAPL, GOOG, MSFT},
 		},
 		{
 			name:      "file path",
 			flagValue: path,
-			want:      []string{"AAPL", "GOOG"},
+			want:      []Symbol{AAPL, GOOG},
 		},
 		{
 			name:      "mixed symbols and file",
 			flagValue: "MSFT " + path + " NVDA",
-			want:      []string{"MSFT", "AAPL", "GOOG", "NVDA"},
+			want:      []Symbol{MSFT, AAPL, GOOG, NVDA},
 		},
 		{
 			name:      "empty",
@@ -47,13 +47,18 @@ GOOG
 		{
 			name:      "nonexistent file treated as symbol",
 			flagValue: "/nonexistent/path",
-			want:      []string{"/nonexistent/path"},
+			broken:    true,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Expand(tt.flagValue)
+			got, err := Expand(tt.flagValue)
+			if err != nil && !tt.broken {
+				t.Fatalf("Expand() error: %v", err)
+			}
+			if tt.broken && err == nil {
+				t.Fatalf("Expand() expected error but got nil")
+			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Expand() = %v, want %v", got, tt.want)
 			}

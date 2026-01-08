@@ -2,6 +2,7 @@ package alpaca
 
 import (
 	"dropbear/decimal"
+	"dropbear/ds/symbol"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,9 +23,9 @@ type Quote struct {
 
 // GetQuote fetches the latest NBBO quote for a stock symbol.
 // https://docs.alpaca.markets/reference/stocklatestquotesingle-1
-func (c *Client) GetQuote(symbol string) (*Quote, error) {
+func (c *Client) GetQuote(sym symbol.Symbol) (*Quote, error) {
 	c.DataTokenBucket.Get()
-	resp, err := c.Get(fmt.Sprintf("https://%s/v2/stocks/%s/quotes/latest", DataHost, symbol))
+	resp, err := c.Get(fmt.Sprintf("https://%s/v2/stocks/%s/quotes/latest", DataHost, sym))
 	if err != nil {
 		return nil, err
 	}
@@ -46,12 +47,13 @@ func (c *Client) GetQuote(symbol string) (*Quote, error) {
 // GetCryptoQuote fetches the latest quote for a crypto symbol.
 // Symbol should be in Alpaca format (e.g., "BTCUSD") - it will be converted to "BTC/USD".
 // https://docs.alpaca.markets/reference/cryptolatestquotes-1
-func (c *Client) GetCryptoQuote(symbol string) (*Quote, error) {
+func (c *Client) GetCryptoQuote(sym symbol.Symbol) (*Quote, error) {
 	c.DataTokenBucket.Get()
 	// Convert BTCUSD -> BTC/USD format for the API
-	apiSymbol := symbol
-	if len(symbol) >= 6 && symbol[len(symbol)-3:] == "USD" {
-		apiSymbol = symbol[:len(symbol)-3] + "/USD"
+	s := sym.String()
+	apiSymbol := s
+	if len(s) >= 6 && s[len(s)-3:] == "USD" {
+		apiSymbol = s[:len(s)-3] + "/USD"
 	}
 	resp, err := c.Get(fmt.Sprintf("https://%s/v1beta3/crypto/us/latest/quotes?symbols=%s", DataHost, apiSymbol))
 	if err != nil {
@@ -70,7 +72,7 @@ func (c *Client) GetCryptoQuote(symbol string) (*Quote, error) {
 	}
 	quote, ok := result.Quotes[apiSymbol]
 	if !ok {
-		return nil, fmt.Errorf("no quote found for %s", symbol)
+		return nil, fmt.Errorf("no quote found for %s", sym)
 	}
 	return quote, nil
 }

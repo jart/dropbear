@@ -12,14 +12,14 @@
 //	GOOGL # better than treasury bonds
 //	GLD   # shiny rocks
 //	PM    # good beta synergy
-package symbols
+package symbol
 
 import "strings"
 
-// Parse parses symbol list content and returns the symbols.
-func Parse(content string) []string {
-	var symbols []string
-	for _, line := range strings.Split(content, "\n") {
+// ParseFile parses symbol list content and returns the symbols.
+func ParseFile(content string) ([]Symbol, error) {
+	var symbols []Symbol
+	for line := range strings.SplitSeq(content, "\n") {
 		// strip inline comment
 		if i := strings.IndexByte(line, '#'); i >= 0 {
 			line = line[:i]
@@ -27,8 +27,12 @@ func Parse(content string) []string {
 		// extract symbol
 		sym := strings.TrimSpace(line)
 		if sym != "" {
-			symbols = append(symbols, sym)
+			parsedSym, err := Parse(sym)
+			if err != nil {
+				return nil, err
+			}
+			symbols = append(symbols, parsedSym)
 		}
 	}
-	return symbols
+	return symbols, nil
 }

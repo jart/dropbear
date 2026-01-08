@@ -50,7 +50,7 @@ func newBacktest() *backtest {
 	entries := make([]*backtestEntry, 0, len(Equities))
 	equityData := getEquityDataDir()
 	for _, equity := range Equities {
-		path := path.Join(equityData, "minutes", equity.Symbol)
+		path := path.Join(equityData, "minutes", equity.Symbol.String())
 		bars, err := ds.OpenBars(path)
 		if err != nil {
 			panic(err)

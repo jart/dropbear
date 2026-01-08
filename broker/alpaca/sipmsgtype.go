@@ -13,6 +13,7 @@ const (
 	SIPMessageTypeDailyBar   SIPMessageType = 'd' // daily bar
 	SIPMessageTypeUpdatedBar SIPMessageType = 'u' // updated bar (correction)
 	SIPMessageTypeStatus     SIPMessageType = 's' // trading status
+	SIPMessageTypeLULD       SIPMessageType = 'l' // limit up-limit down
 )
 
 // Pre-computed JSON representations (no allocation on marshal)
@@ -38,6 +39,8 @@ func (t SIPMessageType) GoString() string {
 		return "alpaca.SIPMessageTypeUpdatedBar"
 	case SIPMessageTypeStatus:
 		return "alpaca.SIPMessageTypeStatus"
+	case SIPMessageTypeLULD:
+		return "alpaca.SIPMessageTypeLULD"
 	default:
 		return fmt.Sprintf("alpaca.SIPMessageType(%c)", byte(t))
 	}

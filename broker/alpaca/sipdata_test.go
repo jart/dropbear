@@ -1,11 +1,13 @@
 package alpaca
 
 import (
+	"dropbear/ds/symbol"
 	"testing"
 )
 
 // Sample JSON messages for benchmarking
 var (
+	AAPL      = symbol.MustParse("AAPL")
 	tradeJSON = []byte(`{"T":"t","S":"AAPL","i":12345,"x":"Q","p":"150.25","s":100,"c":["@","F"],"t":"2024-01-15T14:30:00.123456789Z","z":"C"}`)
 	quoteJSON = []byte(`{"T":"q","S":"AAPL","ax":"Q","ap":"150.26","as":200,"bx":"P","bp":"150.24","bs":300,"c":["R"],"t":"2024-01-15T14:30:00.123456789Z","z":"C"}`)
 	barJSON   = []byte(`{"T":"b","S":"AAPL","o":"150.00","h":"151.00","l":"149.50","c":"150.50","v":1000000,"vw":"150.25","n":5000,"t":"2024-01-15T14:30:00Z"}`)
@@ -265,7 +267,7 @@ func TestParseSIPQuote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if quote.Symbol != "AAPL" {
+	if quote.Symbol != AAPL {
 		t.Errorf("Symbol = %s, want AAPL", quote.Symbol)
 	}
 	if quote.Conditions != QuoteCondR {
@@ -281,7 +283,7 @@ func TestParseSIPTrade(t *testing.T) {
 	if trade.Type != SIPMessageTypeTrade {
 		t.Errorf("Type = %v, want %v", trade.Type, SIPMessageTypeTrade)
 	}
-	if trade.Symbol != "AAPL" {
+	if trade.Symbol != AAPL {
 		t.Errorf("Symbol = %s, want AAPL", trade.Symbol)
 	}
 	if trade.TradeID != 12345 {
@@ -312,7 +314,7 @@ func TestParseSIPQuote2(t *testing.T) {
 	if quote.Type != SIPMessageTypeQuote {
 		t.Errorf("Type = %v, want %v", quote.Type, SIPMessageTypeQuote)
 	}
-	if quote.Symbol != "AAPL" {
+	if quote.Symbol != AAPL {
 		t.Errorf("Symbol = %s, want AAPL", quote.Symbol)
 	}
 	if quote.AskExchange != SIPExchangeNASDAQ {
@@ -349,7 +351,7 @@ func TestParseSIPBar(t *testing.T) {
 	if bar.Type != SIPMessageTypeBar {
 		t.Errorf("Type = %v, want %v", bar.Type, SIPMessageTypeBar)
 	}
-	if bar.Symbol != "AAPL" {
+	if bar.Symbol != AAPL {
 		t.Errorf("Symbol = %s, want AAPL", bar.Symbol)
 	}
 	if bar.Open.String() != "150" {
@@ -449,7 +451,7 @@ func TestParseSIPStatus(t *testing.T) {
 	if status.Type != SIPMessageTypeStatus {
 		t.Errorf("Type = %v, want %v", status.Type, SIPMessageTypeStatus)
 	}
-	if status.Symbol != "AAPL" {
+	if status.Symbol != AAPL {
 		t.Errorf("Symbol = %s, want AAPL", status.Symbol)
 	}
 	if status.Code != StatusCodeTradingHaltUTP {

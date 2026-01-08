@@ -3,6 +3,7 @@ package alpaca
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/ds/symbol"
 )
 
 // SIPQuote represents a quote update from the SIP feed.
@@ -12,7 +13,7 @@ type SIPQuote struct {
 	AskExchange SIPExchange     `json:"ax"` // ask exchange code
 	BidExchange SIPExchange     `json:"bx"` // bid exchange code
 	Timestamp   clocky.Time     `json:"t"`  // RFC-3339 timestamp
-	Symbol      string          `json:"S"`  // stock symbol
+	Symbol      symbol.Symbol   `json:"S"`  // stock symbol
 	AskPrice    decimal.Decimal `json:"ap"` // ask price
 	BidPrice    decimal.Decimal `json:"bp"` // bid price
 	AskSize     int64           `json:"as"` // ask size

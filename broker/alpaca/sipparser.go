@@ -3,16 +3,9 @@ package alpaca
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/ds/symbol"
+	"fmt"
 )
-
-// InternSymbol returns the interned symbol string from the Assets map.
-// This avoids allocation by using Go's map[string([]byte)] optimization.
-func InternSymbol(b []byte) string {
-	if asset, ok := Assets[string(b)]; ok {
-		return asset.Symbol
-	}
-	return string(b)
-}
 
 // ParseSIPTrade parses a SIP trade message with minimal allocations.
 // Uses symbol interning and avoids json.Unmarshal overhead.
@@ -74,7 +67,11 @@ func ParseSIPTrade(data []byte) (SIPTrade, error) {
 				for i < len(data) && data[i] != '"' {
 					i++
 				}
-				t.Symbol = InternSymbol(data[start:i])
+				sym, err := symbol.ParseBytes(data[start:i])
+				if err != nil {
+					return t, err
+				}
+				t.Symbol = sym
 				i++
 			}
 		case 'i': // TradeID
@@ -181,7 +178,11 @@ func ParseSIPQuote(data []byte) (SIPQuote, error) {
 					for i < len(data) && data[i] != '"' {
 						i++
 					}
-					q.Symbol = InternSymbol(data[start:i])
+					sym, err := symbol.ParseBytes(data[start:i])
+					if err != nil {
+						return q, err
+					}
+					q.Symbol = sym
 					i++
 				}
 			case 'c': // Conditions
@@ -306,7 +307,11 @@ func ParseSIPBar(data []byte) (SIPBar, error) {
 					for i < len(data) && data[i] != '"' {
 						i++
 					}
-					b.Symbol = InternSymbol(data[start:i])
+					sym, err := symbol.ParseBytes(data[start:i])
+					if err != nil {
+						return b, err
+					}
+					b.Symbol = sym
 					i++
 				}
 			case 'o': // Open
@@ -332,7 +337,12 @@ func ParseSIPBar(data []byte) (SIPBar, error) {
 			case 'v': // Volume
 				b.Volume, i = parseIntFast(data, i)
 			case 'n': // NumTrades
-				b.NumTrades, i = parseIntFast(data, i)
+				var x int64
+				x, i = parseIntFast(data, i)
+				if x != int64(uint32(x)) {
+					return b, fmt.Errorf("num trades overflow: %d", x)
+				}
+				b.NumTrades = uint32(x)
 			case 't': // Timestamp
 				b.Timestamp, i, err = parseTimestampFast(data, i)
 				if err != nil {
@@ -649,7 +659,11 @@ func ParseSIPStatus(data []byte) (SIPStatus, error) {
 					for i < len(data) && data[i] != '"' {
 						i++
 					}
-					s.Symbol = InternSymbol(data[start:i])
+					sym, err := symbol.ParseBytes(data[start:i])
+					if err != nil {
+						return s, err
+					}
+					s.Symbol = sym
 					i++
 				}
 			case 't': // Timestamp
@@ -707,4 +721,114 @@ func ParseSIPStatus(data []byte) (SIPStatus, error) {
 		}
 	}
 	return s, nil
+}
+
+// ParseSIPLULD parses a SIP LULD (Limit Up-Limit Down) message with minimal allocations.
+func ParseSIPLULD(data []byte) (SIPLULD, error) {
+	var l SIPLULD
+	var err error
+	i := 0
+	for i < len(data) {
+		// Find field name
+		for i < len(data) && data[i] != '"' {
+			i++
+		}
+		if i >= len(data) {
+			break
+		}
+		i++ // skip opening quote
+		keyStart := i
+		for i < len(data) && data[i] != '"' {
+			i++
+		}
+		if i >= len(data) {
+			break
+		}
+		keyLen := i - keyStart
+		keyByte := data[keyStart]
+		i++ // skip closing quote
+
+		// Skip to value
+		for i < len(data) && data[i] != ':' {
+			i++
+		}
+		i++ // skip colon
+		for i < len(data) && (data[i] == ' ' || data[i] == '\t') {
+			i++
+		}
+
+		// All LULD fields are 1-char keys
+		if keyLen != 1 {
+			i = skipValue(data, i)
+			continue
+		}
+
+		switch keyByte {
+		case 'T': // Type
+			if i < len(data) && data[i] == '"' {
+				i++
+				if i < len(data) {
+					l.Type = SIPMessageType(data[i])
+					i++
+				}
+				if i < len(data) && data[i] == '"' {
+					i++
+				}
+			}
+		case 'S': // Symbol
+			if i < len(data) && data[i] == '"' {
+				i++
+				start := i
+				for i < len(data) && data[i] != '"' {
+					i++
+				}
+				sym, err := symbol.ParseBytes(data[start:i])
+				if err != nil {
+					return l, err
+				}
+				l.Symbol = sym
+				i++
+			}
+		case 'u': // Upper limit
+			l.UpperLimit, i, err = parseDecimalFast(data, i)
+			if err != nil {
+				return l, err
+			}
+		case 'd': // Lower limit (down)
+			l.LowerLimit, i, err = parseDecimalFast(data, i)
+			if err != nil {
+				return l, err
+			}
+		case 'i': // Indicator
+			if i < len(data) && data[i] == '"' {
+				i++
+				if i < len(data) && data[i] != '"' {
+					l.Indicator = SIPLULDIndicator(data[i])
+					i++
+				}
+				if i < len(data) && data[i] == '"' {
+					i++
+				}
+			}
+		case 't': // Timestamp
+			l.Timestamp, i, err = parseTimestampFast(data, i)
+			if err != nil {
+				return l, err
+			}
+		case 'z': // Tape
+			if i < len(data) && data[i] == '"' {
+				i++
+				if i < len(data) {
+					l.Tape = SIPTape(data[i])
+					i++
+				}
+				if i < len(data) && data[i] == '"' {
+					i++
+				}
+			}
+		default:
+			i = skipValue(data, i)
+		}
+	}
+	return l, nil
 }

@@ -3,16 +3,17 @@ package alpaca
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/ds/symbol"
 )
 
 // SIPTrade represents a trade execution from the SIP feed.
 type SIPTrade struct {
 	Type       SIPMessageType  `json:"T"` // SIPMessageTypeTrade
 	Tape       SIPTape         `json:"z"` // tape designation (A, B, C)
-	Timestamp  clocky.Time     `json:"t"` // RFC-3339 timestamp
-	Symbol     string          `json:"S"` // stock symbol
-	TradeID    int64           `json:"i"` // unique trade identifier
 	Exchange   SIPExchange     `json:"x"` // exchange code
+	Timestamp  clocky.Time     `json:"t"` // RFC-3339 timestamp
+	Symbol     symbol.Symbol   `json:"S"` // stock symbol
+	TradeID    int64           `json:"i"` // unique trade identifier
 	Price      decimal.Decimal `json:"p"` // execution price
 	Size       int64           `json:"s"` // quantity traded
 	Conditions SIPTradeCond    `json:"c"` // trade conditions (bitmask)

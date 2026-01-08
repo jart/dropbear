@@ -7,6 +7,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 	"dropbear/loggy"
 	"encoding/json"
 	"flag"
@@ -77,7 +78,7 @@ func main() {
 	}
 
 	// determine which symbols to liquidate
-	var symbols []string
+	var symbols []symbol.Symbol
 	if flag.NArg() == 0 {
 		// no args: liquidate all positions
 		for _, pos := range positions {
@@ -92,12 +93,16 @@ func main() {
 		fmt.Printf("liquidating all %d positions...\n", len(symbols))
 	} else {
 		// specific symbols
-		for _, sym := range flag.Args() {
-			symbols = append(symbols, strings.ToUpper(sym))
+		for _, arg := range flag.Args() {
+			sym, err := symbol.Parse(strings.ToUpper(arg))
+			if err != nil {
+				loggy.Fatalf("invalid symbol %q: %v", arg, err)
+			}
+			symbols = append(symbols, sym)
 		}
 	}
 
-	posMap := make(map[string]alpaca.Position)
+	posMap := make(map[symbol.Symbol]alpaca.Position)
 	for _, pos := range positions {
 		posMap[pos.Symbol] = pos
 	}
@@ -115,7 +120,7 @@ func main() {
 			continue
 		}
 		wg.Add(1)
-		go func(sym string, pos alpaca.Position) {
+		go func(sym symbol.Symbol, pos alpaca.Position) {
 			defer wg.Done()
 			liquidateSymbol(sym, pos)
 		}(sym, pos)
@@ -123,7 +128,7 @@ func main() {
 	wg.Wait()
 }
 
-func liquidateSymbol(sym string, pos alpaca.Position) {
+func liquidateSymbol(sym symbol.Symbol, pos alpaca.Position) {
 	// get nbbo quote - use crypto endpoint for crypto assets
 	var quote *alpaca.Quote
 	var err error
@@ -281,14 +286,14 @@ func liquidateSymbol(sym string, pos alpaca.Position) {
 	fmt.Println()
 }
 
-func liquidateOnExchange(symbol string, side ds.Side, qty, price decimal.Decimal, dest alpaca.OrderDestination) (decimal.Decimal, decimal.Decimal, error) {
+func liquidateOnExchange(sym symbol.Symbol, side ds.Side, qty, price decimal.Decimal, dest alpaca.OrderDestination) (decimal.Decimal, decimal.Decimal, error) {
 	fmt.Printf("[%s] placing %s %s @ %s\n", dest, side, qty, price)
 
 	var order *alpaca.Order
 	for {
 		var err error
 		order, err = client.CreateOrder(&alpaca.OrderRequest{
-			Symbol:      symbol,
+			Symbol:      sym,
 			Qty:         qty,
 			Side:        side,
 			Type:        alpaca.OrderTypeLimit,
@@ -362,7 +367,7 @@ func liquidateOnExchange(symbol string, side ds.Side, qty, price decimal.Decimal
 	}
 }
 
-func liquidateCrypto(symbol string, side ds.Side, qty, price decimal.Decimal) (decimal.Decimal, decimal.Decimal, error) {
+func liquidateCrypto(sym symbol.Symbol, side ds.Side, qty, price decimal.Decimal) (decimal.Decimal, decimal.Decimal, error) {
 	fmt.Printf("[CRYPTO] placing %s %s @ %s\n", side, qty, price)
 
 	// crypto: no DMA, use GTC time-in-force
@@ -370,7 +375,7 @@ func liquidateCrypto(symbol string, side ds.Side, qty, price decimal.Decimal) (d
 	for {
 		var err error
 		order, err = client.CreateOrder(&alpaca.OrderRequest{
-			Symbol:      symbol,
+			Symbol:      sym,
 			Qty:         qty,
 			Side:        side,
 			Type:        alpaca.OrderTypeLimit,

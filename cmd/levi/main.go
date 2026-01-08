@@ -19,7 +19,7 @@ import (
 	"dropbear/cubby"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/ds/symbols"
+	"dropbear/ds/symbol"
 	"dropbear/indicators"
 	"dropbear/loggy"
 	"flag"
@@ -46,7 +46,7 @@ const (
 )
 
 var (
-	gTraders  map[string]*Trader
+	gTraders  map[symbol.Symbol]*Trader
 	gDayStart decimal.Decimal // portfolio value at start of day
 	gHalted   bool            // true if we hit max drawdown today
 	gDate     int
@@ -57,18 +57,22 @@ func main() {
 	loggy.Init()
 	cubby.Init()
 
-	syms := symbols.Expand(*flagSymbols)
+	syms, err := symbol.Expand(*flagSymbols)
+	if err != nil {
+		log.Fatalf("invalid symbols: %v", err)
+	}
 	if len(syms) == 0 {
 		log.Fatal("no symbols specified")
 	}
 
-	gTraders = make(map[string]*Trader)
+	gTraders = make(map[symbol.Symbol]*Trader)
 
 	for _, sym := range syms {
 		if gTraders[sym] != nil {
 			continue // dedupe
 		}
-		_, ok := OptimalParams[sym]
+		symStr := sym.String()
+		_, ok := OptimalParams[symStr]
 		if !ok {
 			log.Printf("paramgen tool wasn't run for symbol %s", sym)
 			continue
@@ -80,15 +84,16 @@ func main() {
 		}
 		state := &Trader{
 			equity:      equity,
-			maxHigh:     indicators.NewMax(clocky.Duration(OptimalParams[sym].Lookback)*clocky.Minute - 1),
+			maxHigh:     indicators.NewMax(clocky.Duration(OptimalParams[symStr].Lookback)*clocky.Minute - 1),
 			dayVolumeMA: indicators.NewWWMA(12),
 		}
 		gTraders[sym] = state
 		equity.OnBar = state.onBar
 	}
 
-	benchmark, _ := cubby.AddEquity(*flagBenchmark)
-	cubby.Benchmark = benchmark
+	benchSym := symbol.MustParse(*flagBenchmark)
+	benchEquity, _ := cubby.AddEquity(benchSym)
+	cubby.Benchmark = benchEquity
 
 	log.Printf("Multi-Position Day Trading Strategy")
 	log.Printf("  Symbols: %d", len(gTraders))
@@ -194,7 +199,7 @@ func (state *Trader) onBar(c *ds.Bar) {
 	price := c.Close
 	if !state.equity.Quantity.IsZero() {
 		state.highSince = state.highSince.Max(price)
-		params := OptimalParams[state.equity.Symbol]
+		params := OptimalParams[state.equity.Symbol.String()]
 		stopPrice := state.highSince.Mul(decimal.One.Sub(params.Trail))
 		if price.Cmp(stopPrice) <= 0 {
 			state.closePosition()
@@ -233,7 +238,7 @@ func (state *Trader) onBar(c *ds.Bar) {
 func (state *Trader) checkBreakoutEntry(price, high decimal.Decimal) {
 
 	// check for breakout: price above lookback high by minimum gap
-	params := OptimalParams[state.equity.Symbol]
+	params := OptimalParams[state.equity.Symbol.String()]
 	breakoutThreshold := high.Mul(decimal.One.Add(params.MinGap))
 	if price.Cmp(breakoutThreshold) <= 0 {
 		return

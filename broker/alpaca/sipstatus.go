@@ -1,6 +1,9 @@
 package alpaca
 
-import "dropbear/clocky"
+import (
+	"dropbear/clocky"
+	"dropbear/ds/symbol"
+)
 
 // SIPStatus represents a trading status message.
 type SIPStatus struct {
@@ -8,7 +11,7 @@ type SIPStatus struct {
 	Code      SIPStatusCode  `json:"sc"` // status code
 	Reason    SIPReasonCode  `json:"rc"` // reason code
 	Timestamp clocky.Time    `json:"t"`  // RFC-3339 timestamp
-	Symbol    string         `json:"S"`  // stock symbol
+	Symbol    symbol.Symbol  `json:"S"`  // stock symbol
 	Message   string         `json:"sm"` // status message
 }
 

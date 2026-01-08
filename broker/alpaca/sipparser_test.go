@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-//go:embed testdata_sip.jsonl
+//go:embed siptest.jsonl
 var sipTestData []byte
 
 func TestSIPParserRoundtrip(t *testing.T) {

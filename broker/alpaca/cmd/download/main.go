@@ -18,6 +18,7 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 	"dropbear/loggy"
 )
 
@@ -53,8 +54,8 @@ func main() {
 	cleanupTempFiles()
 
 	// get symbols from args, otherwise fetch everything
-	symbols := flag.Args()
-	if len(symbols) == 0 {
+	var symbols []symbol.Symbol
+	if len(flag.Args()) == 0 {
 		log.Println("No symbols specified, fetching all tradable US equities...")
 		client := alpaca.NewClient()
 		err := client.SyncAssets()
@@ -72,12 +73,20 @@ func main() {
 			}
 		}
 		log.Printf("Found %d tradable US equities", len(symbols))
+	} else {
+		for _, arg := range flag.Args() {
+			sym, err := symbol.Parse(arg)
+			if err != nil {
+				log.Fatalf("invalid symbol %q: %v", arg, err)
+			}
+			symbols = append(symbols, sym)
+		}
 	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	jobs := make(chan string, 100)
+	jobs := make(chan symbol.Symbol, 100)
 	var stopped atomic.Bool
 
 	go func() {
@@ -91,11 +100,11 @@ func main() {
 	for i := 0; i < *flagWorkers; i++ {
 		wg.Go(func() {
 			client := alpaca.NewClient()
-			for symbol := range jobs {
+			for sym := range jobs {
 				if stopped.Load() {
 					return
 				}
-				downloadSymbol(client, symbol, &stopped)
+				downloadSymbol(client, sym, &stopped)
 			}
 		})
 	}
@@ -103,11 +112,11 @@ func main() {
 	// Queue symbols
 	go func() {
 		defer close(jobs)
-		for _, symbol := range symbols {
+		for _, sym := range symbols {
 			if stopped.Load() {
 				return
 			}
-			jobs <- symbol
+			jobs <- sym
 		}
 	}()
 
@@ -131,8 +140,8 @@ func cleanupTempFiles() {
 	}
 }
 
-func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) {
-	outPath := filepath.Join(ds.EquityMinutesDir(), symbol)
+func downloadSymbol(client *alpaca.Client, sym symbol.Symbol, stopped *atomic.Bool) {
+	outPath := filepath.Join(ds.EquityMinutesDir(), sym.String())
 	tmpPath := outPath + ".tmp"
 
 	// Read existing data and find where to resume from
@@ -160,38 +169,38 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 	end := clocky.RealNow()
 
 	if start >= end {
-		log.Printf("%s: already up to date", symbol)
+		log.Printf("%s: already up to date", sym)
 		return
 	}
 
 	// Download all bars
-	bars, err := fetchAll(client, symbol, start, end, stopped)
+	bars, err := fetchAll(client, sym, start, end, stopped)
 	if err != nil {
 		if err != errInterrupted {
-			log.Printf("%s: %v", symbol, err)
+			log.Printf("%s: %v", sym, err)
 		}
 		return
 	}
 
 	if len(bars) == 0 {
 		if lastTime == 0 {
-			log.Printf("%s: no data available", symbol)
+			log.Printf("%s: no data available", sym)
 		} else {
-			log.Printf("%s: no new data", symbol)
+			log.Printf("%s: no new data", sym)
 		}
 		return
 	}
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
-		log.Printf("%s: mkdir failed: %v", symbol, err)
+		log.Printf("%s: mkdir failed: %v", sym, err)
 		return
 	}
 
 	// Write to temp file first (atomic write)
 	f, err := os.Create(tmpPath)
 	if err != nil {
-		log.Printf("%s: create temp failed: %v", symbol, err)
+		log.Printf("%s: create temp failed: %v", sym, err)
 		return
 	}
 
@@ -202,7 +211,7 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 		if _, err := out.Write(existingData); err != nil {
 			f.Close()
 			os.Remove(tmpPath)
-			log.Printf("%s: write existing failed: %v", symbol, err)
+			log.Printf("%s: write existing failed: %v", sym, err)
 			return
 		}
 	}
@@ -218,7 +227,7 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 		if _, err := out.Write(barBytes); err != nil {
 			f.Close()
 			os.Remove(tmpPath)
-			log.Printf("%s: write failed: %v", symbol, err)
+			log.Printf("%s: write failed: %v", sym, err)
 			return
 		}
 		written++
@@ -227,13 +236,13 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 	if err := out.Flush(); err != nil {
 		f.Close()
 		os.Remove(tmpPath)
-		log.Printf("%s: flush failed: %v", symbol, err)
+		log.Printf("%s: flush failed: %v", sym, err)
 		return
 	}
 	if err := f.Sync(); err != nil {
 		f.Close()
 		os.Remove(tmpPath)
-		log.Printf("%s: sync failed: %v", symbol, err)
+		log.Printf("%s: sync failed: %v", sym, err)
 		return
 	}
 	f.Close()
@@ -241,27 +250,27 @@ func downloadSymbol(client *alpaca.Client, symbol string, stopped *atomic.Bool) 
 	// Atomic rename
 	if err := os.Rename(tmpPath, outPath); err != nil {
 		os.Remove(tmpPath)
-		log.Printf("%s: rename failed: %v", symbol, err)
+		log.Printf("%s: rename failed: %v", sym, err)
 		return
 	}
 
 	if lastTime == 0 {
-		log.Printf("%s: saved %d bars", symbol, written)
+		log.Printf("%s: saved %d bars", sym, written)
 	} else {
-		log.Printf("%s: appended %d bars", symbol, written)
+		log.Printf("%s: appended %d bars", sym, written)
 	}
 }
 
 var errInterrupted = fmt.Errorf("interrupted")
 
-func fetchAll(client *alpaca.Client, symbol string, start, end clocky.Time, stopped *atomic.Bool) ([]ds.Bar, error) {
+func fetchAll(client *alpaca.Client, sym symbol.Symbol, start, end clocky.Time, stopped *atomic.Bool) ([]ds.Bar, error) {
 	var bars []ds.Bar
 	pageToken := ""
 	for {
 		if stopped.Load() {
 			return nil, errInterrupted
 		}
-		pageBars, nextToken, err := client.GetBars(symbol, clocky.Minute, start, end, feed, adjustment, 10000, false, pageToken)
+		pageBars, nextToken, err := client.GetBars(sym, clocky.Minute, start, end, feed, adjustment, 10000, false, pageToken)
 		if err != nil {
 			return nil, err
 		}

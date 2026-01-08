@@ -1,0 +1,95 @@
+package symbol
+
+import (
+	"errors"
+	"unsafe"
+)
+
+// Symbol represents a stock symbol.
+type Symbol int64
+
+var ErrInvalidSymbol = errors.New("invalid stock symbol")
+
+func Parse(ticker string) (Symbol, error) {
+	return ParseBytes(unsafe.Slice(unsafe.StringData(ticker), len(ticker)))
+}
+
+func ParseBytes(ticker []byte) (Symbol, error) {
+	switch len(ticker) {
+	case 1:
+		return Symbol(uint64(ticker[0])), nil
+	case 2:
+		return Symbol(uint64(ticker[0]) | uint64(ticker[1])<<8), nil
+	case 3:
+		return Symbol(uint64(ticker[0]) | uint64(ticker[1])<<8 | uint64(ticker[2])<<16), nil
+	case 4:
+		return Symbol(uint64(ticker[0]) | uint64(ticker[1])<<8 | uint64(ticker[2])<<16 | uint64(ticker[3])<<24), nil
+	case 5:
+		return Symbol(uint64(ticker[0]) | uint64(ticker[1])<<8 | uint64(ticker[2])<<16 | uint64(ticker[3])<<24 | uint64(ticker[4])<<32), nil
+	case 6:
+		return Symbol(uint64(ticker[0]) | uint64(ticker[1])<<8 | uint64(ticker[2])<<16 | uint64(ticker[3])<<24 | uint64(ticker[4])<<32 | uint64(ticker[5])<<40), nil
+	case 7:
+		return Symbol(uint64(ticker[0]) | uint64(ticker[1])<<8 | uint64(ticker[2])<<16 | uint64(ticker[3])<<24 | uint64(ticker[4])<<32 | uint64(ticker[5])<<40 | uint64(ticker[6])<<48), nil
+	default:
+		return 0, ErrInvalidSymbol
+	}
+}
+
+func MustParse(ticker string) Symbol {
+	symbol, err := Parse(ticker)
+	if err != nil {
+		panic(err)
+	}
+	return symbol
+}
+
+func (s Symbol) String() string {
+	var buf [7]byte
+	n := 0
+	v := uint64(s)
+	for v != 0 {
+		buf[n] = byte(v & 0xFF)
+		v >>= 8
+		n++
+	}
+	return string(buf[:n])
+}
+
+func (s Symbol) GoString() string {
+	return "symbol.ParseString(\"" + s.String() + "\")"
+}
+
+func (s Symbol) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + s.String() + `"`), nil
+}
+
+func (s *Symbol) UnmarshalJSON(data []byte) error {
+	if data[0] != '"' {
+		return ErrInvalidSymbol
+	}
+	switch len(data) {
+	case 3:
+		*s = Symbol(uint64(data[1]))
+		return nil
+	case 4:
+		*s = Symbol(uint64(data[1]) | uint64(data[2])<<8)
+		return nil
+	case 5:
+		*s = Symbol(uint64(data[1]) | uint64(data[2])<<8 | uint64(data[3])<<16)
+		return nil
+	case 6:
+		*s = Symbol(uint64(data[1]) | uint64(data[2])<<8 | uint64(data[3])<<16 | uint64(data[4])<<24)
+		return nil
+	case 7:
+		*s = Symbol(uint64(data[1]) | uint64(data[2])<<8 | uint64(data[3])<<16 | uint64(data[4])<<24 | uint64(data[5])<<32)
+		return nil
+	case 8:
+		*s = Symbol(uint64(data[1]) | uint64(data[2])<<8 | uint64(data[3])<<16 | uint64(data[4])<<24 | uint64(data[5])<<32 | uint64(data[6])<<40)
+		return nil
+	case 9:
+		*s = Symbol(uint64(data[1]) | uint64(data[2])<<8 | uint64(data[3])<<16 | uint64(data[4])<<24 | uint64(data[5])<<32 | uint64(data[6])<<40 | uint64(data[7])<<48)
+		return nil
+	default:
+		return ErrInvalidSymbol
+	}
+}

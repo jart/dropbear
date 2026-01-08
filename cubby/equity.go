@@ -5,14 +5,15 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 	"fmt"
 	"log"
 )
 
-var Equities = make(map[string]*Equity)
+var Equities = make(map[symbol.Symbol]*Equity)
 
 type Equity struct {
-	Symbol     string // e.g. "GOOG", "BRK.B", etc.
+	Symbol     symbol.Symbol // e.g. "GOOG", "BRK.B", etc.
 	Asset      *alpaca.Asset
 	Price      decimal.Decimal // current midpoint
 	Quantity   decimal.Decimal // number of shares held (negative if short)
@@ -22,15 +23,15 @@ type Equity struct {
 }
 
 // AddEquity creates and registers a new Equity with the given symbol.
-func AddEquity(symbol string) (*Equity, error) {
+func AddEquity(sym symbol.Symbol) (*Equity, error) {
 	if Running {
 		return nil, ErrIsRunning
 	}
-	e := Equities[symbol]
+	e := Equities[sym]
 	if e != nil {
 		return e, nil
 	}
-	asset := alpaca.GetAsset(symbol)
+	asset := alpaca.GetAsset(sym)
 	if asset == nil {
 		return nil, ErrUnknown
 	}
@@ -38,17 +39,17 @@ func AddEquity(symbol string) (*Equity, error) {
 		return nil, ErrNotEquity
 	}
 	e = &Equity{
-		Symbol: symbol,
+		Symbol: sym,
 		Asset:  asset,
 		OnBar:  func(*ds.Bar) {},
 		Orders: make(map[string]*Order),
 	}
-	Equities[symbol] = e
+	Equities[sym] = e
 	return e, nil
 }
 
 func (e *Equity) String() string {
-	return e.Symbol
+	return e.Symbol.String()
 }
 
 // GetMaxOrderQuantity returns the maximum number of shares that can be ordered.

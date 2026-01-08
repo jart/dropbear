@@ -8,15 +8,16 @@ import (
 	"sync"
 
 	"dropbear/decimal"
+	"dropbear/ds/symbol"
 )
 
 var Lock sync.RWMutex
 
 // GetAsset retrieves an asset by symbol.
-func GetAsset(symbol string) *Asset {
+func GetAsset(sym symbol.Symbol) *Asset {
 	Lock.RLock()
 	defer Lock.RUnlock()
-	return Assets[symbol]
+	return Assets[sym]
 }
 
 // SyncAssets fetches the latest assets from Alpaca and updates the local Assets map.
@@ -28,12 +29,16 @@ func (c *Client) SyncAssets() error {
 	if err != nil {
 		return err
 	}
-	shouldDelete := make(map[string]bool)
+	shouldDelete := make(map[symbol.Symbol]bool)
 	for _, asset := range Assets {
 		shouldDelete[asset.Symbol] = true
 	}
 	for _, ja := range jsonAssets {
-		shouldDelete[ja.Symbol] = false
+		sym, err := symbol.Parse(ja.Symbol)
+		if err != nil {
+			continue // skip symbols that are too long
+		}
+		shouldDelete[sym] = false
 		minTradeIncrement := decimal.One
 		if ja.MinTradeIncrement != "" {
 			minTradeIncrement = decimal.Parse(ja.MinTradeIncrement)
@@ -42,21 +47,21 @@ func (c *Client) SyncAssets() error {
 		if ja.PriceIncrement != "" {
 			priceIncrement = decimal.Parse(ja.PriceIncrement)
 		}
-		asset := Assets[ja.Symbol]
+		asset := Assets[sym]
 		if asset == nil {
 			name := ja.Name
 			if name == "" {
 				name = ja.Symbol
 			}
 			asset = &Asset{
-				Symbol:   ja.Symbol,
+				Symbol:   sym,
 				Exchange: ja.Exchange,
 				Class:    ja.Class,
 				Status:   ja.Status,
 				ID:       ja.ID,
 				Name:     name,
 			}
-			Assets[ja.Symbol] = asset
+			Assets[sym] = asset
 		}
 		IPO := false
 		HasOptions := false
@@ -104,7 +109,7 @@ func (c *Client) SyncAssets() error {
 			delete(Assets, sym)
 		}
 	}
-	return err
+	return nil
 }
 
 type jsonAsset struct {
