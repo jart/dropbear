@@ -2,15 +2,13 @@ package alpaca
 
 import (
 	"dropbear/decimal"
-	"dropbear/ds/symbol"
 	"dropbear/netty"
-	"fmt"
 )
 
 // Position represents an open position.
 type Position struct {
 	AssetID                string          `json:"asset_id"`                 // e.g. 904837e3-3b76-4c7d-8534-8e7a3e0a6ed1
-	Symbol                 symbol.Symbol   `json:"symbol"`                   // e.g. AAPL, BTCUSD
+	Symbol                 string          `json:"symbol"`                   // e.g. AAPL, BTCUSD
 	Exchange               Exchange        `json:"exchange"`                 // e.g. NASDAQ, CRYPTO
 	AssetClass             AssetClass      `json:"asset_class"`              // e.g. us_equity, us_option, crypto
 	Side                   PositionSide    `json:"side"`                     // e.g. long, short
@@ -41,10 +39,10 @@ func (c *Client) GetPositions() ([]Position, error) {
 }
 
 // GetPosition retrieves an open position.
-func (c *Client) GetPosition(symbolOrAssetID fmt.Stringer) (*Position, error) {
+func (c *Client) GetPosition(symbolOrAssetID string) (*Position, error) {
 	var result Position
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "GET", "/v2/positions/"+symbolOrAssetID.String(), nil, &result)
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", "/v2/positions/"+symbolOrAssetID, nil, &result)
 	if err != nil {
 		return nil, err
 	}

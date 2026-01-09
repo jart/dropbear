@@ -67,7 +67,7 @@ func (lt *liveTrader) sync() {
 		log.Printf("error fetching alpaca positions: %v", err)
 	} else {
 		for _, position := range positions {
-			equity := Equities[position.Symbol]
+			equity := Equities[symbol.MustParse(position.Symbol)]
 			if equity != nil {
 				equity.Price = position.CurrentPrice
 				equity.Quantity = position.QtyAvailable

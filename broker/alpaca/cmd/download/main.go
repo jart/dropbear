@@ -18,7 +18,6 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/ds"
-	"dropbear/ds/symbol"
 	"dropbear/loggy"
 )
 
@@ -54,7 +53,7 @@ func main() {
 	cleanupTempFiles()
 
 	// get symbols from args, otherwise fetch everything
-	var symbols []symbol.Symbol
+	var symbols []string
 	if len(flag.Args()) == 0 {
 		log.Println("No symbols specified, fetching the healthiest US equities...")
 		client := alpaca.NewClient()
@@ -66,25 +65,21 @@ func main() {
 		count := 0
 		for _, a := range alpaca.Assets {
 			if a.IsHealthy() {
-				symbols = append(symbols, a.Symbol)
+				symbols = append(symbols, a.Symbol.String())
 				count++
 			}
 		}
 		log.Printf("Found %d healthy US equities", count)
 	} else {
 		for _, arg := range flag.Args() {
-			sym, err := symbol.Parse(arg)
-			if err != nil {
-				log.Fatalf("invalid symbol %q: %v", arg, err)
-			}
-			symbols = append(symbols, sym)
+			symbols = append(symbols, arg)
 		}
 	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	jobs := make(chan symbol.Symbol, 100)
+	jobs := make(chan string, 100)
 	var stopped atomic.Bool
 
 	go func() {
@@ -138,8 +133,8 @@ func cleanupTempFiles() {
 	}
 }
 
-func downloadSymbol(client *alpaca.Client, sym symbol.Symbol, stopped *atomic.Bool) {
-	outPath := filepath.Join(ds.EquityMinutesDir(), sym.String())
+func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) {
+	outPath := filepath.Join(ds.EquityMinutesDir(), sym)
 	tmpPath := outPath + ".tmp"
 
 	// Read existing data and find where to resume from
@@ -261,7 +256,7 @@ func downloadSymbol(client *alpaca.Client, sym symbol.Symbol, stopped *atomic.Bo
 
 var errInterrupted = fmt.Errorf("interrupted")
 
-func fetchAll(client *alpaca.Client, sym symbol.Symbol, start, end clocky.Time, stopped *atomic.Bool) ([]ds.Bar, error) {
+func fetchAll(client *alpaca.Client, sym string, start, end clocky.Time, stopped *atomic.Bool) ([]ds.Bar, error) {
 	var bars []ds.Bar
 	pageToken := ""
 	for {

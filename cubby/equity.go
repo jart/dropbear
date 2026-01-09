@@ -178,7 +178,7 @@ func (e *Equity) sendOrder(order *Order) (*Order, error) {
 	}
 	ordersByCID[order.ClientOrderID] = order
 	alpacaOrder, err := Client.CreateOrder(&alpaca.OrderRequest{
-		Symbol:        e.Symbol,
+		Symbol:        e.Symbol.String(),
 		Side:          order.Side,
 		Qty:           order.Quantity,
 		LimitPrice:    order.LimitPrice,

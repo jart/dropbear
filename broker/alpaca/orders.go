@@ -4,14 +4,14 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/ds/symbol"
 	"dropbear/netty"
+	"fmt"
 )
 
 // Order represents an Alpaca order.
 type Order struct {
 	ID             string          `json:"id"`               //
-	Symbol         symbol.Symbol   `json:"symbol"`           // e.g. SOLUSD
+	Symbol         string          `json:"symbol"`           // e.g. SOLUSD
 	AssetID        string          `json:"asset_id"`         //
 	ClientOrderID  string          `json:"client_order_id"`  //
 	Replaces       string          `json:"replaces"`         // id of the order this order replaces
@@ -36,7 +36,7 @@ type Order struct {
 }
 
 type OrderRequest struct {
-	Symbol               symbol.Symbol         `json:"symbol"`
+	Symbol               string                `json:"symbol"`
 	Qty                  decimal.Decimal       `json:"qty"`
 	Side                 ds.Side               `json:"side"`
 	Type                 OrderType             `json:"type"`
@@ -51,6 +51,8 @@ type OrderRequest struct {
 	PositionIntent       PositionIntent        `json:"position_intent,omitempty"`
 	ClientOrderID        string                `json:"client_order_id,omitempty"` // unique identifier for the order; automatically generated if not sent (<= 128 characters)
 	AdvancedInstructions *AdvancedInstructions `json:"advanced_instructions,omitempty"`
+	TakeProfit           *TakeProfit           `json:"take_profit,omitempty"`
+	StopLoss             *StopLoss             `json:"stop_loss,omitempty"`
 }
 
 // https://docs.alpaca.markets/docs/alpaca-elite-smart-router?ref=alpaca.markets
@@ -63,6 +65,15 @@ type AdvancedInstructions struct {
 	StartTime     clocky.Time      `json:"start_time,omitempty"`     // when the algorithm is to start executing. must be within current market trading hours. defaults to now or market open. does not participate in open auction
 	EndTime       clocky.Time      `json:"end_time,omitempty"`       // when the algorithm is to be done executing. must be within current market trading hours. defaults to market close. does not participate in close auction
 	MaxPercentage decimal.Decimal  `json:"max_percentage,omitempty"` // maximum percentage of the ticker's period volume this order might participate in. Must be 0 < max_percentage < 1, with up to 3 decimal points precision
+}
+
+type TakeProfit struct {
+	LimitPrice decimal.Decimal `json:"limit_price"`
+}
+
+type StopLoss struct {
+	StopPrice  decimal.Decimal `json:"stop_price"`
+	LimitPrice decimal.Decimal `json:"limit_price,omitempty"`
 }
 
 // CreateOrder places a new order.
@@ -122,11 +133,69 @@ func (c *Client) GetOrder(orderID string) (*Order, error) {
 	return &result, nil
 }
 
-// GetOrders retrieves open orders.
-func (c *Client) GetOrders() ([]Order, error) {
+// GetOrdersRequest specifies parameters for listing orders.
+type GetOrdersRequest struct {
+	Status    string      // open, closed, or all (default: open)
+	Limit     int         // max orders to return (default 50, max 500)
+	After     clocky.Time // orders created after this time
+	Until     clocky.Time // orders created before this time
+	Direction string      // asc or desc (default: desc)
+	Nested    bool        // include multi-leg order legs
+	Symbols   []string    // filter by symbols
+}
+
+// GetOrders retrieves orders with optional filtering.
+// Pass nil for default behavior (open orders only).
+// https://docs.alpaca.markets/reference/getallorders
+func (c *Client) GetOrders(req *GetOrdersRequest) ([]Order, error) {
+	path := "/v2/orders"
+	if req == nil {
+		path += "?status=open"
+	} else {
+		q := make([]string, 0, 8)
+		if req.Status != "" {
+			q = append(q, "status="+req.Status)
+		} else {
+			q = append(q, "status=open")
+		}
+		if req.Limit > 0 {
+			q = append(q, fmt.Sprintf("limit=%d", req.Limit))
+		}
+		if req.After != 0 {
+			q = append(q, "after="+req.After.RFC3339())
+		}
+		if req.Until != 0 {
+			q = append(q, "until="+req.Until.RFC3339())
+		}
+		if req.Direction != "" {
+			q = append(q, "direction="+req.Direction)
+		}
+		if req.Nested {
+			q = append(q, "nested=true")
+		}
+		if len(req.Symbols) > 0 {
+			var syms string
+			for i, s := range req.Symbols {
+				if i > 0 {
+					syms += ","
+				}
+				syms += s
+			}
+			q = append(q, "symbols="+syms)
+		}
+		if len(q) > 0 {
+			path += "?"
+			for i, p := range q {
+				if i > 0 {
+					path += "&"
+				}
+				path += p
+			}
+		}
+	}
 	var result []Order
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/orders?status=open", nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", path, nil, &result)
 	if err != nil {
 		return nil, err
 	}

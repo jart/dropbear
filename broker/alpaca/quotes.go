@@ -2,7 +2,6 @@ package alpaca
 
 import (
 	"dropbear/decimal"
-	"dropbear/ds/symbol"
 	"dropbear/netty"
 	"fmt"
 )
@@ -21,7 +20,7 @@ type Quote struct {
 
 // GetQuote fetches the latest NBBO quote for a stock symbol.
 // https://docs.alpaca.markets/reference/stocklatestquotesingle-1
-func (c *Client) GetQuote(sym symbol.Symbol) (*Quote, error) {
+func (c *Client) GetQuote(sym string) (*Quote, error) {
 	url := fmt.Sprintf("https://%s/v2/stocks/%s/quotes/latest", DataHost, sym)
 	var result struct {
 		Quote  *Quote `json:"quote"`
@@ -37,10 +36,10 @@ func (c *Client) GetQuote(sym symbol.Symbol) (*Quote, error) {
 
 // GetCryptoQuote fetches the latest quote for a crypto symbol.
 // https://docs.alpaca.markets/reference/cryptolatestquotes-1
-func (c *Client) GetCryptoQuote(sym symbol.Symbol) (*Quote, error) {
+func (c *Client) GetCryptoQuote(sym string) (*Quote, error) {
 	url := fmt.Sprintf("https://%s/v1beta3/crypto/us/latest/quotes?symbols=%s", DataHost, sym)
 	var result struct {
-		Quotes map[symbol.Symbol]*Quote `json:"quotes"`
+		Quotes map[string]*Quote `json:"quotes"`
 	}
 	c.DataTokenBucket.Get()
 	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, nil, &result)
