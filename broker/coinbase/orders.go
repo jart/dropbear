@@ -358,7 +358,7 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, price decimal
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode == http.StatusNotFound {
-		return ds.ErrOrderNotFound
+		return ds.ErrNotFound
 	}
 	var result struct {
 		Success bool `json:"success"`
@@ -377,7 +377,7 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, price decimal
 		for _, e := range result.Errors {
 			switch e.EditFailureReason {
 			case "ORDER_NOT_FOUND":
-				return ds.ErrOrderNotFound
+				return ds.ErrNotFound
 			case "ONLY_OPEN_ORDERS_CAN_BE_EDITED":
 				return ds.ErrOrderNotOpen
 			case "ORDER_IS_ALREADY_BEING_REPLACED":
@@ -393,7 +393,7 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, price decimal
 			}
 			switch e.PreviewFailureReason {
 			case "PREVIEW_ORDER_NOT_FOUND":
-				return ds.ErrOrderNotFound
+				return ds.ErrNotFound
 			case "PREVIEW_INVALID_LIMIT_PRICE_POST_ONLY":
 				return ds.ErrPostOnly
 			}

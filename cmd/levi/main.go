@@ -28,7 +28,6 @@ import (
 
 var (
 	flagSymbols   = flag.String("symbol", "LEVI", "symbols to monitor")
-	flagBenchmark = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagRound     = flag.Bool("round", true, "use round lot order quantities")
 	flagSlipOpen  = decimal.FlagBPS("slip-open", "25", "max slippage on opening trade")
 	flagSlipClose = decimal.FlagBPS("slip-close", "25", "max slippage on closing trade")
@@ -90,10 +89,6 @@ func main() {
 		gTraders[sym] = state
 		equity.OnBar = state.onBar
 	}
-
-	benchSym := symbol.MustParse(*flagBenchmark)
-	benchEquity, _ := cubby.AddEquity(benchSym)
-	cubby.Benchmark = benchEquity
 
 	log.Printf("Multi-Position Day Trading Strategy")
 	log.Printf("  Symbols: %d", len(gTraders))

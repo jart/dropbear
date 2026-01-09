@@ -3,10 +3,7 @@ package alpaca
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
+	"dropbear/netty"
 )
 
 // CryptoTransfer represents a crypto wallet funding transaction.
@@ -29,19 +26,11 @@ type CryptoTransfer struct {
 // GetCryptoTransfers retrieves crypto wallet funding transactions.
 // This is useful for example to see if money is arriving from the Bitcoin network.
 func (c *Client) GetCryptoTransfers() ([]CryptoTransfer, error) {
+	var result []CryptoTransfer
 	c.APITokenBucket.Get()
-	resp, err := c.Get("/v2/wallets/transfers")
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/wallets/transfers", nil, &result)
 	if err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
-	var result []CryptoTransfer
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 	return result, nil
 }

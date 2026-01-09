@@ -189,7 +189,7 @@ func (c *Client) GetOrder(orderID string) (*Order, error) {
 	}
 	order, ok := result[orderID]
 	if !ok {
-		return nil, ds.ErrOrderNotFound
+		return nil, ds.ErrNotFound
 	}
 	return &order, nil
 }
@@ -242,7 +242,7 @@ func (c *Client) EditOrder(orderID string, quantity, price decimal.Decimal) erro
 	if err := c.decodeResponse(resp, &result); err != nil {
 		errStr := err.Error()
 		if strings.Contains(errStr, "Unknown order") {
-			return ds.ErrOrderNotFound
+			return ds.ErrNotFound
 		}
 		if strings.Contains(errStr, "Post only order") {
 			return ds.ErrPostOnly

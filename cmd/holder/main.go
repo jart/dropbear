@@ -31,7 +31,6 @@ import (
 
 var (
 	flagSymbols       = flag.String("symbol", "GOOG", "symbols to hold (space-separated)")
-	flagBenchmark     = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagMomentum      = flag.Int("momentum", 20, "momentum lookback period in bars")
 	flagRebalance     = flag.Int("rebalance", 30, "minutes between rebalance checks")
 	flagDayLeverage   = decimal.Flag("day-leverage", "2", "max intraday leverage")
@@ -41,26 +40,8 @@ var (
 )
 
 const (
-	openTime              = 6_30_00
-	normalCloseTime       = 13_00_00
-	normalMarginCheckTime = 12_50_00
-	earlyCloseTime        = 10_00_00
-	earlyMarginCheckTime  = 9_50_00
+	marginCheckTime = 10 * clocky.Minute
 )
-
-var earlyCloseDates = map[int]bool{
-	// July 3rd (or nearest trading day before July 4th)
-	// Day after Thanksgiving (4th Friday in November)
-	// Christmas Eve (Dec 24, or nearest trading day)
-	20200703: true, 20201127: true, 20201224: true,
-	20210702: true, 20211126: true, 20211224: true,
-	20220701: true, 20221125: true, 20221223: true,
-	20230703: true, 20231124: true, 20231222: true,
-	20240703: true, 20241129: true, 20241224: true,
-	20250703: true, 20251128: true, 20251224: true,
-	20260703: true, 20261127: true, 20261224: true,
-	20270702: true, 20271126: true, 20271224: true,
-}
 
 var (
 	flagSlipClose = decimal.FlagBPS("slip-close", "50", "slippage on close orders")
@@ -68,12 +49,10 @@ var (
 )
 
 var (
-	gHoldings        []*Holding
-	gDate            int
-	gCloseTime       int
-	gMarginCheckTime int
-	gLastRebalance   clocky.Time
-	gTotalMomentum   decimal.Decimal
+	gHoldings      []*Holding
+	gDate          int
+	gLastRebalance clocky.Time
+	gTotalMomentum decimal.Decimal
 )
 
 func main() {
@@ -107,10 +86,6 @@ func main() {
 	if len(gHoldings) == 0 {
 		log.Fatal("no valid symbols to hold")
 	}
-
-	benchSym := symbol.MustParse(*flagBenchmark)
-	benchEquity, _ := cubby.AddEquity(benchSym)
-	cubby.Benchmark = benchEquity
 
 	log.Printf("Momentum-Weighted Hold Strategy")
 	log.Printf("  Symbols: %d", len(gHoldings))
@@ -151,13 +126,6 @@ func (h *Holding) onBar(bar *ds.Bar) {
 	date := bar.Timestamp.DateInt()
 	if date != gDate {
 		gDate = date
-		if earlyCloseDates[date] {
-			gCloseTime = earlyCloseTime
-			gMarginCheckTime = earlyMarginCheckTime
-		} else {
-			gCloseTime = normalCloseTime
-			gMarginCheckTime = normalMarginCheckTime
-		}
 	}
 	if date != h.lastDate {
 		h.lastDate = date
@@ -178,15 +146,15 @@ func (h *Holding) onBar(bar *ds.Bar) {
 	}
 
 	now := clocky.Now()
-	time := now.ClockInt()
-
-	if time < openTime || time >= gCloseTime {
+	openTime := cubby.GetOpenTime(now)
+	closeTime := cubby.GetCloseTime(now)
+	if now < openTime || now >= closeTime {
 		return
 	}
 
 	// before close: aggressively reduce to overnight leverage
-	if time >= gMarginCheckTime {
-		h.reduceForOvernight(time)
+	if closeTime.Sub(now) <= marginCheckTime {
+		h.reduceForOvernight(now, closeTime)
 		return
 	}
 
@@ -337,7 +305,7 @@ func (h *Holding) rebalanceToLeverage(targetLeverage decimal.Decimal) {
 // 1. Cancels and replaces stale orders if price has moved
 // 2. Uses urgency-based slippage that increases as we approach close
 // 3. Doesn't use any threshold - acts on any difference
-func (h *Holding) reduceForOvernight(time int) {
+func (h *Holding) reduceForOvernight(now, closeTime clocky.Time) {
 	if !h.equity.Price.IsPositive() {
 		return
 	}
@@ -356,11 +324,12 @@ func (h *Holding) reduceForOvernight(time int) {
 	}
 
 	// calculate urgency: 0 at marginCheckTime, 1 at closeTime
-	totalWindow := gCloseTime - gMarginCheckTime
-	elapsed := time - gMarginCheckTime
 	urgency := decimal.Zero
-	if totalWindow > 0 && elapsed > 0 {
-		urgency = decimal.FromInt(elapsed).Div(decimal.FromInt(totalWindow))
+	timeLeft := closeTime.Sub(now)
+	if timeLeft > 0 {
+		timeRemaining := decimal.FromInt64(int64(timeLeft))
+		totalWindow := decimal.FromInt64(int64(marginCheckTime))
+		urgency = timeRemaining.Div(totalWindow)
 	}
 	adaptiveSlip := flagSlipClose.Add(urgency.Mul(*flagUrgency))
 

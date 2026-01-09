@@ -29,7 +29,6 @@ import (
 
 var (
 	flagSymbols    = flag.String("symbol", "GOOG", "symbols to trade (space-separated)")
-	flagBenchmark  = flag.String("benchmark", "QQQ", "benchmark symbol")
 	flagSlipOpen   = decimal.FlagBPS("slip-open", "25", "slippage on open orders")
 	flagSlipClose  = decimal.FlagBPS("slip-close", "50", "slippage on close orders")
 	flagUrgency    = decimal.FlagBPS("urgency", "100", "extra slippage per minute when closing late")
@@ -100,10 +99,6 @@ func main() {
 	if len(gTraders) == 0 {
 		log.Fatal("no valid symbols to trade")
 	}
-
-	benchSym := symbol.MustParse(*flagBenchmark)
-	benchEquity, _ := cubby.AddEquity(benchSym)
-	cubby.Benchmark = benchEquity
 
 	log.Printf("Momentum Day Trading Strategy")
 	log.Printf("  Symbols: %d", len(gTraders))

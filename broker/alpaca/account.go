@@ -3,10 +3,7 @@ package alpaca
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
+	"dropbear/netty"
 )
 
 // Account represents an Alpaca account.
@@ -47,19 +44,11 @@ type Account struct {
 
 // GetAccount retrieves account info.
 func (c *Client) GetAccount() (*Account, error) {
+	var result Account
 	c.APITokenBucket.Get()
-	resp, err := c.Get("/v2/account")
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/account", nil, &result)
 	if err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
-	var result Account
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 	return &result, nil
 }

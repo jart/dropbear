@@ -22,6 +22,8 @@ var (
 	flagExt           = flag.Bool("ext", false, "participate in extended hours trading")
 	flagTWAP          = flag.Bool("twap", false, "use time weighted average price algorithm")
 	flagVWAP          = flag.Bool("vwap", false, "use volume weighted average price algorithm")
+	flagPrice         = decimal.Flag("price", "0", "sets an explicit limit price")
+	flagNotional      = decimal.Flag("notional", "0", "usd amount of order")
 	flagQuantity      = decimal.Flag("quantity", "0", "number of shares to transact")
 	flagPercent       = decimal.FlagPercent("percent", "0", "percent of buying power (if opening) or holding quantity (if closing) to use for order quantity")
 	flagGreed         = decimal.FlagBPS("greed", "0", "number of basis points improvement over market price to demand")
@@ -32,13 +34,17 @@ var (
 func main() {
 	flag.Parse()
 
-	// figure out order
-	if !(*flagQuantity).IsZero() && !(*flagPercent).IsZero() {
-		fmt.Fprintf(os.Stderr, "cannot specify both -quantity and -percent\n")
+	// validate some flags
+	if (*flagQuantity).IsZero() && (*flagNotional).IsZero() {
+		fmt.Fprintf(os.Stderr, "no -quantity or -notional amount specified\n")
 		os.Exit(1)
 	}
-	if (*flagQuantity).IsZero() && (*flagPercent).IsZero() {
-		fmt.Fprintf(os.Stderr, "must specify either -quantity or -percent\n")
+	if (*flagPrice).IsNegative() {
+		fmt.Fprintf(os.Stderr, "-price cannot be negative\n")
+		os.Exit(1)
+	}
+	if !(*flagPrice).IsZero() && !(*flagGreed).IsZero() {
+		fmt.Fprintf(os.Stderr, "-price and -greed cannot both be specified\n")
 		os.Exit(1)
 	}
 
@@ -50,7 +56,11 @@ func main() {
 		orderType = alpaca.OrderTypeLimit
 	} else if *flagMarket {
 		orderType = alpaca.OrderTypeMarket
-		if *flagGreed != decimal.Zero {
+		if !(*flagPrice).IsZero() {
+			fmt.Fprintf(os.Stderr, "-price only works with limit orders\n")
+			os.Exit(1)
+		}
+		if !(*flagGreed).IsZero() {
 			fmt.Fprintf(os.Stderr, "-greed only works with limit orders\n")
 			os.Exit(1)
 		}
@@ -133,9 +143,9 @@ func main() {
 		}
 	}
 
-	// get list of stocks to buy
+	// get list of stocks
 	if len(flag.Args()) == 0 {
-		fmt.Fprintf(os.Stderr, "no symbols specified to open\n")
+		fmt.Fprintf(os.Stderr, "no symbols specified\n")
 		os.Exit(1)
 	}
 	var symbols []symbol.Symbol
@@ -148,27 +158,10 @@ func main() {
 		symbols = append(symbols, sym)
 	}
 
-	// get account information
-	client := alpaca.NewClient()
-	account, err := client.GetAccount()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error getting account: %v\n", err)
-		os.Exit(1)
-	}
-
-	// open each position using a twap order
+	// loop over stocks
 	exitCode := 0
+	client := alpaca.NewClient()
 	for _, sym := range symbols {
-
-		// get position
-		position, err := client.GetPosition(sym)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting position for %s: %v\n", sym, err)
-			if exitCode < 255 {
-				exitCode++
-			}
-			continue
-		}
 
 		// get quote
 		quote, err := client.GetQuote(sym)
@@ -180,11 +173,40 @@ func main() {
 			continue
 		}
 
-		// figure out limit price
-		var limitPrice decimal.Decimal
-		if orderType == alpaca.OrderTypeLimit {
+		// figure out quantity
+		side := ds.SideBuy
+		quantity := *flagQuantity
+		if !quantity.IsZero() {
+			if quantity.IsNegative() {
+				side = ds.SideSell
+				quantity = quantity.Neg()
+			}
+		} else {
+			price := decimal.Zero
+			notional := *flagNotional
+			if notional.IsNegative() {
+				side = ds.SideSell
+				price := quote.BidPrice
+				notional = notional.Neg()
+				quantity = notional.Div(price).Truncate()
+			} else {
+				price := quote.AskPrice
+				quantity = notional.Div(price).Truncate()
+			}
+			if quantity.IsZero() {
+				fmt.Fprintf(os.Stderr, "notional amount %s is too small to %s any shares of %s at price %s\n", notional, side, sym, price)
+				if exitCode < 255 {
+					exitCode++
+				}
+				continue
+			}
+		}
+
+		// figure out our price
+		limitPrice := *flagPrice
+		if orderType == alpaca.OrderTypeLimit && limitPrice.IsZero() {
 			limitPrice = quote.BidPrice.Add(quote.AskPrice).DivInt(2)
-			if intent.Side() == ds.SideBuy {
+			if side == ds.SideBuy {
 				limitPrice = limitPrice.Mul(decimal.One.Sub(*flagGreed))
 				limitPrice = limitPrice.QuantizeTruncate(decimal.Cent)
 			} else {
@@ -193,37 +215,15 @@ func main() {
 			}
 		}
 
-		// figure out quantity
-		quantity := *flagQuantity
-		if !(*flagPercent).IsZero() {
-			if intent.IsOpen() {
-				buyingPower := account.BuyingPower.Mul(*flagPercent)
-				buyingPowerPerStock := buyingPower.DivInt(len(symbols))
-				if intent.Side() == ds.SideBuy {
-					quantity = buyingPowerPerStock.Div(quote.AskPrice).Truncate()
-				} else {
-					quantity = buyingPowerPerStock.Div(quote.BidPrice).Truncate()
-				}
-			} else {
-				quantity = position.Qty.Div(decimal.One.Sub(*flagPercent)).Truncate()
-			}
-		}
-
-		// figure out side
-		side := ds.SideBuy
-		if quantity.IsNegative() {
-			side = ds.SideSell
-			quantity = quantity.Neg()
-		}
-
+		// give the order
 		_, err = client.CreateOrder(&alpaca.OrderRequest{
-			Symbol:         sym,
-			Side:           side,
-			Qty:            quantity,
-			LimitPrice:     limitPrice,
-			Type:           orderType,
-			TimeInForce:    timeInForce,
-			ExtendedHours:  extendedHours,
+			Symbol:        sym,
+			Side:          side,
+			Qty:           quantity,
+			LimitPrice:    limitPrice,
+			Type:          orderType,
+			TimeInForce:   timeInForce,
+			ExtendedHours: extendedHours,
 			AdvancedInstructions: &alpaca.AdvancedInstructions{
 				Algorithm:     algorithm,
 				EndTime:       endTime,
@@ -236,7 +236,9 @@ func main() {
 				exitCode++
 			}
 		}
-		fmt.Printf("order placed to %s %s shares of %s at %s\n", intent, quantity, sym, limitPrice)
+
+		// log the order
+		fmt.Printf("order placed to %s %s shares of %s at %s\n", side, quantity, sym, limitPrice)
 	}
 
 	// report status to parent process

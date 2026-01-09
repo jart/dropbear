@@ -16,11 +16,12 @@ const (
 	Hour        Duration = 60 * Minute
 	Day         Duration = 24 * Hour
 	Week        Duration = 7 * Day
-	Month       Duration = 30 * Day
+	Monthy      Duration = 30 * Day
 	Year        Duration = 365 * Day
 )
 
 func (d Duration) Milliseconds() int64    { return int64(d) / int64(Millisecond) }
+func (d Duration) Seconds() int64         { return int64(d) / int64(Second) }
 func (d Duration) Hours() decimal.Decimal { return d.Div(Hour) }
 func (d Duration) Days() decimal.Decimal  { return d.Div(Day) }
 

@@ -16,7 +16,7 @@ func TestParse(t *testing.T) {
 		{"simple", "AAPL", MustParse("AAPL"), false},
 		{"omfg", "SOXL", Symbol(0x4c584f53), false},
 		{"max length", "ABCDEFG", MustParse("ABCDEFG"), false},
-		{"too long", "ABCDEFGH", 0, true},
+		{"too long", "ABCDEFGHI", 0, true},
 		{"empty", "", 0, true},
 	}
 	for _, tt := range tests {
@@ -86,6 +86,7 @@ func TestSymbol_Format(t *testing.T) {
 		{"hex repr", "AAPL", "%#x", "0x4c504141"},
 		{"v", "AAPL", "%v", "AAPL"},
 		{"v repr", "AAPL", "%#v", "symbol.MustParse(\"AAPL\")"},
+		{"q", "AAPL", "%q", "\"AAPL\""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -3,10 +3,8 @@ package alpaca
 import (
 	"dropbear/decimal"
 	"dropbear/ds/symbol"
-	"encoding/json"
+	"dropbear/netty"
 	"fmt"
-	"io"
-	"net/http"
 )
 
 // Position represents an open position.
@@ -33,38 +31,22 @@ type Position struct {
 
 // GetPositions retrieves all open positions.
 func (c *Client) GetPositions() ([]Position, error) {
+	var result []Position
 	c.APITokenBucket.Get()
-	resp, err := c.Get("/v2/positions")
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", "/v2/positions", nil, &result)
 	if err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
-	var result []Position
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 	return result, nil
 }
 
 // GetPosition retrieves an open position.
 func (c *Client) GetPosition(symbolOrAssetID fmt.Stringer) (*Position, error) {
+	var result Position
 	c.APITokenBucket.Get()
-	resp, err := c.Get("/v2/positions/" + symbolOrAssetID.String())
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", "/v2/positions/"+symbolOrAssetID.String(), nil, &result)
 	if err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
-	var result Position
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 	return &result, nil
 }

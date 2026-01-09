@@ -1,7 +1,7 @@
 package binance
 
 import (
-	"dropbear/ds"
+	"bytes"
 	"dropbear/netty"
 	"encoding/json"
 	"fmt"
@@ -68,7 +68,7 @@ func (c *Client) Request(method, path string, body io.Reader) (*http.Response, e
 	for {
 		var bodyReader io.Reader
 		if bodyBytes != nil {
-			bodyReader = io.NopCloser(ds.NewBytesReader(bodyBytes))
+			bodyReader = bytes.NewReader(bodyBytes)
 		}
 		req, err := http.NewRequest(method, url, bodyReader)
 		if err != nil {

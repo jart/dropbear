@@ -37,7 +37,7 @@ func (o *Order) Wait() {
 
 func (o *Order) Cancel() error {
 	if o.OrderID == "" || o.State.Load().IsFinal() {
-		return ds.ErrOrderNotFound
+		return ds.ErrNotFound
 	}
 	if !Paper {
 		switch o.Pair.Broker.Broker {
@@ -128,12 +128,12 @@ func (order *Order) fill(filled, notional, feeRate decimal.Decimal, force bool) 
 	order.Lock.Lock()
 	if !force && order.State.Load().IsFinal() {
 		order.Lock.Unlock()
-		return decimal.Zero, ds.ErrOrderNotFound
+		return decimal.Zero, ds.ErrNotFound
 	}
 	remaining := order.Quantity.Load().Sub(order.Filled.Load())
 	if !remaining.IsPositive() {
 		order.Lock.Unlock()
-		return decimal.Zero, ds.ErrOrderNotFound
+		return decimal.Zero, ds.ErrNotFound
 	}
 
 	// clamp fill to remaining quantity

@@ -1,6 +1,7 @@
 package alpaca
 
 import (
+	"bytes"
 	"dropbear/ds"
 	"dropbear/netty"
 	"encoding/json"
@@ -41,35 +42,55 @@ func (c *Client) Get(path string) (*http.Response, error) {
 	return c.Request(netty.BulkHttpClient, "GET", path, nil)
 }
 
-// RequestJSON performs a GET request and decodes the JSON response into data.
-func (c *Client) RequestJSON(client *http.Client, method, url string, body io.Reader, response any) error {
-	resp, err := c.Request(client, method, url, body)
+// RequestJSON performs an API request, marshaling the request body and unmarshaling the response.
+// If requestBody is nil, no request body is sent. Otherwise requestBody is marshaled as JSON.
+// The response body JSON is unmarshaled into responseBody if the return error is nil.
+// Your responseBody must be nil for endpoints that return 204 No Content.
+// Any 404 errors are canonicalized to an ds.ErrNotFound return value.
+// Other API error responses are unmarshaled into an alpaca.Error.
+func (c *Client) RequestJSON(client *http.Client, method, url string, requestBody, responseBody any) error {
+	var requestBodyBytes []byte
+	if requestBody != nil {
+		var err error
+		requestBodyBytes, err = json.Marshal(requestBody)
+		if err != nil {
+			return fmt.Errorf("marshaling request body: %w", err)
+		}
+	}
+	resp, err := c.Request(client, method, url, requestBodyBytes)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	decoder := json.NewDecoder(resp.Body)
-	if resp.StatusCode == http.StatusOK {
-		if err := decoder.Decode(response); err != nil {
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated:
+		if responseBody == nil {
+			panic("usage error: nil responseBody for 200 OK")
+		}
+		if err := decoder.Decode(responseBody); err != nil {
 			return fmt.Errorf("failed to decode json response from %s: %w", url, err)
 		}
 		return nil
-	} else {
-		var err Error
-		if err := decoder.Decode(&err); err != nil {
+	case http.StatusNoContent:
+		if responseBody != nil {
+			panic("usage error: non-nil responseBody for 204 No Content")
+		}
+		return nil
+	case http.StatusNotFound:
+		return ds.ErrNotFound
+	default:
+		var apiErr Error
+		if err := decoder.Decode(&apiErr); err != nil {
 			return fmt.Errorf("failed to decode error response from %s: %w", url, err)
 		}
-		canonicalAPIErrorObject := canonicalizeError(err.Code)
-		if canonicalAPIErrorObject != nil {
-			return canonicalAPIErrorObject
-		}
-		return &err
+		return &apiErr
 	}
 }
 
 // Request makes an authenticated API request with exponential backoff retry on 429.
 // Panics if called during backtesting - no network access allowed.
-func (c *Client) Request(client *http.Client, method, urlString string, body io.Reader) (*http.Response, error) {
+func (c *Client) Request(client *http.Client, method, urlString string, body []byte) (*http.Response, error) {
 
 	// interpret url
 	u, err := url.Parse(urlString)
@@ -84,24 +105,14 @@ func (c *Client) Request(client *http.Client, method, urlString string, body io.
 	}
 	urlString = u.String()
 
-	// schlep body into memory for retries
-	var bodyBytes []byte
-	if body != nil {
-		var err error
-		bodyBytes, err = io.ReadAll(body)
-		if err != nil {
-			return nil, fmt.Errorf("reading body: %w", err)
-		}
-	}
-
 	// retry loop
 	tries := 0
 	for {
 
 		// send http request
 		var bodyReader io.Reader
-		if bodyBytes != nil {
-			bodyReader = io.NopCloser(ds.NewBytesReader(bodyBytes))
+		if body != nil {
+			bodyReader = bytes.NewReader(body)
 		}
 		req, err := http.NewRequest(method, urlString, bodyReader)
 		if err != nil {

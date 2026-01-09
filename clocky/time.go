@@ -27,6 +27,24 @@ const (
 	Saturday
 )
 
+// A Month specifies a month of the year (January = 1, ...).
+type Month int
+
+const (
+	January Month = 1 + iota
+	February
+	March
+	April
+	May
+	June
+	July
+	August
+	September
+	October
+	November
+	December
+)
+
 func (t Time) IsZero() bool             { return t == 0 }
 func (t Time) Add(d Duration) Time      { return Time(int64(t) + int64(d)) }
 func (t Time) Sub(u Time) Duration      { return Duration(int64(t) - int64(u)) }
@@ -42,8 +60,9 @@ func (t Time) Year() int                { return time.UnixMicro(int64(t)).In(TZ)
 func (t Time) Weekday() Weekday         { return Weekday(time.UnixMicro(int64(t)).In(TZ).Weekday()) }
 
 // Date returns the date.
-func (t Time) Date() (year int, month time.Month, day int) {
-	return time.UnixMicro(int64(t)).In(TZ).Date()
+func (t Time) Date() (year int, month Month, day int) {
+	y, m, d := time.UnixMicro(int64(t)).In(TZ).Date()
+	return y, Month(m), d
 }
 
 // Clock returns the time.
@@ -151,6 +170,12 @@ var localFormats = []string{
 	"2006-01-02T15:04:05",
 	"2006-01-02T15:04",
 	"2006-01-02",
+}
+
+// Date creates a Time from date and time components in California.
+func Date(year int, month Month, day, hour, min, sec, micros int) Time {
+	t := time.Date(year, time.Month(month), day, hour, min, sec, micros*1000, TZ)
+	return Time(t.UnixMicro())
 }
 
 // Parse turns string into Time.

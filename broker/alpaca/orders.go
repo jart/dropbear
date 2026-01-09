@@ -1,17 +1,11 @@
 package alpaca
 
 import (
-	"bytes"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/ds/symbol"
 	"dropbear/netty"
-	"encoding/json"
-	"fmt"
-	"io"
-	"log"
-	"net/http"
 )
 
 // Order represents an Alpaca order.
@@ -73,167 +67,68 @@ type AdvancedInstructions struct {
 
 // CreateOrder places a new order.
 func (c *Client) CreateOrder(body *OrderRequest) (*Order, error) {
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling order: %w", err)
-	}
+	var result Order
 	c.APITokenBucket.Get()
-	resp, err := c.Request(netty.FastHTTPClient, "POST", "/v2/orders", bytes.NewReader(jsonBody))
+	err := c.RequestJSON(netty.FastHTTPClient, "POST", "/v2/orders", body, &result)
 	if err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		respBody, _ := io.ReadAll(resp.Body)
-		var compact bytes.Buffer
-		if json.Compact(&compact, respBody) == nil {
-			respBody = compact.Bytes()
-		}
-		if resp.StatusCode == http.StatusForbidden {
-			log.Printf("forbidden trade: %s", string(respBody))
-			return nil, ErrWashTrade
-		}
-		return nil, fmt.Errorf("order failed %d: %s", resp.StatusCode, string(respBody))
-	}
-	respBody, _ := io.ReadAll(resp.Body)
-	var result Order
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w\nraw: %s", err, string(respBody))
 	}
 	return &result, nil
 }
 
-// ReplaceOrder lets you update a limit order.
+// ReplaceOrder modifies an existing order's quantity and/or limit price.
 func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, limitPrice decimal.Decimal) (*Order, error) {
-	if qty.IsNegative() {
-		qty = qty.Neg()
-	}
-	jsonBody, err := json.Marshal(map[string]string{
-		"qty":         qty.String(),
-		"limit_price": limitPrice.String(),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("marshaling order: %w", err)
-	}
 	c.APITokenBucket.Get()
-	resp, err := c.Request(netty.FastHTTPClient, "PATCH", "/v2/orders/"+orderID, bytes.NewReader(jsonBody))
+	var result Order
+	err := c.RequestJSON(netty.FastHTTPClient, "PATCH", "/v2/orders/"+orderID, &struct {
+		Qty        decimal.Decimal `json:"qty,omitempty"`
+		LimitPrice decimal.Decimal `json:"limit_price,omitempty"`
+	}{qty, limitPrice}, &result)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		respBody, _ := io.ReadAll(resp.Body)
-		var compact bytes.Buffer
-		if json.Compact(&compact, respBody) == nil {
-			respBody = compact.Bytes()
-		}
-		if resp.StatusCode == http.StatusForbidden {
-			return nil, ds.ErrSelfTrade
-		}
-		if resp.StatusCode == http.StatusNotFound {
-			return nil, ds.ErrOrderNotFound
-		}
-		if resp.StatusCode == http.StatusUnprocessableEntity {
-			var errResp struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-			}
-			if json.Unmarshal(respBody, &errResp) == nil && errResp.Code == 42210000 {
-				return nil, ds.ErrOrderNotOpen
-			}
-		}
-		return nil, fmt.Errorf("replace failed %d: %s", resp.StatusCode, string(respBody))
-	}
-	var result Order
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
-	}
 	return &result, nil
 }
-
-// ErrWashTrade is returned when an order would cross our own order (403 wash trade).
-var ErrWashTrade = fmt.Errorf("wash trade detected")
 
 // CancelOrder cancels an order by ID.
-// Returns ErrOrderPendingReplace if order is not cancelable (422 - mid-replacement, etc.).
-// Returns ErrOrderNotFound if order doesn't exist (404 - already filled/canceled).
+// Returns ds.ErrNotFound if order doesn't exist or was already filled/canceled.
 func (c *Client) CancelOrder(orderID string) error {
 	c.APITokenBucket.Get()
-	resp, err := c.Request(netty.FastHTTPClient, "DELETE", "/v2/orders/"+orderID, nil)
+	err := c.RequestJSON(netty.FastHTTPClient, "DELETE", "/v2/orders/"+orderID, nil, nil)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusNoContent:
-		return nil
-	case http.StatusNotFound:
-		return ds.ErrOrderNotFound
-	case http.StatusUnprocessableEntity:
-		return ds.ErrOrderPendingReplace
-	default:
-		respBody, _ := io.ReadAll(resp.Body)
-		var compact bytes.Buffer
-		if json.Compact(&compact, respBody) == nil {
-			respBody = compact.Bytes()
-		}
-		return fmt.Errorf("cancel failed %d: %s", resp.StatusCode, string(respBody))
-	}
+	return nil
 }
 
 // CancelAllOrders cancels all open orders.
 func (c *Client) CancelAllOrders() error {
 	c.APITokenBucket.Get()
-	resp, err := c.Request(netty.FastHTTPClient, "DELETE", "/v2/orders", nil)
+	err := c.RequestJSON(netty.FastHTTPClient, "DELETE", "/v2/orders", nil, nil)
 	if err != nil {
 		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusMultiStatus {
-		respBody, _ := io.ReadAll(resp.Body)
-		var compact bytes.Buffer
-		if json.Compact(&compact, respBody) == nil {
-			respBody = compact.Bytes()
-		}
-		return fmt.Errorf("cancel all failed %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
 }
 
 // GetOrder retrieves a single order by ID.
 func (c *Client) GetOrder(orderID string) (*Order, error) {
+	var result Order
 	c.APITokenBucket.Get()
-	resp, err := c.Request(netty.BulkHttpClient, "GET", "/v2/orders/"+orderID, nil)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/orders/"+orderID, nil, &result)
 	if err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
-	var result Order
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 	return &result, nil
 }
 
 // GetOrders retrieves open orders.
 func (c *Client) GetOrders() ([]Order, error) {
+	var result []Order
 	c.APITokenBucket.Get()
-	resp, err := c.Request(netty.BulkHttpClient, "GET", "/v2/orders?status=open", nil)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/orders?status=open", nil, &result)
 	if err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
-	var result []Order
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 	return result, nil
 }

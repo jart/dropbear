@@ -1,6 +1,7 @@
 package coinbase
 
 import (
+	"bytes"
 	"database/sql"
 	"dropbear/db"
 	"dropbear/ds"
@@ -92,7 +93,7 @@ func (c *Client) Request(client *http.Client, method, reqURL string, body io.Rea
 		// send http request
 		var bodyReader io.Reader
 		if bodyBytes != nil {
-			bodyReader = io.NopCloser(ds.NewBytesReader(bodyBytes))
+			bodyReader = bytes.NewReader(bodyBytes)
 		}
 		jwt := c.authKey.GenerateJWT(jwtURI, 60)
 		req, err := http.NewRequest(method, u.String(), bodyReader)

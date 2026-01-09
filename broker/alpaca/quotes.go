@@ -3,10 +3,8 @@ package alpaca
 import (
 	"dropbear/decimal"
 	"dropbear/ds/symbol"
-	"encoding/json"
+	"dropbear/netty"
 	"fmt"
-	"io"
-	"net/http"
 )
 
 // Quote represents an NBBO quote.
@@ -24,53 +22,32 @@ type Quote struct {
 // GetQuote fetches the latest NBBO quote for a stock symbol.
 // https://docs.alpaca.markets/reference/stocklatestquotesingle-1
 func (c *Client) GetQuote(sym symbol.Symbol) (*Quote, error) {
-	c.DataTokenBucket.Get()
-	resp, err := c.Get(fmt.Sprintf("https://%s/v2/stocks/%s/quotes/latest", DataHost, sym))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
+	url := fmt.Sprintf("https://%s/v2/stocks/%s/quotes/latest", DataHost, sym)
 	var result struct {
 		Quote  *Quote `json:"quote"`
 		Symbol string `json:"symbol"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	c.DataTokenBucket.Get()
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, nil, &result)
+	if err != nil {
 		return nil, err
 	}
 	return result.Quote, nil
 }
 
 // GetCryptoQuote fetches the latest quote for a crypto symbol.
-// Symbol should be in Alpaca format (e.g., "BTCUSD") - it will be converted to "BTC/USD".
 // https://docs.alpaca.markets/reference/cryptolatestquotes-1
 func (c *Client) GetCryptoQuote(sym symbol.Symbol) (*Quote, error) {
-	c.DataTokenBucket.Get()
-	// Convert BTCUSD -> BTC/USD format for the API
-	s := sym.String()
-	apiSymbol := s
-	if len(s) >= 6 && s[len(s)-3:] == "USD" {
-		apiSymbol = s[:len(s)-3] + "/USD"
+	url := fmt.Sprintf("https://%s/v1beta3/crypto/us/latest/quotes?symbols=%s", DataHost, sym)
+	var result struct {
+		Quotes map[symbol.Symbol]*Quote `json:"quotes"`
 	}
-	resp, err := c.Get(fmt.Sprintf("https://%s/v1beta3/crypto/us/latest/quotes?symbols=%s", DataHost, apiSymbol))
+	c.DataTokenBucket.Get()
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
-	var result struct {
-		Quotes map[string]*Quote `json:"quotes"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	quote, ok := result.Quotes[apiSymbol]
+	quote, ok := result.Quotes[sym]
 	if !ok {
 		return nil, fmt.Errorf("no quote found for %s", sym)
 	}

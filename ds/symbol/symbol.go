@@ -80,7 +80,7 @@ func (s Symbol) Format(f fmt.State, verb rune) {
 	}
 	format = append(format, byte(verb))
 	switch verb {
-	case 's':
+	case 's', 'q':
 		fmt.Fprintf(f, string(format), s.String())
 	case 'v':
 		if f.Flag('#') {

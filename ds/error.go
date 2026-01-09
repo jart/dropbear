@@ -3,9 +3,9 @@ package ds
 import "errors"
 
 var (
+	ErrNotFound            = errors.New("not found")
 	ErrSelfTrade           = errors.New("self trading")
 	ErrOrderNotOpen        = errors.New("order not open")
-	ErrOrderNotFound       = errors.New("order not found")
 	ErrOrderPendingReplace = errors.New("order pending replace")
 	ErrOrderPendingCancel  = errors.New("order pending cancel")
 	ErrPostOnly            = errors.New("order would cross spread")

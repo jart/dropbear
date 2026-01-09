@@ -14,7 +14,7 @@ func TestSharpe_Welford_Convergence(t *testing.T) {
 	// t2: 132 (Return 0.2)
 	// Mean: 0.15
 	// Var:  0.005
-	startTime := clocky.Date(2025, 1, 1, 0, 0, 0, 0, clocky.TZ)
+	startTime := clocky.Date(2025, 1, 1, 0, 0, 0, 0)
 	inputs := []int64{100, 110, 132}
 
 	for i, val := range inputs {
@@ -45,7 +45,7 @@ func TestSharpe_MinuteQuantum_HighFrequency(t *testing.T) {
 	// t0: 09:30:00 -> 100
 	// t1: 09:31:00 -> 110 (Return 0.1)
 	// t2: 09:32:00 -> 132 (Return 0.2)
-	startTime := clocky.Date(2025, 1, 1, 9, 30, 0, 0, clocky.TZ)
+	startTime := clocky.Date(2025, 1, 1, 9, 30, 0, 0)
 	inputs := []int64{100, 110, 132}
 
 	for i, val := range inputs {

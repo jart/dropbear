@@ -65,17 +65,17 @@ func timeframeFromDuration(d clocky.Duration) (Timeframe, error) {
 		return "1D", nil
 	case clocky.Week:
 		return "1W", nil
-	case clocky.Month:
+	case clocky.Monthy:
 		return "1M", nil
-	case clocky.Month * 2:
+	case clocky.Monthy * 2:
 		return "2M", nil
-	case clocky.Month * 3:
+	case clocky.Monthy * 3:
 		return "3M", nil
-	case clocky.Month * 4:
+	case clocky.Monthy * 4:
 		return "4M", nil
-	case clocky.Month * 6:
+	case clocky.Monthy * 6:
 		return "6M", nil
-	case clocky.Month * 12:
+	case clocky.Monthy * 12:
 		return "12M", nil
 	default:
 		return "", ErrUnsupportedTimeframe

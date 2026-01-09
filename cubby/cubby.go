@@ -4,6 +4,7 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/ds/symbol"
 	"dropbear/loggy"
 	"dropbear/netty"
 	"flag"
@@ -14,6 +15,7 @@ import (
 
 var (
 	flagVerbose    = flag.Bool("v", false, "verbose logging")
+	flagBench      = flag.String("bench", "GOOG", "benchmark against just holding symbol")
 	flagPaper      = flag.Bool("paper", false, "simulate order execution on live data")
 	flagBacktest   = flag.Bool("backtest", false, "run backtest on historical data")
 	flagCash       = decimal.Flag("cash", "100_000", "initial USD balance")
@@ -45,7 +47,7 @@ var (
 var (
 	gMaxMarginAvailable decimal.Decimal
 	gPowerLevel         decimal.Decimal
-	gMarginHold         decimal.Decimal // margin reserved by pending orders
+	gMarginHold         decimal.Decimal
 	gFeeCalculator      *alpaca.FeeCalculator
 	gLiveInvested       decimal.Decimal
 	gLiveMarginUsed     decimal.Decimal
@@ -79,11 +81,19 @@ func Init() {
 
 // Run runs the main event loop.
 func Run() {
-	Running = true
-	defer onRunEnd()
 	if Benchmark == nil {
-		panic("you forgot to set cubby.Benchmark")
+		sym, err := symbol.Parse(*flagBench)
+		if err != nil {
+			loggy.Fatalf("invalid -bench symbol %q", *flagBench)
+		}
+		equity, err := AddEquity(sym)
+		if err != nil {
+			loggy.Fatalf("could not add benchmark symbol %q: %v", sym, err)
+		}
+		Benchmark = equity
 	}
+	Running = true
+	defer func() { Running = false }()
 	gFeeCalculator = alpaca.NewFeeCalculator()
 	if Live {
 		liveTrader := newLiveTrader()
@@ -145,8 +155,4 @@ func GetMarginUsed() decimal.Decimal {
 		total = total.Add(margin)
 	}
 	return total
-}
-
-func onRunEnd() {
-	Running = false
 }

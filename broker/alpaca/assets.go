@@ -1,14 +1,12 @@
 package alpaca
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"sync"
 
 	"dropbear/decimal"
 	"dropbear/ds/symbol"
+	"dropbear/netty"
 )
 
 var Lock sync.RWMutex
@@ -135,19 +133,11 @@ type jsonAsset struct {
 }
 
 func (c *Client) fetchAssets() ([]jsonAsset, error) {
+	var jsonAssets []jsonAsset
 	c.APITokenBucket.Get()
-	resp, err := c.Get("/v2/assets")
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/assets", nil, &jsonAssets)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
-	var result []jsonAsset
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
-	}
-	return result, nil
+	return jsonAssets, nil
 }

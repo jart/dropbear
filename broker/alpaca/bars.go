@@ -4,11 +4,9 @@ import (
 	"dropbear/clocky"
 	"dropbear/ds"
 	"dropbear/ds/symbol"
-	"encoding/json"
+	"dropbear/netty"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strings"
 )
@@ -63,20 +61,12 @@ func (c *Client) GetBars(sym symbol.Symbol, timeframe clocky.Duration, start, en
 		q.Set("sort", "desc")
 	}
 	u.RawQuery = q.Encode()
-	resp, err := c.Get(u.String())
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, "", fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
 	var result struct {
 		Bars      []ds.Bar `json:"bars"`
 		NextToken string   `json:"next_page_token"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), nil, &result)
+	if err != nil {
 		return nil, "", err
 	}
 	return result.Bars, result.NextToken, nil
@@ -138,20 +128,12 @@ func (c *Client) GetBarsForSymbols(symbols []symbol.Symbol, timeframe clocky.Dur
 		q.Set("sort", "desc")
 	}
 	u.RawQuery = q.Encode()
-	resp, err := c.Get(u.String())
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, "", fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
 	var result struct {
 		Bars      map[string][]ds.Bar `json:"bars"`
 		NextToken string              `json:"next_page_token"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), nil, &result)
+	if err != nil {
 		return nil, "", err
 	}
 	bars := make(map[symbol.Symbol][]ds.Bar, len(result.Bars))
@@ -209,17 +191,17 @@ func convertDurationToTimeframe(d clocky.Duration) string {
 		return "1D"
 	case clocky.Week:
 		return "1W"
-	case clocky.Month:
+	case clocky.Monthy:
 		return "1M"
-	case clocky.Month * 2:
+	case clocky.Monthy * 2:
 		return "2M"
-	case clocky.Month * 3:
+	case clocky.Monthy * 3:
 		return "3M"
-	case clocky.Month * 4:
+	case clocky.Monthy * 4:
 		return "4M"
-	case clocky.Month * 6:
+	case clocky.Monthy * 6:
 		return "6M"
-	case clocky.Month * 12:
+	case clocky.Monthy * 12:
 		return "12M"
 	default:
 		return ""
