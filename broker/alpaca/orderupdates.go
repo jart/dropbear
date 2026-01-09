@@ -22,7 +22,7 @@ type OrderUpdate struct {
 func OrderUpdates() <-chan OrderUpdate {
 	c := make(chan OrderUpdate, 64)
 	d := &orderUpdatesDaemon{c}
-	d.run()
+	go d.run()
 	return c
 }
 
