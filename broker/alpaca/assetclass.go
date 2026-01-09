@@ -6,6 +6,7 @@ type AssetClass uint8
 
 const (
 	AssetClassUSEquity AssetClass = iota
+	AssetClassUSOption
 	AssetClassCrypto
 	AssetClassCryptoPerp
 )
@@ -14,6 +15,8 @@ func ParseAssetClass(s string) (AssetClass, error) {
 	switch s {
 	case "us_equity":
 		return AssetClassUSEquity, nil
+	case "us_option":
+		return AssetClassUSOption, nil
 	case "crypto":
 		return AssetClassCrypto, nil
 	case "crypto_perp":
@@ -27,6 +30,8 @@ func (ac AssetClass) String() string {
 	switch ac {
 	case AssetClassUSEquity:
 		return "us_equity"
+	case AssetClassUSOption:
+		return "us_option"
 	case AssetClassCrypto:
 		return "crypto"
 	case AssetClassCryptoPerp:
@@ -40,6 +45,8 @@ func (ac AssetClass) GoString() string {
 	switch ac {
 	case AssetClassUSEquity:
 		return "AssetClassUSEquity"
+	case AssetClassUSOption:
+		return "AssetClassUSOption"
 	case AssetClassCrypto:
 		return "AssetClassCrypto"
 	case AssetClassCryptoPerp:

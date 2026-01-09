@@ -18,6 +18,7 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 	"dropbear/loggy"
 )
 
@@ -263,7 +264,7 @@ func fetchAll(client *alpaca.Client, sym string, start, end clocky.Time, stopped
 		if stopped.Load() {
 			return nil, errInterrupted
 		}
-		pageBars, nextToken, err := client.GetBars(sym, clocky.Minute, start, end, feed, adjustment, 10000, false, pageToken)
+		pageBars, nextToken, err := client.GetBars(symbol.MustParse(sym), clocky.Minute, start, end, feed, adjustment, 10000, false, pageToken)
 		if err != nil {
 			return nil, err
 		}

@@ -5,7 +5,8 @@ import "fmt"
 type Exchange int
 
 const (
-	ExchangeNYSE Exchange = iota
+	ExchangeUnknown Exchange = iota
+	ExchangeNYSE
 	ExchangeNASDAQ
 	ExchangeAMEX
 	ExchangeARCA
@@ -18,6 +19,8 @@ const (
 
 func ParseExchange(s string) (Exchange, error) {
 	switch s {
+	case "", "UNKNOWN":
+		return ExchangeUnknown, nil
 	case "NYSE":
 		return ExchangeNYSE, nil
 	case "NASDAQ":
@@ -43,6 +46,8 @@ func ParseExchange(s string) (Exchange, error) {
 
 func (ex Exchange) String() string {
 	switch ex {
+	case ExchangeUnknown:
+		return ""
 	case ExchangeNYSE:
 		return "NYSE"
 	case ExchangeNASDAQ:
@@ -68,6 +73,8 @@ func (ex Exchange) String() string {
 
 func (ex Exchange) GoString() string {
 	switch ex {
+	case ExchangeUnknown:
+		return "ExchangeUnknown"
 	case ExchangeNYSE:
 		return "ExchangeNYSE"
 	case ExchangeNASDAQ:

@@ -3,6 +3,7 @@ package alpaca
 import (
 	"dropbear/clocky"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 	"dropbear/netty"
 	"errors"
 	"fmt"
@@ -22,7 +23,7 @@ var (
 // limit defaults to 1000 if 0 is passed and the maximum is 10000.
 // bars are returned by this api in ascending order.
 // https://docs.alpaca.markets/reference/stockbars
-func (c *Client) GetBars(sym string, timeframe clocky.Duration, start, end clocky.Time, feed DataFeed, adjustment BarAdjustment, limit int, desc bool, pageToken string) ([]ds.Bar, string, error) {
+func (c *Client) GetBars(sym symbol.Symbol, timeframe clocky.Duration, start, end clocky.Time, feed DataFeed, adjustment BarAdjustment, limit int, desc bool, pageToken string) ([]ds.Bar, string, error) {
 	if limit < 0 || limit > 10000 {
 		return nil, "", ErrBarsUnsupportedLimit
 	}
@@ -34,7 +35,7 @@ func (c *Client) GetBars(sym string, timeframe clocky.Duration, start, end clock
 	u := &url.URL{
 		Scheme: "https",
 		Host:   DataHost,
-		Path:   "/v2/stocks/" + sym + "/bars",
+		Path:   "/v2/stocks/" + sym.String() + "/bars",
 	}
 	q := u.Query()
 	q.Set("timeframe", tf)
@@ -78,7 +79,7 @@ func (c *Client) GetBars(sym string, timeframe clocky.Duration, start, end clock
 // limit defaults to 1000 if 0 is passed and the maximum is 10000.
 // bars are returned by this api in ascending order.
 // https://docs.alpaca.markets/reference/stockbars
-func (c *Client) GetBarsForSymbols(symbols []string, timeframe clocky.Duration, start, end clocky.Time, feed DataFeed, adjustment BarAdjustment, limit int, desc bool, pageToken string) (map[string][]ds.Bar, string, error) {
+func (c *Client) GetBarsForSymbols(symbols []symbol.Symbol, timeframe clocky.Duration, start, end clocky.Time, feed DataFeed, adjustment BarAdjustment, limit int, desc bool, pageToken string) (map[symbol.Symbol][]ds.Bar, string, error) {
 	if len(symbols) == 0 {
 		return nil, "", nil
 	}
@@ -101,7 +102,7 @@ func (c *Client) GetBarsForSymbols(symbols []string, timeframe clocky.Duration, 
 		if i > 0 {
 			sb.WriteByte(',')
 		}
-		sb.WriteString(sym)
+		sb.WriteString(sym.String())
 	}
 	q.Set("symbols", sb.String())
 	q.Set("timeframe", tf)
@@ -128,8 +129,8 @@ func (c *Client) GetBarsForSymbols(symbols []string, timeframe clocky.Duration, 
 	}
 	u.RawQuery = q.Encode()
 	var result struct {
-		Bars      map[string][]ds.Bar `json:"bars"`
-		NextToken string              `json:"next_page_token"`
+		Bars      map[symbol.Symbol][]ds.Bar `json:"bars"`
+		NextToken string                     `json:"next_page_token"`
 	}
 	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), nil, &result)
 	if err != nil {

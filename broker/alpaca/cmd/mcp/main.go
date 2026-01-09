@@ -6,6 +6,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/symbol"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -117,12 +118,12 @@ var tools = []Tool{
 				},
 				"order_type": {
 					Type:        "string",
-					Description: "Order type: limit or market",
-					Enum:        []string{"limit", "market"},
+					Description: "Order type: limit, stop (market when triggered), stop_limit (limit when triggered), trailing_stop",
+					Enum:        []string{"limit", "stop", "stop_limit", "trailing_stop"},
 				},
 				"limit_price": {
 					Type:        "string",
-					Description: "Limit price (required for limit orders without greed)",
+					Description: "Limit price for limit/stop_limit orders",
 				},
 				"greed": {
 					Type:        "string",
@@ -152,15 +153,27 @@ var tools = []Tool{
 				},
 				"stop_price": {
 					Type:        "string",
-					Description: "Stop loss price",
+					Description: "Trigger price for stop/stop_limit orders, or stop loss price for bracket orders",
 				},
-				"stop_limit_price": {
+				"trail_price": {
 					Type:        "string",
-					Description: "Stop limit price (requires stop_price)",
+					Description: "Dollar amount for trailing stop to trail behind market price",
+				},
+				"trail_percent": {
+					Type:        "string",
+					Description: "Percentage for trailing stop to trail behind market price (e.g., 1.5 for 1.5%)",
+				},
+				"bracket_stop_price": {
+					Type:        "string",
+					Description: "Stop loss price for bracket orders",
+				},
+				"bracket_stop_limit_price": {
+					Type:        "string",
+					Description: "Stop limit price for bracket orders (makes stop loss a stop-limit)",
 				},
 				"take_profit_price": {
 					Type:        "string",
-					Description: "Take profit limit price",
+					Description: "Take profit limit price for bracket orders",
 				},
 				"order_class": {
 					Type:        "string",
@@ -168,7 +181,7 @@ var tools = []Tool{
 					Enum:        []string{"simple", "bracket", "oco", "oto"},
 				},
 			},
-			Required: []string{"symbols"},
+			Required: []string{"symbols", "order_type"},
 		},
 	},
 	{
@@ -513,16 +526,55 @@ func placeOrder(args map[string]any) ToolCallResult {
 
 	orderTypeStr := getStr(args, "order_type")
 	if orderTypeStr == "" {
-		orderTypeStr = "market"
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: `order_type is required. Please explicitly specify your intent:
+  - "limit" with greed parameter to auto-price relative to midpoint
+  - "limit" with a limit_price if stock moves slowly and you did snapshot analysis
+  - "stop" or "stop_limit" for conditional orders
+  - "trailing_stop" with trail_price or trail_percent
+
+Trading tips: We prefer patience and good execution over urgency. Consider:
+  - Using VWAP/TWAP algorithms for nontrivial equity orders (algorithm: "vwap") we get negative fees and you can trust it to always get great fills even with negative greed
+  - For options you can often lowball outside the spread if it's a strike with volume. If it's just MMs trading they might give us better than mid
+  - If it fills immediately, then you left money on the table. It's perfectly fine to not get a fill, need to cancel, and then try again`}},
+			IsError: true,
+		}
 	}
-	orderType := alpaca.OrderTypeMarket
-	if orderTypeStr == "limit" {
+	var orderType alpaca.OrderType
+	switch orderTypeStr {
+	case "limit":
 		orderType = alpaca.OrderTypeLimit
+	case "stop":
+		orderType = alpaca.OrderTypeStop
+	case "stop_limit":
+		orderType = alpaca.OrderTypeStopLimit
+	case "trailing_stop":
+		orderType = alpaca.OrderTypeTrailingStop
+	default:
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid order_type: %s (use limit, stop, stop_limit, or trailing_stop)", orderTypeStr)}},
+			IsError: true,
+		}
 	}
 
 	limitPrice := decimal.Zero
 	if s := getStr(args, "limit_price"); s != "" {
 		limitPrice = decimal.Parse(s)
+	}
+
+	stopPrice := decimal.Zero
+	if s := getStr(args, "stop_price"); s != "" {
+		stopPrice = decimal.Parse(s)
+	}
+
+	trailPrice := decimal.Zero
+	if s := getStr(args, "trail_price"); s != "" {
+		trailPrice = decimal.Parse(s)
+	}
+
+	trailPercent := decimal.Zero
+	if s := getStr(args, "trail_percent"); s != "" {
+		trailPercent = decimal.Parse(s)
 	}
 
 	greed := decimal.Zero
@@ -568,10 +620,11 @@ func placeOrder(args map[string]any) ToolCallResult {
 
 	extendedHours := getStr(args, "extended_hours") == "true"
 
+	// Bracket order stop loss (separate from stop_price used for stop order types)
 	var stopLoss *alpaca.StopLoss
-	if s := getStr(args, "stop_price"); s != "" {
+	if s := getStr(args, "bracket_stop_price"); s != "" {
 		stopLoss = &alpaca.StopLoss{StopPrice: decimal.Parse(s)}
-		if sl := getStr(args, "stop_limit_price"); sl != "" {
+		if sl := getStr(args, "bracket_stop_limit_price"); sl != "" {
 			stopLoss.LimitPrice = decimal.Parse(sl)
 		}
 	}
@@ -658,6 +711,9 @@ func placeOrder(args map[string]any) ToolCallResult {
 			Side:          side,
 			Qty:           orderQty,
 			LimitPrice:    orderLimitPrice,
+			StopPrice:     stopPrice,
+			TrailPrice:    trailPrice,
+			TrailPercent:  trailPercent,
 			Type:          orderType,
 			TimeInForce:   timeInForce,
 			ExtendedHours: extendedHours,
@@ -675,11 +731,24 @@ func placeOrder(args map[string]any) ToolCallResult {
 			continue
 		}
 
-		priceStr := "market"
-		if orderType == alpaca.OrderTypeLimit {
-			priceStr = orderLimitPrice.String()
+		var priceStr string
+		switch orderType {
+		case alpaca.OrderTypeLimit:
+			priceStr = fmt.Sprintf("limit %s", orderLimitPrice)
+		case alpaca.OrderTypeStop:
+			priceStr = fmt.Sprintf("stop %s", stopPrice)
+		case alpaca.OrderTypeStopLimit:
+			priceStr = fmt.Sprintf("stop %s limit %s", stopPrice, orderLimitPrice)
+		case alpaca.OrderTypeTrailingStop:
+			if !trailPercent.IsZero() {
+				priceStr = fmt.Sprintf("trail %s%%", trailPercent)
+			} else {
+				priceStr = fmt.Sprintf("trail $%s", trailPrice)
+			}
+		default:
+			priceStr = "market"
 		}
-		results = append(results, fmt.Sprintf("%s: ordered %s %s shares at %s (id: %s)", sym, side, orderQty, priceStr, order.ID))
+		results = append(results, fmt.Sprintf("%s: ordered %s %s at %s (id: %s)", sym, side, orderQty, priceStr, order.ID))
 	}
 
 	return ToolCallResult{
@@ -881,9 +950,10 @@ func getOrders(args map[string]any) ToolCallResult {
 
 	var lines []string
 	statusLabel := "Open"
-	if status == "closed" {
+	switch status {
+	case "closed":
 		statusLabel = "Closed"
-	} else if status == "all" {
+	case "all":
 		statusLabel = "All"
 	}
 	lines = append(lines, fmt.Sprintf("%s orders (%d):", statusLabel, len(orders)))
@@ -936,10 +1006,10 @@ func cancelAllOrders() ToolCallResult {
 }
 
 func getBars(args map[string]any) ToolCallResult {
-	symbol := getStr(args, "symbol")
-	if symbol == "" {
+	symbol, err := symbol.Parse(getStr(args, "symbol"))
+	if err != nil {
 		return ToolCallResult{
-			Content: []Content{{Type: "text", Text: "no symbol specified"}},
+			Content: []Content{{Type: "text", Text: "bad or missing equity symbol specified"}},
 			IsError: true,
 		}
 	}
@@ -1030,7 +1100,7 @@ func getBars(args map[string]any) ToolCallResult {
 	lines = append(lines, "Time                     Open       High       Low        Close      Volume     VWAP")
 	for _, b := range bars {
 		lines = append(lines, fmt.Sprintf("%s  %10s %10s %10s %10s %10s %10s",
-			b.Timestamp.RFC3339(),
+			b.Timestamp.RFC3339NYC(),
 			b.Open.Format(2),
 			b.High.Format(2),
 			b.Low.Format(2),
@@ -1072,7 +1142,7 @@ func getSnapshot(args map[string]any) ToolCallResult {
 			t := snap.LatestTrade
 			lines = append(lines, "\nLatest Trade:")
 			lines = append(lines, fmt.Sprintf("  Price: %s  Size: %d  Exchange: %s  Time: %s",
-				t.Price, t.Size, t.Exchange, t.Timestamp.RFC3339()))
+				t.Price, t.Size, t.Exchange, t.Timestamp.RFC3339NYC()))
 		}
 
 		if snap.LatestQuote != nil {
@@ -1117,7 +1187,7 @@ func getSnapshot(args map[string]any) ToolCallResult {
 		t := snapshot.LatestTrade
 		lines = append(lines, "\nLatest Trade:")
 		lines = append(lines, fmt.Sprintf("  Price: %s  Size: %d  Exchange: %s  Time: %s",
-			t.Price, t.Size, t.Exchange, t.Timestamp.RFC3339()))
+			t.Price, t.Size, t.Exchange, t.Timestamp.RFC3339NYC()))
 	}
 
 	if snapshot.LatestQuote != nil {
@@ -1132,21 +1202,21 @@ func getSnapshot(args map[string]any) ToolCallResult {
 
 	if snapshot.MinuteBar != nil {
 		b := snapshot.MinuteBar
-		lines = append(lines, fmt.Sprintf("\nMinute Bar (%s):", b.Timestamp.RFC3339()))
+		lines = append(lines, fmt.Sprintf("\nMinute Bar (%s):", b.Timestamp.RFC3339NYC()))
 		lines = append(lines, fmt.Sprintf("  O: %s  H: %s  L: %s  C: %s  V: %s  VWAP: %s",
 			b.Open.Format(2), b.High.Format(2), b.Low.Format(2), b.Close.Format(2), b.Volume, b.VWAP.Format(2)))
 	}
 
 	if snapshot.DailyBar != nil {
 		b := snapshot.DailyBar
-		lines = append(lines, fmt.Sprintf("\nDaily Bar (%s):", b.Timestamp.RFC3339()))
+		lines = append(lines, fmt.Sprintf("\nDaily Bar (%s):", b.Timestamp.RFC3339NYC()))
 		lines = append(lines, fmt.Sprintf("  O: %s  H: %s  L: %s  C: %s  V: %s  VWAP: %s",
 			b.Open.Format(2), b.High.Format(2), b.Low.Format(2), b.Close.Format(2), b.Volume, b.VWAP.Format(2)))
 	}
 
 	if snapshot.PrevDailyBar != nil {
 		b := snapshot.PrevDailyBar
-		lines = append(lines, fmt.Sprintf("\nPrevious Daily Bar (%s):", b.Timestamp.RFC3339()))
+		lines = append(lines, fmt.Sprintf("\nPrevious Daily Bar (%s):", b.Timestamp.RFC3339NYC()))
 		lines = append(lines, fmt.Sprintf("  O: %s  H: %s  L: %s  C: %s  V: %s  VWAP: %s",
 			b.Open.Format(2), b.High.Format(2), b.Low.Format(2), b.Close.Format(2), b.Volume, b.VWAP.Format(2)))
 	}
@@ -1217,14 +1287,14 @@ func getAuctions(args map[string]any) ToolCallResult {
 			lines = append(lines, "  Opening:")
 			for _, p := range a.Opening {
 				lines = append(lines, fmt.Sprintf("    %s @ %s (size: %d, exchange: %s)",
-					p.Timestamp.RFC3339(), p.Price, p.Size, p.Exchange))
+					p.Timestamp.RFC3339NYC(), p.Price, p.Size, p.Exchange))
 			}
 		}
 		if len(a.Closing) > 0 {
 			lines = append(lines, "  Closing:")
 			for _, p := range a.Closing {
 				lines = append(lines, fmt.Sprintf("    %s @ %s (size: %d, exchange: %s)",
-					p.Timestamp.RFC3339(), p.Price, p.Size, p.Exchange))
+					p.Timestamp.RFC3339NYC(), p.Price, p.Size, p.Exchange))
 			}
 		}
 	}
@@ -1297,7 +1367,7 @@ func getOptionChain(args map[string]any) ToolCallResult {
 		if snap.LatestTrade != nil {
 			t := snap.LatestTrade
 			lines = append(lines, fmt.Sprintf("  Last: %s (size: %d) @ %s",
-				t.Price, t.Size, t.Timestamp.RFC3339()))
+				t.Price, t.Size, t.Timestamp.RFC3339NYC()))
 		}
 
 		if !snap.ImpliedVolatility.IsZero() {
