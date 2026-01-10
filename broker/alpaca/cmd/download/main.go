@@ -31,6 +31,7 @@ var (
 var (
 	feed       alpaca.DataFeed
 	adjustment alpaca.BarAdjustment
+	errorCount atomic.Int32
 )
 
 const barSize = int(unsafe.Sizeof(ds.Bar{}))
@@ -38,8 +39,9 @@ const barSize = int(unsafe.Sizeof(ds.Bar{}))
 func main() {
 	flag.Parse()
 	loggy.Init()
+	client := alpaca.NewClient()
 
-	// Parse flags into typed values
+	// parse flags into typed values
 	var err error
 	feed, err = alpaca.ParseDataFeed(*flagFeed)
 	if err != nil {
@@ -50,14 +52,13 @@ func main() {
 		log.Fatalf("invalid adjustment: %v", err)
 	}
 
-	// Clean up any leftover temp files from interrupted runs
+	// clean up any leftover temp files from interrupted runs
 	cleanupTempFiles()
 
 	// get symbols from args, otherwise fetch everything
-	var symbols []string
+	var symbolMap = make(map[string]struct{})
 	if len(flag.Args()) == 0 {
-		log.Println("No symbols specified, fetching the healthiest US equities...")
-		client := alpaca.NewClient()
+		log.Println("no symbols specified, fetching the healthiest u.s. equities...")
 		err := client.SyncAssets()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to sync assets: %v\n", err)
@@ -66,14 +67,31 @@ func main() {
 		count := 0
 		for _, a := range alpaca.Assets {
 			if a.IsHealthy() {
-				symbols = append(symbols, a.Symbol.String())
+				symbolMap[a.Symbol.String()] = struct{}{}
 				count++
 			}
 		}
-		log.Printf("Found %d healthy US equities", count)
+		log.Printf("found %d healthy u.s. equities", count)
+		count = 0
+		entries, err := os.ReadDir(ds.EquityMinutesDir())
+		if err == nil {
+			for _, entry := range entries {
+				name := entry.Name()
+				sym, err := symbol.Parse(name)
+				if err != nil {
+					continue
+				}
+				if alpaca.Assets[sym] == nil {
+					continue
+				}
+				symbolMap[name] = struct{}{}
+				count++
+			}
+		}
+		log.Printf("including %d existing symbols", count)
 	} else {
 		for _, arg := range flag.Args() {
-			symbols = append(symbols, arg)
+			symbolMap[arg] = struct{}{}
 		}
 	}
 
@@ -89,24 +107,25 @@ func main() {
 		stopped.Store(true)
 	}()
 
-	// Start workers
+	// start workers
 	var wg sync.WaitGroup
 	for i := 0; i < *flagWorkers; i++ {
 		wg.Go(func() {
-			client := alpaca.NewClient()
 			for sym := range jobs {
 				if stopped.Load() {
 					return
 				}
-				downloadSymbol(client, sym, &stopped)
+				if !downloadSymbol(client, sym, &stopped) {
+					errorCount.Add(1)
+				}
 			}
 		})
 	}
 
-	// Queue symbols
+	// queue symbols
 	go func() {
 		defer close(jobs)
-		for _, sym := range symbols {
+		for sym := range symbolMap {
 			if stopped.Load() {
 				return
 			}
@@ -115,7 +134,8 @@ func main() {
 	}()
 
 	wg.Wait()
-	log.Println("done")
+	log.Printf("finished with %d errors\n", errorCount.Load())
+	os.Exit(min(int(errorCount.Load()), 255))
 }
 
 func cleanupTempFiles() {
@@ -134,11 +154,11 @@ func cleanupTempFiles() {
 	}
 }
 
-func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) {
+func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) bool {
 	outPath := filepath.Join(ds.EquityMinutesDir(), sym)
 	tmpPath := outPath + ".tmp"
 
-	// Read existing data and find where to resume from
+	// read existing data and find where to resume from
 	var existingData []byte
 	var lastTime clocky.Time
 	if data, err := os.ReadFile(outPath); err == nil && len(data) >= barSize {
@@ -148,7 +168,7 @@ func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) {
 		lastTime = lastBar.Timestamp
 	}
 
-	// Determine start time
+	// determine start time
 	var start clocky.Time
 	if lastTime != 0 {
 		// Resume from 1 minute after last bar
@@ -159,21 +179,21 @@ func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) {
 		start = clocky.Time(time.Date(2016, 1, 1, 0, 0, 0, 0, loc).UnixMicro())
 	}
 
-	// End at now
+	// end at now
 	end := clocky.RealNow()
 
 	if start >= end {
 		log.Printf("%s: already up to date", sym)
-		return
+		return true
 	}
 
-	// Download all bars
+	// download all bars
 	bars, err := fetchAll(client, sym, start, end, stopped)
 	if err != nil {
 		if err != errInterrupted {
 			log.Printf("%s: %v", sym, err)
 		}
-		return
+		return false
 	}
 
 	if len(bars) == 0 {
@@ -182,35 +202,35 @@ func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) {
 		} else {
 			log.Printf("%s: no new data", sym)
 		}
-		return
+		return true
 	}
 
-	// Ensure directory exists
+	// ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
 		log.Printf("%s: mkdir failed: %v", sym, err)
-		return
+		return false
 	}
 
-	// Write to temp file first (atomic write)
+	// write to temp file first (atomic write)
 	f, err := os.Create(tmpPath)
 	if err != nil {
 		log.Printf("%s: create temp failed: %v", sym, err)
-		return
+		return false
 	}
 
 	out := bufio.NewWriter(f)
 
-	// Write existing data first
+	// write existing data first
 	if len(existingData) > 0 {
 		if _, err := out.Write(existingData); err != nil {
 			f.Close()
 			os.Remove(tmpPath)
 			log.Printf("%s: write existing failed: %v", sym, err)
-			return
+			return false
 		}
 	}
 
-	// Write new bars
+	// write new bars
 	written := 0
 	for i := range bars {
 		// Skip any bars at or before our last time (safety check)
@@ -222,7 +242,7 @@ func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) {
 			f.Close()
 			os.Remove(tmpPath)
 			log.Printf("%s: write failed: %v", sym, err)
-			return
+			return false
 		}
 		written++
 	}
@@ -231,21 +251,21 @@ func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) {
 		f.Close()
 		os.Remove(tmpPath)
 		log.Printf("%s: flush failed: %v", sym, err)
-		return
+		return false
 	}
 	if err := f.Sync(); err != nil {
 		f.Close()
 		os.Remove(tmpPath)
 		log.Printf("%s: sync failed: %v", sym, err)
-		return
+		return false
 	}
 	f.Close()
 
-	// Atomic rename
+	// atomic rename
 	if err := os.Rename(tmpPath, outPath); err != nil {
 		os.Remove(tmpPath)
 		log.Printf("%s: rename failed: %v", sym, err)
-		return
+		return false
 	}
 
 	if lastTime == 0 {
@@ -253,6 +273,7 @@ func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) {
 	} else {
 		log.Printf("%s: appended %d bars", sym, written)
 	}
+	return true
 }
 
 var errInterrupted = fmt.Errorf("interrupted")

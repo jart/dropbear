@@ -88,9 +88,10 @@ func processLine(data []byte, symbols map[symbol.Symbol]bool) {
 		for i < len(data) {
 			c := data[i]
 			if inString {
-				if c == '\\' {
+				switch c {
+				case '\\':
 					i++
-				} else if c == '"' {
+				case '"':
 					inString = false
 				}
 			} else {
@@ -150,7 +151,7 @@ func processMessage(data []byte, symbols map[symbol.Symbol]bool) {
 			}
 			fmt.Printf("%#v\n", status)
 		}
-	case 'l': // LULD
+	case 'l': // luld
 		if *flagLULD {
 			luld, err := sip.ParseLULD(data)
 			if err != nil {

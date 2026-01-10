@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"dropbear/broker/alpaca"
 	"dropbear/decimal"
 	"dropbear/ds"
@@ -24,9 +25,7 @@ func main() {
 	for sym := range alpaca.Assets {
 		keys = append(keys, sym)
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i] < keys[j]
-	})
+	slices.Sort(keys)
 
 	for _, sym := range keys {
 		a := alpaca.Assets[sym]
