@@ -49,10 +49,10 @@ func (m *Equity) Sharpe(riskFreeRate decimal.Decimal) decimal.Decimal {
 		periodsPerYear = 252 * int64(clocky.Day) / int64(m.quantum)
 	} else {
 		// Intraday: 98,280 trading minutes per year
-		// Calculation: 252 days * 6.5 hours * 60 mins * 60 secs * 1,000,000 micros
-		// = 5,896,800,000,000 microseconds per trading year
-		const tradingMicrosPerYear = 98280 * 60 * 1000000
-		periodsPerYear = tradingMicrosPerYear / int64(m.quantum)
+		// Calculation: 252 days * 6.5 hours * 60 mins * 60 secs * 1e9 nanos
+		// = 5,896,800,000,000,000 nanoseconds per trading year
+		const tradingNanosPerYear = 98280 * 60 * 1_000_000_000
+		periodsPerYear = tradingNanosPerYear / int64(m.quantum)
 	}
 	if periodsPerYear == 0 {
 		return decimal.Zero

@@ -13,7 +13,7 @@ var (
 
 // RealNow returns the current time.
 func RealNow() Time {
-	return Time(time.Now().UnixMicro())
+	return Time(time.Now().UnixNano())
 }
 
 // FakeNow returns the mocked current time for backtesting.
@@ -41,7 +41,7 @@ func Since(t Time) Duration {
 
 // RealSleep sleeps for the given duration.
 func RealSleep(d Duration) {
-	time.Sleep(time.Duration(d) * time.Microsecond)
+	time.Sleep(time.Duration(d))
 }
 
 // NoSleep panics because sleeping is not allowed in backtest mode.

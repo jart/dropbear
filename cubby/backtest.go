@@ -24,6 +24,10 @@ type backtest struct {
 	peakValue      decimal.Decimal // highest portfolio value seen
 	maxDrawdown    decimal.Decimal // largest drawdown from peak (as decimal, e.g. 0.10 = 10%)
 	benchmarkStart decimal.Decimal // benchmark price at start of backtest
+
+	// buying power utilization tracking (during trading hours only)
+	utilizationSum   decimal.Decimal // sum of utilization percentages
+	utilizationCount int             // number of samples
 }
 
 type backtestEntry struct {
@@ -73,8 +77,15 @@ func newBacktest() *backtest {
 		}
 		m.heap.Push(entry)
 	}
-	gMaxMarginAvailable = Cash
-	gPowerLevel = decimal.FromInt(1) // start with overnight margin (1x)
+	// initialize margin state as if previous day closed with just cash
+	gLastEquity = Cash
+	gLastMaintMargin = decimal.Zero
+	gIsPDT = Cash.Cmp(decimal.FromInt(25_000)) >= 0
+	if gIsPDT {
+		gDayTradingBuyingPower = Cash.MulInt(4) // 4 × (equity - 0) for PDT with no positions
+	} else {
+		gDayTradingBuyingPower = Cash.MulInt(2) // 2x Reg T for non-PDT
+	}
 	m.peakValue = Cash
 	return m
 }
@@ -172,6 +183,10 @@ func (m *backtest) printSummary() {
 			log.Printf("  bench:    %s%% (%.2f%% annualized) [%s]", benchReturn.MulInt(100).Format(2), benchAnnual, Benchmark.Symbol)
 		}
 		log.Printf("  period:   %.1f days (%.2f years)", days, years)
+		if m.utilizationCount > 0 {
+			avgUtil := m.utilizationSum.DivInt(m.utilizationCount)
+			log.Printf("  bp util:  %s%% avg during trading hours", avgUtil.MulInt(100).Format(2))
+		}
 		log.Printf("holdings:")
 		log.Printf("%8s $%s margin $%s", "USD", Cash.FormatThousand(2), GetMarginUsed().FormatThousand(2))
 		for _, equity := range Equities {
@@ -200,14 +215,34 @@ func (m *backtest) setTime(now clocky.Time) {
 		m.closed = true
 		m.onMarketClose(now)
 	}
+	// sample buying power utilization during trading hours
+	if m.opened && !m.closed {
+		m.sampleUtilization()
+	}
+}
+
+// sampleUtilization records the current buying power utilization percentage.
+// Utilization = margin used / BOD DTBP
+func (m *backtest) sampleUtilization() {
+	if !gDayTradingBuyingPower.IsPositive() {
+		return
+	}
+	marginUsed := GetMarginUsed()
+	utilization := marginUsed.Div(gDayTradingBuyingPower)
+	m.utilizationSum = m.utilizationSum.Add(utilization)
+	m.utilizationCount++
 }
 
 func (m *backtest) onMarketOpen() {
-	gMaxMarginAvailable = GetPortfolioValue().Sub(GetMarginUsed())
-	if GetPortfolioValue().Cmp(decimal.FromInt(25_000)) > 0 {
-		gPowerLevel = decimal.Two
+	// Calculate BOD DTBP from previous close values (already snapshotted in onMarketClose)
+	// bod_dtbp = 4 × (last_equity - last_maintenance_margin) for PDT
+	// bod_dtbp = 2 × (last_equity - last_maintenance_margin) for non-PDT
+	gIsPDT = gLastEquity.Cmp(decimal.FromInt(25_000)) >= 0
+	excessEquity := gLastEquity.Sub(gLastMaintMargin)
+	if gIsPDT {
+		gDayTradingBuyingPower = excessEquity.MulInt(4)
 	} else {
-		gPowerLevel = decimal.One
+		gDayTradingBuyingPower = excessEquity.MulInt(2)
 	}
 }
 
@@ -215,12 +250,16 @@ func (m *backtest) onMarketClose(now clocky.Time) {
 	for _, order := range Orders {
 		order.Cancel()
 	}
-	gPowerLevel = decimal.One
 	Cash = Cash.Sub(m.interest.GetDailyInterest(now, Cash, *flagRFR))
-	margin := GetMarginUsed()
-	equity := GetPortfolioValue()
-	if margin.Cmp(equity) > 0 {
-		log.Printf("margin call: margin after close $%s exceeds equity $%s", margin.FormatThousand(2), equity.FormatThousand(2))
+
+	// Snapshot values for next day's DTBP calculation (mirrors Alpaca's 4 PM ET snapshot)
+	gLastEquity = GetPortfolioValue()
+	gLastMaintMargin = GetMarginUsed()
+
+	// Check for margin call: maintenance margin cannot exceed equity overnight
+	if gLastMaintMargin.Cmp(gLastEquity) > 0 {
+		log.Printf("margin call: maintenance margin $%s exceeds equity $%s at close",
+			gLastMaintMargin.FormatThousand(2), gLastEquity.FormatThousand(2))
 		os.Exit(1)
 	}
 }

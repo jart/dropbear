@@ -63,11 +63,7 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 		}
 	}
 	marginUsed := GetMarginUsed()
-	equity := GetPortfolioValue().Mul(gPowerLevel)
-	// DTBP = (Equity - Maintenance Margin) × 4
-	// gPowerLevel=2 means 4x day trading leverage, so multiply by gPowerLevel squared
-	maxMarginAvailable := gMaxMarginAvailable.Mul(gPowerLevel).Mul(gPowerLevel)
-	marginAvailable := equity.Sub(marginUsed).Sub(gMarginHold).Min(maxMarginAvailable)
+	marginAvailable := gDayTradingBuyingPower.Sub(marginUsed).Sub(gMarginHold)
 	lo := decimal.Zero
 	hi := decimal.FromInt(100_000)
 	for lo.Cmp(hi) < 0 {
@@ -144,10 +140,7 @@ func (e *Equity) simulateOrder(order *Order, newQty decimal.Decimal) (*Order, er
 	if newMargin.Cmp(oldMargin) > 0 {
 		marginNeeded := newMargin.Sub(oldMargin)
 		marginUsed := GetMarginUsed()
-		equity := GetPortfolioValue().Mul(gPowerLevel)
-		// DTBP = (Equity - Maintenance Margin) × 4
-		maxMarginAvailable := gMaxMarginAvailable.Mul(gPowerLevel).Mul(gPowerLevel)
-		marginAvailable := equity.Sub(marginUsed).Sub(gMarginHold).Min(maxMarginAvailable)
+		marginAvailable := gDayTradingBuyingPower.Sub(marginUsed).Sub(gMarginHold)
 		if marginNeeded.Cmp(marginAvailable) > 0 {
 			return nil, fmt.Errorf("need %s margin but only %s available", marginNeeded, marginAvailable)
 		}

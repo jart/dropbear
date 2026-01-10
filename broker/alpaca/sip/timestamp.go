@@ -7,7 +7,7 @@ import "dropbear/clocky"
 //   - "2026-01-06T20:12:59.99839309Z" (with nanoseconds)
 //   - "2026-01-06T20:12:00Z" (without fractional seconds)
 //
-// Returns microseconds since Unix epoch as clocky.Time.
+// Returns nanoseconds since Unix epoch as clocky.Time.
 func parseTimestamp(data []byte, i int) (clocky.Time, int, error) {
 	if i >= len(data) || data[i] != '"' {
 		return 0, i, nil
@@ -40,13 +40,13 @@ func parseTimestamp(data []byte, i int) (clocky.Time, int, error) {
 	sec := int(ts[17]-'0')*10 + int(ts[18]-'0')
 
 	// Parse fractional seconds if present
-	var usec int64
+	var nsec int64
 	if len(ts) > 20 && ts[19] == '.' {
-		// Parse up to 6 digits for microseconds
+		// Parse up to 9 digits for nanoseconds
 		frac := ts[20 : len(ts)-1] // exclude trailing 'Z'
-		var mult int64 = 100000
-		for j := 0; j < len(frac) && j < 6; j++ {
-			usec += int64(frac[j]-'0') * mult
+		var mult int64 = 100_000_000
+		for j := 0; j < len(frac) && j < 9; j++ {
+			nsec += int64(frac[j]-'0') * mult
 			mult /= 10
 		}
 	}
@@ -56,6 +56,6 @@ func parseTimestamp(data []byte, i int) (clocky.Time, int, error) {
 	days := daysFromDate(year, month, day)
 	secs := int64(days)*86400 + int64(hour)*3600 + int64(min)*60 + int64(sec)
 
-	// clocky.Time is microseconds since epoch
-	return clocky.Time(secs*1000000 + usec), i, nil
+	// clocky.Time is nanoseconds since epoch
+	return clocky.Time(secs*1_000_000_000 + nsec), i, nil
 }

@@ -327,8 +327,8 @@ func (h *Holding) reduceForOvernight(now, closeTime clocky.Time) {
 	urgency := decimal.Zero
 	timeLeft := closeTime.Sub(now)
 	if timeLeft > 0 {
-		timeRemaining := decimal.FromInt64(int64(timeLeft))
-		totalWindow := decimal.FromInt64(int64(marginCheckTime))
+		timeRemaining := decimal.FromInt64(timeLeft.Milliseconds())
+		totalWindow := decimal.FromInt64(marginCheckTime.Milliseconds())
 		urgency = timeRemaining.Div(totalWindow)
 	}
 	adaptiveSlip := flagSlipClose.Add(urgency.Mul(*flagUrgency))

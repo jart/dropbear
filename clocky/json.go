@@ -32,16 +32,17 @@ func (t *Time) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON implements json.Marshaler.
-// Outputs RFC3339 with microsecond precision.
+// Outputs RFC3339 with nanosecond precision.
 func (t Time) MarshalJSON() ([]byte, error) {
-	var buf [29]byte
+	var buf [32]byte
 	buf[0] = '"'
-	u := time.UnixMicro(int64(t)).UTC()
+	u := time.Unix(int64(t)/1_000_000_000, int64(t)%1_000_000_000).UTC()
 	y, m, d := u.Date()
 	if y < 0 || y > 9999 {
 		return nil, ErrYearOverflow
 	}
 	h, M, s := u.Clock()
+	ns := int64(t) % 1_000_000_000
 	buf[1] = byte('0' + (y/1000)%10)
 	buf[2] = byte('0' + (y/100)%10)
 	buf[3] = byte('0' + (y/10)%10)
@@ -62,26 +63,29 @@ func (t Time) MarshalJSON() ([]byte, error) {
 	buf[18] = byte('0' + s/10)
 	buf[19] = byte('0' + s%10)
 	buf[20] = '.'
-	buf[21] = byte('0' + (t/100000)%10)
-	buf[22] = byte('0' + (t/10000)%10)
-	buf[23] = byte('0' + (t/1000)%10)
-	buf[24] = byte('0' + (t/100)%10)
-	buf[25] = byte('0' + (t/10)%10)
-	buf[26] = byte('0' + (t % 10))
-	buf[27] = 'Z'
-	buf[28] = '"'
+	buf[21] = byte('0' + (ns/100000000)%10)
+	buf[22] = byte('0' + (ns/10000000)%10)
+	buf[23] = byte('0' + (ns/1000000)%10)
+	buf[24] = byte('0' + (ns/100000)%10)
+	buf[25] = byte('0' + (ns/10000)%10)
+	buf[26] = byte('0' + (ns/1000)%10)
+	buf[27] = byte('0' + (ns/100)%10)
+	buf[28] = byte('0' + (ns/10)%10)
+	buf[29] = byte('0' + (ns % 10))
+	buf[30] = 'Z'
+	buf[31] = '"'
 	return buf[:], nil
 }
 
 const (
-	// minTimestamp is 1980-01-01 00:00:00 UTC in microseconds.
-	// Timestamps before this are rejected because the seconds/millis/micros
+	// minTimestamp is 1980-01-01 00:00:00 UTC in nanoseconds.
+	// Timestamps before this are rejected because the seconds/millis/micros/nanos
 	// heuristic becomes unreliable near the Unix epoch.
-	minTimestamp = 315_532_800_000_000
+	minTimestamp = 315_532_800_000_000_000
 
 	// epochWindow allows timestamps within ±2 days of epoch (for zero/null values).
-	// This is in the final µs result, so ±172800 seconds input (treated as seconds).
-	epochWindow = 2 * 24 * 60 * 60 * 1_000_000 // 172,800,000,000 µs
+	// This is in the final ns result, so ±172800 seconds input (treated as seconds).
+	epochWindow = 2 * 24 * 60 * 60 * 1_000_000_000 // 172,800,000,000,000 ns
 )
 
 func (t *Time) unmarshalRFC3339(data []byte) error {
@@ -109,18 +113,18 @@ func (t *Time) unmarshalFloat(data []byte) error {
 		intPart = intPart*10 + int64(data[i]-'0')
 	}
 	i++ // skip dot
-	// Parse up to 6 fractional digits as microseconds
-	var fracMicros int64
-	mul := int64(100_000)
+	// Parse up to 9 fractional digits as nanoseconds
+	var fracNanos int64
+	mul := int64(100_000_000)
 	for ; i < len(data) && mul > 0; i++ {
-		fracMicros += int64(data[i]-'0') * mul
+		fracNanos += int64(data[i]-'0') * mul
 		mul /= 10
 	}
 	if neg {
 		intPart = -intPart
-		fracMicros = -fracMicros
+		fracNanos = -fracNanos
 	}
-	result := Time(intPart*1_000_000 + fracMicros)
+	result := Time(intPart*1_000_000_000 + fracNanos)
 	if err := validateTimestamp(result); err != nil {
 		return err
 	}
@@ -150,7 +154,7 @@ func (t *Time) unmarshalInteger(data []byte) error {
 	return nil
 }
 
-// fromUnixAuto guesses if v is seconds, milliseconds, or microseconds.
+// fromUnixAuto guesses if v is seconds, milliseconds, microseconds, or nanoseconds.
 func fromUnixAuto(v int64) (Time, error) {
 	abs := v
 	if abs < 0 {
@@ -159,10 +163,12 @@ func fromUnixAuto(v int64) (Time, error) {
 	var result Time
 	switch {
 	case abs < 1e11: // seconds
-		result = Time(v * 1_000_000)
+		result = Time(v * 1_000_000_000)
 	case abs < 1e14: // milliseconds
+		result = Time(v * 1_000_000)
+	case abs < 1e17: // microseconds
 		result = Time(v * 1_000)
-	default: // microseconds
+	default: // nanoseconds
 		result = Time(v)
 	}
 	if err := validateTimestamp(result); err != nil {

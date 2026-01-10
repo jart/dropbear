@@ -21,11 +21,11 @@ func TestTimeAdd(t *testing.T) {
 		duration Duration
 		expected Time
 	}{
-		{"AddSecond", Time(1_000_000), Second, Time(2_000_000)},
-		{"AddMinute", Time(0), Minute, Time(60_000_000)},
-		{"AddHour", Time(0), Hour, Time(3_600_000_000)},
-		{"AddNegative", Time(1_000_000), -Second, Time(0)},
-		{"AddZero", Time(1_000_000), 0, Time(1_000_000)},
+		{"AddSecond", Time(1_000_000_000), Second, Time(2_000_000_000)},
+		{"AddMinute", Time(0), Minute, Time(60_000_000_000)},
+		{"AddHour", Time(0), Hour, Time(3_600_000_000_000)},
+		{"AddNegative", Time(1_000_000_000), -Second, Time(0)},
+		{"AddZero", Time(1_000_000_000), 0, Time(1_000_000_000)},
 	}
 
 	for _, tt := range tests {
@@ -45,10 +45,10 @@ func TestTimeSub(t *testing.T) {
 		t2       Time
 		expected Duration
 	}{
-		{"SubPositive", Time(2_000_000), Time(1_000_000), Duration(1_000_000)},
-		{"SubNegative", Time(1_000_000), Time(2_000_000), Duration(-1_000_000)},
-		{"SubZero", Time(1_000_000), Time(1_000_000), Duration(0)},
-		{"SubFromZero", Time(0), Time(1_000_000), Duration(-1_000_000)},
+		{"SubPositive", Time(2_000_000_000), Time(1_000_000_000), Duration(1_000_000_000)},
+		{"SubNegative", Time(1_000_000_000), Time(2_000_000_000), Duration(-1_000_000_000)},
+		{"SubZero", Time(1_000_000_000), Time(1_000_000_000), Duration(0)},
+		{"SubFromZero", Time(0), Time(1_000_000_000), Duration(-1_000_000_000)},
 	}
 
 	for _, tt := range tests {
@@ -68,9 +68,9 @@ func TestTimeUnix(t *testing.T) {
 		expected int64
 	}{
 		{"Zero", Time(0), 0},
-		{"OneSecond", Time(1_000_000), 1},
-		{"FractionalSecond", Time(1_500_000), 1}, // truncates
-		{"LargeValue", Time(1_700_000_000_000_000), 1_700_000_000},
+		{"OneSecond", Time(1_000_000_000), 1},
+		{"FractionalSecond", Time(1_500_000_000), 1}, // truncates
+		{"LargeValue", Time(1_700_000_000_000_000_000), 1_700_000_000},
 	}
 
 	for _, tt := range tests {
@@ -84,7 +84,7 @@ func TestTimeUnix(t *testing.T) {
 }
 
 func TestTimeQuantize(t *testing.T) {
-	base := Time(3_661_500_000) // 1h 1m 1.5s in microseconds
+	base := Time(3_661_500_000_000) // 1h 1m 1.5s in nanoseconds
 
 	tests := []struct {
 		name     string
@@ -92,10 +92,10 @@ func TestTimeQuantize(t *testing.T) {
 		duration Duration
 		expected Time
 	}{
-		{"QuantizeToSecond", base, Second, Time(3_661_000_000)},
-		{"QuantizeToMinute", base, Minute, Time(3_660_000_000)},
-		{"QuantizeToHour", base, Hour, Time(3_600_000_000)},
-		{"QuantizeToMillisecond", base, Millisecond, Time(3_661_500_000)},
+		{"QuantizeToSecond", base, Second, Time(3_661_000_000_000)},
+		{"QuantizeToMinute", base, Minute, Time(3_660_000_000_000)},
+		{"QuantizeToHour", base, Hour, Time(3_600_000_000_000)},
+		{"QuantizeToMillisecond", base, Millisecond, Time(3_661_500_000_000)},
 	}
 
 	for _, tt := range tests {
@@ -109,8 +109,8 @@ func TestTimeQuantize(t *testing.T) {
 }
 
 func TestTimeBeforeAfter(t *testing.T) {
-	t1 := Time(1_000_000)
-	t2 := Time(2_000_000)
+	t1 := Time(1_000_000_000)
+	t2 := Time(2_000_000_000)
 
 	if !t1.Before(t2) {
 		t.Error("t1.Before(t2) should be true")
@@ -135,24 +135,24 @@ func TestTimeBeforeAfter(t *testing.T) {
 
 func TestTimeString(t *testing.T) {
 	// Create a known time in UTC, then convert to Time
-	utc := time.Date(2024, 6, 15, 12, 30, 45, 123456000, time.UTC)
-	tm := Time(utc.UnixMicro())
+	utc := time.Date(2024, 6, 15, 12, 30, 45, 123456789, time.UTC)
+	tm := Time(utc.UnixNano())
 
 	// String() formats in local timezone, so we just check it's non-empty
 	// and has the expected format structure
 	s := tm.String()
-	if len(s) != 26 { // "2006-01-02T15:04:05.000000"
-		t.Errorf("Time.String() = %q, expected length 26", s)
+	if len(s) != 29 { // "2006-01-02T15:04:05.000000000"
+		t.Errorf("Time.String() = %q, expected length 29", s)
 	}
 }
 
 func TestTimeRFC3339(t *testing.T) {
 	// Create a known time in UTC
-	utc := time.Date(2024, 6, 15, 12, 30, 45, 123456000, time.UTC)
-	tm := Time(utc.UnixMicro())
+	utc := time.Date(2024, 6, 15, 12, 30, 45, 123456789, time.UTC)
+	tm := Time(utc.UnixNano())
 
 	got := tm.RFC3339()
-	expected := "2024-06-15T12:30:45.123456Z"
+	expected := "2024-06-15T12:30:45.123456789Z"
 	if got != expected {
 		t.Errorf("Time.RFC3339() = %q, want %q", got, expected)
 	}
@@ -192,8 +192,8 @@ func TestParseTime(t *testing.T) {
 func TestParseTimeRoundTrip(t *testing.T) {
 	// Test that RFC3339 round-trips correctly
 	inputs := []string{
-		"2024-06-15T12:30:45.123456Z",
-		"2025-12-03T15:01:47.170451Z",
+		"2024-06-15T12:30:45.123456789Z",
+		"2025-12-03T15:01:47.170451000Z",
 	}
 	for _, original := range inputs {
 		t.Run(original, func(t *testing.T) {
@@ -234,6 +234,6 @@ func TestParseTimeValues(t *testing.T) {
 
 func BenchmarkParseTime(b *testing.B) {
 	for b.Loop() {
-		ParseTime("2025-12-03T15:01:47.170451Z")
+		ParseTime("2025-12-03T15:01:47.170451000Z")
 	}
 }

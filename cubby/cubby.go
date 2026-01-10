@@ -45,12 +45,21 @@ var (
 )
 
 var (
-	gMaxMarginAvailable decimal.Decimal
-	gPowerLevel         decimal.Decimal
-	gMarginHold         decimal.Decimal
-	gFeeCalculator      *alpaca.FeeCalculator
-	gLiveInvested       decimal.Decimal
-	gLiveMarginUsed     decimal.Decimal
+	// Margin state (mirrors Alpaca's model)
+	// These are snapshotted at previous day's market close (4:00 PM ET)
+	gLastEquity      decimal.Decimal // last_equity: portfolio value at previous close
+	gLastMaintMargin decimal.Decimal // last_maintenance_margin: margin used at previous close
+
+	// Calculated at market open from previous close values
+	// daytrading_buying_power = 4 × (last_equity - last_maintenance_margin) for PDT
+	// daytrading_buying_power = 2 × (last_equity - last_maintenance_margin) for non-PDT
+	gDayTradingBuyingPower decimal.Decimal
+	gIsPDT                 bool // pattern_day_trader: true if last_equity >= $25k
+
+	gMarginHold     decimal.Decimal // margin reserved for pending orders
+	gFeeCalculator  *alpaca.FeeCalculator
+	gLiveInvested   decimal.Decimal
+	gLiveMarginUsed decimal.Decimal
 )
 
 func Init() {

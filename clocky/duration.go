@@ -5,11 +5,12 @@ import (
 	"fmt"
 )
 
-// Duration represents a length of time in microseconds.
+// Duration represents a length of time in nanoseconds.
 type Duration int64
 
 const (
-	Microsecond Duration = 1
+	Nanosecond  Duration = 1
+	Microsecond Duration = 1000 * Nanosecond
 	Millisecond Duration = 1000 * Microsecond
 	Second      Duration = 1000 * Millisecond
 	Minute      Duration = 60 * Second
@@ -20,6 +21,8 @@ const (
 	Year        Duration = 365 * Day
 )
 
+func (d Duration) Nanoseconds() int64     { return int64(d) }
+func (d Duration) Microseconds() int64    { return int64(d) / int64(Microsecond) }
 func (d Duration) Milliseconds() int64    { return int64(d) / int64(Millisecond) }
 func (d Duration) Seconds() int64         { return int64(d) / int64(Second) }
 func (d Duration) Hours() decimal.Decimal { return d.Div(Hour) }
@@ -108,6 +111,12 @@ func ParseDuration(str string) (Duration, error) {
 	// parse time unit
 	if i < len(str) {
 		switch str[i] {
+		case 'n':
+			x *= Nanosecond
+			i++
+			if i < len(str) && str[i] == 's' {
+				i++
+			}
 		case 'u':
 			x *= Microsecond
 			i++
@@ -173,6 +182,7 @@ var units = []unit{
 	{"s", Second},
 	{"ms", Millisecond},
 	{"us", Microsecond},
+	{"ns", Nanosecond},
 }
 
 // String returns a string representation of the duration like "2h45m" or "-3d".

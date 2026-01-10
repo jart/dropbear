@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Time represents an instant in time, stored as UNIX UTC microseconds.
+// Time represents an instant in time, stored as UNIX UTC nanoseconds.
 type Time int64
 
 const (
@@ -48,26 +48,35 @@ const (
 func (t Time) IsZero() bool             { return t == 0 }
 func (t Time) Add(d Duration) Time      { return Time(int64(t) + int64(d)) }
 func (t Time) Sub(u Time) Duration      { return Duration(int64(t) - int64(u)) }
-func (t Time) Unix() int64              { return int64(t) / 1_000_000 }
+func (t Time) Unix() int64              { return int64(t) / 1_000_000_000 }
+func (t Time) UnixNano() int64          { return int64(t) }
 func (t Time) Quantize(d Duration) Time { return Time((int64(t) / int64(d)) * int64(d)) }
 func (t Time) Before(u Time) bool       { return t < u }
 func (t Time) After(u Time) bool        { return t > u }
-func (t Time) Minute() int              { return time.UnixMicro(int64(t)).In(TZ).Minute() }
-func (t Time) Hour() int                { return time.UnixMicro(int64(t)).In(TZ).Hour() }
-func (t Time) Day() int                 { return int(time.UnixMicro(int64(t)).In(TZ).Day()) }
-func (t Time) Month() int               { return int(time.UnixMicro(int64(t)).In(TZ).Month()) }
-func (t Time) Year() int                { return time.UnixMicro(int64(t)).In(TZ).Year() }
-func (t Time) Weekday() Weekday         { return Weekday(time.UnixMicro(int64(t)).In(TZ).Weekday()) }
+func (t Time) Minute() int              { return t.goTime().Minute() }
+func (t Time) Hour() int                { return t.goTime().Hour() }
+func (t Time) Day() int                 { return t.goTime().Day() }
+func (t Time) Month() int               { return int(t.goTime().Month()) }
+func (t Time) Year() int                { return t.goTime().Year() }
+func (t Time) Weekday() Weekday         { return Weekday(t.goTime().Weekday()) }
+
+func (t Time) goTime() time.Time {
+	return time.Unix(int64(t)/1_000_000_000, int64(t)%1_000_000_000).In(TZ)
+}
+
+func (t Time) goTimeUTC() time.Time {
+	return time.Unix(int64(t)/1_000_000_000, int64(t)%1_000_000_000).UTC()
+}
 
 // Date returns the date.
 func (t Time) Date() (year int, month Month, day int) {
-	y, m, d := time.UnixMicro(int64(t)).In(TZ).Date()
+	y, m, d := t.goTime().Date()
 	return y, Month(m), d
 }
 
 // Clock returns the time.
 func (t Time) Clock() (hour, min, sec int) {
-	return time.UnixMicro(int64(t)).In(TZ).Clock()
+	return t.goTime().Clock()
 }
 
 // DateInt returns the date in YYYYMMDD format.
@@ -88,13 +97,14 @@ func (t Time) YearMonth() YearMonth {
 	return YearMonth(y*100 + int(m))
 }
 
-// String returns formatted local microsecond timestamp.
+// String returns formatted local nanosecond timestamp.
 // This is intended for displaying the time to us humans.
 func (t Time) String() string {
-	var buf [26]byte
-	u := time.UnixMicro(int64(t)).In(TZ)
+	var buf [29]byte
+	u := t.goTime()
 	y, m, d := u.Date()
 	h, M, s := u.Clock()
+	ns := int64(t) % 1_000_000_000
 	buf[0] = byte('0' + (y/1000)%10)
 	buf[1] = byte('0' + (y/100)%10)
 	buf[2] = byte('0' + (y/10)%10)
@@ -115,12 +125,15 @@ func (t Time) String() string {
 	buf[17] = byte('0' + s/10)
 	buf[18] = byte('0' + s%10)
 	buf[19] = '.'
-	buf[20] = byte('0' + (t/100000)%10)
-	buf[21] = byte('0' + (t/10000)%10)
-	buf[22] = byte('0' + (t/1000)%10)
-	buf[23] = byte('0' + (t/100)%10)
-	buf[24] = byte('0' + (t/10)%10)
-	buf[25] = byte('0' + (t % 10))
+	buf[20] = byte('0' + (ns/100000000)%10)
+	buf[21] = byte('0' + (ns/10000000)%10)
+	buf[22] = byte('0' + (ns/1000000)%10)
+	buf[23] = byte('0' + (ns/100000)%10)
+	buf[24] = byte('0' + (ns/10000)%10)
+	buf[25] = byte('0' + (ns/1000)%10)
+	buf[26] = byte('0' + (ns/100)%10)
+	buf[27] = byte('0' + (ns/10)%10)
+	buf[28] = byte('0' + (ns % 10))
 	return string(buf[:])
 }
 
@@ -129,13 +142,14 @@ func (t Time) GoString() string {
 	return "clocky.MustParseTime(\"" + t.RFC3339() + "\")"
 }
 
-// String returns formatted RFC3339 UTC timestamp.
+// RFC3339 returns formatted RFC3339 UTC timestamp with nanosecond precision.
 // This is intended for Internet protocols that need it.
 func (t Time) RFC3339() string {
-	var buf [27]byte
-	u := time.UnixMicro(int64(t)).UTC()
+	var buf [30]byte
+	u := t.goTimeUTC()
 	y, m, d := u.Date()
 	h, M, s := u.Clock()
+	ns := int64(t) % 1_000_000_000
 	buf[0] = byte('0' + (y/1000)%10)
 	buf[1] = byte('0' + (y/100)%10)
 	buf[2] = byte('0' + (y/10)%10)
@@ -156,13 +170,16 @@ func (t Time) RFC3339() string {
 	buf[17] = byte('0' + s/10)
 	buf[18] = byte('0' + s%10)
 	buf[19] = '.'
-	buf[20] = byte('0' + (t/100000)%10)
-	buf[21] = byte('0' + (t/10000)%10)
-	buf[22] = byte('0' + (t/1000)%10)
-	buf[23] = byte('0' + (t/100)%10)
-	buf[24] = byte('0' + (t/10)%10)
-	buf[25] = byte('0' + (t % 10))
-	buf[26] = 'Z'
+	buf[20] = byte('0' + (ns/100000000)%10)
+	buf[21] = byte('0' + (ns/10000000)%10)
+	buf[22] = byte('0' + (ns/1000000)%10)
+	buf[23] = byte('0' + (ns/100000)%10)
+	buf[24] = byte('0' + (ns/10000)%10)
+	buf[25] = byte('0' + (ns/1000)%10)
+	buf[26] = byte('0' + (ns/100)%10)
+	buf[27] = byte('0' + (ns/10)%10)
+	buf[28] = byte('0' + (ns % 10))
+	buf[29] = 'Z'
 	return string(buf[:])
 }
 
@@ -171,7 +188,7 @@ func (t Time) RFC3339() string {
 // markets operate on Eastern time. The offset will be -05:00 (EST) or
 // -04:00 (EDT) depending on daylight saving time.
 func (t Time) RFC3339NYC() string {
-	u := time.UnixMicro(int64(t)).In(NYC)
+	u := time.Unix(int64(t)/1_000_000_000, int64(t)%1_000_000_000).In(NYC)
 	y, m, d := u.Date()
 	h, M, s := u.Clock()
 	_, offset := u.Zone()
@@ -212,9 +229,9 @@ var localFormats = []string{
 }
 
 // Date creates a Time from date and time components in California.
-func Date(year int, month Month, day, hour, min, sec, micros int) Time {
-	t := time.Date(year, time.Month(month), day, hour, min, sec, micros*1000, TZ)
-	return Time(t.UnixMicro())
+func Date(year int, month Month, day, hour, min, sec, nanos int) Time {
+	t := time.Date(year, time.Month(month), day, hour, min, sec, nanos, TZ)
+	return Time(t.UnixNano())
 }
 
 // Parse turns string into Time.
@@ -222,13 +239,17 @@ func ParseTime(s string) (Time, error) {
 	if s == "" {
 		return 0, nil
 	}
-	t, err := time.Parse(time.RFC3339, s)
+	t, err := time.Parse(time.RFC3339Nano, s)
 	if err == nil {
-		return Time(t.UnixMicro()), nil
+		return Time(t.UnixNano()), nil
+	}
+	t, err = time.Parse(time.RFC3339, s)
+	if err == nil {
+		return Time(t.UnixNano()), nil
 	}
 	for _, format := range localFormats {
 		if t, err := time.ParseInLocation(format, s, TZ); err == nil {
-			return Time(t.UnixMicro()), nil
+			return Time(t.UnixNano()), nil
 		}
 	}
 	return 0, err
