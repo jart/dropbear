@@ -518,10 +518,24 @@ func placeOrder(args map[string]any) ToolCallResult {
 	qty := decimal.Zero
 	amt := decimal.Zero
 	if qtyStr != "" {
-		qty = decimal.Parse(qtyStr)
+		var err error
+		qty, err = decimal.ParseString(qtyStr)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid qty: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 	if amtStr != "" {
-		amt = decimal.Parse(amtStr)
+		var err error
+		amt, err = decimal.ParseString(amtStr)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid amt: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 
 	orderTypeStr := getStr(args, "order_type")
@@ -559,27 +573,62 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 
 	limitPrice := decimal.Zero
 	if s := getStr(args, "limit_price"); s != "" {
-		limitPrice = decimal.Parse(s)
+		var err error
+		limitPrice, err = decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid limit_price: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 
 	stopPrice := decimal.Zero
 	if s := getStr(args, "stop_price"); s != "" {
-		stopPrice = decimal.Parse(s)
+		var err error
+		stopPrice, err = decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid stop_price: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 
 	trailPrice := decimal.Zero
 	if s := getStr(args, "trail_price"); s != "" {
-		trailPrice = decimal.Parse(s)
+		var err error
+		trailPrice, err = decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid trail_price: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 
 	trailPercent := decimal.Zero
 	if s := getStr(args, "trail_percent"); s != "" {
-		trailPercent = decimal.Parse(s)
+		var err error
+		trailPercent, err = decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid trail_percent: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 
 	greed := decimal.Zero
 	if s := getStr(args, "greed"); s != "" {
-		greed = decimal.Parse(s).DivInt(10000)
+		g, err := decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid greed: %v", err)}},
+				IsError: true,
+			}
+		}
+		greed = g.DivInt(10000)
 	}
 
 	tifStr := getStr(args, "time_in_force")
@@ -608,14 +657,26 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 
 	var endTime clocky.Time
 	if s := getStr(args, "duration"); s != "" {
-		if d, err := clocky.ParseDuration(s); err == nil {
-			endTime = clocky.Now().Add(d)
+		d, err := clocky.ParseDuration(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid duration: %v", err)}},
+				IsError: true,
+			}
 		}
+		endTime = clocky.Now().Add(d)
 	}
 
-	participation := decimal.Parse("0.15")
+	participation := decimal.FromInt(15).DivInt(100)
 	if s := getStr(args, "participation"); s != "" {
-		participation = decimal.Parse(s)
+		var err error
+		participation, err = decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid participation: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 
 	extendedHours := getStr(args, "extended_hours") == "true"
@@ -623,15 +684,36 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 	// Bracket order stop loss (separate from stop_price used for stop order types)
 	var stopLoss *alpaca.StopLoss
 	if s := getStr(args, "bracket_stop_price"); s != "" {
-		stopLoss = &alpaca.StopLoss{StopPrice: decimal.Parse(s)}
+		sp, err := decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid bracket_stop_price: %v", err)}},
+				IsError: true,
+			}
+		}
+		stopLoss = &alpaca.StopLoss{StopPrice: sp}
 		if sl := getStr(args, "bracket_stop_limit_price"); sl != "" {
-			stopLoss.LimitPrice = decimal.Parse(sl)
+			lp, err := decimal.ParseString(sl)
+			if err != nil {
+				return ToolCallResult{
+					Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid bracket_stop_limit_price: %v", err)}},
+					IsError: true,
+				}
+			}
+			stopLoss.LimitPrice = lp
 		}
 	}
 
 	var takeProfit *alpaca.TakeProfit
 	if s := getStr(args, "take_profit_price"); s != "" {
-		takeProfit = &alpaca.TakeProfit{LimitPrice: decimal.Parse(s)}
+		tp, err := decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid take_profit_price: %v", err)}},
+				IsError: true,
+			}
+		}
+		takeProfit = &alpaca.TakeProfit{LimitPrice: tp}
 	}
 
 	orderClass := alpaca.OrderClassSimple
@@ -923,7 +1005,14 @@ func getOrders(args map[string]any) ToolCallResult {
 			Direction: direction,
 		}
 		if limitStr != "" {
-			req.Limit = decimal.Parse(limitStr).Int()
+			n, err := decimal.ParseString(limitStr)
+			if err != nil {
+				return ToolCallResult{
+					Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid limit: %v", err)}},
+					IsError: true,
+				}
+			}
+			req.Limit = n.Int()
 		}
 		if symbols != "" {
 			req.Symbols = strings.Split(symbols, ",")
@@ -1042,17 +1131,38 @@ func getBars(args map[string]any) ToolCallResult {
 	// Parse start/end times
 	var start, end clocky.Time
 	if s := getStr(args, "start"); s != "" {
-		start = clocky.MustParseTime(s)
+		var err error
+		start, err = clocky.ParseTime(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid start time: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 	if s := getStr(args, "end"); s != "" {
-		end = clocky.MustParseTime(s)
+		var err error
+		end, err = clocky.ParseTime(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid end time: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 
 	// Parse limit (default 100)
 	limit := 100
 	if s := getStr(args, "limit"); s != "" {
-		if n := decimal.Parse(s).Int(); n > 0 && n <= 10000 {
-			limit = n
+		n, err := decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid limit: %v", err)}},
+				IsError: true,
+			}
+		}
+		if n.Int() > 0 && n.Int() <= 10000 {
+			limit = n.Int()
 		}
 	}
 
@@ -1238,17 +1348,38 @@ func getAuctions(args map[string]any) ToolCallResult {
 	// Parse start/end times
 	var start, end clocky.Time
 	if s := getStr(args, "start"); s != "" {
-		start = clocky.MustParseTime(s)
+		var err error
+		start, err = clocky.ParseTime(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid start time: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 	if s := getStr(args, "end"); s != "" {
-		end = clocky.MustParseTime(s)
+		var err error
+		end, err = clocky.ParseTime(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid end time: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 
 	// Parse limit (default 100)
 	limit := 100
 	if s := getStr(args, "limit"); s != "" {
-		if n := decimal.Parse(s).Int(); n > 0 && n <= 10000 {
-			limit = n
+		n, err := decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid limit: %v", err)}},
+				IsError: true,
+			}
+		}
+		if n.Int() > 0 && n.Int() <= 10000 {
+			limit = n.Int()
 		}
 	}
 
@@ -1319,20 +1450,55 @@ func getOptionChain(args map[string]any) ToolCallResult {
 		req.Type = t
 	}
 	if s := getStr(args, "strike_gte"); s != "" {
-		req.StrikeGTE = decimal.Parse(s)
+		v, err := decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid strike_gte: %v", err)}},
+				IsError: true,
+			}
+		}
+		req.StrikeGTE = v
 	}
 	if s := getStr(args, "strike_lte"); s != "" {
-		req.StrikeLTE = decimal.Parse(s)
+		v, err := decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid strike_lte: %v", err)}},
+				IsError: true,
+			}
+		}
+		req.StrikeLTE = v
 	}
 	if s := getStr(args, "expiration_gte"); s != "" {
-		req.ExpirationGTE = clocky.MustParseTime(s)
+		v, err := clocky.ParseTime(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid expiration_gte: %v", err)}},
+				IsError: true,
+			}
+		}
+		req.ExpirationGTE = v
 	}
 	if s := getStr(args, "expiration_lte"); s != "" {
-		req.ExpirationLTE = clocky.MustParseTime(s)
+		v, err := clocky.ParseTime(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid expiration_lte: %v", err)}},
+				IsError: true,
+			}
+		}
+		req.ExpirationLTE = v
 	}
 	if s := getStr(args, "limit"); s != "" {
-		if n := decimal.Parse(s).Int(); n > 0 {
-			req.Limit = n
+		n, err := decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid limit: %v", err)}},
+				IsError: true,
+			}
+		}
+		if n.Int() > 0 {
+			req.Limit = n.Int()
 		}
 	}
 
