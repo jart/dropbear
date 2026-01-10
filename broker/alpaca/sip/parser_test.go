@@ -17,8 +17,8 @@ func TestSIPParserRoundtrip(t *testing.T) {
 	scanner.Buffer(buf, 1024*1024)
 
 	lineNum := 0
-	trades, quotes, bars, statuses := 0, 0, 0, 0
-	tradeErrs, quoteErrs, barErrs, statusErrs := 0, 0, 0, 0
+	trades, quotes, statuses := 0, 0, 0
+	tradeErrs, quoteErrs, statusErrs := 0, 0, 0
 
 	for scanner.Scan() {
 		lineNum++
@@ -48,15 +48,6 @@ func TestSIPParserRoundtrip(t *testing.T) {
 					t.Fatal("too many quote errors")
 				}
 			}
-		case 'b', 'd', 'u':
-			bars++
-			if err := verifyBarRoundtrip(t, line, lineNum); err != nil {
-				barErrs++
-				t.Errorf("line %d: bar: %v\ndata: %s", lineNum, err, line)
-				if barErrs > 10 {
-					t.Fatal("too many bar errors")
-				}
-			}
 		case 's':
 			statuses++
 			if err := verifyStatusRoundtrip(t, line, lineNum); err != nil {
@@ -73,8 +64,8 @@ func TestSIPParserRoundtrip(t *testing.T) {
 		t.Fatalf("scanner error: %v", err)
 	}
 
-	t.Logf("verified %d messages (trades:%d quotes:%d bars:%d statuses:%d)",
-		lineNum, trades, quotes, bars, statuses)
+	t.Logf("verified %d messages (trades:%d quotes:%d statuses:%d)",
+		lineNum, trades, quotes, statuses)
 
 	if trades == 0 {
 		t.Error("no trades found in test data")
@@ -82,14 +73,11 @@ func TestSIPParserRoundtrip(t *testing.T) {
 	if quotes == 0 {
 		t.Error("no quotes found in test data")
 	}
-	if bars == 0 {
-		t.Error("no bars found in test data")
-	}
 }
 
 func verifyTradeRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseTrade(data)
-	if err != nil {
+	var fast Trade
+	if _, err := fast.Parse(data); err != nil {
 		return err
 	}
 
@@ -140,8 +128,8 @@ func verifyTradeRoundtrip(t *testing.T, data []byte, lineNum int) error {
 }
 
 func verifyQuoteRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseQuote(data)
-	if err != nil {
+	var fast Quote
+	if _, err := fast.Parse(data); err != nil {
 		return err
 	}
 
@@ -197,64 +185,9 @@ func verifyQuoteRoundtrip(t *testing.T, data []byte, lineNum int) error {
 	return nil
 }
 
-func verifyBarRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseBar(data)
-	if err != nil {
-		return err
-	}
-
-	remarshaled, err := json.Marshal(&fast)
-	if err != nil {
-		return err
-	}
-
-	var original Bar
-	if err := json.Unmarshal(data, &original); err != nil {
-		return err
-	}
-
-	if fast.Type != original.Type {
-		t.Errorf("line %d: Type mismatch: fast=%v original=%v", lineNum, fast.Type, original.Type)
-	}
-	if fast.Symbol != original.Symbol {
-		t.Errorf("line %d: Symbol mismatch: fast=%q original=%q", lineNum, fast.Symbol, original.Symbol)
-	}
-	if fast.Open != original.Open {
-		t.Errorf("line %d: Open mismatch: fast=%v original=%v", lineNum, fast.Open, original.Open)
-	}
-	if fast.High != original.High {
-		t.Errorf("line %d: High mismatch: fast=%v original=%v", lineNum, fast.High, original.High)
-	}
-	if fast.Low != original.Low {
-		t.Errorf("line %d: Low mismatch: fast=%v original=%v", lineNum, fast.Low, original.Low)
-	}
-	if fast.Close != original.Close {
-		t.Errorf("line %d: Close mismatch: fast=%v original=%v", lineNum, fast.Close, original.Close)
-	}
-	if fast.Volume != original.Volume {
-		t.Errorf("line %d: Volume mismatch: fast=%d original=%d", lineNum, fast.Volume, original.Volume)
-	}
-	if fast.VWAP != original.VWAP {
-		t.Errorf("line %d: VWAP mismatch: fast=%v original=%v", lineNum, fast.VWAP, original.VWAP)
-	}
-	if fast.NumTrades != original.NumTrades {
-		t.Errorf("line %d: NumTrades mismatch: fast=%d original=%d", lineNum, fast.NumTrades, original.NumTrades)
-	}
-	if fast.Timestamp != original.Timestamp {
-		t.Errorf("line %d: Timestamp mismatch: fast=%v original=%v", lineNum, fast.Timestamp, original.Timestamp)
-	}
-
-	var roundtrip Bar
-	if err := json.Unmarshal(remarshaled, &roundtrip); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func verifyStatusRoundtrip(t *testing.T, data []byte, lineNum int) error {
-	fast, err := ParseStatus(data)
-	if err != nil {
+	var fast Status
+	if _, err := fast.Parse(data); err != nil {
 		return err
 	}
 

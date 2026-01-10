@@ -120,7 +120,8 @@ func processMessage(data []byte, symbols map[symbol.Symbol]bool) {
 	switch msgType {
 	case 't': // trade
 		if *flagTrade {
-			trade, err := sip.ParseTrade(data)
+			var trade sip.Trade
+			_, err := trade.Parse(data)
 			if err != nil {
 				return
 			}
@@ -131,7 +132,8 @@ func processMessage(data []byte, symbols map[symbol.Symbol]bool) {
 		}
 	case 'q': // quote
 		if *flagQuote {
-			quote, err := sip.ParseQuote(data)
+			var quote sip.Quote
+			_, err := quote.Parse(data)
 			if err != nil {
 				return
 			}
@@ -142,7 +144,8 @@ func processMessage(data []byte, symbols map[symbol.Symbol]bool) {
 		}
 	case 's': // status
 		if *flagStatus {
-			status, err := sip.ParseStatus(data)
+			var status sip.Status
+			_, err := status.Parse(data)
 			if err != nil {
 				return
 			}
@@ -153,7 +156,8 @@ func processMessage(data []byte, symbols map[symbol.Symbol]bool) {
 		}
 	case 'l': // luld
 		if *flagLULD {
-			luld, err := sip.ParseLULD(data)
+			var luld sip.LULD
+			_, err := luld.Parse(data)
 			if err != nil {
 				return
 			}

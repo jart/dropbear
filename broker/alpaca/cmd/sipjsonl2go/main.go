@@ -41,7 +41,6 @@ func main() {
 
 	var trades []sip.Trade
 	var quotes []sip.Quote
-	var bars []sip.Bar
 	var statuses []sip.Status
 
 	for _, path := range os.Args[1:] {
@@ -66,33 +65,29 @@ func main() {
 			msgType := sip.GetMessageType(line)
 			switch msgType {
 			case 't':
-				t, err := sip.ParseTrade(line)
+				var trade sip.Trade
+				_, err := trade.Parse(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: trade parse error: %v\n", path, lineNum, err)
 					continue
 				}
-				trades = append(trades, t)
+				trades = append(trades, trade)
 			case 'q':
-				q, err := sip.ParseQuote(line)
+				var quote sip.Quote
+				_, err := quote.Parse(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: quote parse error: %v\n", path, lineNum, err)
 					continue
 				}
-				quotes = append(quotes, q)
-			case 'b', 'd', 'u':
-				b, err := sip.ParseBar(line)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "%s:%d: bar parse error: %v\n", path, lineNum, err)
-					continue
-				}
-				bars = append(bars, b)
+				quotes = append(quotes, quote)
 			case 's':
-				s, err := sip.ParseStatus(line)
+				var status sip.Status
+				_, err := status.Parse(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s:%d: status parse error: %v\n", path, lineNum, err)
 					continue
 				}
-				statuses = append(statuses, s)
+				statuses = append(statuses, status)
 			}
 		}
 
@@ -102,8 +97,8 @@ func main() {
 
 		f.Close()
 
-		fmt.Fprintf(os.Stderr, "%s: %d trades, %d quotes, %d bars, %d statuses\n",
-			filepath.Base(path), len(trades), len(quotes), len(bars), len(statuses))
+		fmt.Fprintf(os.Stderr, "%s: %d trades, %d quotes, %d statuses\n",
+			filepath.Base(path), len(trades), len(quotes), len(statuses))
 	}
 
 	if len(trades) > 0 {
@@ -119,15 +114,6 @@ func main() {
 		fmt.Printf("var Quotes = []sip.Quote{\n")
 		for _, q := range quotes {
 			fmt.Printf("\t%#v,\n", q)
-		}
-		fmt.Println("}")
-		fmt.Println()
-	}
-
-	if len(bars) > 0 {
-		fmt.Printf("var Bars = []sip.Bar{\n")
-		for _, b := range bars {
-			fmt.Printf("\t%#v,\n", b)
 		}
 		fmt.Println("}")
 		fmt.Println()

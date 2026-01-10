@@ -30,114 +30,141 @@ type LULD struct {
 	Symbol     symbol.Symbol   `json:"S"` // stock symbol
 	UpperLimit decimal.Decimal `json:"u"` // upper price limit (zero if Indicator is C-J)
 	LowerLimit decimal.Decimal `json:"d"` // lower price limit (zero if Indicator is C-J)
+	_          [16]byte        // padding for uniform struct size
 }
 
-// ParseLULD parses a SIP LULD (Limit Up-Limit Down) message with minimal allocations.
-func ParseLULD(data []byte) (LULD, error) {
-	var l LULD
+// Parse parses a SIP LULD (Limit Up-Limit Down) message.
+// This is a strict parser that assumes Alpaca sent minified JSON with all and only the expected fields.
+// Returns index past closing '}' on success.
+func (l *LULD) Parse(data []byte) (int, error) {
+	const (
+		gotTape = 1 << iota
+		gotIndicator
+		gotTimestamp
+		gotSymbol
+		gotUpperLimit
+		gotLowerLimit
+	)
 	var err error
-	i := 0
-	for i < len(data) {
-		// Find field name
-		for i < len(data) && data[i] != '"' {
-			i++
-		}
-		if i >= len(data) {
-			break
-		}
-		i++ // skip opening quote
-		keyStart := i
-		for i < len(data) && data[i] != '"' {
-			i++
-		}
-		if i >= len(data) {
-			break
-		}
-		keyLen := i - keyStart
-		keyByte := data[keyStart]
-		i++ // skip closing quote
-
-		// Skip to value
-		for i < len(data) && data[i] != ':' {
-			i++
-		}
-		i++ // skip colon
-		for i < len(data) && (data[i] == ' ' || data[i] == '\t') {
-			i++
-		}
-
-		// All LULD fields are 1-char keys
-		if keyLen != 1 {
-			i = skipValue(data, i)
-			continue
-		}
-
-		switch keyByte {
-		case 'T': // Type
-			if i < len(data) && data[i] == '"' {
-				i++
-				if i < len(data) {
-					l.Type = MessageType(data[i])
-					i++
-				}
-				if i < len(data) && data[i] == '"' {
-					i++
-				}
+	g := 0
+	i := 1
+	n := len(data)
+	if n < 2 || data[0] != '{' {
+		return 0, ErrParsingError
+	}
+	for i < n {
+		b := data[i]
+		i++
+		switch b {
+		case '}':
+			if g != gotTape+
+				gotIndicator+
+				gotTimestamp+
+				gotSymbol+
+				gotUpperLimit+
+				gotLowerLimit {
+				return 0, ErrMissingField
 			}
-		case 'S': // Symbol
-			if i < len(data) && data[i] == '"' {
-				i++
-				start := i
-				for i < len(data) && data[i] != '"' {
-					i++
+			return i, nil
+		case ',':
+			// do nothing
+		case '"':
+			if i >= n {
+				return 0, ErrParsingError
+			}
+			b := data[i]
+			i++
+			switch b {
+			case 'T': // "T":"l"
+				if i+5 > n {
+					return 0, ErrParsingError
 				}
-				sym, err := symbol.ParseBytes(data[start:i])
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' || data[i+4] != '"' {
+					return 0, ErrParsingError
+				}
+				if data[i+3] != 'l' {
+					return 0, ErrTypeMismatch
+				}
+				l.Type = MessageTypeLULD
+				i += 5
+			case 'S': // "S":"AAPL"
+				if i+4 > n {
+					return 0, ErrParsingError
+				}
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' {
+					return 0, ErrParsingError
+				}
+				i += 3
+				j := i
+				for j < n && data[j] != '"' {
+					j++
+				}
+				if j >= n || j == i {
+					return 0, ErrParsingError
+				}
+				sym, err := symbol.ParseBytes(data[i:j])
 				if err != nil {
-					return l, err
+					return 0, err
 				}
 				l.Symbol = sym
-				i++
-			}
-		case 'u': // Upper limit
-			l.UpperLimit, i, err = parseDecimal(data, i)
-			if err != nil {
-				return l, err
-			}
-		case 'd': // Lower limit (down)
-			l.LowerLimit, i, err = parseDecimal(data, i)
-			if err != nil {
-				return l, err
-			}
-		case 'i': // Indicator
-			if i < len(data) && data[i] == '"' {
-				i++
-				if i < len(data) && data[i] != '"' {
-					l.Indicator = LULDIndicator(data[i])
-					i++
+				g |= gotSymbol
+				i = j + 1
+			case 'u': // "u":356.57
+				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
+					return 0, ErrParsingError
 				}
-				if i < len(data) && data[i] == '"' {
-					i++
+				i += 2
+				l.UpperLimit, i, err = parseDecimal(data, i)
+				if err != nil {
+					return 0, err
 				}
-			}
-		case 't': // Timestamp
-			l.Timestamp, i, err = parseTimestamp(data, i)
-			if err != nil {
-				return l, err
-			}
-		case 'z': // Tape
-			if i < len(data) && data[i] == '"' {
-				i++
-				if i < len(data) {
-					l.Tape = Tape(data[i])
-					i++
+				g |= gotUpperLimit
+			case 'd': // "d":291.74
+				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
+					return 0, ErrParsingError
 				}
-				if i < len(data) && data[i] == '"' {
-					i++
+				i += 2
+				l.LowerLimit, i, err = parseDecimal(data, i)
+				if err != nil {
+					return 0, err
 				}
+				g |= gotLowerLimit
+			case 'i': // "i":"A"
+				if i+5 > n {
+					return 0, ErrParsingError
+				}
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' || data[i+4] != '"' {
+					return 0, ErrParsingError
+				}
+				l.Indicator = LULDIndicator(data[i+3])
+				g |= gotIndicator
+				i += 5
+			case 't': // "t":"2026-01-06T20:12:59.99839309Z"
+				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
+					return 0, ErrParsingError
+				}
+				i += 2
+				l.Timestamp, i, err = parseTimestamp(data, i)
+				if err != nil {
+					return 0, err
+				}
+				g |= gotTimestamp
+			case 'z': // "z":"A"
+				if i+5 > n {
+					return 0, ErrParsingError
+				}
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' || data[i+4] != '"' {
+					return 0, ErrParsingError
+				}
+				l.Tape = Tape(data[i+3])
+				g |= gotTape
+				i += 5
+			default:
+				return 0, ErrUnrecognizedField
 			}
 		default:
-			i = skipValue(data, i)
+			return 0, ErrParsingError
 		}
 	}
-	return l, nil
+	return 0, ErrParsingError
 }

@@ -34,114 +34,161 @@ func (t *Trade) IsExtendedHours() bool {
 	return t.Conditions.IsExtendedHours()
 }
 
-// ParseTrade parses a SIP trade message with minimal allocations.
-// Uses symbol interning and avoids json.Unmarshal overhead.
-func ParseTrade(data []byte) (Trade, error) {
-	var t Trade
+// Parse parses a SIP trade message.
+// This is a strict parser that assumes Alpaca sent minified JSON with all and only the expected fields.
+// Returns index past closing '}' on success.
+func (t *Trade) Parse(data []byte) (int, error) {
+	const (
+		gotTape = 1 << iota
+		gotExchange
+		gotTimestamp
+		gotSymbol
+		gotID
+		gotPrice
+		gotSize
+		gotConditions
+	)
 	var err error
-	i := 0
-	for i < len(data) {
-		// Find field name
-		for i < len(data) && data[i] != '"' {
-			i++
-		}
-		if i >= len(data) {
-			break
-		}
-		i++ // skip opening quote
-		keyStart := i
-		for i < len(data) && data[i] != '"' {
-			i++
-		}
-		if i >= len(data) {
-			break
-		}
-		keyLen := i - keyStart
-		keyByte := data[keyStart]
-		i++ // skip closing quote
-
-		// Skip to value
-		for i < len(data) && data[i] != ':' {
-			i++
-		}
-		i++ // skip colon
-		for i < len(data) && (data[i] == ' ' || data[i] == '\t') {
-			i++
-		}
-
-		// All trade fields are 1-char keys
-		if keyLen != 1 {
-			i = skipValue(data, i)
-			continue
-		}
-
-		switch keyByte {
-		case 'T': // Type
-			if i < len(data) && data[i] == '"' {
-				i++
-				if i < len(data) {
-					t.Type = MessageType(data[i])
-					i++
-				}
-				if i < len(data) && data[i] == '"' {
-					i++
-				}
+	g := 0
+	i := 1
+	n := len(data)
+	if n < 2 || data[0] != '{' {
+		return 0, ErrParsingError
+	}
+	for i < n {
+		b := data[i]
+		i++
+		switch b {
+		case '}':
+			if g != gotTape+
+				gotExchange+
+				gotTimestamp+
+				gotSymbol+
+				gotID+
+				gotPrice+
+				gotSize+
+				gotConditions {
+				return 0, ErrMissingField
 			}
-		case 'S': // Symbol
-			if i < len(data) && data[i] == '"' {
-				i++
-				start := i
-				for i < len(data) && data[i] != '"' {
-					i++
+			return i, nil
+		case ',':
+			// do nothing
+		case '"':
+			if i >= n {
+				return 0, ErrParsingError
+			}
+			b := data[i]
+			i++
+			switch b {
+			case 'T': // "T":"t"
+				if i+5 > n {
+					return 0, ErrParsingError
 				}
-				sym, err := symbol.ParseBytes(data[start:i])
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' || data[i+4] != '"' {
+					return 0, ErrParsingError
+				}
+				if data[i+3] != 't' {
+					return 0, ErrTypeMismatch
+				}
+				t.Type = MessageTypeTrade
+				i += 5
+			case 'S': // "S":"AAPL"
+				if i+4 > n {
+					return 0, ErrParsingError
+				}
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' {
+					return 0, ErrParsingError
+				}
+				i += 3
+				j := i
+				for j < n && data[j] != '"' {
+					j++
+				}
+				if j >= n || j == i {
+					return 0, ErrParsingError
+				}
+				sym, err := symbol.ParseBytes(data[i:j])
 				if err != nil {
-					return t, err
+					return 0, err
 				}
 				t.Symbol = sym
-				i++
-			}
-		case 'i': // TradeID
-			t.TradeID, i = parseInt(data, i)
-		case 'x': // Exchange
-			if i < len(data) && data[i] == '"' {
-				i++
-				if i < len(data) {
-					t.Exchange = Exchange(data[i])
-					i++
+				g |= gotSymbol
+				i = j + 1
+			case 'i': // "i":12345
+				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
+					return 0, ErrParsingError
 				}
-				if i < len(data) && data[i] == '"' {
-					i++
+				i += 2
+				t.TradeID, i = parseInt(data, i)
+				g |= gotID
+			case 'x': // "x":"Q"
+				if i+5 > n {
+					return 0, ErrParsingError
 				}
-			}
-		case 'p': // Price
-			t.Price, i, err = parseDecimal(data, i)
-			if err != nil {
-				return t, err
-			}
-		case 's': // Size
-			t.Size, i = parseInt(data, i)
-		case 'c': // Conditions
-			t.Conditions, i = parseTradeCond(data, i)
-		case 't': // Timestamp
-			t.Timestamp, i, err = parseTimestamp(data, i)
-			if err != nil {
-				return t, err
-			}
-		case 'z': // Tape
-			if i < len(data) && data[i] == '"' {
-				i++
-				if i < len(data) {
-					t.Tape = Tape(data[i])
-					i++
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' || data[i+4] != '"' {
+					return 0, ErrParsingError
 				}
-				if i < len(data) && data[i] == '"' {
-					i++
+				t.Exchange = Exchange(data[i+3])
+				g |= gotExchange
+				i += 5
+			case 'p': // "p":150.50
+				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
+					return 0, ErrParsingError
 				}
+				i += 2
+				t.Price, i, err = parseDecimal(data, i)
+				if err != nil {
+					return 0, err
+				}
+				g |= gotPrice
+			case 's': // "s":100
+				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
+					return 0, ErrParsingError
+				}
+				i += 2
+				var x int64
+				x, i = parseInt(data, i)
+				if x < 0 {
+					return 0, ErrNegativeTradeSize
+				}
+				if x > 0x7fffffffffffffff {
+					return 0, ErrOverflow
+				}
+				t.Size = x
+				g |= gotSize
+			case 'c': // "c":["@"]
+				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
+					return 0, ErrParsingError
+				}
+				i += 2
+				t.Conditions, i = parseTradeCond(data, i)
+				g |= gotConditions
+			case 't': // "t":"2026-01-06T20:12:59.99839309Z"
+				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
+					return 0, ErrParsingError
+				}
+				i += 2
+				t.Timestamp, i, err = parseTimestamp(data, i)
+				if err != nil {
+					return 0, err
+				}
+				g |= gotTimestamp
+			case 'z': // "z":"A"
+				if i+5 > n {
+					return 0, ErrParsingError
+				}
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' || data[i+4] != '"' {
+					return 0, ErrParsingError
+				}
+				t.Tape = Tape(data[i+3])
+				g |= gotTape
+				i += 5
+			default:
+				return 0, ErrUnrecognizedField
 			}
 		default:
-			i = skipValue(data, i)
+			return 0, ErrParsingError
 		}
 	}
-	return t, nil
+	return 0, ErrParsingError
 }

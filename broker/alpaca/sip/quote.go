@@ -16,8 +16,8 @@ type Quote struct {
 	Symbol      symbol.Symbol   `json:"S"`  // stock symbol
 	AskPrice    decimal.Decimal `json:"ap"` // ask price
 	BidPrice    decimal.Decimal `json:"bp"` // bid price
-	AskSize     int64           `json:"as"` // ask size
-	BidSize     int64           `json:"bs"` // bid size
+	AskSize     int32           `json:"as"` // ask size
+	BidSize     int32           `json:"bs"` // bid size
 	Conditions  QuoteCond       `json:"c"`  // quote conditions (bitmask)
 }
 
@@ -41,132 +41,191 @@ func (q *Quote) IsSlow() bool {
 	return q.Conditions.IsSlow()
 }
 
-// ParseQuote parses a SIP quote message with minimal allocations.
-func ParseQuote(data []byte) (Quote, error) {
-	var q Quote
+// Parse parses a SIP quote message.
+// This is a strict parser that assumes Alpaca sent minified JSON with all and only the expected fields.
+// Returns index past closing '}' on success.
+func (q *Quote) Parse(data []byte) (int, error) {
+	const (
+		gotTape = 1 << iota
+		gotAskExchange
+		gotBidExchange
+		gotTimestamp
+		gotSymbol
+		gotAskPrice
+		gotBidPrice
+		gotAskSize
+		gotBidSize
+		gotConditions
+	)
 	var err error
-	i := 0
-	for i < len(data) {
-		// Find field name
-		for i < len(data) && data[i] != '"' {
+	g := 0
+	i := 1
+	n := len(data)
+	if n < 2 || data[0] != '{' {
+		return 0, ErrParsingError
+	}
+	for i < n {
+		b := data[i]
+		i++
+		switch b {
+		case '}':
+			if g != gotTape+
+				gotAskExchange+
+				gotBidExchange+
+				gotTimestamp+
+				gotSymbol+
+				gotAskPrice+
+				gotBidPrice+
+				gotAskSize+
+				gotBidSize+
+				gotConditions {
+				return 0, ErrMissingField
+			}
+			return i, nil
+		case ',':
+			// do nothing
+		case '"':
+			if i >= n {
+				return 0, ErrParsingError
+			}
+			b := data[i]
 			i++
-		}
-		if i >= len(data) {
-			break
-		}
-		i++ // skip opening quote
-		keyStart := i
-		for i < len(data) && data[i] != '"' {
-			i++
-		}
-		if i >= len(data) {
-			break
-		}
-		keyLen := i - keyStart
-		i++ // skip closing quote
-
-		// Skip to value
-		for i < len(data) && data[i] != ':' {
-			i++
-		}
-		i++ // skip colon
-		for i < len(data) && (data[i] == ' ' || data[i] == '\t') {
-			i++
-		}
-
-		switch keyLen {
-		case 1:
-			switch data[keyStart] {
-			case 'T': // Type
-				if i < len(data) && data[i] == '"' {
-					i++
-					if i < len(data) {
-						q.Type = MessageType(data[i])
-						i++
-					}
-					if i < len(data) && data[i] == '"' {
-						i++
-					}
+			switch b {
+			case 'T': // "T":"q"
+				if i+5 > n {
+					return 0, ErrParsingError
 				}
-			case 'S': // Symbol
-				if i < len(data) && data[i] == '"' {
-					i++
-					start := i
-					for i < len(data) && data[i] != '"' {
-						i++
-					}
-					sym, err := symbol.ParseBytes(data[start:i])
-					if err != nil {
-						return q, err
-					}
-					q.Symbol = sym
-					i++
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' || data[i+4] != '"' {
+					return 0, ErrParsingError
 				}
-			case 'c': // Conditions
-				q.Conditions, i = parseQuoteCond(data, i)
-			case 't': // Timestamp
+				if data[i+3] != 'q' {
+					return 0, ErrTypeMismatch
+				}
+				q.Type = MessageTypeQuote
+				i += 5
+			case 'S': // "S":"AAPL"
+				if i+4 > n {
+					return 0, ErrParsingError
+				}
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' {
+					return 0, ErrParsingError
+				}
+				i += 3
+				j := i
+				for j < n && data[j] != '"' {
+					j++
+				}
+				if j >= n || j == i {
+					return 0, ErrParsingError
+				}
+				sym, err := symbol.ParseBytes(data[i:j])
+				if err != nil {
+					return 0, err
+				}
+				q.Symbol = sym
+				g |= gotSymbol
+				i = j + 1
+			case 't': // "t":"2026-01-06T20:12:59.99839309Z"
+				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
+					return 0, ErrParsingError
+				}
+				i += 2
 				q.Timestamp, i, err = parseTimestamp(data, i)
 				if err != nil {
-					return q, err
+					return 0, err
 				}
-			case 'z': // Tape
-				if i < len(data) && data[i] == '"' {
-					i++
-					if i < len(data) {
-						q.Tape = Tape(data[i])
-						i++
+				g |= gotTimestamp
+			case 'z': // "z":"A"
+				if i+5 > n {
+					return 0, ErrParsingError
+				}
+				if data[i] != '"' || data[i+1] != ':' || data[i+2] != '"' || data[i+4] != '"' {
+					return 0, ErrParsingError
+				}
+				q.Tape = Tape(data[i+3])
+				g |= gotTape
+				i += 5
+			case 'c': // "c":["R"]
+				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
+					return 0, ErrParsingError
+				}
+				i += 2
+				q.Conditions, i = parseQuoteCond(data, i)
+				g |= gotConditions
+			case 'a': // "ap", "as", "ax"
+				if i+3 > n || data[i+1] != '"' || data[i+2] != ':' {
+					return 0, ErrParsingError
+				}
+				switch data[i] {
+				case 'p': // "ap":150.50
+					i += 3
+					q.AskPrice, i, err = parseDecimal(data, i)
+					if err != nil {
+						return 0, err
 					}
-					if i < len(data) && data[i] == '"' {
-						i++
+					g |= gotAskPrice
+				case 's': // "as":100
+					i += 3
+					var x int64
+					x, i = parseInt(data, i)
+					if x < 0 {
+						return 0, ErrNegativeQuoteSize
 					}
+					if x > 0x7fffffff {
+						return 0, ErrOverflow
+					}
+					q.AskSize = int32(x)
+					g |= gotAskSize
+				case 'x': // "ax":"Q"
+					if i+5 > n || data[i+3] != '"' || data[i+5] != '"' {
+						return 0, ErrParsingError
+					}
+					q.AskExchange = Exchange(data[i+4])
+					g |= gotAskExchange
+					i += 6
+				default:
+					return 0, ErrUnrecognizedField
+				}
+			case 'b': // "bp", "bs", "bx"
+				if i+3 > n || data[i+1] != '"' || data[i+2] != ':' {
+					return 0, ErrParsingError
+				}
+				switch data[i] {
+				case 'p': // "bp":150.49
+					i += 3
+					q.BidPrice, i, err = parseDecimal(data, i)
+					if err != nil {
+						return 0, err
+					}
+					g |= gotBidPrice
+				case 's': // "bs":200
+					i += 3
+					var x int64
+					x, i = parseInt(data, i)
+					if x < 0 {
+						return 0, ErrNegativeQuoteSize
+					}
+					if x > 0x7fffffff {
+						return 0, ErrOverflow
+					}
+					q.BidSize = int32(x)
+					g |= gotBidSize
+				case 'x': // "bx":"N"
+					if i+5 > n || data[i+3] != '"' || data[i+5] != '"' {
+						return 0, ErrParsingError
+					}
+					q.BidExchange = Exchange(data[i+4])
+					g |= gotBidExchange
+					i += 6
+				default:
+					return 0, ErrUnrecognizedField
 				}
 			default:
-				i = skipValue(data, i)
-			}
-		case 2:
-			switch key2(data[keyStart], data[keyStart+1]) {
-			case key2('a', 'x'): // AskExchange
-				if i < len(data) && data[i] == '"' {
-					i++
-					if i < len(data) {
-						q.AskExchange = Exchange(data[i])
-						i++
-					}
-					if i < len(data) && data[i] == '"' {
-						i++
-					}
-				}
-			case key2('a', 'p'): // AskPrice
-				q.AskPrice, i, err = parseDecimal(data, i)
-				if err != nil {
-					return q, err
-				}
-			case key2('a', 's'): // AskSize
-				q.AskSize, i = parseInt(data, i)
-			case key2('b', 'x'): // BidExchange
-				if i < len(data) && data[i] == '"' {
-					i++
-					if i < len(data) {
-						q.BidExchange = Exchange(data[i])
-						i++
-					}
-					if i < len(data) && data[i] == '"' {
-						i++
-					}
-				}
-			case key2('b', 'p'): // BidPrice
-				q.BidPrice, i, err = parseDecimal(data, i)
-				if err != nil {
-					return q, err
-				}
-			case key2('b', 's'): // BidSize
-				q.BidSize, i = parseInt(data, i)
-			default:
-				i = skipValue(data, i)
+				return 0, ErrUnrecognizedField
 			}
 		default:
-			i = skipValue(data, i)
+			return 0, ErrParsingError
 		}
 	}
-	return q, nil
+	return 0, ErrParsingError
 }

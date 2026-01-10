@@ -8,11 +8,11 @@ type MessageType byte
 const (
 	MessageTypeTrade      MessageType = 't' // trade execution
 	MessageTypeQuote      MessageType = 'q' // quote update
-	MessageTypeBar        MessageType = 'b' // minute bar
-	MessageTypeDailyBar   MessageType = 'd' // daily bar
-	MessageTypeUpdatedBar MessageType = 'u' // updated bar (correction)
 	MessageTypeStatus     MessageType = 's' // trading status
 	MessageTypeLULD       MessageType = 'l' // limit up-limit down
+	MessageTypeBar        MessageType = 'b' // minute bar (not supported)
+	MessageTypeDailyBar   MessageType = 'd' // daily bar (not supported)
+	MessageTypeUpdatedBar MessageType = 'u' // updated bar (correction; not supported)
 )
 
 // Pre-computed JSON representations (no allocation on marshal)

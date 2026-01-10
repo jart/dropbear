@@ -10,7 +10,6 @@ var (
 	AAPL      = symbol.MustParse("AAPL")
 	tradeJSON = []byte(`{"T":"t","S":"AAPL","i":12345,"x":"Q","p":"150.25","s":100,"c":["@","F"],"t":"2024-01-15T14:30:00.123456789Z","z":"C"}`)
 	quoteJSON = []byte(`{"T":"q","S":"AAPL","ax":"Q","ap":"150.26","as":200,"bx":"P","bp":"150.24","bs":300,"c":["R"],"t":"2024-01-15T14:30:00.123456789Z","z":"C"}`)
-	barJSON   = []byte(`{"T":"b","S":"AAPL","o":"150.00","h":"151.00","l":"149.50","c":"150.50","v":1000000,"vw":"150.25","n":5000,"t":"2024-01-15T14:30:00Z"}`)
 )
 
 func BenchmarkGetMessageType(b *testing.B) {
@@ -20,64 +19,20 @@ func BenchmarkGetMessageType(b *testing.B) {
 }
 
 func BenchmarkParseTrade(b *testing.B) {
+	var t Trade
 	for b.Loop() {
-		_, err := ParseTrade(tradeJSON)
-		if err != nil {
+		if _, err := t.Parse(tradeJSON); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
 func BenchmarkParseQuote(b *testing.B) {
+	var q Quote
 	for b.Loop() {
-		_, err := ParseQuote(quoteJSON)
-		if err != nil {
+		if _, err := q.Parse(quoteJSON); err != nil {
 			b.Fatal(err)
 		}
-	}
-}
-
-func BenchmarkParseBar(b *testing.B) {
-	for b.Loop() {
-		_, err := ParseBar(barJSON)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkExchange_MarshalJSON(b *testing.B) {
-	e := ExchangeNASDAQ
-	for b.Loop() {
-		_, err := e.MarshalJSON()
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkExchange_UnmarshalJSON(b *testing.B) {
-	data := []byte(`"Q"`)
-	var e Exchange
-	for b.Loop() {
-		err := e.UnmarshalJSON(data)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkExchange_String(b *testing.B) {
-	e := ExchangeNASDAQ
-	for b.Loop() {
-		_ = e.String()
-	}
-}
-
-func BenchmarkExchange_GoString(b *testing.B) {
-	e := ExchangeNASDAQ
-	for b.Loop() {
-		_ = e.GoString()
 	}
 }
 
@@ -146,30 +101,6 @@ func BenchmarkQuoteCond_MarshalJSON_Multi(b *testing.B) {
 	}
 }
 
-func BenchmarkTape_MarshalJSON(b *testing.B) {
-	t := TapeC
-	for b.Loop() {
-		_, err := t.MarshalJSON()
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkTape_IsCTA(b *testing.B) {
-	t := TapeA
-	for b.Loop() {
-		_ = t.IsCTA()
-	}
-}
-
-func BenchmarkTape_IsUTP(b *testing.B) {
-	t := TapeC
-	for b.Loop() {
-		_ = t.IsUTP()
-	}
-}
-
 func TestGetMessageType(t *testing.T) {
 	tests := []struct {
 		data []byte
@@ -177,7 +108,6 @@ func TestGetMessageType(t *testing.T) {
 	}{
 		{tradeJSON, 't'},
 		{quoteJSON, 'q'},
-		{barJSON, 'b'},
 		{[]byte(`{}`), 0},
 		{[]byte(`{"T":"s"}`), 's'},
 	}
@@ -263,8 +193,8 @@ func TestTape_IsUTP(t *testing.T) {
 }
 
 func TestParseQuote(t *testing.T) {
-	quote, err := ParseQuote(quoteJSON)
-	if err != nil {
+	var quote Quote
+	if _, err := quote.Parse(quoteJSON); err != nil {
 		t.Fatal(err)
 	}
 	if quote.Symbol != AAPL {
@@ -276,8 +206,8 @@ func TestParseQuote(t *testing.T) {
 }
 
 func TestParseTrade(t *testing.T) {
-	trade, err := ParseTrade(tradeJSON)
-	if err != nil {
+	var trade Trade
+	if _, err := trade.Parse(tradeJSON); err != nil {
 		t.Fatal(err)
 	}
 	if trade.Type != MessageTypeTrade {
@@ -307,8 +237,8 @@ func TestParseTrade(t *testing.T) {
 }
 
 func TestParseQuote2(t *testing.T) {
-	quote, err := ParseQuote(quoteJSON)
-	if err != nil {
+	var quote Quote
+	if _, err := quote.Parse(quoteJSON); err != nil {
 		t.Fatal(err)
 	}
 	if quote.Type != MessageTypeQuote {
@@ -340,40 +270,6 @@ func TestParseQuote2(t *testing.T) {
 	}
 	if quote.Tape != TapeC {
 		t.Errorf("Tape = %v, want %v", quote.Tape, TapeC)
-	}
-}
-
-func TestParseBar(t *testing.T) {
-	bar, err := ParseBar(barJSON)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bar.Type != MessageTypeBar {
-		t.Errorf("Type = %v, want %v", bar.Type, MessageTypeBar)
-	}
-	if bar.Symbol != AAPL {
-		t.Errorf("Symbol = %s, want AAPL", bar.Symbol)
-	}
-	if bar.Open.String() != "150" {
-		t.Errorf("Open = %s, want 150", bar.Open)
-	}
-	if bar.High.String() != "151" {
-		t.Errorf("High = %s, want 151", bar.High)
-	}
-	if bar.Low.String() != "149.5" {
-		t.Errorf("Low = %s, want 149.5", bar.Low)
-	}
-	if bar.Close.String() != "150.5" {
-		t.Errorf("Close = %s, want 150.5", bar.Close)
-	}
-	if bar.Volume != 1000000 {
-		t.Errorf("Volume = %d, want 1000000", bar.Volume)
-	}
-	if bar.VWAP.String() != "150.25" {
-		t.Errorf("VWAP = %s, want 150.25", bar.VWAP)
-	}
-	if bar.NumTrades != 5000 {
-		t.Errorf("NumTrades = %d, want 5000", bar.NumTrades)
 	}
 }
 
@@ -434,9 +330,9 @@ func TestReasonCode_ParseReasonCode_Unknown(t *testing.T) {
 }
 
 func TestParseStatus(t *testing.T) {
-	statusJSON := []byte(`{"T":"s","S":"AAPL","sc":"H","sm":"Trading Halted","rc":"T1","t":"2024-01-15T14:30:00Z"}`)
-	status, err := ParseStatus(statusJSON)
-	if err != nil {
+	statusJSON := []byte(`{"T":"s","S":"AAPL","sc":"H","sm":"Trading Halt","rc":"T1","rm":"Halt News Pending","t":"2026-01-08T14:21:34.407422398Z","z":"C"}`)
+	var status Status
+	if _, err := status.Parse(statusJSON); err != nil {
 		t.Fatal(err)
 	}
 	if status.Type != MessageTypeStatus {
@@ -448,8 +344,8 @@ func TestParseStatus(t *testing.T) {
 	if status.Code != StatusCodeTradingHaltUTP {
 		t.Errorf("Code = %v, want %v", status.Code, StatusCodeTradingHaltUTP)
 	}
-	if status.Message != "Trading Halted" {
-		t.Errorf("Message = %s, want 'Trading Halted'", status.Message)
+	if status.Message.String() != "Trading Halt" {
+		t.Errorf("Message = %s, want 'Trading Halt'", status.Message)
 	}
 	if status.Reason != ReasonCodeHaltNewsPending {
 		t.Errorf("Reason = %v, want %v", status.Reason, ReasonCodeHaltNewsPending)
@@ -459,28 +355,11 @@ func TestParseStatus(t *testing.T) {
 	}
 }
 
-func BenchmarkReasonCode_IsCircuitBreaker(b *testing.B) {
-	rc := ReasonCodeCircuitLvl1
-	for b.Loop() {
-		_ = rc.IsCircuitBreaker()
-	}
-}
-
-func BenchmarkReasonCode_ParseReasonCode(b *testing.B) {
-	data := []byte("T12")
-	for b.Loop() {
-		_, err := ParseReasonCode(data)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
 func BenchmarkParseStatus(b *testing.B) {
-	statusJSON := []byte(`{"T":"s","S":"AAPL","sc":"H","sm":"Trading Halted","rc":"T1","t":"2024-01-15T14:30:00Z"}`)
+	statusJSON := []byte(`{"T":"s","S":"AAPL","sc":"H","sm":"Trading Halt","rc":"T1","rm":"Halt News Pending","t":"2026-01-08T14:21:34.407422398Z","z":"C"}`)
+	var s Status
 	for b.Loop() {
-		_, err := ParseStatus(statusJSON)
-		if err != nil {
+		if _, err := s.Parse(statusJSON); err != nil {
 			b.Fatal(err)
 		}
 	}
