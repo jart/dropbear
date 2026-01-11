@@ -30,18 +30,19 @@ func main() {
 
 	conn := db.Get()
 
-	// Create table if not exists
+	// Drop and recreate table for clean import
+	_, _ = conn.Exec(`DROP TABLE IF EXISTS equity_bars`)
 	_, err := conn.Exec(`
-		CREATE TABLE IF NOT EXISTS equity_bars (
+		CREATE TABLE equity_bars (
 			symbol TEXT NOT NULL,
 			timestamp INTEGER NOT NULL,
-			open INTEGER NOT NULL,
-			high INTEGER NOT NULL,
-			low INTEGER NOT NULL,
-			close INTEGER NOT NULL,
-			volume INTEGER NOT NULL,
+			open REAL NOT NULL,
+			high REAL NOT NULL,
+			low REAL NOT NULL,
+			close REAL NOT NULL,
+			volume REAL NOT NULL,
 			trade_count INTEGER NOT NULL,
-			vwap INTEGER NOT NULL,
+			vwap REAL NOT NULL,
 			PRIMARY KEY (symbol, timestamp)
 		)
 	`)
@@ -107,13 +108,13 @@ func importSymbol(sym symbol.Symbol) {
 		_, err := stmt.Exec(
 			symStr,
 			int64(bar.Timestamp),
-			int64(bar.Open),
-			int64(bar.High),
-			int64(bar.Low),
-			int64(bar.Close),
-			int64(bar.Volume),
+			bar.Open.Float64(),
+			bar.High.Float64(),
+			bar.Low.Float64(),
+			bar.Close.Float64(),
+			bar.Volume.Float64(),
 			bar.TradeCount,
-			int64(bar.VWAP),
+			bar.VWAP.Float64(),
 		)
 		if err != nil {
 			tx.Rollback()

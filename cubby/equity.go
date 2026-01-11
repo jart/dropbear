@@ -53,6 +53,8 @@ func (e *Equity) String() string {
 }
 
 // GetMaxOrderQuantity returns the maximum number of shares that can be ordered.
+// This matches the margin check in simulateOrder: we can buy N more shares if
+// GetInitialMargin(existing+N) - GetMaintenanceMargin(existing) <= marginAvailable
 func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 	if !Paper {
 		account, err := Client.GetAccount()
@@ -64,11 +66,14 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 	}
 	marginUsed := GetMarginUsed()
 	marginAvailable := gDayTradingBuyingPower.Sub(marginUsed).Sub(gMarginHold)
+	oldMargin := e.Asset.GetMaintenanceMargin(e.Quantity, price)
 	lo := decimal.Zero
 	hi := decimal.FromInt(100_000)
 	for lo.Cmp(hi) < 0 {
 		mid := lo.Add(hi.Sub(lo).Add(decimal.One).DivInt(2))
-		marginNeeded := e.Asset.GetInitialMargin(mid, price)
+		newQty := e.Quantity.Add(mid)
+		newMargin := e.Asset.GetInitialMargin(newQty, price)
+		marginNeeded := newMargin.Sub(oldMargin)
 		if marginNeeded.Cmp(marginAvailable) <= 0 {
 			lo = mid
 		} else {

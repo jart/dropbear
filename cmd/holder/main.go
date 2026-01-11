@@ -20,6 +20,7 @@ import (
 	"flag"
 	"log"
 
+	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/cubby"
 	"dropbear/decimal"
@@ -41,11 +42,25 @@ var (
 
 const (
 	marginCheckTime = 10 * clocky.Minute
+	orderStaleness  = 5 * clocky.Minute
 )
 
 var (
 	flagSlipClose = decimal.FlagBPS("slip-close", "50", "slippage on close orders")
 	flagUrgency   = decimal.FlagBPS("urgency", "100", "extra slippage per minute when closing late")
+)
+
+// Opportunistic dip-buying flags
+var (
+	flagDipMin      = decimal.FlagBPS("dip-min", "200", "minimum dip from open to trigger (bps)")
+	flagDipWindow   = clocky.DurationFlag("dip-window", "1h", "time window from open to look for dips")
+	flagDipDeadline = clocky.DurationFlag("dip-deadline", "3h30m", "max time from open to keep dip order (10am PT = 3h30m from 6:30)")
+	flagRedBars     = flag.Int("red-bars", 0, "consecutive red bars needed before entry")
+	flagRecoveryMin = decimal.FlagBPS("recovery-min", "0", "min recovery as % of dip to confirm reversal (500 = 5%)")
+	flagRecoveryMax = decimal.FlagBPS("recovery-max", "2000", "max recovery as % of dip to still enter (2000 = 20%)")
+	flagTrailStop   = decimal.FlagBPS("trail-stop", "150", "drawdown from peak to exit dip trade (bps)")
+	flagDipGreed    = decimal.FlagBPS("dip-greed", "10", "greed on dip entry (subtracted from current price)")
+	flagExitGreed   = decimal.FlagBPS("exit-greed", "10", "greed on dip exit (subtracted from current price)")
 )
 
 var (
@@ -105,6 +120,16 @@ type Holding struct {
 	targetWeight  decimal.Decimal // 0-1, portion of portfolio
 	barCount      int
 	lastDate      int // track last date seen for per-holding reset
+
+	// Dip-buying state
+	openPrice     decimal.Decimal // first bar's open price for the day
+	lowestPrice   decimal.Decimal // lowest close seen so far today
+	redBarCount   int             // consecutive red bars
+	sawRedBars    bool            // have we seen enough red bars?
+	dipOrder      *cubby.Order    // opportunistic buy order (separate from rebalance order)
+	dipEntryPrice decimal.Decimal // price we entered the dip trade
+	dipShares     decimal.Decimal // shares from the opportunistic buy
+	dipPeakPrice  decimal.Decimal // highest price since entry (for trailing stop)
 }
 
 func NewHolding(equity *cubby.Equity) *Holding {
@@ -130,19 +155,34 @@ func (h *Holding) onBar(bar *ds.Bar) {
 	if date != h.lastDate {
 		h.lastDate = date
 		h.barCount = 0
+		// reset dip-buying state (actual prices set at market open)
+		h.openPrice = decimal.Zero
+		h.lowestPrice = decimal.Zero
+		h.redBarCount = 0
+		h.sawRedBars = false
+		h.dipOrder = nil
+		h.dipEntryPrice = decimal.Zero
+		h.dipShares = decimal.Zero
+		h.dipPeakPrice = decimal.Zero
 	}
 
 	if cubby.IsWarmingUp {
 		return
 	}
 
+
 	// update momentum indicator
 	h.momentum.Add(bar.Close)
 	h.barCount++
 
-	// check order status
-	if h.order != nil && h.order.Status.IsFinal() {
-		h.order = nil
+	// check order status and handle stale orders
+	if h.order != nil {
+		if h.order.Status.IsFinal() {
+			h.order = nil
+		} else if clocky.Now().Sub(h.order.OrderedAt) >= orderStaleness {
+			h.order.Cancel()
+			h.order = nil
+		}
 	}
 
 	now := clocky.Now()
@@ -157,6 +197,9 @@ func (h *Holding) onBar(bar *ds.Bar) {
 		h.reduceForOvernight(now, closeTime)
 		return
 	}
+
+	// opportunistic dip-buying
+	h.handleDipTrading(bar, now, openTime)
 
 	// during day: rebalance periodically to day leverage
 	if now.Sub(gLastRebalance) >= clocky.Duration(*flagRebalance)*clocky.Minute {
@@ -269,16 +312,8 @@ func (h *Holding) rebalanceToLeverage(targetLeverage decimal.Decimal) {
 		return
 	}
 
-	// place order
-	var limitPrice decimal.Decimal
-	if diff.IsPositive() {
-		// buying: pay slightly above market
-		limitPrice = h.equity.Price.Mul(decimal.Parse("1.0025"))
-	} else {
-		// selling: accept slightly below market
-		limitPrice = h.equity.Price.Mul(decimal.Parse("0.9975"))
-	}
-	limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
+	// place order at midpoint
+	limitPrice := h.equity.Price.QuantizeNearest(decimal.Cent)
 
 	order, err := h.equity.Order(diff, limitPrice)
 	if err != nil {
@@ -370,4 +405,184 @@ func (h *Holding) reduceForOvernight(now, closeTime clocky.Time) {
 			h.equity.Symbol, sellQty, limitPrice,
 			urgency.MulInt(100).Float64(), adaptiveSlip.MulInt(100).Float64())
 	}
+}
+
+// handleDipTrading implements opportunistic dip-buying strategy.
+// 1. Look for dip from open (configurable min bps)
+// 2. Wait for N consecutive red bars
+// 3. Enter on first green bar if recovery is limited
+// 4. Use trailing stop to exit
+func (h *Holding) handleDipTrading(bar *ds.Bar, now clocky.Time, openTime clocky.Time) {
+	// initialize open/lowest prices at market open
+	if h.openPrice.IsZero() {
+		h.openPrice = bar.Open
+		h.lowestPrice = bar.Low
+	}
+
+	// check if we're in an active dip trade (have shares to manage)
+	if h.dipShares.IsPositive() {
+		h.manageDipExit(bar)
+		return
+	}
+
+	// check if dip order filled
+	if h.dipOrder != nil {
+		if h.dipOrder.Status == alpaca.OrderStatusFilled {
+			h.dipEntryPrice = h.dipOrder.FilledPrice
+			h.dipShares = h.dipOrder.FilledQuantity
+			h.dipPeakPrice = bar.Close
+			h.dipOrder = nil
+			if cubby.Verbose {
+				log.Printf("dip %s: filled %s shares at $%s",
+					h.equity.Symbol, h.dipShares, h.dipEntryPrice)
+			}
+			return
+		} else if h.dipOrder.Status.IsFinal() {
+			// order canceled or expired
+			h.dipOrder = nil
+		}
+	}
+
+	// past deadline? cancel any pending dip order
+	if now.Sub(openTime) >= *flagDipDeadline {
+		if h.dipOrder != nil && h.dipOrder.Status.IsOpen() {
+			h.dipOrder.Cancel()
+			h.dipOrder = nil
+		}
+		return
+	}
+
+	// already have a pending dip order? let it ride
+	if h.dipOrder != nil && h.dipOrder.Status.IsOpen() {
+		return
+	}
+
+	// only look for dips within the dip window
+	if now.Sub(openTime) > *flagDipWindow {
+		return
+	}
+
+	// use defer to always update lowest price before returning
+	defer func() {
+		if bar.Low.Cmp(h.lowestPrice) < 0 {
+			h.lowestPrice = bar.Low
+		}
+	}()
+
+	// track consecutive red bars (for optional filtering)
+	isRedBar := bar.Close.Cmp(bar.Open) < 0
+	if isRedBar {
+		h.redBarCount++
+	} else {
+		if h.redBarCount >= *flagRedBars {
+			h.sawRedBars = true
+		}
+		h.redBarCount = 0
+	}
+
+	// check entry conditions BEFORE updating lowest (so we measure recovery from prior low)
+	// only check if we're not making new lows (bar.Low >= lowestPrice means dip may be ending)
+	if h.openPrice.IsPositive() && h.sawRedBars && h.lowestPrice.IsPositive() && bar.Low.Cmp(h.lowestPrice) >= 0 {
+		// calculate dip from open
+		dipBps := h.openPrice.Sub(h.lowestPrice).Div(h.openPrice).MulInt(10000)
+		dipMinBps := flagDipMin.MulInt(10000)
+
+		// is the dip big enough?
+		if dipBps.Cmp(dipMinBps) < 0 {
+			return // dip not deep enough
+		}
+
+		// calculate recovery from lowest
+		recovery := bar.Close.Sub(h.lowestPrice)
+		dipSize := h.openPrice.Sub(h.lowestPrice)
+		if !dipSize.IsPositive() {
+			return
+		}
+		recoveryPct := recovery.Div(dipSize).MulInt(10000) // as bps (100% = 10000)
+
+		// is recovery in the sweet spot? (enough to confirm reversal, not too much to miss it)
+		// flagRecoveryMin/Max are in decimal form (0.05 = 5%), recoveryPct is in bps (500 = 5%)
+		recoveryMinBps := flagRecoveryMin.MulInt(10000)
+		recoveryMaxBps := flagRecoveryMax.MulInt(10000)
+		if recoveryPct.Cmp(recoveryMinBps) < 0 {
+			return // not enough recovery yet, reversal not confirmed
+		}
+		if recoveryPct.Cmp(recoveryMaxBps) > 0 {
+			return // recovered too much, missed the opportunity
+		}
+
+		// calculate greed based on dip size
+		// if dipped 50 bps and recovered 10 bps, greed could be -10 bps
+		greed := *flagDipGreed
+		limitPrice := bar.Close.Mul(decimal.One.Sub(greed))
+		limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
+
+		// calculate max shares we can buy with available DTBP
+		maxShares := h.equity.GetMaxOrderQuantity(limitPrice)
+		if !maxShares.IsPositive() {
+			return // no buying power available
+		}
+
+		// place the order
+		order, err := h.equity.Order(maxShares, limitPrice)
+		if err != nil {
+			if cubby.Verbose {
+				log.Printf("dip %s: error ordering %s shares at $%s: %v",
+					h.equity.Symbol, maxShares, limitPrice, err)
+			}
+			return
+		}
+		h.dipOrder = order
+
+		if cubby.Verbose {
+			log.Printf("dip %s: buying %s shares at $%s (dip %.0f bps, recovery %.0f%%)",
+				h.equity.Symbol, maxShares, limitPrice,
+				dipBps.Float64(), recoveryPct.DivInt(100).Float64())
+		}
+	}
+}
+
+// manageDipExit implements trailing stop for dip trades
+func (h *Holding) manageDipExit(bar *ds.Bar) {
+	// update peak price
+	if bar.Close.Cmp(h.dipPeakPrice) > 0 {
+		h.dipPeakPrice = bar.Close
+	}
+
+	// calculate drawdown from peak
+	if !h.dipPeakPrice.IsPositive() {
+		return
+	}
+	drawdownBps := h.dipPeakPrice.Sub(bar.Close).Div(h.dipPeakPrice).MulInt(10000)
+
+	// check if we should exit
+	if drawdownBps.Cmp(flagTrailStop.MulInt(10000)) < 0 {
+		return // haven't hit stop yet
+	}
+
+	// place exit order with greed
+	limitPrice := bar.Close.Mul(decimal.One.Sub(*flagExitGreed))
+	limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
+
+	order, err := h.equity.Order(h.dipShares.Neg(), limitPrice)
+	if err != nil {
+		if cubby.Verbose {
+			log.Printf("dip exit %s: error selling %s shares: %v",
+				h.equity.Symbol, h.dipShares, err)
+		}
+		return
+	}
+
+	profit := h.dipPeakPrice.Sub(h.dipEntryPrice).Div(h.dipEntryPrice).MulInt(10000)
+	if cubby.Verbose {
+		log.Printf("dip exit %s: selling %s shares at $%s (peak $%s, profit %.0f bps)",
+			h.equity.Symbol, h.dipShares, limitPrice, h.dipPeakPrice, profit.Float64())
+	}
+
+	// reset dip state - shares will be removed when order fills
+	// but we track via the order for now
+	h.dipShares = decimal.Zero
+	h.dipEntryPrice = decimal.Zero
+	h.dipPeakPrice = decimal.Zero
+	h.order = order // use the regular order slot for the exit
 }
