@@ -23,9 +23,6 @@ type Equity struct {
 
 // AddEquity creates and registers a new Equity with the given symbol.
 func AddEquity(sym symbol.Symbol) (*Equity, error) {
-	if Running {
-		return nil, ErrIsRunning
-	}
 	e := Equities[sym]
 	if e != nil {
 		return e, nil

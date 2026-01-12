@@ -52,7 +52,7 @@ type AdminConfigurations struct {
 
 type UserConfigurations struct {
 	FractionalTrading   bool            `json:"fractional_trading"`    // whether or not user desires to trade fractional shares
-	TradeConfirmEmail   bool            `json:"trade_confirm_email"`   //
+	TradeConfirmEmail   string          `json:"trade_confirm_email"`   // e.g. "none"
 	DTBPCheck           string          `json:"dtbp_check"`            // e.g. entry, exit?, both?
 	MaxMarginMultiplier decimal.Decimal `json:"max_margin_multiplier"` // maximum buying power multiplier user desires for account, e.g. 4
 }

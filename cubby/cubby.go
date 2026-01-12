@@ -29,7 +29,7 @@ var (
 	flagRekt       = decimal.Flag("rekt", "25_000", "portfolio value at which to consider the account liquidated")
 	FlagBuffer     = decimal.FlagPercent("buffer", "1", "percent of buying power to leave untapped")
 	FlagVWAP       = decimal.FlagPercent("vwap", "7", "percent of minute volume we can take")
-	FlagPatience   = clocky.DurationFlag("patience", "10m", "time to wait for order fills")
+	FlagPatience   = clocky.DurationFlag("patience", "15m", "time to wait for order fills")
 )
 
 var (

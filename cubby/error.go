@@ -4,8 +4,7 @@ import "errors"
 
 var (
 	ErrUnknown           = errors.New("unknown symbol")
-	ErrRunning           = errors.New("cubby is running")
-	ErrNotEquity         = errors.New("asset not an equity")
+	ErrNotEquity         = errors.New("asset not equity")
 	ErrIsRunning         = errors.New("cubby is running")
 	ErrIsWarmingUp       = errors.New("cubby is warming up")
 	ErrNotTradable       = errors.New("asset is not tradable")

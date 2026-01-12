@@ -1,6 +1,7 @@
 package symbol
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 )
@@ -94,6 +95,42 @@ func TestSymbol_Format(t *testing.T) {
 				t.Errorf("Symbol.Format(%v) = %v, want %v", tt.fmt, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestTextMarshal(t *testing.T) {
+	sym := MustParse("GOOG")
+	text, err := sym.MarshalText()
+	if err != nil {
+		t.Fatalf("MarshalText() error = %v", err)
+	}
+	if string(text) != "GOOG" {
+		t.Errorf("MarshalText() = %v, want %v", string(text), "GOOG")
+	}
+	var sym2 Symbol
+	if err := sym2.UnmarshalText(text); err != nil {
+		t.Fatalf("UnmarshalText() error = %v", err)
+	}
+	if sym2 != sym {
+		t.Errorf("UnmarshalText() = %v, want %v", sym2, sym)
+	}
+}
+
+func TestMapKeyUnmarshal(t *testing.T) {
+	// This tests the actual bug that was fixed: using Symbol as a map key in JSON
+	jsonData := []byte(`{"GOOG": [1, 2, 3], "AAPL": [4, 5, 6]}`)
+	var result map[Symbol][]int
+	if err := json.Unmarshal(jsonData, &result); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(result) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(result))
+	}
+	goog := MustParse("GOOG")
+	if vals, ok := result[goog]; !ok {
+		t.Errorf("missing GOOG key")
+	} else if len(vals) != 3 || vals[0] != 1 {
+		t.Errorf("wrong values for GOOG: %v", vals)
 	}
 }
 

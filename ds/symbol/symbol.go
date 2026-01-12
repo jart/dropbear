@@ -130,3 +130,16 @@ func (s *Symbol) UnmarshalJSON(data []byte) error {
 		return ErrInvalidSymbol
 	}
 }
+
+func (s Symbol) MarshalText() ([]byte, error) {
+	return []byte(s.String()), nil
+}
+
+func (s *Symbol) UnmarshalText(text []byte) error {
+	sym, err := ParseBytes(text)
+	if err != nil {
+		return err
+	}
+	*s = sym
+	return nil
+}
