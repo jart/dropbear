@@ -6,24 +6,43 @@ import (
 
 // GetOpenTime returns the market open time for the given date as clocky.Time.
 func GetOpenTime(dt clocky.Time) clocky.Time {
-	year, m, day := dt.Date()
-	return clocky.Date(year, clocky.Month(m), day, 6, 30, 0, 0)
+	year, month, day := dt.Date()
+	return getOpenTime(year, month, day)
 }
 
 // GetCloseTime returns the market close time for the given date.
 func GetCloseTime(dt clocky.Time) clocky.Time {
 	year, month, day := dt.Date()
+	return getCloseTime(year, month, day)
+}
+
+// IsTradingDay returns true if the given date is a trading day.
+func IsTradingDay(dt clocky.Time) bool {
+	year, month, day := dt.Date()
+	return isTradingDay(year, month, day)
+}
+
+// IsMarketOpen returns true if the market is open at the given time.
+func IsMarketOpen(dt clocky.Time) bool {
+	year, month, day := dt.Date()
+	openTime := getOpenTime(year, month, day)
+	closeTime := getCloseTime(year, month, day)
+	return !dt.Before(openTime) && dt.Before(closeTime) && isTradingDay(year, month, day)
+}
+
+func getOpenTime(year int, month clocky.Month, day int) clocky.Time {
+	return clocky.Date(year, month, day, 6, 30, 0, 0)
+}
+
+func getCloseTime(year int, month clocky.Month, day int) clocky.Time {
 	if isEarlyClose(year, month, day) {
 		return clocky.Date(year, month, day, 10, 0, 0, 0)
 	}
 	return clocky.Date(year, month, day, 13, 0, 0, 0)
 }
 
-// IsTradingDay returns true if the given date is a trading day.
-func IsTradingDay(dt clocky.Time) bool {
-	year, m, day := dt.Date()
-	month := clocky.Month(m)
-	wd := dt.Weekday()
+func isTradingDay(year int, month clocky.Month, day int) bool {
+	wd := weekday(year, month, day)
 	if wd == clocky.Saturday || wd == clocky.Sunday {
 		return false
 	}

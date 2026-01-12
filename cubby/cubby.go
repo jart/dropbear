@@ -28,8 +28,8 @@ var (
 	flagImpact     = decimal.FlagPercent("impact", "50", "market impact multiplier (% of participation * range)")
 	flagRekt       = decimal.Flag("rekt", "25_000", "portfolio value at which to consider the account liquidated")
 	FlagBuffer     = decimal.FlagPercent("buffer", "1", "percent of buying power to leave untapped")
-	FlagVWAP       = decimal.FlagPercent("vwap", "20", "percent of minute volume we can take")
-	FlagPatience   = clocky.DurationFlag("patience", "15m", "time to wait for order fills")
+	FlagVWAP       = decimal.FlagPercent("vwap", "7", "percent of minute volume we can take")
+	FlagPatience   = clocky.DurationFlag("patience", "10m", "time to wait for order fills")
 )
 
 var (
@@ -45,21 +45,13 @@ var (
 )
 
 var (
-	// Margin state (mirrors Alpaca's model)
-	// These are snapshotted at previous day's market close (4:00 PM ET)
-	gLastEquity      decimal.Decimal // last_equity: portfolio value at previous close
-	gLastMaintMargin decimal.Decimal // last_maintenance_margin: margin used at previous close
-
-	// Calculated at market open from previous close values
-	// daytrading_buying_power = 4 × (last_equity - last_maintenance_margin) for PDT
-	// daytrading_buying_power = 2 × (last_equity - last_maintenance_margin) for non-PDT
-	gDayTradingBuyingPower decimal.Decimal
-	gIsPDT                 bool // pattern_day_trader: true if last_equity >= $25k
-
-	gMarginHold     decimal.Decimal // margin reserved for pending orders
-	gFeeCalculator  *alpaca.FeeCalculator
-	gLiveInvested   decimal.Decimal
-	gLiveMarginUsed decimal.Decimal
+	gLastEquity            decimal.Decimal // portfolio value at previous close
+	gLastMaintenanceMargin decimal.Decimal // margin used at previous close
+	gMarginHold            decimal.Decimal // margin reserved for pending orders
+	gDayTradingBuyingPower decimal.Decimal // buying power for day trades
+	gIsPatternDayTrader    bool            // user has been exposed as a pattern day trader
+	gFeeCalculator         *alpaca.FeeCalculator
+	gInterestCalculator    *alpaca.InterestCalculator
 )
 
 func Init() {
@@ -104,6 +96,7 @@ func Run() {
 	Running = true
 	defer func() { Running = false }()
 	gFeeCalculator = alpaca.NewFeeCalculator()
+	gInterestCalculator = alpaca.NewInterestCalculator(decimal.Parse("0.01"))
 	if Live {
 		liveTrader := newLiveTrader()
 		defer liveTrader.Close()
@@ -132,9 +125,6 @@ func GetPortfolioValue() decimal.Decimal {
 }
 
 func GetInvestedValue() decimal.Decimal {
-	if !gLiveInvested.IsZero() {
-		return gLiveInvested
-	}
 	total := decimal.Zero
 	for _, equity := range Equities {
 		if equity.Quantity.IsZero() {
@@ -149,9 +139,6 @@ func GetInvestedValue() decimal.Decimal {
 }
 
 func GetMarginUsed() decimal.Decimal {
-	if !gLiveMarginUsed.IsZero() {
-		return gLiveMarginUsed
-	}
 	total := decimal.Zero
 	for _, equity := range Equities {
 		if equity.Quantity.IsZero() {
@@ -164,4 +151,26 @@ func GetMarginUsed() decimal.Decimal {
 		total = total.Add(margin)
 	}
 	return total
+}
+
+func onMarketOpen() {
+	// Calculate BOD DTBP from previous close values (already snapshotted in onMarketClose)
+	// bod_dtbp = 4 × (last_equity - last_maintenance_margin) for PDT
+	// bod_dtbp = 2 × (last_equity - last_maintenance_margin) for non-PDT
+	gIsPatternDayTrader = gLastEquity.Cmp(decimal.FromInt(25_000)) >= 0
+	excessEquity := gLastEquity.Sub(gLastMaintenanceMargin)
+	gDayTradingBuyingPower = excessEquity.Mul(getBuyingPowerMultiplier())
+}
+
+func onMarketClose(now clocky.Time) {
+	Cash = Cash.Sub(gInterestCalculator.GetDailyInterest(now, Cash, *flagRFR))
+	gLastEquity = GetPortfolioValue()
+	gLastMaintenanceMargin = GetMarginUsed()
+}
+
+func getBuyingPowerMultiplier() decimal.Decimal {
+	if gIsPatternDayTrader {
+		return decimal.FromInt(4)
+	}
+	return decimal.FromInt(2)
 }

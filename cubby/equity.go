@@ -7,7 +7,6 @@ import (
 	"dropbear/ds"
 	"dropbear/ds/symbol"
 	"fmt"
-	"log"
 )
 
 var Equities = make(map[symbol.Symbol]*Equity)
@@ -56,14 +55,6 @@ func (e *Equity) String() string {
 // This matches the margin check in simulateOrder: we can buy N more shares if
 // GetInitialMargin(existing+N) - GetMaintenanceMargin(existing) <= marginAvailable
 func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
-	if !Paper {
-		account, err := Client.GetAccount()
-		if err != nil {
-			log.Printf("error getting alpaca account info: %v", err)
-		} else {
-			return account.BuyingPower.Div(e.Price).Truncate()
-		}
-	}
 	marginUsed := GetMarginUsed()
 	marginAvailable := gDayTradingBuyingPower.Sub(marginUsed).Sub(gMarginHold)
 	oldMargin := e.Asset.GetMaintenanceMargin(e.Quantity, price)
@@ -84,7 +75,10 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 }
 
 // Order places a volume weighted limit order for the given quantity of shares.
+// If you place your order from 6:00:00 to 6:27:58 a.m. PT, it'll be a LOO order.
 func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
+
+	// validate order
 	if IsWarmingUp {
 		return nil, ErrIsWarmingUp
 	}
@@ -117,41 +111,64 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 			}
 		}
 	}
+
+	// check buying power
+	marginNeeded := decimal.Zero
+	price := limitPrice.Min(e.Price)
+	newMargin := e.Asset.GetInitialMargin(newQty, price)
+	oldMargin := e.Asset.GetMaintenanceMargin(e.Quantity, price)
+	if newMargin.Cmp(oldMargin) > 0 {
+		marginNeeded = newMargin.Sub(oldMargin)
+		marginUsed := GetMarginUsed()
+		marginAvailable := gDayTradingBuyingPower.Sub(marginUsed).Sub(gMarginHold)
+		if marginNeeded.Cmp(marginAvailable) > 0 {
+			return nil, fmt.Errorf("need %s margin but only %s available", marginNeeded, marginAvailable)
+		}
+	}
+
+	// check time
+	now := clocky.Now()
+	timeInForce := alpaca.TimeInForceDay
+	year, month, day := now.Date()
+	openTime := getOpenTime(year, month, day)
+	closeTime := getCloseTime(year, month, day)
+	if now.Before(openTime) || !now.Before(closeTime) {
+		// OPG orders submitted after 9:28am but before 7:00pm ET will be rejected
+		// https://docs.alpaca.markets/docs/orders-at-alpaca
+		time := now.ClockInt()
+		if time >= 6_27_59 {
+			return nil, ErrMissedLOODeadline
+		} else if time >= 6_00_00 {
+			// this is a sane enough time to place a LOO order
+			timeInForce = alpaca.TimeInForceOPG
+		} else {
+			return nil, ErrMarketNotOpen
+		}
+	}
+
+	// create order
 	order := &Order{
 		ClientOrderID: generateOrderID(),
 		Type:          alpaca.OrderTypeLimit,
 		Equity:        e,
 		Side:          side,
 		Status:        alpaca.OrderStatusNew,
+		TimeInForce:   timeInForce,
+		MarginHeld:    marginNeeded,
 		Quantity:      quantity,
 		LimitPrice:    limitPrice,
-		OrderedAt:     clocky.Now(),
+		OrderedAt:     now,
 	}
+	gMarginHold = gMarginHold.Add(marginNeeded)
+
+	// dispatch order
 	if !Paper {
-		return e.sendOrder(order)
+		return e.sendOrder(order, now)
 	}
-	return e.simulateOrder(order, newQty)
+	return e.simulateOrder(order)
 }
 
-func (e *Equity) simulateOrder(order *Order, newQty decimal.Decimal) (*Order, error) {
-	now := clocky.Now()
-	time := now.ClockInt()
-	if time < 06_30_00 || time >= 12_59_55 {
-		return nil, ErrMarketNotOpen
-	}
-	price := order.LimitPrice.Min(e.Price)
-	newMargin := e.Asset.GetInitialMargin(newQty, price)
-	oldMargin := e.Asset.GetMaintenanceMargin(e.Quantity, price)
-	if newMargin.Cmp(oldMargin) > 0 {
-		marginNeeded := newMargin.Sub(oldMargin)
-		marginUsed := GetMarginUsed()
-		marginAvailable := gDayTradingBuyingPower.Sub(marginUsed).Sub(gMarginHold)
-		if marginNeeded.Cmp(marginAvailable) > 0 {
-			return nil, fmt.Errorf("need %s margin but only %s available", marginNeeded, marginAvailable)
-		}
-		gMarginHold = gMarginHold.Add(marginNeeded)
-		order.MarginHeld = marginNeeded
-	}
+func (e *Equity) simulateOrder(order *Order) (*Order, error) {
 	order.OrderID = order.ClientOrderID
 	order.logPlacedOrder()
 	e.Orders[order.OrderID] = order
@@ -159,36 +176,25 @@ func (e *Equity) simulateOrder(order *Order, newQty decimal.Decimal) (*Order, er
 	return order, nil
 }
 
-func (e *Equity) sendOrder(order *Order) (*Order, error) {
-	var startTime, endTime clocky.Time
-	now := clocky.Now()
-	time := now.ClockInt()
-	if time < 06_30_00 || time >= 12_59_55 {
-		return nil, ErrMarketNotOpen
-	}
-	startTime = now
-	endTime = now.Add(*FlagPatience)
-	if endTime.ClockInt() >= 13_00_00 {
-		// just rely on the default behavior of lasting until close
-		// todo: will alpaca do the right thing if we overlap market close?
-		startTime = 0
-		endTime = 0
+func (e *Equity) sendOrder(order *Order, now clocky.Time) (*Order, error) {
+	var advancedInstructions *alpaca.AdvancedInstructions
+	if order.TimeInForce == alpaca.TimeInForceDay {
+		advancedInstructions = &alpaca.AdvancedInstructions{
+			Algorithm:     alpaca.OrderAlgorithmVWAP,
+			MaxPercentage: *FlagVWAP,
+			EndTime:       now.Add(*FlagPatience),
+		}
 	}
 	ordersByCID[order.ClientOrderID] = order
 	alpacaOrder, err := Client.CreateOrder(&alpaca.OrderRequest{
-		Symbol:        e.Symbol.String(),
-		Side:          order.Side,
-		Qty:           order.Quantity,
-		LimitPrice:    order.LimitPrice,
-		ClientOrderID: order.ClientOrderID,
-		Type:          alpaca.OrderTypeLimit,
-		TimeInForce:   alpaca.TimeInForceDay,
-		AdvancedInstructions: &alpaca.AdvancedInstructions{
-			Algorithm:     alpaca.OrderAlgorithmVWAP,
-			MaxPercentage: *FlagVWAP,
-			StartTime:     startTime,
-			EndTime:       endTime,
-		},
+		Symbol:               e.Symbol.String(),
+		Side:                 order.Side,
+		Qty:                  order.Quantity,
+		LimitPrice:           order.LimitPrice,
+		ClientOrderID:        order.ClientOrderID,
+		Type:                 alpaca.OrderTypeLimit,
+		TimeInForce:          order.TimeInForce,
+		AdvancedInstructions: advancedInstructions,
 	})
 	if err != nil {
 		return nil, err

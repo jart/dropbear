@@ -30,6 +30,7 @@ type Order struct {
 	TotalFees      decimal.Decimal // positive, or zero if unfilled
 	MarginHeld     decimal.Decimal // margin reserved for this order
 	OrderedAt      clocky.Time     // local creation time
+	TimeInForce    alpaca.TimeInForce
 }
 
 func (o *Order) Cancel() error {
@@ -55,32 +56,53 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 		panic("broken program logic")
 	}
 
-	// check if order is too old
-	if now.Sub(o.OrderedAt) > *FlagPatience {
-		o.setStatus(alpaca.OrderStatusExpired)
+	// check order time
+	year, month, day := now.Date()
+	hour, minute, _ := now.Clock()
+	openTime := getOpenTime(year, month, day)
+	closeTime := getCloseTime(year, month, day)
+	if now.Before(openTime) {
 		return
 	}
-	time := now.ClockInt()
-	if time < 6_30_00 || time > 13_00_00 {
+	time := hour*100 + minute
+	if o.TimeInForce == alpaca.TimeInForceOPG {
+		if time != 630 {
+			return
+		}
+	} else if !now.Before(closeTime) || now.Sub(o.OrderedAt) > *FlagPatience {
 		o.setStatus(alpaca.OrderStatusExpired)
 		return
 	}
 
-	// check if volume weighted average price crosses limit price
-	if o.Side == ds.SideBuy {
-		if bar.VWAP.Cmp(o.LimitPrice) > 0 {
-			return
-		}
+	// check if bar crosses limit price
+	var mayPass bool
+	var barPrice decimal.Decimal
+	if o.TimeInForce == alpaca.TimeInForceOPG {
+		barPrice = bar.Open
 	} else {
-		if bar.VWAP.Cmp(o.LimitPrice) < 0 {
-			return
+		barPrice = bar.VWAP
+	}
+	if o.Side == ds.SideBuy {
+		mayPass = barPrice.Cmp(o.LimitPrice) <= 0
+	} else {
+		mayPass = barPrice.Cmp(o.LimitPrice) >= 0
+	}
+	if !mayPass {
+		if o.TimeInForce == alpaca.TimeInForceOPG {
+			o.setStatus(alpaca.OrderStatusCanceled)
 		}
+		return
 	}
 
 	// calculate how many shares we can take
-	availableQuantity := bar.Volume.Mul(*FlagVWAP).Truncate()
-	if !availableQuantity.IsPositive() {
-		return
+	var availableQuantity decimal.Decimal
+	if o.TimeInForce == alpaca.TimeInForceOPG {
+		availableQuantity = o.Quantity
+	} else {
+		availableQuantity = bar.Volume.Mul(*FlagVWAP).Truncate()
+		if !availableQuantity.IsPositive() {
+			return
+		}
 	}
 
 	// calculate remaining quantity to fill
@@ -91,8 +113,13 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 	}
 
 	// calculate weighted average fill price if we already have partial fills
+	// OPG orders fill at the opening auction price (bar.Open), not VWAP
+	fillPrice := bar.VWAP
+	if o.TimeInForce == alpaca.TimeInForceOPG {
+		fillPrice = bar.Open
+	}
 	oldValue := o.FilledPrice.Mul(o.FilledQuantity)
-	newValue := bar.VWAP.Mul(fillQuantity)
+	newValue := fillPrice.Mul(fillQuantity)
 	o.FilledQuantity = o.FilledQuantity.Add(fillQuantity)
 	o.FilledPrice = oldValue.Add(newValue).Div(o.FilledQuantity)
 
@@ -101,12 +128,12 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 	o.TotalFees = o.TotalFees.Add(fee)
 
 	// update cash and position
-	notional := bar.VWAP.Mul(fillQuantity)
+	notional := fillPrice.Mul(fillQuantity)
 	if o.Side == ds.SideBuy {
 		Cash = Cash.Sub(notional).Sub(fee)
 		// update average entry price (weighted average)
 		oldValue := o.Equity.EntryPrice.Mul(o.Equity.Quantity)
-		newValue := bar.VWAP.Mul(fillQuantity)
+		newValue := fillPrice.Mul(fillQuantity)
 		o.Equity.Quantity = o.Equity.Quantity.Add(fillQuantity)
 		o.Equity.EntryPrice = oldValue.Add(newValue).Div(o.Equity.Quantity)
 	} else {

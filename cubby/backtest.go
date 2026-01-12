@@ -1,7 +1,6 @@
 package cubby
 
 import (
-	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
@@ -13,21 +12,18 @@ import (
 )
 
 type backtest struct {
-	interest       *alpaca.InterestCalculator
 	heap           *binaryheap.Heap[*backtestEntry]
 	minTime        clocky.Time
 	maxTime        clocky.Time
 	startCash      decimal.Decimal
 	opened         bool
 	closed         bool
-	date           int
+	year           int
+	month          clocky.Month
+	day            int
 	peakValue      decimal.Decimal // highest portfolio value seen
 	maxDrawdown    decimal.Decimal // largest drawdown from peak (as decimal, e.g. 0.10 = 10%)
 	benchmarkStart decimal.Decimal // benchmark price at start of backtest
-
-	// buying power utilization tracking (during trading hours only)
-	utilizationSum   decimal.Decimal // sum of utilization percentages
-	utilizationCount int             // number of samples
 }
 
 type backtestEntry struct {
@@ -38,7 +34,6 @@ type backtestEntry struct {
 
 func newBacktest() *backtest {
 	m := &backtest{
-		interest:  alpaca.NewInterestCalculator(decimal.Parse("0.01")),
 		heap:      binaryheap.NewWith(compareBacktestEntries),
 		minTime:   clocky.MaxTime,
 		maxTime:   clocky.MinTime,
@@ -77,15 +72,10 @@ func newBacktest() *backtest {
 		}
 		m.heap.Push(entry)
 	}
-	// initialize margin state as if previous day closed with just cash
 	gLastEquity = Cash
-	gLastMaintMargin = decimal.Zero
-	gIsPDT = Cash.Cmp(decimal.FromInt(25_000)) >= 0
-	if gIsPDT {
-		gDayTradingBuyingPower = Cash.MulInt(4) // 4 × (equity - 0) for PDT with no positions
-	} else {
-		gDayTradingBuyingPower = Cash.MulInt(2) // 2x Reg T for non-PDT
-	}
+	gLastMaintenanceMargin = decimal.Zero
+	gIsPatternDayTrader = Cash.Cmp(decimal.FromInt(25_000)) >= 0
+	gDayTradingBuyingPower = Cash.Mul(getBuyingPowerMultiplier())
 	m.peakValue = Cash
 	return m
 }
@@ -174,7 +164,7 @@ func (m *backtest) printSummary() {
 		log.Printf("  start:    $%s", m.startCash.FormatThousand(2))
 		log.Printf("  end:      $%s", endValue.FormatThousand(2))
 		log.Printf("  fees:     $%s", gFeeCalculator.TotalFees.FormatThousand(2))
-		log.Printf("  interest: $%s", m.interest.TotalCharged.FormatThousand(2))
+		log.Printf("  interest: $%s", gInterestCalculator.TotalCharged.FormatThousand(2))
 		log.Printf("  max dd:   %s%%", m.maxDrawdown.MulInt(100).Format(2))
 		log.Printf("  return:   %s%% (%.2f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)
 		if Benchmark != nil && m.benchmarkStart.IsPositive() {
@@ -183,10 +173,6 @@ func (m *backtest) printSummary() {
 			log.Printf("  bench:    %s%% (%.2f%% annualized) [%s]", benchReturn.MulInt(100).Format(2), benchAnnual, Benchmark.Symbol)
 		}
 		log.Printf("  period:   %.1f days (%.2f years)", days, years)
-		if m.utilizationCount > 0 {
-			avgUtil := m.utilizationSum.DivInt(m.utilizationCount)
-			log.Printf("  bp util:  %s%% avg during trading hours", avgUtil.MulInt(100).Format(2))
-		}
 		log.Printf("holdings:")
 		log.Printf("%8s $%s margin $%s", "USD", Cash.FormatThousand(2), GetMarginUsed().FormatThousand(2))
 		for _, equity := range Equities {
@@ -199,67 +185,35 @@ func (m *backtest) printSummary() {
 
 func (m *backtest) setTime(now clocky.Time) {
 	clocky.SetNow(now)
-	date := now.DateInt()
-	if date != m.date {
-		m.date = date
+	year, month, day := now.Date()
+	if year != m.year || month != m.month || day != m.day {
+		m.year = year
+		m.month = month
+		m.day = day
 		m.opened = false
 		m.closed = false
 	}
-	openTime := GetOpenTime(now)
-	closeTime := GetCloseTime(now)
+	openTime := getOpenTime(year, month, day)
+	closeTime := getCloseTime(year, month, day)
 	if !m.opened && !now.Before(openTime) && now.Before(closeTime) {
-		m.opened = true
 		m.onMarketOpen()
 	}
 	if !m.closed && !now.Before(closeTime) {
-		m.closed = true
 		m.onMarketClose(now)
 	}
-	// sample buying power utilization during trading hours
-	if m.opened && !m.closed {
-		m.sampleUtilization()
-	}
-}
-
-// sampleUtilization records the current buying power utilization percentage.
-// Utilization = margin used / BOD DTBP
-func (m *backtest) sampleUtilization() {
-	if !gDayTradingBuyingPower.IsPositive() {
-		return
-	}
-	marginUsed := GetMarginUsed()
-	utilization := marginUsed.Div(gDayTradingBuyingPower)
-	m.utilizationSum = m.utilizationSum.Add(utilization)
-	m.utilizationCount++
 }
 
 func (m *backtest) onMarketOpen() {
-	// Calculate BOD DTBP from previous close values (already snapshotted in onMarketClose)
-	// bod_dtbp = 4 × (last_equity - last_maintenance_margin) for PDT
-	// bod_dtbp = 2 × (last_equity - last_maintenance_margin) for non-PDT
-	gIsPDT = gLastEquity.Cmp(decimal.FromInt(25_000)) >= 0
-	excessEquity := gLastEquity.Sub(gLastMaintMargin)
-	if gIsPDT {
-		gDayTradingBuyingPower = excessEquity.MulInt(4)
-	} else {
-		gDayTradingBuyingPower = excessEquity.MulInt(2)
-	}
+	m.opened = true
+	onMarketOpen()
 }
 
 func (m *backtest) onMarketClose(now clocky.Time) {
-	for _, order := range Orders {
-		order.Cancel()
-	}
-	Cash = Cash.Sub(m.interest.GetDailyInterest(now, Cash, *flagRFR))
-
-	// Snapshot values for next day's DTBP calculation (mirrors Alpaca's 4 PM ET snapshot)
-	gLastEquity = GetPortfolioValue()
-	gLastMaintMargin = GetMarginUsed()
-
-	// Check for margin call: maintenance margin cannot exceed equity overnight
-	if gLastMaintMargin.Cmp(gLastEquity) > 0 {
+	m.closed = true
+	onMarketClose(now)
+	if gLastMaintenanceMargin.Cmp(gLastEquity) > 0 {
 		log.Printf("margin call: maintenance margin $%s exceeds equity $%s at close",
-			gLastMaintMargin.FormatThousand(2), gLastEquity.FormatThousand(2))
+			gLastMaintenanceMargin.FormatThousand(2), gLastEquity.FormatThousand(2))
 		os.Exit(1)
 	}
 }

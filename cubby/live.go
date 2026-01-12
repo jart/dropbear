@@ -16,7 +16,6 @@ const (
 
 type liveTrader struct {
 	symbols []symbol.Symbol
-	date    int
 	opened  bool
 	closed  bool
 }
@@ -42,39 +41,58 @@ func (lt *liveTrader) Run() {
 	lt.loop()
 }
 
+// sync should only be called once at the start of live trading.
 func (lt *liveTrader) sync() {
+
+	log.Printf("fetching alpaca assets database...")
+	Client.SyncAssets()
+
+	// check account state
+	log.Printf("fetching alpaca account state...")
 	account, err := Client.GetAccount()
 	if err != nil {
-		log.Printf("error getting alpaca account info: %v", err)
-	} else {
-		Cash = account.Cash
-		gLiveInvested = account.LongMarketValue.Add(account.ShortMarketValue)
-		gLiveMarginUsed = account.MaintenanceMargin
+		panic(err)
 	}
-	for _, order := range Orders {
-		if order.Status.IsFinal() {
-			panic("broken program logic")
-		}
-		alpacaOrder, err := Client.GetOrder(order.OrderID)
-		if err != nil {
-			log.Printf("error fetching alpaca order %s: %v", order.OrderID, err)
-			continue
-		}
-		order.sync(alpacaOrder)
+	Cash = account.Cash
+	gIsPatternDayTrader = account.PatternDayTrader
+	gDayTradingBuyingPower = account.BODDTBP
+	gLastEquity = account.LastEquity
+	gLastMaintenanceMargin = account.LastMaintenanceMargin
+
+	// check if open orders exist
+	log.Printf("checking for open orders on alpaca account...")
+	alpacaOrders, err := Client.GetOrders(nil)
+	if err != nil {
+		panic(err)
 	}
+	if len(alpacaOrders) > 0 {
+		panic("won't start while alpaca account has open orders")
+	}
+
+	// fetch portfolio positions
+	log.Printf("fetching alpaca portfolio positions...")
 	positions, err := Client.GetPositions()
 	if err != nil {
-		log.Printf("error fetching alpaca positions: %v", err)
-	} else {
-		for _, position := range positions {
-			equity := Equities[symbol.MustParse(position.Symbol)]
-			if equity != nil {
-				equity.Price = position.CurrentPrice
-				equity.Quantity = position.QtyAvailable
-				equity.EntryPrice = position.AvgEntryPrice
-			}
-		}
+		panic(err)
 	}
+	for _, position := range positions {
+		symbol, err := symbol.Parse(position.Symbol)
+		if err != nil {
+			panic("found position with symbol we can't decode: " + position.Symbol)
+		}
+		equity, err := AddEquity(symbol)
+		if err != nil {
+			panic(err)
+		}
+		equity.Price = position.CurrentPrice
+		equity.Quantity = position.QtyAvailable
+		equity.EntryPrice = position.AvgEntryPrice
+	}
+}
+
+// reconcile ensures that local state matches Alpaca's state.
+func (lt *liveTrader) reconcile() {
+	// todo
 }
 
 // warmup fetches historical bars and replays them to initialize indicators.
@@ -183,8 +201,8 @@ func (lt *liveTrader) loop() {
 			continue
 		}
 
-		// get latest account information
-		lt.sync()
+		// make sure we're modeling alpaca correctly
+		lt.reconcile()
 
 		// build heap for ordered replay
 		heap := binaryheap.NewWith(compareLiveEntries)
