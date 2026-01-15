@@ -392,12 +392,17 @@ var tools = []Tool{
 
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
+	// Increase buffer size to 1MB to handle large messages
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	encoder := json.NewEncoder(os.Stdout)
+
+	fmt.Fprintln(os.Stderr, "alpaca-mcp: server started")
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		var req Request
 		if err := json.Unmarshal(line, &req); err != nil {
+			fmt.Fprintf(os.Stderr, "alpaca-mcp: json unmarshal error: %v\n", err)
 			continue
 		}
 
@@ -434,9 +439,24 @@ func main() {
 
 		encoder.Encode(resp)
 	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "alpaca-mcp: scanner error: %v\n", err)
+	}
+	fmt.Fprintln(os.Stderr, "alpaca-mcp: server exiting")
 }
 
-func handleToolCall(params ToolCallParams) ToolCallResult {
+func handleToolCall(params ToolCallParams) (result ToolCallResult) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "alpaca-mcp: panic in %s: %v\n", params.Name, r)
+			result = ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("internal error: %v", r)}},
+				IsError: true,
+			}
+		}
+	}()
+
 	switch params.Name {
 	case "place_order":
 		return placeOrder(params.Arguments)

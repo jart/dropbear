@@ -62,11 +62,11 @@ func TestTimeUnmarshalJSONErrors(t *testing.T) {
 		input string
 	}{
 		// Ambiguous timestamps before 1980
-		{"old_seconds", `100000000`},         // 1973 as seconds
-		{"old_millis", `100000000000`},       // 1973 as millis
-		{"old_micros", `100000000000000`},    // 1973 as micros
-		{"old_nanos", `100000000000000000`},  // 1973 as nanos
-		{"old_float", `100000000.0`},         // 1973 as float seconds
+		{"old_seconds", `100000000`},        // 1973 as seconds
+		{"old_millis", `100000000000`},      // 1973 as millis
+		{"old_micros", `100000000000000`},   // 1973 as micros
+		{"old_nanos", `100000000000000000`}, // 1973 as nanos
+		{"old_float", `100000000.0`},        // 1973 as float seconds
 	}
 
 	for _, tt := range tests {

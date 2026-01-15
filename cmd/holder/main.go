@@ -170,7 +170,6 @@ func (h *Holding) onBar(bar *ds.Bar) {
 		return
 	}
 
-
 	// update momentum indicator
 	h.momentum.Add(bar.Close)
 	h.barCount++
