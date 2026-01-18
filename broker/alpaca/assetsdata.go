@@ -589,6 +589,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -1764,6 +1766,22 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x464a: { // JF
+		Symbol:                 0x464a,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "J and Friends Holdings Limited American Depositary Shares",
+		ID:                     "a133989b-9157-4837-94d6-f3a288696224",
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
+	},
 	0x464b: { // KF
 		Symbol:                 0x464b,
 		Exchange:               ExchangeNYSE,
@@ -2159,8 +2177,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4756: { // VG
 		Symbol:                 0x4756,
@@ -2685,8 +2701,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -2858,6 +2872,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -4491,6 +4507,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -4513,20 +4531,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
-	},
-	0x5450: { // PT
-		Symbol:                 0x5450,
-		Exchange:               ExchangeNASDAQ,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "Pintec Technology Holdings Limited American Depositary Shares",
-		ID:                     "a133989b-9157-4837-94d6-f3a288696224",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
 	},
 	0x5453: { // ST
 		Symbol:                 0x5453,
@@ -4617,8 +4621,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -4900,8 +4902,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -4952,8 +4952,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -5115,6 +5113,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x5841: { // AX
@@ -5436,8 +5436,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x5954: { // TY
@@ -5672,8 +5670,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -5994,8 +5990,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x41454c: { // LEA
 		Symbol:                 0x41454c,
@@ -6161,6 +6155,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x41474d: { // MGA
 		Symbol:                 0x41474d,
@@ -6245,6 +6241,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x41484a: { // JHA
 		Symbol:                 0x41484a,
@@ -6456,8 +6454,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x414d45: { // EMA
 		Symbol:                 0x414d45,
@@ -6640,6 +6636,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -6794,8 +6792,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -7142,6 +7138,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -7637,6 +7635,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x42414c: { // LAB
 		Symbol:                 0x42414c,
@@ -8115,6 +8115,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x424557: { // WEB
 		Symbol:                 0x424557,
@@ -8141,6 +8143,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x42464a: { // JFB
 		Symbol:                 0x42464a,
@@ -8389,6 +8393,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -8874,6 +8880,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -9905,8 +9913,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x434244: { // DBC
@@ -10153,8 +10159,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x434352: { // RCC
 		Symbol:                 0x434352,
@@ -10183,6 +10187,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x434355: { // UCC
@@ -10272,6 +10278,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -10757,8 +10765,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -10873,6 +10879,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x434842: { // BHC
@@ -11051,6 +11059,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x434859: { // YHC
@@ -11206,8 +11216,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -11435,25 +11443,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "Honda Motor Co., Ltd. American Depositary Share, each representing three (3) shares of Common Stock",
 		ID:                     "24c7bf4f-89b7-421f-9f7b-d6b5c53a5092",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
-		Fractionable:           ds.True,
-		FractionableExtHours:   ds.True,
-		HasOptions:             ds.True,
-	},
-	0x434d4d: { // MMC
-		Symbol:                 0x434d4d,
-		Exchange:               ExchangeNYSE,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "Marsh & McLennan Companies, Inc.",
-		ID:                     "219700d3-c988-4d18-b38d-6a3be1156833",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
@@ -11970,8 +11959,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -12358,8 +12345,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -12557,8 +12542,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -12606,8 +12589,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x435656: { // VVC
 		Symbol:                 0x435656,
@@ -12763,6 +12744,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -12793,20 +12776,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "Mexco Energy Corporation",
 		ID:                     "1ad02411-21a6-4b97-9243-97c0b23b3668",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-	},
-	0x43584e: { // NXC
-		Symbol:                 0x43584e,
-		Exchange:               ExchangeNYSE,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "NUVEEN CA SEL TAX-FREE INC",
-		ID:                     "a6e3192c-c913-4112-ba68-612d3f1f55a0",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
@@ -12875,6 +12844,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -13064,6 +13035,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -13117,8 +13090,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x44434d: { // MCD
 		Symbol:                 0x44434d,
@@ -13682,8 +13653,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -13945,8 +13914,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -14078,8 +14045,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -14386,8 +14351,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -14733,8 +14696,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -14973,6 +14934,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x445954: { // TYD
 		Symbol:                 0x445954,
@@ -15151,6 +15114,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x454250: { // PBE
@@ -15285,8 +15250,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x454449: { // IDE
@@ -16120,8 +16083,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x454f43: { // COE
 		Symbol:                 0x454f43,
@@ -16165,8 +16126,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -17332,8 +17291,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x464451: { // QDF
 		Symbol:                 0x464451,
@@ -17365,6 +17322,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x464541: { // AEF
 		Symbol:                 0x464541,
@@ -17549,8 +17508,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -17656,6 +17613,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x464750: { // PGF
 		Symbol:                 0x464750,
@@ -17757,8 +17716,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x464943: { // CIF
@@ -17867,6 +17824,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -18044,8 +18003,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -18077,6 +18034,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -18093,6 +18052,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -18384,8 +18345,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -18655,8 +18614,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -18702,6 +18659,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x465649: { // IVF
 		Symbol:                 0x465649,
@@ -18812,8 +18771,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x465850: { // PXF
 		Symbol:                 0x465850,
@@ -18932,6 +18889,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -18972,8 +18931,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x465a55: { // UZF
 		Symbol:                 0x465a55,
@@ -19427,8 +19384,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x47454c: { // LEG
 		Symbol:                 0x47454c,
@@ -19888,6 +19843,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -20007,6 +19964,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -20472,6 +20431,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -20539,6 +20500,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -20824,6 +20787,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -21034,6 +20999,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -21297,8 +21264,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -21712,6 +21677,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x475955: { // UYG
 		Symbol:                 0x475955,
@@ -22013,6 +21980,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x484350: { // PCH
@@ -22957,6 +22926,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -23258,6 +23229,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -24109,6 +24082,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -24160,8 +24135,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x494453: { // SDI
@@ -25444,6 +25417,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x494f41: { // AOI
 		Symbol:                 0x494f41,
@@ -25673,8 +25648,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x495152: { // RQI
 		Symbol:                 0x495152,
@@ -25868,6 +25841,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -25973,6 +25948,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x49534a: { // JSI
 		Symbol:                 0x49534a,
@@ -26691,8 +26668,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -26709,6 +26684,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x495952: { // RYI
 		Symbol:                 0x495952,
@@ -26926,8 +26903,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -27275,6 +27250,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -27653,6 +27630,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -27771,6 +27750,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4b4943: { // CIK
 		Symbol:                 0x4b4943,
@@ -28151,6 +28132,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -28573,6 +28556,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4b5543: { // CUK
 		Symbol:                 0x4b5543,
@@ -29308,6 +29293,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -29393,8 +29380,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c4448: { // HDL
 		Symbol:                 0x4c4448,
@@ -29598,8 +29583,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4c4653: { // SFL
@@ -29648,6 +29631,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -30115,8 +30100,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -30165,8 +30148,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -30203,6 +30184,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -30221,6 +30204,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -30549,6 +30534,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4c5345: { // ESL
@@ -31462,8 +31449,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4d4353: { // SCM
 		Symbol:                 0x4d4353,
@@ -31976,8 +31961,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4d4847: { // GHM
 		Symbol:                 0x4d4847,
@@ -32209,6 +32192,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -32276,6 +32261,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4d4c43: { // CLM
 		Symbol:                 0x4d4c43,
@@ -32867,6 +32854,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -33113,8 +33102,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -33717,8 +33704,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4d5949: { // IYM
 		Symbol:                 0x4d5949,
@@ -33849,6 +33834,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -33864,6 +33851,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4d5a4c: { // LZM
 		Symbol:                 0x4d5a4c,
@@ -34187,8 +34176,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -34706,6 +34693,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4e4855: { // UHN
 		Symbol:                 0x4e4855,
@@ -34813,8 +34802,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4e4950: { // PIN
 		Symbol:                 0x4e4950,
@@ -34858,6 +34845,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4e4c41: { // ALN
 		Symbol:                 0x4e4c41,
@@ -34884,6 +34873,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -34970,6 +34961,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -35229,6 +35222,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -35578,8 +35573,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4e5345: { // ESN
 		Symbol:                 0x4e5345,
@@ -36086,20 +36079,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
 	},
-	0x4e584e: { // NXN
-		Symbol:                 0x4e584e,
-		Exchange:               ExchangeNYSE,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "NUVEEN NY SEL TAX-FREE INC",
-		ID:                     "eb9b5210-5cec-45ce-bd63-69308f78c11b",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-	},
 	0x4e5854: { // TXN
 		Symbol:                 0x4e5854,
 		Exchange:               ExchangeNASDAQ,
@@ -36568,6 +36547,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4f4541: { // AEO
 		Symbol:                 0x4f4541,
@@ -36978,8 +36959,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -37301,6 +37280,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4f4c56: { // VLO
 		Symbol:                 0x4f4c56,
@@ -37440,8 +37421,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4f4d54: { // TMO
 		Symbol:                 0x4f4d54,
@@ -37475,8 +37454,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4f4e42: { // BNO
 		Symbol:                 0x4f4e42,
@@ -37554,8 +37531,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -37735,8 +37710,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -38201,8 +38174,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 		PTPWithException:       ds.True,
 	},
@@ -38321,6 +38292,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -38339,8 +38312,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -38421,8 +38392,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -39171,6 +39140,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -39239,8 +39210,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x504744: { // DGP
 		Symbol:                 0x504744,
@@ -39633,8 +39602,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -39936,8 +39903,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x504e55: { // UNP
 		Symbol:                 0x504e55,
@@ -40043,8 +40008,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 200000000, // 2
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x504f58: { // XOP
 		Symbol:                 0x504f58,
@@ -40166,6 +40129,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -40269,6 +40234,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -40323,6 +40290,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		HasOptions:             ds.True,
 	},
 	0x505344: { // DSP
 		Symbol:                 0x505344,
@@ -40356,6 +40324,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x505346: { // FSP
 		Symbol:                 0x505346,
@@ -40516,6 +40486,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -40588,8 +40560,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x505745: { // EWP
 		Symbol:                 0x505745,
@@ -40973,8 +40943,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x514d53: { // SMQ
 		Symbol:                 0x514d53,
@@ -41170,8 +41138,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x515442: { // BTQ
@@ -41343,6 +41309,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -41920,8 +41888,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x524647: { // GFR
 		Symbol:                 0x524647,
@@ -43541,8 +43507,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -43736,6 +43700,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x525841: { // AXR
@@ -43751,8 +43717,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x525844: { // DXR
 		Symbol:                 0x525844,
@@ -44304,6 +44268,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		HasOptions:             ds.True,
 	},
@@ -44339,6 +44305,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -44729,6 +44697,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -44784,8 +44754,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -44959,6 +44927,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -45133,6 +45103,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -45264,8 +45236,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -45447,8 +45417,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -45608,8 +45576,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -45626,6 +45592,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -45831,6 +45799,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x535250: { // PRS
 		Symbol:                 0x535250,
@@ -45920,6 +45890,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x535345: { // ESS
 		Symbol:                 0x535345,
@@ -46275,8 +46247,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -46427,6 +46397,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -46902,6 +46874,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -47820,8 +47794,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -48128,6 +48100,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x544d4e: { // NMT
 		Symbol:                 0x544d4e,
@@ -48466,6 +48440,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x545052: { // RPT
 		Symbol:                 0x545052,
@@ -48535,6 +48511,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x545156: { // VQT
 		Symbol:                 0x545156,
@@ -48664,6 +48642,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x545250: { // PRT
@@ -49001,8 +48981,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -49434,8 +49412,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -49897,8 +49873,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -50349,8 +50323,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x555555: { // UUU
 		Symbol:                 0x555555,
@@ -51574,6 +51546,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x565253: { // SRV
@@ -51751,8 +51725,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x565446: { // FTV
 		Symbol:                 0x565446,
@@ -51997,6 +51969,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -52123,6 +52097,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -52254,6 +52230,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -52348,8 +52326,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x574552: { // REW
@@ -52397,8 +52373,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x574853: { // SHW
 		Symbol:                 0x574853,
@@ -52556,6 +52530,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x574c43: { // CLW
 		Symbol:                 0x574c43,
@@ -53699,8 +53675,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -53924,7 +53898,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeNASDAQ,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusActive,
-		Name:                   "Metagenomi, Inc. Common Stock",
+		Name:                   "Metagenomi Therapeutics, Inc. Common Stock",
 		ID:                     "ed4869b7-a17f-4d16-a7a9-a0612a98bcd2",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -54367,6 +54341,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x584d46: { // FMX
 		Symbol:                 0x584d46,
@@ -54654,8 +54630,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -54966,8 +54940,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -55290,6 +55262,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -55413,6 +55387,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -55571,8 +55547,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -55630,8 +55604,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -56212,6 +56184,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -57249,6 +57223,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -57603,6 +57579,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -57769,8 +57747,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5a5846: { // FXZ
 		Symbol:                 0x5a5846,
@@ -58180,6 +58156,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -58794,8 +58772,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x41434341: { // ACCA
 		Symbol:                 0x41434341,
@@ -58834,6 +58810,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -58931,8 +58909,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -59218,17 +59194,15 @@ var Assets = map[symbol.Symbol]*Asset{
 	},
 	0x41444345: { // ECDA
 		Symbol:                 0x41444345,
-		Exchange:               ExchangeNASDAQ,
+		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusActive,
 		Name:                   "ECD Automotive Design, Inc. Common Stock",
 		ID:                     "6009b165-ae24-4650-866d-fc37cc210c2e",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
 	},
 	0x4144434d: { // MCDA
 		Symbol:                 0x4144434d,
@@ -59542,6 +59516,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -59557,7 +59533,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		IPO:                    ds.True,
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
@@ -59703,6 +59678,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -59789,8 +59766,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x41455346: { // FSEA
 		Symbol:                 0x41455346,
@@ -59805,8 +59780,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4145534f: { // OSEA
 		Symbol:                 0x4145534f,
@@ -60170,8 +60143,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x41474452: { // RDGA
@@ -60520,22 +60491,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Marginable:             ds.True,
 		Shortable:              ds.True,
 		EasyToBorrow:           ds.True,
-		HasOptions:             ds.True,
-	},
-	0x41485441: { // ATHA
-		Symbol:                 0x41485441,
-		Exchange:               ExchangeNASDAQ,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "Athira Pharma, Inc. Common Stock",
-		ID:                     "fc30d394-db4e-458d-a015-24dc0ae8ccbe",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-		Fractionable:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x41485445: { // ETHA
@@ -61009,6 +60964,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x414a4642: { // BFJA
+		Symbol:                 0x414a4642,
+		Exchange:               ExchangeARCA,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "FT Vest Bitcoin Strategy Floor15 ETF - January",
+		ID:                     "134e541f-22da-4e87-bdd6-fc66b8c6ad78",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x414a4d50: { // PMJA
 		Symbol:                 0x414a4d50,
 		Exchange:               ExchangeBATS,
@@ -61410,8 +61379,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x414c4558: { // XELA
@@ -61466,6 +61433,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -62439,7 +62408,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Bonvenu Bancorp, Inc. Common Stock",
+		Name:                   "BONVENU BANCORP INC CDT-COM",
 		ID:                     "0de7f384-9df8-45ea-921e-70485382dbff",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -62757,6 +62726,22 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
+	0x414e4f4c: { // LONA
+		Symbol:                 0x414e4f4c,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "LeonaBio, Inc. Common Stock",
+		ID:                     "fc30d394-db4e-458d-a015-24dc0ae8ccbe",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		Fractionable:           ds.True,
+		HasOptions:             ds.True,
+	},
 	0x414e5241: { // ARNA
 		Symbol:                 0x414e5241,
 		Exchange:               ExchangeNASDAQ,
@@ -62869,6 +62854,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -63457,6 +63444,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x41515350: { // PSQA
@@ -63747,6 +63736,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -64029,8 +64020,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -64100,6 +64089,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -64604,6 +64595,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -64803,8 +64796,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x41544144: { // DATA
@@ -64917,8 +64908,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
 	},
 	0x41544445: { // EDTA
 		Symbol:                 0x41544445,
@@ -65586,8 +65575,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x41545356: { // VSTA
 		Symbol:                 0x41545356,
@@ -65711,6 +65698,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -66318,6 +66307,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -66555,6 +66546,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x41594152: { // RAYA
 		Symbol:                 0x41594152,
@@ -67087,8 +67080,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -67156,6 +67147,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -67287,8 +67280,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -67491,8 +67482,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x42424c47: { // GLBB
 		Symbol:                 0x42424c47,
@@ -68548,6 +68537,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x42445356: { // VSDB
 		Symbol:                 0x42445356,
@@ -69833,6 +69824,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x424a4f53: { // SOJB
 		Symbol:                 0x424a4f53,
@@ -69900,8 +69893,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -70589,8 +70580,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -70638,8 +70627,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -70992,6 +70979,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -71468,6 +71457,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x424e5944: { // DYNB
 		Symbol:                 0x424e5944,
@@ -71675,8 +71666,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -72050,8 +72039,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x42524753: { // SGRB
 		Symbol:                 0x42524753,
@@ -72216,6 +72203,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x42525448: { // HTRB
 		Symbol:                 0x42525448,
@@ -72758,8 +72747,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x42535545: { // EUSB
 		Symbol:                 0x42535545,
@@ -72905,8 +72892,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4253564b: { // KVSB
 		Symbol:                 0x4253564b,
@@ -74122,8 +74107,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -75482,8 +75465,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x43424d45: { // EMBC
 		Symbol:                 0x43424d45,
@@ -76229,8 +76210,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x43434642: { // BFCC
 		Symbol:                 0x43434642,
@@ -76573,8 +76552,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -76604,6 +76581,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x43435341: { // ASCC
@@ -77072,8 +77051,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x43444252: { // RBDC
 		Symbol:                 0x43444252,
@@ -77219,6 +77196,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -77455,6 +77434,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x43454347: { // GCEC
@@ -77624,8 +77605,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -77996,6 +77975,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4345534e: { // NSEC
 		Symbol:                 0x4345534e,
@@ -78022,6 +78003,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -78845,8 +78828,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x43474357: { // WCGC
@@ -78926,6 +78907,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x43474650: { // PFGC
@@ -79035,6 +79018,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -79058,18 +79043,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusInactive,
 		Name:                   "Arion Group Corp. Common Stock",
 		ID:                     "88d56f10-7356-4122-a1d2-5973a4feb0df",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-	},
-	0x43475242: { // BRGC
-		Symbol:                 0x43475242,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusInactive,
-		Name:                   "BrightRock Gold Corporation Common Stock NEW",
-		ID:                     "773bf3e9-179d-4cb6-b968-808a0e082e3c",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
@@ -79707,6 +79680,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -80135,6 +80110,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -80152,8 +80129,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -80569,6 +80544,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		HasOptions:             ds.True,
 	},
 	0x434c4146: { // FALC
 		Symbol:                 0x434c4146,
@@ -80623,6 +80599,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -83053,6 +83031,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x434f5449: { // ITOC
+		Symbol:                 0x434f5449,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "iTonic Holdings Ltd Class A Ordinary Shares",
+		ID:                     "877631b2-b4a6-4078-8d18-c06ed974128b",
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x434f5451: { // QTOC
 		Symbol:                 0x434f5451,
 		Exchange:               ExchangeBATS,
@@ -83156,8 +83148,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -84396,8 +84386,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -85170,7 +85158,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "JBT BANCORP INC Common Stock",
+		Name:                   "JBT BANCORP INC COM",
 		ID:                     "e76b3e26-7122-44d5-9601-5d0a9dc00886",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -85558,6 +85546,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x43544e49: { // INTC
@@ -85659,7 +85649,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeNASDAQ,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusActive,
-		Name:                   "iRhythm Technologies, Inc. Common Stock",
+		Name:                   "iRhythm Holdings, Inc. Common Stock",
 		ID:                     "f2ec4d31-5f7d-4f49-b546-36ac6085ef6e",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
@@ -86273,6 +86263,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x43564e4f: { // ONVC
@@ -86448,8 +86440,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -87584,6 +87574,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x44425442: { // BTBD
 		Symbol:                 0x44425442,
@@ -87626,6 +87618,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -88020,8 +88014,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x44444d55: { // UMDD
@@ -88224,8 +88216,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x44445746: { // FWDD
@@ -88335,8 +88325,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x44454647: { // GFED
@@ -88872,6 +88860,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x44465350: { // PSFD
@@ -89173,6 +89163,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x44475345: { // ESGD
 		Symbol:                 0x44475345,
@@ -89206,6 +89198,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x44484147: { // GAHD
@@ -89286,6 +89280,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+	},
+	0x44484651: { // QFHD
+		Symbol:                 0x44484651,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Pacer S&P 500 Quality FCF High Dividend ETF",
+		ID:                     "ee6c1145-4385-4b88-96d5-33496f651f1b",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x44484653: { // SFHD
 		Symbol:                 0x44484653,
@@ -89508,8 +89516,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -89982,6 +89988,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -90363,8 +90371,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -90421,8 +90427,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x444c474b: { // KGLD
@@ -90602,8 +90606,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -90682,20 +90684,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Marginable:             ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
-	},
-	0x444c4957: { // WILD
-		Symbol:                 0x444c4957,
-		Exchange:               ExchangeARCA,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "VistaShares Animal Spirits Daily 2X Strategy ETF",
-		ID:                     "aa175d59-0bfc-4e64-be9a-934e9c006343",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
 	},
 	0x444c4a53: { // SJLD
 		Symbol:                 0x444c4a53,
@@ -90848,8 +90836,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x444c5055: { // UPLD
 		Symbol:                 0x444c5055,
@@ -91173,6 +91159,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -91648,25 +91636,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
 	},
-	0x444d4e4d: { // MNMD
-		Symbol:                 0x444d4e4d,
-		Exchange:               ExchangeNASDAQ,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "Mind Medicine (MindMed) Inc. Common Shares",
-		ID:                     "0a664e9d-7a1e-4f2c-9f03-de721f8910ed",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
-		Fractionable:           ds.True,
-		FractionableExtHours:   ds.True,
-		HasOptions:             ds.True,
-	},
 	0x444d4e4f: { // ONMD
 		Symbol:                 0x444d4e4f,
 		Exchange:               ExchangeNASDAQ,
@@ -91956,8 +91925,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -92178,8 +92145,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x444e4244: { // DBND
 		Symbol:                 0x444e4244,
@@ -92747,6 +92712,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x444e4c54: { // TLND
 		Symbol:                 0x444e4c54,
@@ -93463,8 +93430,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -93877,6 +93842,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
 	},
+	0x44524651: { // QFRD
+		Symbol:                 0x44524651,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Pacer S&P 500 Quality FCF R&D Leaders",
+		ID:                     "a4047727-2de5-43ee-9c62-967357b5bebf",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x44524657: { // WFRD
 		Symbol:                 0x44524657,
 		Exchange:               ExchangeNASDAQ,
@@ -93956,6 +93935,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -94076,6 +94057,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x44525643: { // CVRD
@@ -94310,6 +94293,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -94352,6 +94337,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x44535055: { // UPSD
 		Symbol:                 0x44535055,
@@ -94366,8 +94353,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x44535250: { // PRSD
 		Symbol:                 0x44535250,
@@ -94518,6 +94503,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -95202,8 +95189,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x44575241: { // ARWD
 		Symbol:                 0x44575241,
@@ -95236,6 +95221,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
 	},
+	0x44575246: { // FRWD
+		Symbol:                 0x44575246,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Nomura ETF Trust Nomura Transformational Technologies ETF",
+		ID:                     "909e4cb4-9786-40aa-9433-2c6d68b142c2",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x44575249: { // IRWD
 		Symbol:                 0x44575249,
 		Exchange:               ExchangeNASDAQ,
@@ -95249,8 +95248,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -95507,6 +95504,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x44594246: { // FBYD
 		Symbol:                 0x44594246,
@@ -96215,6 +96214,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -96286,6 +96287,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4543504e: { // NPCE
 		Symbol:                 0x4543504e,
@@ -96590,8 +96593,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4544494d: { // MIDE
 		Symbol:                 0x4544494d,
@@ -98228,8 +98229,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -98398,8 +98397,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x454a4f53: { // SOJE
@@ -98954,6 +98951,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -100293,8 +100292,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -100994,6 +100991,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x45524b53: { // SKRE
 		Symbol:                 0x45524b53,
@@ -101447,6 +101446,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x45525455: { // UTRE
 		Symbol:                 0x45525455,
@@ -101475,8 +101476,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -101534,6 +101533,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -101691,8 +101692,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x45525747: { // GWRE
@@ -102157,8 +102156,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -102487,6 +102484,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x45544346: { // FCTE
@@ -102699,6 +102698,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -102800,8 +102801,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -102861,8 +102860,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -102969,8 +102966,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -103614,6 +103609,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -103778,6 +103775,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -103913,8 +103912,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4641454c: { // LEAF
 		Symbol:                 0x4641454c,
@@ -104865,6 +104862,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -105902,6 +105901,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -105919,6 +105920,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -105960,8 +105963,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x464c4858: { // XHLF
@@ -105977,8 +105978,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -106402,8 +106401,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -108177,6 +108174,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x47414452: { // RDAG
 		Symbol:                 0x47414452,
@@ -108343,8 +108342,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x47414c50: { // PLAG
 		Symbol:                 0x47414c50,
@@ -108398,6 +108395,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -108456,8 +108455,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -108646,8 +108643,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x47415941: { // AYAG
 		Symbol:                 0x47415941,
@@ -108754,6 +108749,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+	},
+	0x47424c41: { // ALBG
+		Symbol:                 0x47424c41,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Themes ETF Trust Leverage Shares 2X Long ALB Daily ETF",
+		ID:                     "98821f7c-b2f2-4de4-964d-c6fb0b5c4aa7",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x47424d41: { // AMBG
 		Symbol:                 0x47424d41,
@@ -109353,6 +109362,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x47444553: { // SEDG
 		Symbol:                 0x47444553,
@@ -109638,24 +109649,19 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
-	0x47444f4d: { // MODG
-		Symbol:                 0x47444f4d,
-		Exchange:               ExchangeNYSE,
+	0x47444e4f: { // ONDG
+		Symbol:                 0x47444e4f,
+		Exchange:               ExchangeNASDAQ,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusActive,
-		Name:                   "Topgolf Callaway Brands Corp.",
-		ID:                     "fef1ff58-a1ba-4e5f-a6eb-59c4f7fc4d83",
+		Name:                   "Themes ETF Trust Leverage Shares 2X Long ONDS Daily ETF",
+		ID:                     "e008c6dc-5573-4228-b3d1-62b34de223fc",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
-		Fractionable:           ds.True,
-		FractionableExtHours:   ds.True,
-		HasOptions:             ds.True,
 	},
 	0x47445053: { // SPDG
 		Symbol:                 0x47445053,
@@ -109684,6 +109690,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -109879,6 +109887,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "Silver Pegasus Acquisition Corp Class A Ordinary Shares",
 		ID:                     "488f7dd3-92b5-4d53-8611-3f2289b90846",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
+	0x47455058: { // XPEG
+		Symbol:                 0x47455058,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Themes ETF Trust Leverage Shares 2X Long XPEV Daily ETF",
+		ID:                     "e2e4ab19-8113-4901-9e0d-e9c3761fe65d",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
@@ -110905,6 +110927,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
+	0x47475355: { // USGG
+		Symbol:                 0x47475355,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Themes ETF Trust Leverage Shares 2X Long USAR Daily ETF",
+		ID:                     "366d9db5-91ce-403d-8791-7121811830c5",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x47475541: { // AUGG
 		Symbol:                 0x47475541,
 		Exchange:               ExchangeOTC,
@@ -111640,6 +111676,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -111765,6 +111803,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -112117,6 +112157,18 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
+	0x474c414e: { // NALG
+		Symbol:                 0x474c414e,
+		Exchange:               ExchangeOTC,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusInactive,
+		Name:                   "North America Lithium and Gold Corporation Common Stock",
+		ID:                     "773bf3e9-179d-4cb6-b968-808a0e082e3c",
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+	},
 	0x474c4156: { // VALG
 		Symbol:                 0x474c4156,
 		Exchange:               ExchangeNASDAQ,
@@ -112348,6 +112400,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+	},
+	0x474c524f: { // ORLG
+		Symbol:                 0x474c524f,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Themes ETF Trust Leverage Shares 2X Long ORLY Daily ETF",
+		ID:                     "e6b7d960-7d2c-4502-9d06-2abc0ed88d4f",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x474c5345: { // ESLG
 		Symbol:                 0x474c5345,
@@ -112873,20 +112939,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
-	0x474d4a52: { // RJMG
-		Symbol:                 0x474d4a52,
-		Exchange:               ExchangeARCA,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "FT Raymond James Multicap Growth Equity ETF",
-		ID:                     "a1be6de8-43c3-4d3e-84a0-84f28cb7d264",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-	},
 	0x474d4d49: { // IMMG
 		Symbol:                 0x474d4d49,
 		Exchange:               ExchangeOTC,
@@ -113192,8 +113244,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x474e4159: { // YANG
 		Symbol:                 0x474e4159,
@@ -113495,8 +113545,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x474e4c46: { // FLNG
@@ -113512,8 +113560,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -114074,6 +114120,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -114483,6 +114531,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -114978,6 +115028,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -116155,6 +116207,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x47545243: { // CRTG
 		Symbol:                 0x47545243,
@@ -116244,6 +116298,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 		HasOptions:             ds.True,
+	},
+	0x47545548: { // HUTG
+		Symbol:                 0x47545548,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Themes ETF Trust Leverage Shares 2X Long HUT Daily ETF",
+		ID:                     "9995fef6-a55e-4f49-b016-f87972f286e6",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x47545742: { // BWTG
 		Symbol:                 0x47545742,
@@ -116383,8 +116451,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -116457,8 +116523,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -116531,6 +116595,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -116644,6 +116710,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x47555555: { // UUUG
+		Symbol:                 0x47555555,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Themes ETF Trust Leverage Shares 2X Long UUUU Daily ETF",
+		ID:                     "4a8bbeb1-1339-4d0c-8138-8cf2873a9689",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x47555854: { // TXUG
 		Symbol:                 0x47555854,
 		Exchange:               ExchangeNASDAQ,
@@ -116747,6 +116827,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -117062,6 +117144,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -117276,8 +117360,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4759444d: { // MDYG
 		Symbol:                 0x4759444d,
@@ -117589,8 +117671,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -118536,6 +118616,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -120163,6 +120245,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -120521,6 +120605,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -121339,6 +121425,25 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x4853524d: { // MRSH
+		Symbol:                 0x4853524d,
+		Exchange:               ExchangeNYSE,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Marsh",
+		ID:                     "219700d3-c988-4d18-b38d-6a3be1156833",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
+		Fractionable:           ds.True,
+		FractionableExtHours:   ds.True,
+		HasOptions:             ds.True,
+	},
 	0x4853524e: { // NRSH
 		Symbol:                 0x4853524e,
 		Exchange:               ExchangeARCA,
@@ -121762,6 +121867,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x48544551: { // QETH
 		Symbol:                 0x48544551,
@@ -121954,6 +122061,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x48544d49: { // IMTH
 		Symbol:                 0x48544d49,
@@ -123225,8 +123334,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x49414e42: { // BNAI
 		Symbol:                 0x49414e42,
@@ -123235,8 +123342,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "Brand Engagement Network Inc. Common Stock",
 		ID:                     "ca69419d-1441-47e0-92bd-65ea21864d78",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
@@ -123585,6 +123692,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4941554e: { // NUAI
@@ -124174,8 +124283,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x49425047: { // GPBI
 		Symbol:                 0x49425047,
@@ -124323,8 +124430,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x49425443: { // CTBI
 		Symbol:                 0x49425443,
@@ -124764,8 +124869,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x49434850: { // PHCI
 		Symbol:                 0x49434850,
@@ -125033,8 +125136,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x49435253: { // SRCI
 		Symbol:                 0x49435253,
@@ -125643,6 +125744,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -126435,6 +126538,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -126602,6 +126707,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
+	0x49464b42: { // BKFI
+		Symbol:                 0x49464b42,
+		Exchange:               ExchangeARCA,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "BNY Mellon Active Core Bond ETF",
+		ID:                     "5029c6e4-d12e-40c3-9b41-c64b4648c89f",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x49464c58: { // XLFI
 		Symbol:                 0x49464c58,
 		Exchange:               ExchangeARCA,
@@ -126748,6 +126867,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -128174,6 +128295,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -129064,8 +129187,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x49494f48: { // HOII
 		Symbol:                 0x49494f48,
@@ -129955,6 +130076,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x494c4d59: { // YMLI
 		Symbol:                 0x494c4d59,
@@ -130141,6 +130264,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x494d414e: { // NAMI
 		Symbol:                 0x494d414e,
@@ -130422,6 +130547,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x494d4b42: { // BKMI
+		Symbol:                 0x494d4b42,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "BNY Mellon ETF Trust II BNY Mellon Municipal Intermediate ETF",
+		ID:                     "21524630-3e0d-4dd5-b907-22e03cb74efb",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x494d4c44: { // DLMI
 		Symbol:                 0x494d4c44,
 		Exchange:               ExchangeOTC,
@@ -130650,8 +130789,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -130707,6 +130844,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -130767,8 +130906,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x494e4341: { // ACNI
@@ -131361,6 +131498,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -131479,8 +131618,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -131577,6 +131714,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -131654,6 +131793,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -132642,8 +132783,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -133718,8 +133857,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x49534b4d: { // MKSI
 		Symbol:                 0x49534b4d,
@@ -134100,8 +134237,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -135404,6 +135539,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x49554c42: { // BLUI
 		Symbol:                 0x49554c42,
@@ -135607,8 +135744,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x49564453: { // SDVI
@@ -135837,8 +135972,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -136194,8 +136327,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4958414d: { // MAXI
 		Symbol:                 0x4958414d,
@@ -136918,8 +137049,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -137811,8 +137940,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4a545343: { // CSTJ
 		Symbol:                 0x4a545343,
@@ -137937,6 +138064,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4a584243: { // CBXJ
 		Symbol:                 0x4a584243,
@@ -138419,8 +138548,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4b424349: { // ICBK
 		Symbol:                 0x4b424349,
@@ -138478,6 +138605,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -138608,8 +138737,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4b424c43: { // CLBK
@@ -138699,6 +138826,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -138785,6 +138914,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -138970,6 +139101,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4b425355: { // USBK
@@ -139434,6 +139567,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -139544,8 +139679,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -139683,6 +139816,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4b455447: { // GTEK
@@ -139976,6 +140111,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -139993,8 +140130,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -140519,8 +140654,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -140598,6 +140731,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -140615,8 +140750,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4b4e494c: { // LINK
 		Symbol:                 0x4b4e494c,
@@ -140657,6 +140790,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -140722,6 +140857,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
+	},
+	0x4b4e4c43: { // CLNK
+		Symbol:                 0x4b4e4c43,
+		Exchange:               ExchangeARCA,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Bitwise Chainlink ETF",
+		ID:                     "760a716a-f600-49aa-8de8-5bdbae189aca",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x4b4e4c47: { // GLNK
 		Symbol:                 0x4b4e4c47,
@@ -140869,6 +141018,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -141355,8 +141506,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -142832,6 +142981,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -143079,6 +143230,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -143110,6 +143263,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -143144,8 +143299,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -143317,6 +143470,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -143345,8 +143500,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c424942: { // BIBL
 		Symbol:                 0x4c424942,
@@ -143509,8 +143662,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c424e45: { // ENBL
 		Symbol:                 0x4c424e45,
@@ -143916,8 +144067,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -144263,8 +144412,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -144332,8 +144479,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -144351,8 +144496,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4c444e4f: { // ONDL
@@ -144401,8 +144544,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -144436,8 +144577,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4c445250: { // PRDL
@@ -144515,8 +144654,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -144580,8 +144717,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c454346: { // FCEL
 		Symbol:                 0x4c454346,
@@ -144596,6 +144731,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -144896,8 +145033,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c45554d: { // MUEL
 		Symbol:                 0x4c45554d,
@@ -144995,8 +145130,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -145632,6 +145765,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -146011,6 +146146,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4c484149: { // IAHL
 		Symbol:                 0x4c484149,
@@ -146421,20 +146558,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
-	0x4c485450: { // PTHL
-		Symbol:                 0x4c485450,
-		Exchange:               ExchangeNASDAQ,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "Pheton Holdings Ltd Class A Ordinary Shares",
-		ID:                     "877631b2-b4a6-4078-8d18-c06ed974128b",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-	},
 	0x4c485643: { // CVHL
 		Symbol:                 0x4c485643,
 		Exchange:               ExchangeOTC,
@@ -146498,8 +146621,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -146632,6 +146753,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4c494252: { // RBIL
 		Symbol:                 0x4c494252,
@@ -146800,14 +146923,12 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "RF Industries, Ltd. Common Stock",
 		ID:                     "e21bfee0-3dbd-4445-896e-35585bb2ab76",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4c494745: { // EGIL
@@ -147533,6 +147654,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -148366,6 +148489,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -148526,7 +148651,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeNASDAQ,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusActive,
-		Name:                   "CBL International Limited Ordinary Shares",
+		Name:                   "CBL International Limited Class B Ordinary Shares",
 		ID:                     "a246d8bd-cb63-49e9-ac8b-7cd7cb637f96",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -148589,8 +148714,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c4e444d: { // MDNL
 		Symbol:                 0x4c4e444d,
@@ -148814,6 +148937,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
+	0x4c4e554c: { // LUNL
+		Symbol:                 0x4c4e554c,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Defiance Daily Target 2X Long LUNR ETF",
+		ID:                     "9d6c41ee-1374-4d11-992a-b9a422a009bf",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x4c4e5652: { // RVNL
 		Symbol:                 0x4c4e5652,
 		Exchange:               ExchangeNASDAQ,
@@ -149017,6 +149154,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -149239,6 +149378,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -149373,6 +149514,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "Pineapple Financial Inc.",
 		ID:                     "2c108b0d-cbea-4e9a-8f88-0e073c24fab8",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
+	0x4c504342: { // BCPL
+		Symbol:                 0x4c504342,
+		Exchange:               ExchangeARCA,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "BNY Mellon Core Plus ETF",
+		ID:                     "ef2c4cd9-2d10-435c-82f0-da3370cd8d43",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
@@ -149818,6 +149973,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4c524341: { // ACRL
@@ -150166,8 +150323,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c525753: { // SWRL
 		Symbol:                 0x4c525753,
@@ -150280,6 +150435,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		HasOptions:             ds.True,
 	},
@@ -151003,6 +151160,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
+	},
+	0x4c544b52: { // RKTL
+		Symbol:                 0x4c544b52,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Defiance Daily Target 2X Long RKT ETF",
+		ID:                     "a9f0f6c7-be8d-4ecc-9a66-a63a7465da18",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x4c544c41: { // ALTL
 		Symbol:                 0x4c544c41,
@@ -151782,6 +151953,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
+	0x4c554c50: { // PLUL
+		Symbol:                 0x4c554c50,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Themes ETF Trust Leverage Shares 2X Long PLUG Daily ETF",
+		ID:                     "feb17390-ebd0-4a38-b455-54065176fe46",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x4c554f53: { // SOUL
 		Symbol:                 0x4c554f53,
 		Exchange:               ExchangeNYSE,
@@ -151795,6 +151980,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4c554f59: { // YOUL
 		Symbol:                 0x4c554f59,
@@ -152040,8 +152227,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -152439,8 +152624,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c584953: { // SIXL
 		Symbol:                 0x4c584953,
@@ -154044,6 +154227,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -156278,25 +156463,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
-	0x4d4d4f43: { // COMM
-		Symbol:                 0x4d4d4f43,
-		Exchange:               ExchangeNASDAQ,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "CommScope Holding Company, Inc. Common Stock",
-		ID:                     "b4344ff5-3ab3-4c75-b7a0-be67746efc97",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
-		Fractionable:           ds.True,
-		FractionableExtHours:   ds.True,
-		HasOptions:             ds.True,
-	},
 	0x4d4d5048: { // HPMM
 		Symbol:                 0x4d4d5048,
 		Exchange:               ExchangeOTC,
@@ -157150,8 +157316,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -157612,8 +157776,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -157695,6 +157857,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4d52444d: { // MDRM
 		Symbol:                 0x4d52444d,
@@ -158516,6 +158680,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -158604,6 +158770,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4d54424a: { // JBTM
 		Symbol:                 0x4d54424a,
@@ -159502,6 +159670,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -160615,8 +160785,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4e414f52: { // ROAN
@@ -160638,6 +160806,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "Matthews Japan Active ETF",
 		ID:                     "6fbc68b2-4386-4aa5-9035-4bacf309c2a4",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
+	0x4e415243: { // CRAN
+		Symbol:                 0x4e415243,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Crane Harbor Acquisition Corp. II Class A Ordinary Shares",
+		ID:                     "60aa4aa2-6f8f-46b5-90c6-ae273e5eb7c8",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
@@ -161467,8 +161649,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4e435246: { // FRCN
 		Symbol:                 0x4e435246,
@@ -163792,6 +163972,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -164061,8 +164243,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -164377,6 +164557,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -164434,6 +164616,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -164898,8 +165082,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4e495953: { // SYIN
 		Symbol:                 0x4e495953,
@@ -164978,6 +165160,22 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+	},
+	0x4e4a5253: { // SRJN
+		Symbol:                 0x4e4a5253,
+		Exchange:               ExchangeNYSE,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Spire Inc. 6.375% Junior Subordinated Notes due 2086",
+		ID:                     "78e26b54-c1d4-47dc-9c46-7fc6ea2c1484",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4e4a5352: { // RSJN
 		Symbol:                 0x4e4a5352,
@@ -165939,6 +166137,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4e4d4f57: { // WOMN
 		Symbol:                 0x4e4d4f57,
@@ -166254,8 +166454,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4e4e4750: { // PGNN
 		Symbol:                 0x4e4e4750,
@@ -166355,6 +166553,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -166372,6 +166572,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4e4e4d49: { // IMNN
@@ -167351,8 +167553,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4e504f4b: { // KOPN
@@ -167461,6 +167661,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4e505341: { // ASPN
 		Symbol:                 0x4e505341,
@@ -167610,8 +167812,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4e524249: { // IBRN
@@ -167992,8 +168192,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -168464,13 +168662,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Symbol:                 0x4e534956,
 		Exchange:               ExchangeNASDAQ,
 		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusInactive,
-		Name:                   "Gyroscope Therapeutics Holdings plc American Depositary Shares",
+		Status:                 AssetStatusActive,
+		Name:                   "Vistance Networks, Inc. Common Stock",
 		ID:                     "e27d54dd-4496-4164-9b10-9829558fe201",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
+		Fractionable:           ds.True,
+		FractionableExtHours:   ds.True,
+		HasOptions:             ds.True,
 	},
 	0x4e534b45: { // EKSN
 		Symbol:                 0x4e534b45,
@@ -169367,6 +169572,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4e554a4b: { // KJUN
 		Symbol:                 0x4e554a4b,
@@ -169672,6 +169879,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -169988,8 +170197,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -170349,8 +170556,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4e585053: { // SPXN
 		Symbol:                 0x4e585053,
@@ -170803,8 +171008,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -171401,8 +171604,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4f434347: { // GCCO
 		Symbol:                 0x4f434347,
@@ -172059,6 +172260,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -172738,6 +172941,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4f454241: { // ABEO
@@ -172971,6 +173176,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4f464d43: { // CMFO
 		Symbol:                 0x4f464d43,
@@ -173231,6 +173438,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -173891,6 +174100,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -174984,8 +175195,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -175193,8 +175402,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -175656,6 +175863,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -175692,8 +175901,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -175826,6 +176033,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -176410,8 +176619,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4f4f534d: { // MSOO
@@ -176473,6 +176680,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -176686,8 +176895,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -177162,6 +177369,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4f524b4a: { // JKRO
@@ -177215,8 +177424,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4f524e49: { // INRO
@@ -177281,6 +177488,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x4f524f54: { // TORO
@@ -177296,6 +177505,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -178072,8 +178283,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -179038,6 +179247,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -179074,8 +179285,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -179203,8 +179412,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -179589,6 +179796,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x5041434b: { // KCAP
 		Symbol:                 0x5041434b,
@@ -180356,8 +180565,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x50434249: { // IBCP
@@ -181336,6 +181543,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -182046,6 +182255,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -182133,6 +182344,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x50485349: { // ISHP
 		Symbol:                 0x50485349,
@@ -182255,6 +182468,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -182284,6 +182499,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x50494c43: { // CLIP
@@ -182881,6 +183098,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 		PTPNoException:         ds.True,
 	},
@@ -182948,8 +183167,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -182980,6 +183197,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x504c5443: { // CTLP
@@ -183654,11 +183873,23 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
+	},
+	0x504f4d42: { // BMOP
+		Symbol:                 0x504f4d42,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "BNY Mellon ETF Trust II BNY Mellon Municipal Opportunities ETF",
+		ID:                     "21db1b64-34f7-4658-b6d7-b287e18eb77f",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x504f4d45: { // EMOP
 		Symbol:                 0x504f4d45,
@@ -185790,8 +186021,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -186270,6 +186499,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x51414152: { // RAAQ
 		Symbol:                 0x51414152,
@@ -186310,6 +186541,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -186589,6 +186822,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -186877,6 +187112,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x51455449: { // ITEQ
 		Symbol:                 0x51455449,
@@ -187065,6 +187302,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -187286,8 +187525,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -187304,6 +187541,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -187349,8 +187588,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -187392,8 +187629,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x514c5355: { // USLQ
@@ -187592,6 +187827,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -187846,6 +188083,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -188204,8 +188443,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -188505,8 +188742,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x52414854: { // THAR
 		Symbol:                 0x52414854,
@@ -188923,8 +189158,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x52415355: { // USAR
@@ -189392,8 +189625,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x52425943: { // CYBR
 		Symbol:                 0x52425943,
@@ -189631,7 +189862,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Shortable:              ds.True,
 		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
-		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
 	},
 	0x52434d45: { // EMCR
@@ -189822,6 +190052,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -190192,8 +190424,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -190865,6 +191095,18 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
+	0x52455457: { // WTER
+		Symbol:                 0x52455457,
+		Exchange:               ExchangeOTC,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "ALKALINE WTR CO INC COM PAR $0.001 NEW",
+		ID:                     "3622b897-fb01-4729-8121-a8140c879f1b",
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+	},
 	0x52455645: { // EVER
 		Symbol:                 0x52455645,
 		Exchange:               ExchangeNASDAQ,
@@ -191020,6 +191262,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -191486,6 +191730,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Marginable:             ds.True,
 		Shortable:              ds.True,
 		EasyToBorrow:           ds.True,
+		Fractionable:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x52474948: { // HIGR
@@ -193685,6 +193930,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -193828,12 +194075,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
 		Shortable:              ds.True,
 		EasyToBorrow:           ds.True,
-		Fractionable:           ds.True,
-		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
 	},
 	0x524e4d43: { // CMNR
@@ -195112,8 +195355,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -195248,6 +195489,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x5250534d: { // MSPR
@@ -195291,6 +195534,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -195409,6 +195654,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x52505953: { // SYPR
@@ -195542,6 +195789,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -195559,8 +195808,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5252454d: { // MERR
 		Symbol:                 0x5252454d,
@@ -196594,8 +196841,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -196612,8 +196857,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -196767,8 +197010,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x52544f54: { // TOTR
 		Symbol:                 0x52544f54,
@@ -196886,8 +197127,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -197054,6 +197293,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x52545744: { // DWTR
 		Symbol:                 0x52545744,
@@ -197362,6 +197603,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x52554c55: { // ULUR
@@ -197427,6 +197670,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x52554f54: { // TOUR
 		Symbol:                 0x52554f54,
@@ -198366,8 +198611,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x52595053: { // SPYR
 		Symbol:                 0x52595053,
@@ -198435,6 +198678,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x525a4c42: { // BLZR
 		Symbol:                 0x525a4c42,
@@ -198619,8 +198864,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x53414748: { // HGAS
@@ -198970,6 +199213,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x5342434d: { // MCBS
 		Symbol:                 0x5342434d,
@@ -199015,8 +199260,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5342444d: { // MDBS
 		Symbol:                 0x5342444d,
@@ -199874,8 +200117,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -199946,6 +200187,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x53435446: { // FTCS
@@ -199961,6 +200204,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -200749,6 +200994,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -200978,6 +201225,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -201474,6 +201723,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -202572,8 +202823,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x534c4444: { // DDLS
 		Symbol:                 0x534c4444,
@@ -202588,6 +202837,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -202831,8 +203082,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -203076,6 +203325,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
+	0x534c5053: { // SPLS
+		Symbol:                 0x534c5053,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "PIMCO US Stocks PLUS Active Bond Exchange-Traded Fund",
+		ID:                     "edb6073c-3db3-4a63-a7fd-c9da326d6228",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x534c5054: { // TPLS
 		Symbol:                 0x534c5054,
 		Exchange:               ExchangeNASDAQ,
@@ -203302,8 +203565,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -203528,6 +203789,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
+	},
+	0x534d4b42: { // BKMS
+		Symbol:                 0x534d4b42,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "BNY Mellon ETF Trust II BNY Mellon Municipal Short Duration ETF",
+		ID:                     "d6a05570-91bd-4c71-a52b-67e19bb6a7e5",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x534d4b50: { // PKMS
 		Symbol:                 0x534d4b50,
@@ -204415,6 +204690,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -204988,6 +205265,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x53505041: { // APPS
 		Symbol:                 0x53505041,
@@ -205087,6 +205366,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -206364,8 +206645,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -206382,8 +206661,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x53535444: { // DTSS
@@ -207822,6 +208099,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -207982,6 +208261,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -209658,8 +209939,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x54414348: { // HCAT
 		Symbol:                 0x54414348,
@@ -209765,6 +210044,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x54414547: { // GEAT
 		Symbol:                 0x54414547,
@@ -211193,8 +211474,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -211285,6 +211564,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -211359,8 +211640,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x54435053: { // SPCT
 		Symbol:                 0x54435053,
@@ -211428,7 +211707,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 		Fractionable:           ds.True,
-		FractionableExtHours:   ds.True,
 	},
 	0x54435250: { // PRCT
 		Symbol:                 0x54435250,
@@ -211604,6 +211882,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -211637,6 +211917,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
+	},
+	0x54444347: { // GCDT
+		Symbol:                 0x54444347,
+		Exchange:               ExchangeAMEX,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Green Circle Decarbonize Technology Limited",
+		ID:                     "947a29ea-e422-4af6-9000-ed5ccf921ba1",
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x54444452: { // RDDT
 		Symbol:                 0x54444452,
@@ -211682,6 +211976,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -212523,8 +212819,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -212616,6 +212910,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x54464545: { // EEFT
@@ -213739,8 +214035,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x54494643: { // CFIT
 		Symbol:                 0x54494643,
@@ -213979,8 +214273,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5449524f: { // ORIT
 		Symbol:                 0x5449524f,
@@ -214240,8 +214532,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x544b4441: { // ADKT
 		Symbol:                 0x544b4441,
@@ -214468,6 +214758,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -214909,6 +215201,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -214971,6 +215265,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -215745,6 +216041,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -215786,6 +216084,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -216624,6 +216924,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -217004,18 +217306,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
-	0x544e5944: { // DYNT
-		Symbol:                 0x544e5944,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "DYNATRONICS CORP Common Stock",
-		ID:                     "dabd6aea-a0c5-41bb-b17c-82b27a8da736",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-	},
 	0x544e594a: { // JYNT
 		Symbol:                 0x544e594a,
 		Exchange:               ExchangeNASDAQ,
@@ -217182,8 +217472,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -217383,8 +217671,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -217733,8 +218019,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x54504553: { // SEPT
 		Symbol:                 0x54504553,
@@ -218109,6 +218393,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -218262,8 +218548,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -219622,8 +219906,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x54534c45: { // ELST
 		Symbol:                 0x54534c45,
@@ -220234,8 +220516,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x54535347: { // GSST
@@ -220283,6 +220563,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x54535353: { // SSST
 		Symbol:                 0x54535353,
@@ -220794,6 +221076,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -221060,8 +221344,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -223179,6 +223461,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		HasOptions:             ds.True,
 	},
 	0x55444d41: { // AMDU
 		Symbol:                 0x55444d41,
@@ -223193,6 +223476,21 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+	},
+	0x55444e4f: { // ONDU
+		Symbol:                 0x55444e4f,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Tradr 2X Long ONDS Daily ETF",
+		ID:                     "5a9d9c7b-f10b-45fd-9299-d94398ebb653",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		HasOptions:             ds.True,
 	},
 	0x55444f48: { // HODU
 		Symbol:                 0x55444f48,
@@ -223383,22 +223681,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
-	0x55454652: { // RFEU
-		Symbol:                 0x55454652,
-		Exchange:               ExchangeNASDAQ,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "First Trust Exchange-Traded Fund III First Trust RiverFront Dynamic Europe ETF",
-		ID:                     "3bd2dc39-5184-40bd-8a10-f8351977c202",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-		Fractionable:           ds.True,
-		FractionableExtHours:   ds.True,
-	},
 	0x55454847: { // GHEU
 		Symbol:                 0x55454847,
 		Exchange:               ExchangeOTC,
@@ -223578,6 +223860,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x55464641: { // AFFU
 		Symbol:                 0x55464641,
@@ -223748,8 +224032,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -224170,6 +224452,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x554c4156: { // VALU
 		Symbol:                 0x554c4156,
@@ -224184,6 +224468,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x554c4242: { // BBLU
 		Symbol:                 0x554c4242,
@@ -224610,6 +224896,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x554d494e: { // NIMU
 		Symbol:                 0x554d494e,
@@ -224956,6 +225244,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -225202,8 +225492,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x55514d45: { // EMQU
 		Symbol:                 0x55514d45,
@@ -225584,6 +225872,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+	},
+	0x55534f45: { // EOSU
+		Symbol:                 0x55534f45,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "T-REX 2X Long EOSE Daily Target ETF",
+		ID:                     "3c42ea0c-c7e8-4104-98d8-7e349b76dac9",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x55535043: { // CPSU
 		Symbol:                 0x55535043,
@@ -226057,6 +226359,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -226514,8 +226818,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -227198,6 +227500,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -227282,6 +227586,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -228559,6 +228865,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -228576,6 +228884,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -228918,6 +229228,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x56495257: { // WRIV
 		Symbol:                 0x56495257,
@@ -229044,6 +229356,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -229320,6 +229634,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -229396,8 +229712,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -229778,8 +230092,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -230472,8 +230784,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -230491,8 +230801,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x564f474d: { // MGOV
 		Symbol:                 0x564f474d,
@@ -230540,6 +230848,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -230576,8 +230886,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -230846,6 +231154,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x564f5250: { // PROV
@@ -231049,6 +231359,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -231140,6 +231452,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x56525352: { // RSRV
@@ -231179,6 +231493,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x56525457: { // WTRV
@@ -231580,6 +231896,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -231624,8 +231942,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5654484c: { // LHTV
 		Symbol:                 0x5654484c,
@@ -232187,7 +232503,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Main Street Financial Services Corp Common Shares",
+		Name:                   "MAIN STR FINL SVCS CORP COM",
 		ID:                     "46ae6708-2a6b-421f-a334-d9f5f373ede2",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -232297,6 +232613,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -232338,6 +232656,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -232445,6 +232765,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x57415657: { // WVAW
@@ -232728,6 +233050,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -232902,6 +233226,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -232918,6 +233244,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x57445845: { // EXDW
@@ -233500,6 +233828,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x574c4647: { // GFLW
@@ -233770,8 +234100,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -234706,6 +235034,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
 	},
+	0x57524753: { // SGRW
+		Symbol:                 0x57524753,
+		Exchange:               ExchangeARCA,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Harbor Active Small Cap Growth ETF",
+		ID:                     "9a73720e-f406-4345-936e-cf0178952673",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x57524754: { // TGRW
 		Symbol:                 0x57524754,
 		Exchange:               ExchangeARCA,
@@ -235013,8 +235355,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -235120,6 +235460,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x57544c54: { // TLTW
@@ -235167,6 +235509,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x57544e53: { // SNTW
@@ -235501,6 +235845,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -235848,8 +236194,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x58414d45: { // EMAX
 		Symbol:                 0x58414d45,
@@ -236096,6 +236440,21 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x58415355: { // USAX
+		Symbol:                 0x58415355,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Tradr 2X Long USAR Daily ETF",
+		ID:                     "d1be20d9-2918-4238-adfb-3d7f1b1eea6c",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		HasOptions:             ds.True,
+	},
 	0x58415442: { // BTAX
 		Symbol:                 0x58415442,
 		Exchange:               ExchangeOTC,
@@ -236115,6 +236474,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "Nomura National High-Yield Municipal Bond ETF",
 		ID:                     "4c371e37-65bf-417c-9f6f-51a6dc43516b",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
+	0x5841544c: { // LTAX
+		Symbol:                 0x5841544c,
+		Exchange:               ExchangeARCA,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Nomura Tax-Free USA ETF",
+		ID:                     "eadac5d6-f563-41eb-b8a8-c3e479fd0921",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
@@ -237039,11 +237412,12 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "Atlas Critical Minerals Corporation Common Stock",
 		ID:                     "975ed4a4-f9df-41be-9c87-ef6cbbf68a9c",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x58435444: { // DTCX
 		Symbol:                 0x58435444,
@@ -237123,6 +237497,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x5844434c: { // LCDX
 		Symbol:                 0x5844434c,
@@ -237428,7 +237804,7 @@ var Assets = map[symbol.Symbol]*Asset{
 	},
 	0x58444f43: { // CODX
 		Symbol:                 0x58444f43,
-		Exchange:               ExchangeNASDAQ,
+		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusActive,
 		Name:                   "Co-Diagnostics, Inc. Common Stock",
@@ -237437,8 +237813,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
 		HasOptions:             ds.True,
 	},
 	0x58445241: { // ARDX
@@ -237511,6 +237885,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x58445542: { // BUDX
 		Symbol:                 0x58445542,
@@ -237612,8 +237988,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x58454255: { // UBEX
@@ -237837,8 +238211,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -238875,8 +239247,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -239089,8 +239459,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x58494353: { // SCIX
 		Symbol:                 0x58494353,
@@ -239259,8 +239627,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x58494744: { // DGIX
@@ -240060,8 +240426,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -240704,6 +241068,21 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x584d5243: { // CRMX
+		Symbol:                 0x584d5243,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Tradr 2X Long CRML Daily ETF",
+		ID:                     "ec7e4adc-735c-43d1-a8f6-7f99fa9749e1",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		HasOptions:             ds.True,
+	},
 	0x584d5253: { // SRMX
 		Symbol:                 0x584d5253,
 		Exchange:               ExchangeOTC,
@@ -240780,8 +241159,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -241568,8 +241945,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x584f4143: { // CAOX
 		Symbol:                 0x584f4143,
@@ -241678,8 +242053,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -241968,8 +242341,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x584f5747: { // GWOX
@@ -242607,6 +242978,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x58524446: { // FDRX
+		Symbol:                 0x58524446,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Corgi ETF Trust I Founder-Led 2X Daily ETF",
+		ID:                     "708b929d-0d59-4cf5-a4e2-5cf8d6e0ee58",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x58524447: { // GDRX
 		Symbol:                 0x58524447,
 		Exchange:               ExchangeNASDAQ,
@@ -242874,8 +243259,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -243067,8 +243450,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x58525046: { // FPRX
 		Symbol:                 0x58525046,
@@ -243095,8 +243476,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5852504f: { // OPRX
 		Symbol:                 0x5852504f,
@@ -243502,8 +243881,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		HasOptions:             ds.True,
 	},
@@ -243532,6 +243909,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x58534c42: { // BLSX
@@ -243710,6 +244089,21 @@ var Assets = map[symbol.Symbol]*Asset{
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
 	},
+	0x58544150: { // PATX
+		Symbol:                 0x58544150,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Tradr 2X Long PATH Daily ETF",
+		ID:                     "562bf9b8-5bcc-4a25-879d-e33af6f10fa8",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		HasOptions:             ds.True,
+	},
 	0x5854424e: { // NBTX
 		Symbol:                 0x5854424e,
 		Exchange:               ExchangeNASDAQ,
@@ -243885,6 +244279,24 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+	},
+	0x58544644: { // DFTX
+		Symbol:                 0x58544644,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Definium Therapeutics, Inc. Common Shares",
+		ID:                     "d51f0341-e4d4-4339-80d8-bc45ab5748a5",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
+		Fractionable:           ds.True,
+		HasOptions:             ds.True,
 	},
 	0x58544653: { // SFTX
 		Symbol:                 0x58544653,
@@ -244330,8 +244742,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x58544e42: { // BNTX
 		Symbol:                 0x58544e42,
@@ -244381,8 +244791,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x58544e47: { // GNTX
@@ -244429,8 +244837,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x58544e53: { // SNTX
 		Symbol:                 0x58544e53,
@@ -244507,8 +244913,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -244786,6 +245190,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -245934,6 +246340,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -246395,6 +246803,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x59415058: { // XPAY
@@ -247516,8 +247926,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5946434c: { // LCFY
 		Symbol:                 0x5946434c,
@@ -247660,6 +248068,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x59465446: { // FTFY
@@ -247744,8 +248154,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x5947414d: { // MAGY
@@ -248106,6 +248514,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -248711,6 +249121,25 @@ var Assets = map[symbol.Symbol]*Asset{
 		Marginable:             ds.True,
 		HasOptions:             ds.True,
 	},
+	0x594c4143: { // CALY
+		Symbol:                 0x594c4143,
+		Exchange:               ExchangeNYSE,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Callaway Golf Company",
+		ID:                     "fef1ff58-a1ba-4e5f-a6eb-59c4f7fc4d83",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
+		Fractionable:           ds.True,
+		FractionableExtHours:   ds.True,
+		HasOptions:             ds.True,
+	},
 	0x594c414b: { // KALY
 		Symbol:                 0x594c414b,
 		Exchange:               ExchangeOTC,
@@ -248770,6 +249199,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -248806,6 +249237,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -249164,8 +249597,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x594d4142: { // BAMY
 		Symbol:                 0x594d4142,
@@ -249425,8 +249856,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x594d5457: { // WTMY
@@ -249524,8 +249953,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x594e4358: { // XCNY
 		Symbol:                 0x594e4358,
@@ -249540,8 +249967,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x594e4546: { // FENY
 		Symbol:                 0x594e4546,
@@ -250289,8 +250714,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -250407,6 +250830,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -251319,6 +251744,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x59544650: { // PFTY
@@ -251574,6 +252001,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -251792,8 +252221,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -252016,6 +252443,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -252062,8 +252491,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x59564946: { // FIVY
 		Symbol:                 0x59564946,
@@ -252146,6 +252573,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -252285,8 +252714,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x59584348: { // HCXY
 		Symbol:                 0x59584348,
@@ -253010,6 +253437,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+	},
+	0x5a424143: { // CABZ
+		Symbol:                 0x5a424143,
+		Exchange:               ExchangeBATS,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Roundhill Robotaxi, Autonomous Vehicles & Technology ETF",
+		ID:                     "f23764d8-2d87-42eb-92f1-32d6d36a2766",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x5a424353: { // SCBZ
 		Symbol:                 0x5a424353,
@@ -253976,8 +254417,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5a4c4942: { // BILZ
 		Symbol:                 0x5a4c4942,
@@ -254467,8 +254906,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -254837,6 +255274,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -254956,6 +255395,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x5a524741: { // AGRZ
 		Symbol:                 0x5a524741,
@@ -255246,6 +255687,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		HasOptions:             ds.True,
 	},
 	0x5a544943: { // CITZ
 		Symbol:                 0x5a544943,
@@ -255766,8 +256208,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5a5a414a: { // JAZZ
 		Symbol:                 0x5a5a414a,
@@ -255820,8 +256260,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		HasOptions:             ds.True,
 	},
 	0x5a5a5542: { // BUZZ
@@ -255864,6 +256302,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 		HasOptions:             ds.True,
@@ -255919,8 +256359,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x412e4c5742: { // BWL.A
 		Symbol:                 0x412e4c5742,
@@ -256108,7 +256546,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Teton Advisors Inc Common Class A",
+		Name:                   "Alpha G Investment Management, Inc. Common Stock",
 		ID:                     "43f3eb15-cc93-43f7-a080-ae9e8c8198c2",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -257007,6 +257445,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -257077,7 +257517,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Teton Advisors Inc Common Stock Cl B",
+		Name:                   "Alpha G Investment Management, Inc. Common Stock",
 		ID:                     "cfb36228-262b-4a11-a3d0-1a77e20ef0fc",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -257521,6 +257961,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4252504746: { // FGPRB
 		Symbol:                 0x4252504746,
@@ -257702,6 +258144,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4354535645: { // EVSTC
 		Symbol:                 0x4354535645,
@@ -257788,18 +258232,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Fractionable:           ds.True,
 		HasOptions:             ds.True,
-	},
-	0x4452455457: { // WTERD
-		Symbol:                 0x4452455457,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "The Alkaline Water Company Common Stock",
-		ID:                     "3622b897-fb01-4729-8121-a8140c879f1b",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
 	},
 	0x44524c4857: { // WHLRD
 		Symbol:                 0x44524c4857,
@@ -258638,7 +259070,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Matachewan Consolidated Mines Ltd Ordinary Shares",
+		Name:                   "MATACHEWAN CONS MINES LTD CL A SPL (Canada)",
 		ID:                     "586c0c10-c0b3-42e5-aafc-cde6acdf9be8",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -260836,7 +261268,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "ECORA RESOURCES PLC Ordinary Shares",
+		Name:                   "Ecora Royalties PLC Ordinary Shares",
 		ID:                     "61370ea5-fbd5-4e24-90b5-f6223b5b372d",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -266460,18 +266892,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
-	0x4643434d41: { // AMCCF
-		Symbol:                 0x4643434d41,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusInactive,
-		Name:                   "Amcor PLC CDI 1:1",
-		ID:                     "1a47c78d-b766-43d0-8e43-28e23eacca9d",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-	},
 	0x4643434d4a: { // JMCCF
 		Symbol:                 0x4643434d4a,
 		Exchange:               ExchangeOTC,
@@ -268699,18 +269119,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusInactive,
 		Name:                   "JOINN LABORATORIES CHINA CO LTD SHS (China)",
 		ID:                     "a8bde795-45b9-4f1f-8c73-49f9e7c8daa6",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-	},
-	0x46434c4f53: { // SOLCF
-		Symbol:                 0x46434c4f53,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusInactive,
-		Name:                   "Sol Global Invts Corp Ordinary Shares",
-		ID:                     "5c8deb8c-b53b-4ca8-9787-a9c41ccf5087",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
@@ -276333,7 +276741,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "VUSIONGROUP Ordinary Shares",
+		Name:                   "VUSION ORD (France)",
 		ID:                     "ed215a9e-f05f-4963-b582-7b5c47ff7b9f",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -279958,7 +280366,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "CDN MAVERICK CAP CORP Ordinary Shares",
+		Name:                   "CDN MAVERICK CAP CORP COM (Canada)",
 		ID:                     "539a0bb9-2a4c-4cd1-92f6-a40fe02a874c",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -297132,7 +297540,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Wildsky Res Inc Common Shares",
+		Name:                   "WILDSKY RES INC COM (Canada)",
 		ID:                     "76489518-b168-4518-bbca-cebde3fcc1ba",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -308101,7 +308509,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "ALMA GOLD INC Common Shares",
+		Name:                   "ALMA GOLD INC COM NEW (Canada)",
 		ID:                     "e312df55-b521-4b45-a269-7aff49a7034f",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -308905,7 +309313,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "3D Oil Ltd, Melbourne Ordinary Shares (Australia)",
+		Name:                   "3D ENERGI LTD Ordinary Shares (Australia)",
 		ID:                     "508619d9-174c-49a4-ba07-c5385ad13836",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -314041,18 +314449,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
-	0x464d484c49: { // ILHMF
-		Symbol:                 0x464d484c49,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusInactive,
-		Name:                   "International Lithium Corp. Ordinary Shares (Canada)",
-		ID:                     "c5c88878-82c8-49f0-bd86-3e84c3978b33",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-	},
 	0x464d484e4a: { // JNHMF
 		Symbol:                 0x464d484e4a,
 		Exchange:               ExchangeOTC,
@@ -317266,18 +317662,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusInactive,
 		Name:                   "Starrex International Ltd Ordinary Shares",
 		ID:                     "d2009157-824b-4bd3-a578-ac0ae9e9b849",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-	},
-	0x464d585645: { // EVXMF
-		Symbol:                 0x464d585645,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusInactive,
-		Name:                   "European Electric Metals Inc Common Shares (Canada)",
-		ID:                     "1df66e73-1447-4019-91d4-d65e0154b88f",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
@@ -334806,7 +335190,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "THE BK OF GREENLAND A S SHS (Greenland)",
+		Name:                   "THE BK OF GREENLAND A S ALMINDELIG AKTIE (Greenland)",
 		ID:                     "e2dbc412-ee01-4e24-8f94-30347a7e1793",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -338602,7 +338986,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "NOBEL RES CORP NEW Common Shares",
+		Name:                   "NOBEL RES CORP NEW COM (Canada)",
 		ID:                     "809d9281-6c56-4a6b-ae01-aac6db83f853",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -341003,7 +341387,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Orestone Mining Corporation Common Shares (Canada)",
+		Name:                   "ORESTONE MINING CORP COM NO PAR (Canada)",
 		ID:                     "d20e5dd8-0b3e-488e-acbf-e7be15f22f5c",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -344379,6 +344763,18 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusInactive,
 		Name:                   "ISHARES IV PLC ISHARES MSCI USA ESG SCREENED UCITS ETF USD DIST (Ireland)",
 		ID:                     "756f402d-fc0d-41f5-bbd8-e521b62b81fc",
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+	},
+	0x4653554541: { // AEUSF
+		Symbol:                 0x4653554541,
+		Exchange:               ExchangeOTC,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusInactive,
+		Name:                   "ACTIVE ENERGY GROUP PLC ORD GBP0.00035 (United Kingdom)",
+		ID:                     "40d5e55b-329c-4538-8fe3-492c4e3fdf6e",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
@@ -355559,18 +355955,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
-	0x4656475441: { // ATGVF
-		Symbol:                 0x4656475441,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusInactive,
-		Name:                   "ACTIVE ENERGY GROUP PLC Ordinary Shares",
-		ID:                     "40d5e55b-329c-4538-8fe3-492c4e3fdf6e",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-	},
 	0x4656475542: { // BUGVF
 		Symbol:                 0x4656475542,
 		Exchange:               ExchangeOTC,
@@ -360664,7 +361048,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Emerald Plantation Holdings Ltd Ordinary Shares (Cayman Islands)",
+		Name:                   "EMERALD PLANTATION HLDGS LTD SHS (Cayman Islands)",
 		ID:                     "89b85097-6c28-42fa-91a7-4d687b4c230a",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -360712,7 +361096,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Onex Corp Sub Voting Shares (Canada)",
+		Name:                   "ONEX CORP SUB VTG (Canada)",
 		ID:                     "32437958-101a-48fa-be23-17b3d5e0b61e",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -365677,8 +366061,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x46594f5346: { // FSOYF
 		Symbol:                 0x46594f5346,
@@ -369501,8 +369883,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x474d4f4344: { // DCOMG
 		Symbol:                 0x474d4f4344,
@@ -369581,6 +369961,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x47594c4952: { // RILYG
 		Symbol:                 0x47594c4952,
@@ -369899,6 +370281,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x495353464f: { // OFSSI
 		Symbol:                 0x495353464f,
@@ -370473,6 +370857,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4c43534843: { // CHSCL
 		Symbol:                 0x4c43534843,
@@ -370487,6 +370873,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4c43575343: { // CSWCL
 		Symbol:                 0x4c43575343,
@@ -371297,6 +371685,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x4c58544342: { // BCTXL
+		Symbol:                 0x4c58544342,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "BriaCell Therapeutics Corp. Warrant expiring 2031",
+		ID:                     "be2fa15c-5bf9-4eb8-b3ad-f78375664dd6",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x4c59414245: { // EBAYL
 		Symbol:                 0x4c59414245,
 		Exchange:               ExchangeNASDAQ,
@@ -371902,8 +372304,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -372168,8 +372568,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4e4c4c4941: { // AILLN
 		Symbol:                 0x4e4c4c4941,
@@ -372601,8 +372999,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4f444c4343: { // CCLDO
 		Symbol:                 0x4f444c4343,
@@ -372883,6 +373279,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -372921,6 +373319,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+	},
+	0x4f4d414441: { // ADAMO
+		Symbol:                 0x4f4d414441,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Adamas Trust, Inc. 9.250% Senior Notes Due 2031",
+		ID:                     "abb1938c-17dd-4135-93b2-819ca3ccd7ea",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x4f4d4c4555: { // UELMO
 		Symbol:                 0x4f4d4c4555,
@@ -373095,6 +373507,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 		FractionableExtHours:   ds.True,
 	},
@@ -374843,6 +375257,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x5052544243: { // CBTRP
 		Symbol:                 0x5052544243,
@@ -378224,7 +378640,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "NEW SOURCE ENERGY PARTNERS L P Common Stock",
+		Name:                   "NEW SOURCE ENERGY PARTNERS L P COM UNIT REPST LTD PARTNERSHIP INT Common Stock",
 		ID:                     "c90bdacf-11bf-4c04-9e69-24ceb2e8c32a",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -379010,19 +379426,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-	},
-	0x5153544b41: { // AKTSQ
-		Symbol:                 0x5153544b41,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "AKOUSTIS TECHNOLOGIES INC COM",
-		ID:                     "eb4b0940-ace7-4746-8593-10c9dbdafbb7",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		HasOptions:             ds.True,
 	},
 	0x5153555656: { // VVUSQ
 		Symbol:                 0x5153555656,
@@ -381268,6 +381671,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+	},
+	0x524e415243: { // CRANR
+		Symbol:                 0x524e415243,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Crane Harbor Acquisition Corp. II Rights",
+		ID:                     "87ef60aa-ac5f-479e-8488-1c7c1f596faf",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x524e495841: { // AXINR
 		Symbol:                 0x524e495841,
@@ -388763,6 +389180,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
+	0x55414d494f: { // OIMAU
+		Symbol:                 0x55414d494f,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "OneIM Acquisition Corp. Units",
+		ID:                     "4eb57d7f-10fd-4eb9-b02d-45f5de58015e",
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x55414d4953: { // SIMAU
 		Symbol:                 0x55414d4953,
 		Exchange:               ExchangeNASDAQ,
@@ -390655,6 +391086,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
+	0x5547414549: { // IEAGU
+		Symbol:                 0x5547414549,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Infinite Eagle Acquisition Corp. Unit",
+		ID:                     "3d91e3a9-5a4a-4f5d-9594-c496818c1a43",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
 	0x5547415753: { // SWAGU
 		Symbol:                 0x5547415753,
 		Exchange:               ExchangeNASDAQ,
@@ -391224,6 +391669,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "K&F Growth Acquisition Corp. II Unit",
 		ID:                     "404187a1-4167-491d-83bd-8126aea32bb1",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
+	},
+	0x5549494746: { // FGIIU
+		Symbol:                 0x5549494746,
+		Exchange:               ExchangeNASDAQ,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "FG Imperii Acquisition Corp. Units",
+		ID:                     "bffa0932-ed9c-48a5-8dd7-b1be6207f9b1",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
@@ -392445,8 +392904,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5550434254: { // TBCPU
 		Symbol:                 0x5550434254,
@@ -394495,17 +394952,15 @@ var Assets = map[symbol.Symbol]*Asset{
 	},
 	0x5741444345: { // ECDAW
 		Symbol:                 0x5741444345,
-		Exchange:               ExchangeNASDAQ,
+		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusActive,
-		Name:                   "ECD Automotive Design, Inc. Warrant",
+		Name:                   "ECD AUTOMOTIVE DESIGN INC Warrant   12/12/2028",
 		ID:                     "b8c1a163-eb32-4d61-8eb9-ea8919870791",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
 	},
 	0x5741444e43: { // CNDAW
 		Symbol:                 0x5741444e43,
@@ -394990,8 +395445,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x574252544e: { // NTRBW
 		Symbol:                 0x574252544e,
@@ -399795,7 +400248,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeNASDAQ,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusActive,
-		Name:                   "BriaCell Therapeutics Corp. Warrant",
+		Name:                   "BriaCell Therapeutics Corp. Warrant expiring 2026",
 		ID:                     "08a380d2-8c9d-4c4c-a3cf-70540d01de22",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
@@ -399825,20 +400278,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "Syntec Optics Holdings, Inc. Warrant",
 		ID:                     "3732dcac-ccb2-4a43-9b0e-c29872c348cf",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-	},
-	0x575858454c: { // LEXXW
-		Symbol:                 0x575858454c,
-		Exchange:               ExchangeNASDAQ,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "Lexaria Bioscience Corp. Warrant",
-		ID:                     "c5c45f4e-dba9-462b-b9f6-6e6c5889ffde",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
@@ -399927,6 +400366,18 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+	},
+	0x57594c4642: { // BFLYW
+		Symbol:                 0x57594c4642,
+		Exchange:               ExchangeOTC,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "BUTTERFLY NETWORK INC Redeemable Warrants, each whole warrant exercisable for one share of Class A common stock, each at an exercise price of $11.50 per share",
+		ID:                     "38600fbc-bcbd-4155-82bf-fd662f9cbbd7",
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
 	},
 	0x57594c464c: { // LFLYW
 		Symbol:                 0x57594c464c,
@@ -400122,6 +400573,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5941415353: { // SSAAY
@@ -400251,8 +400704,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5941434e4b: { // KNCAY
@@ -401571,19 +402022,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
-	0x5942444243: { // CBDBY
-		Symbol:                 0x5942444243,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "COMPANHIA BRASILEIRA DE DISTRIBUICAO SPONSORED ADR (Brasil)",
-		ID:                     "44ff9f5e-3144-4faa-9fe3-cb835a9f8f94",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		HasOptions:             ds.True,
-	},
 	0x5942444250: { // PBDBY
 		Symbol:                 0x5942444250,
 		Exchange:               ExchangeOTC,
@@ -401621,6 +402059,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5942464350: { // PCFBY
@@ -401875,8 +402315,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x59424b524e: { // NRKBY
@@ -402557,6 +402995,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5943454853: { // SHECY
@@ -402571,6 +403011,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5943454b54: { // TKECY
@@ -403292,7 +403734,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Land Securities Group Plc American Depositary Receipts - Unsponsored",
+		Name:                   "LAND SECURITIES GROUP PLC ADR NEW - Unsponsored (United Kingdom)",
 		ID:                     "d6652fe4-948d-4d64-8bb1-e15984df0b96",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -405507,8 +405949,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5946434952: { // RICFY
@@ -405863,8 +406303,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5946504c54: { // TLPFY
@@ -406016,6 +406454,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5946534250: { // PBSFY
@@ -406425,7 +406865,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "Clicks Group Ltd SPONSORED ADR",
+		Name:                   "CLICKS GROUP LTD SPONSORED ADR (South Africa)",
 		ID:                     "cad2332f-a675-4cb7-8fe2-708e8249fc1e",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -407435,8 +407875,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5947534754: { // TGSGY
@@ -407595,6 +408033,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5947544f53: { // SOTGY
@@ -407671,6 +408111,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5947564e55: { // UNVGY
@@ -408096,6 +408538,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x5948464843: { // CHFHY
 		Symbol:                 0x5948464843,
@@ -408655,6 +409099,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5948504e53: { // SNPHY
@@ -409199,7 +409645,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusActive,
-		Name:                   "SENDAS DISTRIBUIDORA S A American Depositary Receipts - Sponsored",
+		Name:                   "SENDAS DISTRIBUIDORA S A SPONSORED ADR (Brazil)",
 		ID:                     "52f4fe9d-fa85-477e-b579-24f02e64eb54",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -409575,8 +410021,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x59494b4342: { // BCKIY
@@ -410303,6 +410747,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594a595343: { // CSYJY
@@ -410329,8 +410775,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594b414d43: { // CMAKY
@@ -410638,6 +411082,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594b485243: { // CRHKY
@@ -410866,8 +411312,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594b4f4c45: { // ELOKY
@@ -411199,8 +411643,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x594b585450: { // PTXKY
 		Symbol:                 0x594b585450,
@@ -411799,8 +412241,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594c48414d: { // MAHLY
@@ -411973,8 +412413,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594c494e4d: { // MNILY
@@ -412335,6 +412773,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594c4d5243: { // CRMLY
@@ -413664,6 +414104,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594d564141: { // AAVMY
@@ -413805,6 +414247,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x594e415953: { // SYANY
 		Symbol:                 0x594e415953,
@@ -414237,6 +414681,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594e4e4d53: { // SMNNY
@@ -414449,8 +414895,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594e524f42: { // BORNY
@@ -415222,7 +415666,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeOTC,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusInactive,
-		Name:                   "ZoomLion Heavy Industry Science and Technology Co Ltd Unsponsored ADR (China)",
+		Name:                   "ZOOMLION HEAVY IND SCIENCE & TECHNOLOGY CO ADR - Unsponsored (China)",
 		ID:                     "0e9bd0ed-2d51-4931-9bdc-41f39e6c616c",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
@@ -415325,6 +415769,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x594f4c5345: { // ESLOY
@@ -416022,6 +416468,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x595043534a: { // JSCPY
@@ -416641,6 +417089,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x59504f494c: { // LIOPY
@@ -417077,8 +417527,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5950585456: { // VTXPY
@@ -417408,6 +417856,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x5952454247: { // GBERY
 		Symbol:                 0x5952454247,
@@ -418146,8 +418596,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5952504d43: { // CMPRY
@@ -418972,8 +419420,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5953485643: { // CVHSY
@@ -421392,6 +421838,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x595553494e: { // NISUY
 		Symbol:                 0x595553494e,
@@ -422519,8 +422967,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5958415747: { // GWAXY
@@ -423359,8 +423805,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x595947444c: { // LDGYY
@@ -423579,18 +424023,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusInactive,
 		Name:                   "Turkiye Sinai Kalkinma Bankasi As Unsponsored ADR (Turkey)",
 		ID:                     "44187552-69b0-4124-ae31-f7860a7ca5f1",
-		MarginRequirementLong:  100000000, // 1
-		MarginRequirementShort: 100000000, // 1
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-	},
-	0x59594b5443: { // CTKYY
-		Symbol:                 0x59594b5443,
-		Exchange:               ExchangeOTC,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "Cootek Cayman Inc American Depositary Receipts - Sponsored (Cayman Islands)",
-		ID:                     "af2cbf66-f997-4079-95a5-3e1f0bd675ef",
 		MarginRequirementLong:  100000000, // 1
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
@@ -424120,6 +424552,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x5959554c48: { // HLUYY
@@ -424364,8 +424798,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 		Fractionable:           ds.True,
 	},
 	0x595a42414e: { // NABZY
@@ -425397,7 +425829,7 @@ var Assets = map[symbol.Symbol]*Asset{
 		Exchange:               ExchangeNASDAQ,
 		Class:                  AssetClassUSEquity,
 		Status:                 AssetStatusActive,
-		Name:                   "BriaCell Therapeutics Corp. Warrant",
+		Name:                   "BriaCell Therapeutics Corp. Warrant expiring 2030",
 		ID:                     "b77e8342-342d-4c5e-8f84-7260e954b4ad",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
@@ -425597,6 +426029,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4152502e5742: { // BW.PRA
 		Symbol:                 0x4152502e5742,
@@ -425956,8 +426390,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4652502e534d: { // MS.PRF
 		Symbol:                 0x4652502e534d,
@@ -425986,6 +426418,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4952502e5445: { // ET.PRI
 		Symbol:                 0x4952502e5445,
@@ -426245,8 +426679,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c432e425844: { // DXB.CL
 		Symbol:                 0x4c432e425844,
@@ -426311,6 +426743,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x5052502e534d: { // MS.PRP
 		Symbol:                 0x5052502e534d,
@@ -426341,8 +426775,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x52502e495445: { // ETI.PR
 		Symbol:                 0x52502e495445,
@@ -426747,6 +427179,20 @@ var Assets = map[symbol.Symbol]*Asset{
 		MarginRequirementShort: 100000000, // 1
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
+	},
+	0x54522e545948: { // HYT.RT
+		Symbol:                 0x54522e545948,
+		Exchange:               ExchangeNYSE,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "BlackRock Corporate High Yield Fund, Inc. Rights (expiring January 26, 2026)",
+		ID:                     "9cfc002c-19c0-4926-9129-d7135974a88e",
+		MarginRequirementLong:  30000000,  // 0.3
+		MarginRequirementShort: 30000000,  // 0.3
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+		Marginable:             ds.True,
 	},
 	0x54522e554c47: { // GLU.RT
 		Symbol:                 0x54522e554c47,
@@ -428713,8 +429159,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4152502e424f4c: { // LOB.PRA
 		Symbol:                 0x4152502e424f4c,
@@ -429030,6 +429474,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4152502e4b5550: { // PUK.PRA
 		Symbol:                 0x4152502e4b5550,
@@ -429692,6 +430138,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4252502e47464f: { // OFG.PRB
 		Symbol:                 0x4252502e47464f,
@@ -429826,6 +430274,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4252502e4c4e47: { // GNL.PRB
 		Symbol:                 0x4252502e4c4e47,
@@ -429882,8 +430332,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4252502e4e4153: { // SAN.PRB
 		Symbol:                 0x4252502e4e4153,
@@ -430845,6 +431293,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4452502e4c4841: { // AHL.PRD
 		Symbol:                 0x4452502e4c4841,
@@ -431425,8 +431875,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4552502e4e4846: { // FHN.PRE
 		Symbol:                 0x4552502e4e4846,
@@ -431543,6 +431991,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4552502e534642: { // BFS.PRE
 		Symbol:                 0x4552502e534642,
@@ -432201,6 +432651,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4752502e564447: { // GDV.PRG
 		Symbol:                 0x4752502e564447,
@@ -432669,8 +433121,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x49572e4c4c4544: { // DELL.WI
 		Symbol:                 0x49572e4c4c4544,
@@ -433109,8 +433559,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c52502e434657: { // WFC.PRL
 		Symbol:                 0x4c52502e434657,
@@ -433125,8 +433573,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c52502e454353: { // SCE.PRL
 		Symbol:                 0x4c52502e454353,
@@ -433155,6 +433601,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4c52502e4c4d42: { // BML.PRL
 		Symbol:                 0x4c52502e4c4d42,
@@ -433197,8 +433645,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4c52502e4f4e56: { // VNO.PRL
 		Symbol:                 0x4c52502e4f4e56,
@@ -433241,8 +433687,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4d52502e415350: { // PSA.PRM
 		Symbol:                 0x4d52502e415350,
@@ -433413,6 +433857,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4e52502e464f43: { // COF.PRN
 		Symbol:                 0x4e52502e464f43,
@@ -433427,6 +433873,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4e52502e4d494b: { // KIM.PRN
 		Symbol:                 0x4e52502e4d494b,
@@ -433728,8 +434176,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x5252502e434654: { // TFC.PRR
 		Symbol:                 0x5252502e434654,
@@ -433744,6 +434190,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x5252502e45454e: { // NEE.PRR
 		Symbol:                 0x5252502e45454e,
@@ -434331,20 +434779,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Tradable:               ds.True,
 		Marginable:             ds.True,
 	},
-	0x53572e594c4642: { // BFLY.WS
-		Symbol:                 0x53572e594c4642,
-		Exchange:               ExchangeNYSE,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "Butterfly Network, Inc. Redeemable Warrants, each whole warrant exercisable for one share of Class A common stock, each at an exercise price of $11.50 per share",
-		ID:                     "bb8c7879-7514-4478-964f-f12c155d56a7",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-	},
 	0x53572e594c4c48: { // HLLY.WS
 		Symbol:                 0x53572e594c4c48,
 		Exchange:               ExchangeNYSE,
@@ -434588,6 +435022,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x5752502e415350: { // PSA.PRW
 		Symbol:                 0x5752502e415350,
@@ -434810,8 +435246,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4152502e47544c41: { // ALTG.PRA
 		Symbol:                 0x4152502e47544c41,
@@ -435553,6 +435987,8 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
+		Shortable:              ds.True,
+		EasyToBorrow:           ds.True,
 	},
 	0x4352502e45524d43: { // CMRE.PRC
 		Symbol:                 0x4352502e45524d43,
@@ -435661,8 +436097,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4352502e504f4c47: { // GLOP.PRC
 		Symbol:                 0x4352502e504f4c47,
@@ -435677,8 +436111,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4352502e52584552: { // REXR.PRC
 		Symbol:                 0x4352502e52584552,
@@ -435841,8 +436273,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4453552f42494853: { // SHIB/USD
 		Symbol:                 0x4453552f42494853,
@@ -436100,6 +436530,19 @@ var Assets = map[symbol.Symbol]*Asset{
 		MinTradeIncrement:      100000000, // 1
 		PriceIncrement:         1000000,   // 0.01
 	},
+	0x4752502e4e545254: { // TRTN.PRG
+		Symbol:                 0x4752502e4e545254,
+		Exchange:               ExchangeNYSE,
+		Class:                  AssetClassUSEquity,
+		Status:                 AssetStatusActive,
+		Name:                   "Triton International Limited 7.500% Series G Cumulative Redeemable Perpetual Preference Shares",
+		ID:                     "e10a7325-03f3-4715-a2c0-af8065741b44",
+		MarginRequirementLong:  100000000, // 1
+		MarginRequirementShort: 100000000, // 1
+		MinTradeIncrement:      100000000, // 1
+		PriceIncrement:         1000000,   // 0.01
+		Tradable:               ds.True,
+	},
 	0x4752502e4f435441: { // ATCO.PRG
 		Symbol:                 0x4752502e4f435441,
 		Exchange:               ExchangeNYSE,
@@ -436133,20 +436576,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		Status:                 AssetStatusActive,
 		Name:                   "DigitalBridge Group, Inc. 7.15% Series I Cumulative Redeemable Perpetual Preferred Stock",
 		ID:                     "2862944c-de94-422e-b8c2-06f619e2c06e",
-		MarginRequirementLong:  30000000,  // 0.3
-		MarginRequirementShort: 30000000,  // 0.3
-		MinTradeIncrement:      100000000, // 1
-		PriceIncrement:         1000000,   // 0.01
-		Tradable:               ds.True,
-		Marginable:             ds.True,
-	},
-	0x495754522e545948: { // HYT.RTWI
-		Symbol:                 0x495754522e545948,
-		Exchange:               ExchangeNYSE,
-		Class:                  AssetClassUSEquity,
-		Status:                 AssetStatusActive,
-		Name:                   "BlackRock Corporate High Yield Fund, Inc. Rights (expiring January 26, 2026)",
-		ID:                     "9cfc002c-19c0-4926-9129-d7135974a88e",
 		MarginRequirementLong:  30000000,  // 0.3
 		MarginRequirementShort: 30000000,  // 0.3
 		MinTradeIncrement:      100000000, // 1
@@ -436195,8 +436624,6 @@ var Assets = map[symbol.Symbol]*Asset{
 		PriceIncrement:         1000000,   // 0.01
 		Tradable:               ds.True,
 		Marginable:             ds.True,
-		Shortable:              ds.True,
-		EasyToBorrow:           ds.True,
 	},
 	0x4b52502e43544953: { // SITC.PRK
 		Symbol:                 0x4b52502e43544953,

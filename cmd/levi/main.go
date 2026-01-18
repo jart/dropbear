@@ -27,7 +27,7 @@ import (
 )
 
 var (
-	flagSymbols   = flag.String("symbol", "LEVI", "symbols to monitor")
+	flagSymbols   = flag.String("symbol", "GOOG", "symbols to monitor")
 	flagRound     = flag.Bool("round", true, "use round lot order quantities")
 	flagSlipOpen  = decimal.FlagBPS("slip-open", "25", "max slippage on opening trade")
 	flagSlipClose = decimal.FlagBPS("slip-close", "25", "max slippage on closing trade")
@@ -38,10 +38,8 @@ var (
 )
 
 const (
-	openTime         = 6_30_00
-	stopOpeningTime  = 12_30_00
-	startClosingTime = 12_45_00
-	closeTime        = 13_00_00
+	stopOpeningTime  = 30 * clocky.Minute
+	startClosingTime = 15 * clocky.Minute
 )
 
 var (
@@ -81,13 +79,13 @@ func main() {
 			log.Printf("error adding symbol %s: %v", sym, err)
 			continue
 		}
-		state := &Trader{
+		trader := &Trader{
 			equity:      equity,
 			maxHigh:     indicators.NewMax(clocky.Duration(OptimalParams[symStr].Lookback)*clocky.Minute - 1),
 			dayVolumeMA: indicators.NewWWMA(12),
 		}
-		gTraders[sym] = state
-		equity.OnBar = state.onBar
+		gTraders[sym] = trader
+		equity.OnBar = trader.onBar
 	}
 
 	log.Printf("Multi-Position Day Trading Strategy")
@@ -151,11 +149,12 @@ func (state *Trader) onBar(c *ds.Bar) {
 
 	// check time
 	now := clocky.Now()
-	time := now.ClockInt()
-	if time < openTime || time >= closeTime {
+	openTime := cubby.GetOpenTime(now)
+	closeTime := cubby.GetCloseTime(now)
+	if now < openTime || now >= closeTime {
 		return
 	}
-	if time >= startClosingTime {
+	if closeTime.Sub(now) <= startClosingTime {
 		state.closePosition()
 		return
 	}
@@ -222,7 +221,7 @@ func (state *Trader) onBar(c *ds.Bar) {
 	}
 
 	// don't open new positions near end of the day
-	if time >= stopOpeningTime {
+	if closeTime.Sub(now) <= stopOpeningTime {
 		return
 	}
 
@@ -352,14 +351,14 @@ func (t *Trader) getAverageDailyVolume() decimal.Decimal {
 
 func onDayChange() {
 	for _, state := range gTraders {
-		if state.dayVolumeSince.ClockInt() <= openTime {
+		if state.dayVolumeSince.ClockInt() <= 7_00_00 {
 			state.dayVolumeMA.Add(state.dayVolume)
 		}
 		state.dayVolumeSince = 0
-		state.myDayVolume = 0
-		state.dayVolume = 0
+		state.myDayVolume = decimal.Zero
+		state.dayVolume = decimal.Zero
 	}
-	gDayStart = 0
+	gDayStart = decimal.Zero
 	gHalted = false
 }
 

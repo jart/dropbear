@@ -5,11 +5,13 @@ import (
 	"dropbear/ds"
 	"dropbear/netty"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"syscall"
 	"time"
 )
 
@@ -57,34 +59,48 @@ func (c *Client) RequestJSON(client *http.Client, method, url string, requestBod
 			return fmt.Errorf("marshaling request body: %w", err)
 		}
 	}
-	resp, err := c.Request(client, method, url, requestBodyBytes)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	decoder := json.NewDecoder(resp.Body)
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated:
-		if responseBody == nil {
-			panic("usage error: nil responseBody for 200 OK")
+	tries := 0
+	for {
+		resp, err := c.Request(client, method, url, requestBodyBytes)
+		if err != nil {
+			return err
 		}
-		if err := decoder.Decode(responseBody); err != nil {
-			return fmt.Errorf("failed to decode json response from %s: %w", url, err)
+		defer resp.Body.Close()
+		decoder := json.NewDecoder(resp.Body)
+		switch resp.StatusCode {
+		case http.StatusOK, http.StatusCreated:
+			if responseBody == nil {
+				panic("usage error: nil responseBody for 200 OK")
+			}
+			err := decoder.Decode(responseBody)
+			if err == nil {
+				return nil
+			}
+			if !errors.Is(err, syscall.ECONNRESET) {
+				return fmt.Errorf("failed to decode json response from %s: %w", url, err)
+			}
+		case http.StatusNoContent:
+			if responseBody != nil {
+				panic("usage error: non-nil responseBody for 204 No Content")
+			}
+			return nil
+		case http.StatusNotFound:
+			return ds.ErrNotFound
+		default:
+			var apiErr Error
+			err := decoder.Decode(&apiErr)
+			if err == nil {
+				return &apiErr
+			}
+			if !errors.Is(err, syscall.ECONNRESET) {
+				return fmt.Errorf("failed to decode error response from %s: %w", url, err)
+			}
 		}
-		return nil
-	case http.StatusNoContent:
-		if responseBody != nil {
-			panic("usage error: non-nil responseBody for 204 No Content")
-		}
-		return nil
-	case http.StatusNotFound:
-		return ds.ErrNotFound
-	default:
-		var apiErr Error
-		if err := decoder.Decode(&apiErr); err != nil {
-			return fmt.Errorf("failed to decode error response from %s: %w", url, err)
-		}
-		return &apiErr
+		resp.Body.Close()
+		delay := time.Duration(1<<min(tries, 15)) * time.Millisecond
+		log.Printf("alpaca: got %d read reset, retrying in %v (attempt %d)", resp.StatusCode, delay, tries)
+		time.Sleep(delay)
+		tries++
 	}
 }
 
