@@ -56,8 +56,8 @@ command like `go run ./cmd/download.alpaca QQQ SPY`.
 
 ## programs
 
-- `cmd/dumptick ~/coindata/weekend/binance/FDUSDUSDT` dumps raw recorded data
-- `cmd/record.{binance,binanceusd,coinbase}/` records live websocket data to binary format
+- `broker/coinbase/cmd/dumptick ~/coindata/weekend/binance/FDUSDUSDT` dumps raw recorded data
+- `broker/{coinbase,binance,binanceusd}/cmd/record` records live websocket data to binary format
 
 ## style
 
@@ -114,7 +114,7 @@ we have an aws z1d instance in tokyo named nickel that lets us access binance da
 You can see an ASCII chart of what's in any particular dataset, like follows:
 
 ```
-go run ./cmd/chart -symbol BTC weekend
+go run ./broker/coinbase/cmd/chart -symbol BTC weekend
 ```
 
 The dataset above is stored in `~/coindata/weekend/coinbase/BTC-USD` and it contains
