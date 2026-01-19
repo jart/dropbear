@@ -1,7 +1,7 @@
 # dropbear
 
 <center>
-  <img src="dropbear.png">
+  <img src="etc/img/dropbear.png">
 </center>
 
 Here, in the dense canopy of the order book, we observe one of nature's
