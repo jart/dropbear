@@ -5,26 +5,26 @@ import (
 )
 
 const (
-	// Number of satoshi values to test (1 satoshi to N satoshis)
-	maxSatoshis = 1_000_000
+	// Number of micro values to test
+	maxMicros = 1_000_000
 
-	// Bitcoin has 8 decimal places (1 satoshi = 0.00000001 BTC)
-	satoshiDivisor = 100_000_000
+	// Scale is 6 decimal places (1 micro = 0.000001)
+	microDivisor = 1_000_000
 )
 
 // TestFromFloat64Precision tests that FromFloat64 correctly converts
-// satoshi-precision values without losing the least significant digit.
+// micro-precision values without losing the least significant digit.
 func TestFromFloat64Precision(t *testing.T) {
 	var errors int
 	var firstErrors []int64
 
-	for i := int64(1); i <= maxSatoshis; i++ {
-		// Simulate: parse "0.00000017" as float64, convert to Decimal
-		f := float64(i) / satoshiDivisor
+	for i := int64(1); i <= maxMicros; i++ {
+		// Simulate: parse "0.000001" as float64, convert to Decimal
+		f := float64(i) / microDivisor
 		d := FromFloat64(f)
 
-		// Expected: i satoshis * (scale / satoshiDivisor) = i * 100
-		expected := Decimal(i * (Scale / satoshiDivisor))
+		// Expected: i micros * (scale / microDivisor) = i * 1 = i
+		expected := Decimal(i)
 
 		if d != expected {
 			if len(firstErrors) < 10 {
@@ -36,15 +36,15 @@ func TestFromFloat64Precision(t *testing.T) {
 
 	if errors > 0 {
 		t.Errorf("FromFloat64 precision errors: %d out of %d values (%.2f%%)",
-			errors, maxSatoshis, float64(errors)/float64(maxSatoshis)*100)
-		t.Errorf("First failing satoshi values: %v", firstErrors)
+			errors, maxMicros, float64(errors)/float64(maxMicros)*100)
+		t.Errorf("First failing micro values: %v", firstErrors)
 
 		// Show details for first error
 		i := firstErrors[0]
-		f := float64(i) / satoshiDivisor
+		f := float64(i) / microDivisor
 		d := FromFloat64(f)
-		expected := Decimal(i * (Scale / satoshiDivisor))
-		t.Errorf("Example: %d satoshis = %.8f BTC", i, f)
+		expected := Decimal(i)
+		t.Errorf("Example: %d micros = %.6f", i, f)
 		t.Errorf("  FromFloat64 returned: %d", d)
 		t.Errorf("  Expected:             %d", expected)
 		t.Errorf("  Difference:           %d", d-expected)

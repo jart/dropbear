@@ -101,7 +101,7 @@ func (m *Equity) Sharpe(riskFreeRate decimal.Decimal) decimal.Decimal {
 	stdDev := variance.Sqrt()
 
 	// the final calculation
-	if stdDev.Cmp(decimal.Satoshi) < 0 {
+	if stdDev.Cmp(decimal.Epsilon) < 0 {
 		return decimal.Zero
 	}
 

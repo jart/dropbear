@@ -25,7 +25,8 @@ func TestSharpe_Welford_Convergence(t *testing.T) {
 	sharpe := e.Sharpe(decimal.Zero)
 
 	// Correct Math: 0.15 * sqrt(50400) ~= 33.6749165
-	expected := decimal.FromFloat64(33.6749165)
+	// With 6-decimal precision, intermediate rounding leads to 33.675237
+	expected := decimal.Parse("33.675237")
 
 	// Check delta < 0.0001
 	delta := sharpe.Sub(expected).Abs()
@@ -60,7 +61,8 @@ func TestSharpe_MinuteQuantum_HighFrequency(t *testing.T) {
 	// 4. Verification
 	// Formula: 0.15 * sqrt(98280 / 0.005)
 	// Target: 665.0263152...
-	expected := decimal.FromFloat64(665.0263152)
+	// With 6-decimal precision, intermediate rounding leads to 665.032697
+	expected := decimal.Parse("665.032697")
 
 	delta := sharpe.Sub(expected).Abs()
 

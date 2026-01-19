@@ -2,13 +2,9 @@
 
 A fixed-point decimal library optimized for financial calculations.
 
-## Design
-
-`Decimal` let's you encode real numbers with up to eight decimal places.
-It's an alias for `int64`. The value `1.00` is stored internally as `100_000_000`.
-The max number is `+92'233'720'368.54775807` and the min is `-92'233'720'368.54775808`.
-For safety, `Decimal` does overflow checking, rather than paying the cost of growing data.
-We use Bankers' Rounding for parsing and operations like division, to avoid statistical bias.
+Your `Decimal` type is an `int64` that can store six decimal places, since that's the
+standard for equities trading, as specified by the Consolidated Tape System (CTS). It
+means you can work with numbers as large as nine trillion.
 
 ## Why not float64?
 
@@ -42,22 +38,6 @@ Performance. In benchmarks, this implementation is significantly faster:
 The big.Int version also allocates 1-3 heap objects per operation, while
 int64 arithmetic has zero allocations. For a trading bot doing thousands
 of calculations per second, this matters.
-
-## Range and Precision
-
-- **Precision**: 9 decimal places (1 billionth)
-- **Range**: ±9,223,372,036 (approximately ±9.2 billion)
-- **Smallest value**: 0.000000001
-
-This is sufficient for:
-- Cryptocurrency prices (BTC at $100k = 100000.000000000)
-- Order quantities (0.00000001 BTC = 1 satoshi)
-- Basis point calculations (0.0001 = 1 bps)
-
-This is NOT sufficient for:
-- US M2 money supply (~$21 trillion)
-- National debt figures
-- Values exceeding ~$9 billion
 
 ## Usage
 

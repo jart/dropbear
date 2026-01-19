@@ -32,7 +32,7 @@ func randomCryptoValueImpl(rng *rand.Rand) float64 {
 	case 6:
 		// basis points / fee calculations (e.g., 0.9985, 1.0015)
 		return 0.99 + rng.Float64()*0.02
-		// NOTE: Values above ~9 million require Parse() instead of FromFloat64()
+		// NOTE: Values above ~9 trillion require Parse() instead of FromFloat64()
 		// due to float64 precision limits. For huge values, use Parse() with strings.
 	}
 	return rng.Float64()
@@ -60,7 +60,7 @@ func exactSub(a, b Decimal) (Decimal, bool) {
 }
 
 // exactMul computes a*b using exact arbitrary-precision arithmetic,
-// then rounds to our 8 decimal place precision using Banker's Rounding.
+// then rounds to our 6 decimal place precision using Banker's Rounding.
 // Returns (result, true) if result fits in int64, or (0, false) if it overflows.
 func exactMul(a, b Decimal) (Decimal, bool) {
 	aBig := big.NewInt(int64(a))
@@ -235,9 +235,9 @@ func TestSmokeFloat64Conversion(t *testing.T) {
 			absF = -absF
 		}
 
-		// Tolerance: max of (1e-8 absolute, 1e-7 relative to magnitude)
+		// Tolerance: max of (1e-6 absolute, 1e-7 relative to magnitude)
 		// The 1e-7 relative accounts for float64 having ~16 significant digits
-		tolerance := 1e-8
+		tolerance := 1e-6
 		if rel := absF * 1e-7; rel > tolerance {
 			tolerance = rel
 		}

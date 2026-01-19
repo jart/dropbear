@@ -81,18 +81,18 @@ func TestDiv(t *testing.T) {
 		{"100 / 1 = 100", Parse("100"), One, Parse("100")},
 		{"1 / 100 = 0.01", One, Parse("100"), Parse("0.01")},
 		{"1 / 1000 = 0.001", One, Parse("1000"), Parse("0.001")},
-		{"1 / 10000000 = 0.0000001", One, Parse("10000000"), Parse("0.0000001")},
-		{"1 / 100000000 = 0.00000001", One, Parse("100000000"), Epsilon},
+		{"1 / 100000 = 0.00001", One, Parse("100000"), Parse("0.00001")},
+		{"1 / 10000 = 0.0001", One, Parse("10000"), Parse("0.0001")},
 
 		// Near-epsilon results
-		{"0.00000001 / 1 = 0.00000001", Epsilon, One, Epsilon},
-		{"0.00000002 / 2 = 0.00000001", Decimal(2), Two, Epsilon},
-		{"0.00000010 / 10 = 0.00000001", Decimal(10), Parse("10"), Epsilon},
+		{"1 / 1e8 = 1e-8", One, Parse("1e8"), Parse("0")}, // Underflow with 6 places
+		{"2 / 2e8 = 1e-8", Two, Parse("2e8"), Parse("0")}, // Underflow with 6 places
+		{"0.000010 / 10 = 0.000001", Decimal(10), Parse("10"), Epsilon},
 
 		// Financial calculations
-		{"100 / 1.05 = 95.23809524", Parse("100"), Parse("1.05"), Parse("95.23809524")},
+		{"100 / 1.05 = 95.238095", Parse("100"), Parse("1.05"), Parse("95.238095")},
 		{"72.5 / 1000 = 0.0725", Parse("72.5"), Parse("1000"), Parse("0.0725")},
-		{"1 / 365 = 0.00273973", One, Parse("365"), Parse("0.00273973")},
+		{"1 / 365 = 0.002740", One, Parse("365"), Parse("0.002740")},
 
 		// Large dividends
 		{"1000000 / 1000 = 1000", Parse("1000000"), Parse("1000"), Parse("1000")},
@@ -102,7 +102,7 @@ func TestDiv(t *testing.T) {
 		{"1 / 0.1 = 10", One, Parse("0.1"), Parse("10")},
 		{"1 / 0.01 = 100", One, Parse("0.01"), Parse("100")},
 		{"1 / 0.001 = 1000", One, Parse("0.001"), Parse("1000")},
-		{"1 / 0.00000001 = 100000000", One, Epsilon, Parse("100000000")},
+		{"1 / 0.000001 = 1000000", One, Epsilon, Parse("1000000")},
 		{"2 / 0.5 = 4", Two, Half, Parse("4")},
 		{"10 / 0.5 = 20", Parse("10"), Half, Parse("20")},
 

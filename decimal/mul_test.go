@@ -58,9 +58,9 @@ func TestMul(t *testing.T) {
 		{"-0.5 * -0.5 = 0.25", -Half, -Half, Parse("0.25")},
 
 		// Fractional precision
-		{"0.00000001 * 1 = 0.00000001", Epsilon, One, Epsilon},
-		{"0.00000001 * 2 = 0.00000002", Epsilon, Two, Decimal(2)},
-		{"0.00000001 * 100000000 = 1", Epsilon, Parse("100000000"), One},
+		{"0.000001 * 1 = 0.000001", Epsilon, One, Epsilon},
+		{"0.000001 * 2 = 0.000002", Epsilon, Two, Decimal(2)},
+		{"0.000001 * 1000000 = 1", Epsilon, Parse("1000000"), One},
 		{"0.01 * 100 = 1", Cent, Parse("100"), One},
 		{"0.001 * 1000 = 1", Parse("0.001"), Parse("1000"), One},
 
@@ -105,34 +105,34 @@ func TestMul(t *testing.T) {
 		{"50000000 * 100", Parse("50000000"), Parse("100"), Parse("5000000000")},
 
 		// Epsilon-scale products
-		{"0.00000001 * 0.00000001 = 0", Epsilon, Epsilon, Zero}, // underflow to zero
-		{"0.0001 * 0.0001 = 0.00000001", Parse("0.0001"), Parse("0.0001"), Epsilon},
-		{"0.001 * 0.00001 = 0.00000001", Parse("0.001"), Parse("0.00001"), Epsilon},
+		{"0.000001 * 0.000001 = 0", Epsilon, Epsilon, Zero}, // underflow to zero
+		{"0.001 * 0.001 = 0.000001", Parse("0.001"), Parse("0.001"), Epsilon},
+		{"0.01 * 0.0001 = 0.000001", Parse("0.01"), Parse("0.0001"), Epsilon},
 
 		// bankers' rounding demonstration
-		{"0.5 * 0.00000001 = 0 (0.5 -> 0)", Half, Epsilon, Zero},
-		{"1.5 * 0.00000001 = 0.00000002 (1.5 -> 2)", Parse("1.5"), Epsilon, Decimal(2)},
-		{"2.5 * 0.00000001 = 0.00000002 (2.5 -> 2)", Parse("2.5"), Epsilon, Decimal(2)},
-		{"3.5 * 0.00000001 = 0.00000004 (3.5 -> 4)", Parse("3.5"), Epsilon, Decimal(4)},
-		{"4.5 * 0.00000001 = 0.00000004 (4.5 -> 4)", Parse("4.5"), Epsilon, Decimal(4)},
-		{"5.5 * 0.00000001 = 0.00000006 (5.5 -> 6)", Parse("5.5"), Epsilon, Decimal(6)},
-		{"6.5 * 0.00000001 = 0.00000006 (6.5 -> 6)", Parse("6.5"), Epsilon, Decimal(6)},
-		{"7.5 * 0.00000001 = 0.00000008 (7.5 -> 8)", Parse("7.5"), Epsilon, Decimal(8)},
-		{"8.5 * 0.00000001 = 0.00000008 (8.5 -> 8)", Parse("8.5"), Epsilon, Decimal(8)},
-		{"9.5 * 0.00000001 = 0.0000001 (9.5 -> 10)", Parse("9.5"), Epsilon, Decimal(10)},
-		{"0.00000003 * 0.5 = 0.00000002 (1.5 -> 2)", Decimal(3), Half, Decimal(2)},
-		{"0.00000005 * 0.5 = 0.00000002 (2.5 -> 2)", Decimal(5), Half, Decimal(2)},
-		{"0.00000007 * 0.5 = 0.00000004 (3.5 -> 4)", Decimal(7), Half, Decimal(4)},
-		{"0.00000009 * 0.5 = 0.00000004 (4.5 -> 4)", Decimal(9), Half, Decimal(4)},
-		{"0.00000011 * 0.5 = 0.00000006 (5.5 -> 6)", Decimal(11), Half, Decimal(6)},
-		{"-0.00000003 * 0.5 = -0.00000002 (-1.5 -> -2)", Decimal(-3), Half, Decimal(-2)},
-		{"-0.00000005 * 0.5 = -0.00000002 (-2.5 -> -2)", Decimal(-5), Half, Decimal(-2)},
-		{"-0.00000007 * 0.5 = -0.00000004 (-3.5 -> -4)", Decimal(-7), Half, Decimal(-4)},
-		{"-0.00000009 * 0.5 = -0.00000004 (-4.5 -> -4)", Decimal(-9), Half, Decimal(-4)},
-		{"0.00000003 * -0.5 = -0.00000002", Decimal(3), -Half, Decimal(-2)},
-		{"0.00000005 * -0.5 = -0.00000002", Decimal(5), -Half, Decimal(-2)},
-		{"-0.00000003 * -0.5 = 0.00000002", Decimal(-3), -Half, Decimal(2)},
-		{"-0.00000005 * -0.5 = 0.00000002", Decimal(-5), -Half, Decimal(2)},
+		{"0.5 * 0.000001 = 0 (0.5 -> 0)", Half, Epsilon, Zero},
+		{"1.5 * 0.000001 = 0.000002 (1.5 -> 2)", Parse("1.5"), Epsilon, Decimal(2)},
+		{"2.5 * 0.000001 = 0.000002 (2.5 -> 2)", Parse("2.5"), Epsilon, Decimal(2)},
+		{"3.5 * 0.000001 = 0.000004 (3.5 -> 4)", Parse("3.5"), Epsilon, Decimal(4)},
+		{"4.5 * 0.000001 = 0.000004 (4.5 -> 4)", Parse("4.5"), Epsilon, Decimal(4)},
+		{"5.5 * 0.000001 = 0.000006 (5.5 -> 6)", Parse("5.5"), Epsilon, Decimal(6)},
+		{"6.5 * 0.000001 = 0.000006 (6.5 -> 6)", Parse("6.5"), Epsilon, Decimal(6)},
+		{"7.5 * 0.000001 = 0.000008 (7.5 -> 8)", Parse("7.5"), Epsilon, Decimal(8)},
+		{"8.5 * 0.000001 = 0.000008 (8.5 -> 8)", Parse("8.5"), Epsilon, Decimal(8)},
+		{"9.5 * 0.000001 = 0.000010 (9.5 -> 10)", Parse("9.5"), Epsilon, Decimal(10)},
+		{"0.000003 * 0.5 = 0.000002 (1.5 -> 2)", Decimal(3), Half, Decimal(2)},
+		{"0.000005 * 0.5 = 0.000002 (2.5 -> 2)", Decimal(5), Half, Decimal(2)},
+		{"0.000007 * 0.5 = 0.000004 (3.5 -> 4)", Decimal(7), Half, Decimal(4)},
+		{"0.000009 * 0.5 = 0.000004 (4.5 -> 4)", Decimal(9), Half, Decimal(4)},
+		{"0.000011 * 0.5 = 0.000006 (5.5 -> 6)", Decimal(11), Half, Decimal(6)},
+		{"-0.000003 * 0.5 = -0.000002 (-1.5 -> -2)", Decimal(-3), Half, Decimal(-2)},
+		{"-0.000005 * 0.5 = -0.000002 (-2.5 -> -2)", Decimal(-5), Half, Decimal(-2)},
+		{"-0.000007 * 0.5 = -0.000004 (-3.5 -> -4)", Decimal(-7), Half, Decimal(-4)},
+		{"-0.000009 * 0.5 = -0.000004 (-4.5 -> -4)", Decimal(-9), Half, Decimal(-4)},
+		{"0.000003 * -0.5 = -0.000002", Decimal(3), -Half, Decimal(-2)},
+		{"0.000005 * -0.5 = -0.000002", Decimal(5), -Half, Decimal(-2)},
+		{"-0.000003 * -0.5 = 0.000002", Decimal(-3), -Half, Decimal(2)},
+		{"-0.000005 * -0.5 = 0.000002", Decimal(-5), -Half, Decimal(2)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -156,7 +156,7 @@ func TestMulPanic(t *testing.T) {
 		{"Max * 2", Max, Two},
 		{"Max * -2", Max, -Two},
 		{"Max * Max", Max, Max},
-		{"Max * 1.00000001", Max, One.Add(Epsilon)},
+		{"Max * 1.000001", Max, One.Add(Epsilon)},
 
 		// Min overflow cases
 		{"Min * 2", Min, Two},
@@ -164,12 +164,12 @@ func TestMulPanic(t *testing.T) {
 		{"Min * Min", Min, Min},
 
 		// Large products that overflow
-		{"50000000000 * 2", Parse("50000000000"), Two},
-		{"10000000000 * 10", Parse("10000000000"), Parse("10")},
-		{"1000000000 * 100", Parse("1000000000"), Parse("100")},
+		{"5000000000000 * 2", Parse("5000000000000"), Two},
+		{"1000000000000 * 10", Parse("1000000000000"), Parse("10")},
+		{"100000000000 * 100", Parse("100000000000"), Parse("100")},
 
 		// Near-max products
-		{"92233720368 * 1.1", Parse("92233720368"), Parse("1.1")},
+		{"9223372036854 * 1.1", Parse("9223372036854"), Parse("1.1")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -14,11 +14,11 @@ var Equities = make(map[symbol.Symbol]*Equity)
 type Equity struct {
 	Symbol     symbol.Symbol // e.g. "GOOG", "BRK.B", etc.
 	Asset      *alpaca.Asset
-	Price      decimal.Decimal // current midpoint
+	Price      decimal.Decimal
 	Quantity   decimal.Decimal // number of shares held (negative if short)
-	EntryPrice decimal.Decimal // average entry price for current position
-	OnBar      func(*ds.Bar)
+	EntryPrice decimal.Decimal // average entry price for current position (never negative)
 	Orders     map[string]*Order
+	OnBar      func(*ds.Bar)
 }
 
 // AddEquity creates and registers a new Equity with the given symbol.
@@ -49,8 +49,6 @@ func (e *Equity) String() string {
 }
 
 // GetMaxOrderQuantity returns the maximum number of shares that can be ordered.
-// This matches the margin check in simulateOrder: we can buy N more shares if
-// GetInitialMargin(existing+N) - GetMaintenanceMargin(existing) <= marginAvailable
 func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 	marginUsed := GetMarginUsed()
 	marginAvailable := gDayTradingBuyingPower.Sub(marginUsed).Sub(gMarginHold)

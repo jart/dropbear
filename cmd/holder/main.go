@@ -236,7 +236,7 @@ func updateWeights() {
 	}
 
 	// clamp minWeight so that minWeight * n <= 0.5 (leave room for momentum)
-	minWeight := (*flagMinWeight).Min(decimal.Parse("0.5").DivInt(n))
+	minWeight := (*flagMinWeight).Min(decimal.Half.DivInt(n))
 	remainingWeight := decimal.One.Sub(minWeight.MulInt(n))
 
 	for _, h := range gHoldings {

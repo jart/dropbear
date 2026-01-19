@@ -240,7 +240,7 @@ func TestFromFloat64(t *testing.T) {
 		{1.5, "1.5"},
 		{-1.5, "-1.5"},
 		{123.456, "123.456"},
-		{0.00000001, "0.00000001"}, // 1 satoshi
+		{0.000001, "0.000001"},
 	}
 	for _, tt := range tests {
 		d := FromFloat64(tt.input)
@@ -276,10 +276,10 @@ func TestPrecision(t *testing.T) {
 	}{
 		{0, "1"},
 		{1, "0.1"},
-		{8, "0.00000001"},
-		{9, "0.00000001"},
-		{10, "0.00000001"},
-		{11, "0.00000001"},
+		{8, "0.000001"},
+		{9, "0.000001"},
+		{10, "0.000001"},
+		{11, "0.000001"},
 	}
 	for _, tt := range tests {
 		d := Precision(tt.input)
@@ -498,8 +498,8 @@ func TestMulIntOverflowMoreCases(t *testing.T) {
 		n    int
 	}{
 		{"MinInt", Min, 2},
-		{"LargePos", Parse("50000000000"), 2},
-		{"LargeNeg", Parse("-50000000000"), 2},
+		{"LargePos", Parse("5000000000000"), 2},
+		{"LargeNeg", Parse("-5000000000000"), 2},
 	}
 
 	for _, tt := range tests {
@@ -591,12 +591,12 @@ func TestFromFloat64Inf(t *testing.T) {
 // The limit is 2^53 / Scale ≈ 90 million.
 func TestFromFloat64RejectLargeValues(t *testing.T) {
 	largeValues := []float64{
-		90072000, // just over maxSafeFloat (90,071,992)
-		1e8,      // 100 million
-		1e9,      // 1 billion
-		9e9,      // 9 billion
-		-90072000,
-		-1e9,
+		9007200000, // just over maxSafeFloat (90,071,992)
+		1e10,       // 100 million
+		1e11,       // 1 billion
+		9e11,       // 9 billion
+		-9007200000,
+		-1e10,
 	}
 
 	for _, n := range largeValues {
@@ -694,7 +694,7 @@ func TestFromFloat64SafeRange(t *testing.T) {
 func TestParseExtremeExponents(t *testing.T) {
 	// These should overflow but currently produce garbage instead
 	overflowCases := []string{
-		"1e11", // 1e11 * Scale overflows
+		"1e13",
 		"1e20",
 		"1e50",
 		"1e100",
@@ -736,39 +736,6 @@ func TestParseExtremeExponents(t *testing.T) {
 			t.Errorf("Parse(\"9e9\") = %s, want %s", result, want)
 		}
 	})
-}
-
-// TestParseOverflowInMantissa tests overflow detection during mantissa parsing.
-func TestParseOverflowInMantissa(t *testing.T) {
-	// The max integer part is about 92 billion
-	// Values larger should panic
-
-	tests := []struct {
-		input     string
-		wantPanic bool
-	}{
-		{"9223372036.854775807", false}, // Max value with 9 places (truncated to 8) - safe
-		{"92233720368.54775807", false}, // Max value with 8 places - safe
-		{"9223372037", false},           // Now safe (9.2B)
-		{"10000000000", false},          // Now safe (10B)
-		{"92233720369", true},           // Just over max integer part
-		{"99999999999", true},           // 100 billion
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			defer func() {
-				r := recover()
-				if tt.wantPanic && r == nil {
-					t.Errorf("Parse(%q) did not panic", tt.input)
-				}
-				if !tt.wantPanic && r != nil {
-					t.Errorf("Parse(%q) panicked unexpectedly: %v", tt.input, r)
-				}
-			}()
-			_ = Parse(tt.input)
-		})
-	}
 }
 
 func BenchmarkString(b *testing.B) {

@@ -1,6 +1,6 @@
 # dropbear coding guidelines
 
-this project does equities and cryptography trading using go.
+this project does equities trading using go.
 
 ## commands
 
@@ -25,24 +25,9 @@ this project does equities and cryptography trading using go.
 - `decimal/` our fixed point number library with 8 decimal places
 - `db/` use `db.Get()` to get a WAL2 SQLite singleton into `~/.dropbear.sqlite3`
 - `indicators/` has indicators similar quantconnect but better, defines candles
-- `orderbook/` uses gods v2 tree set for fast level2 order book management
-- `broker/alpaca/` our own client library (that's where we trade equities)
-- `broker/coinbase/` our own client library (where we currently do our trading!)
-- `broker/binance/` our own client library (used for market data only currently)
-- `broker/binanceusd/` is also binance but for futures rather than spot trading
+- `broker/alpaca/` is our client library for alpaca brokerage
+- `broker/databento/` is our client library for getting order book data
 - `auth/` lets the dropbear https server support yubikey authentication
-
-## coinbase portfolios locations
-
-The `go run ./cmd/sync.coinbase` command defines the following portfolios:
-
-```go
-	sync(os.ExpandEnv("$HOME/.primary.sqlite3"), os.ExpandEnv("$HOME/.primary.key"))
-	sync(os.ExpandEnv("$HOME/.dropbear.sqlite3"), os.ExpandEnv("$HOME/.coinbase.key"))
-	sync(os.ExpandEnv("$HOME/.zec.sqlite3"), os.ExpandEnv("$HOME/.zec.key"))
-```
-
-The sync command will fetch the latest `coinbase_transactions` table content into each sqlite db.
 
 ## equity bars
 
@@ -52,29 +37,25 @@ This is *the* data that drives all our equities trading backtests and algorithms
 is the reason why dropbear goes infinitely faster than quantconnect.
 
 If you need data for a stock that hasn't been downloaded yet, all you have to do is run a
-command like `go run ./cmd/download.alpaca QQQ SPY`.
+command like `go run ./broker/alpaca/cmd/download GOOG SPY QQQ TSLA PLTR GOOGL`. If the bars
+have already been downloaded, then this command will sync the latest data.
 
-## programs
-
-- `broker/coinbase/cmd/dumptick ~/coindata/weekend/binance/FDUSDUSDT` dumps raw recorded data
-- `broker/{coinbase,binance,binanceusd}/cmd/record` records live websocket data to binary format
+If you want to do analysis on equity bars, then sqlite is easier to use than the binary format.
+You can run `go run ./broker/alpaca/cmd/sqlifybars SPY` to copy the bars to `~/.dropbear.sqlite3`.
 
 ## style
 
 - we want algorithms to have optimal time complexity. you're gonna have to rewrite it if it isn't
 - we try to avoid dependencies (ask before introducing)
 - we almost never use IEEE floating point for financial code
-- it's ok to sanity check and runtime panic with `loggy.Fatalf`
 - quantize decimals later when you must (never do it early just cuz)
 - we like vendoring static web assets using go:embed
 - never embed css/js in html (create separate files)
 
-## logging
-
-- `main()` should call `loggy.Init()` to make it how we like it
-- use `loggy.Fatalf()` because it raises `SIGINT` so that `main()` can catch and call `coinbaseClient.CancelAllOrders()` if not in dry mode
-
 ## decimal library
+
+Use our decimal library for everything. Please don't ever use floating point math. It
+stores six decimal places in a single `int64` word, just like CTS.
 
 - `decimal.Parse("0.01")`
 - `decimal.FromInt(100)`
@@ -90,46 +71,37 @@ command like `go run ./cmd/download.alpaca QQQ SPY`.
 - `d.QuantizeTruncate(q)` rounds towards zero (use for order sizing and bid prices)
 - `d.QuantizeAway(q)` rounds away from zero (use for margin calculations and ask prices)
 
-### beware of overflow
-
-The decimal library only supports numbers up to the tens of billions. It will panic if any
-computation goes higher than that. Therefore you must choose algorithms that keep the scale
-of intermediary computations small. For example, to compute an average, rather than summing
-all the numbers and then dividing, consider using a running method like Welford's algorithm.
-
 ## time and durations
+
+Please use our `clocky` library instead of Go's `time` library for everything. It stores
+unix nanoseconds in a single `int64` word.
 
 - `clocky.Time`
 - `clocky.Duration`
 - Use `clocky.Now()` becasue it can be mocked for backtesting.
 
-## ops
-
-we have an aws z1d instance 1ms away from coinbase in us-east-1 named penny.
-
-we have an aws z1d instance in tokyo named nickel that lets us access binance data 21ms faster via amazon's private internet.
-
-## viewing coinbase charts
-
-You can see an ASCII chart of what's in any particular dataset, like follows:
-
-```
-go run ./broker/coinbase/cmd/chart -symbol BTC weekend
-```
-
-The dataset above is stored in `~/coindata/weekend/coinbase/BTC-USD` and it contains
-a binary-encoded array of `ds/tick.go` structures.
-
 ## running backtests
 
-our best alpaca etf day trading strategy
+our best equities trading strategy is
 
 ```bash
-go run ./cmd/levi -backtest -v -lookback 10 -start 2025-01-01 -symbol "etc/picks/levi" -cash 161845
+go run ./cmd/holder -backtest -start 2025-10-01 -symbol "GOOG"
 ```
 
-our best crypto trading strategy
+which says
 
-```bash
-go run ./cmd/arb -backtest churu -symbol ETH -predictor ETHFDUSD@binance -pricer FDUSDUSDT@binance -threshold 2.2 -level2 -samples 2000 -usd 50000 -clean 10
+```
+2026-01-16T17:00:00.000000000 backtest completed: 51972 iterations
+2026-01-16T17:00:00.000000000 summary:
+2026-01-16T17:00:00.000000000   start:    $100,000.00
+2026-01-16T17:00:00.000000000   end:      $183,128.79
+2026-01-16T17:00:00.000000000   fees:     $10.80
+2026-01-16T17:00:00.000000000   interest: $2,483.15
+2026-01-16T17:00:00.000000000   max dd:   19.43%
+2026-01-16T17:00:00.000000000   return:   83.13% (281.79% annualized)
+2026-01-16T17:00:00.000000000   bench:    37.05% (125.61% annualized) [GOOG]
+2026-01-16T17:00:00.000000000   period:   107.8 days (0.30 years)
+2026-01-16T17:00:00.000000000 holdings:
+2026-01-16T17:00:00.000000000      USD $-175,748.01 margin $107,663.04
+2026-01-16T17:00:00.000000000     GOOG     1088 shares @ $329.85 = $358,876.80
 ```

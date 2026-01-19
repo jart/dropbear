@@ -1,7 +1,6 @@
 package clocky
 
 import (
-	"encoding/binary"
 	"sync/atomic"
 	"time"
 )
@@ -89,12 +88,6 @@ func (t Time) DateInt() int {
 func (t Time) ClockInt() int {
 	hour, min, sec := t.Clock()
 	return hour*1_00_00 + min*1_00 + sec
-}
-
-// YearMonth returns the year and month in YYYYMM format.
-func (t Time) YearMonth() YearMonth {
-	y, m, _ := t.Date()
-	return YearMonth(y*100 + int(m))
 }
 
 // String returns formatted local nanosecond timestamp.
@@ -287,13 +280,4 @@ func (d *Time) Swap(v Time) Time {
 // CompareAndSwap executes the compare-and-swap operation for d.
 func (d *Time) CompareAndSwap(old, new Time) bool {
 	return atomic.CompareAndSwapInt64((*int64)(d), int64(old), int64(new))
-}
-
-func (d Time) Encode(b []byte) []byte {
-	return binary.LittleEndian.AppendUint64(b, uint64(d))
-}
-
-func (d *Time) Decode(b []byte) []byte {
-	*d = Time(int64(binary.LittleEndian.Uint64(b)))
-	return b[8:]
 }

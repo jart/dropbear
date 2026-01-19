@@ -16,11 +16,11 @@ func TestIntensityBasic(t *testing.T) {
 	now := clocky.Time(0)
 	rng := rand.New(rand.NewSource(42))
 
-	for range 1000 {
+	for range 2000 {
 		// generate distance from mid with exponential distribution
 		// this should give us κ ≈ 10 (1/0.1 decay rate)
 		delta := rng.ExpFloat64() / 10 // mean distance = 0.1 (10%)
-		price := decimal.FromInt(99).Mul(decimal.One.Add(decimal.FromFloat64(delta)))
+		price := decimal.FromInt(100).Mul(decimal.One.Add(decimal.FromFloat64(delta)))
 
 		volume := decimal.One
 		ti.AddTrade(now, price, volume)

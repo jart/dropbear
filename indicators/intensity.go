@@ -33,7 +33,7 @@ const (
 	maxDelta      = 0.01    // recognize trades within 1% of mid-price
 	minVolume     = 10000.0 // minimum usd volume for reliable estimate
 	minBins       = 5       // minimum filled bins for reliable regression
-	minVolumeBin  = 1e-8    // minimum quantity per trade (filters dust)
+	minVolumeBin  = 1e-6    // minimum quantity per trade (filters dust)
 	decayInterval = clocky.Second
 	binWidth      = maxDelta / numBins
 	ln2           = 0.6931471805599453

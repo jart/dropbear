@@ -178,7 +178,6 @@ var errNotConnected = &net.AddrError{Err: "not connected", Addr: ""}
 // NewTFOHTTPClient creates an http.Client that uses TCP Fast Open for TLS connections.
 func NewTFOHTTPClient(tlsConfig *tls.Config) *http.Client {
 	dialer := &tfoTLSDialer{config: tlsConfig}
-
 	return &http.Client{
 		Transport: &http.Transport{
 			DialContext:           Dialer.DialContext, // fallback for non-TLS
