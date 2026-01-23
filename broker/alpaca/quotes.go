@@ -4,6 +4,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/netty"
 	"fmt"
+	"strings"
 )
 
 // Quote represents an NBBO quote.
@@ -32,6 +33,32 @@ func (c *Client) GetQuote(sym string) (*Quote, error) {
 		return nil, err
 	}
 	return result.Quote, nil
+}
+
+// GetQuotes fetches the latest NBBO quotes for multiple stock symbols.
+// https://docs.alpaca.markets/reference/stocklatestquotes-1
+func (c *Client) GetQuotes(symbols []string) (map[string]*Quote, error) {
+	if len(symbols) == 0 {
+		return nil, nil
+	}
+	var url strings.Builder
+	fmt.Fprintf(&url, "https://%s/v2/stocks/quotes/latest?symbols=", DataHost)
+	for i, sym := range symbols {
+		if i > 0 {
+			url.WriteString(",")
+		}
+		url.WriteString(sym)
+	}
+	var result struct {
+		Quotes map[string]*Quote `json:"quotes"`
+		Symbol string            `json:"symbol"`
+	}
+	c.DataTokenBucket.Get()
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", url.String(), nil, &result)
+	if err != nil {
+		return nil, err
+	}
+	return result.Quotes, nil
 }
 
 // GetCryptoQuote fetches the latest quote for a crypto symbol.
