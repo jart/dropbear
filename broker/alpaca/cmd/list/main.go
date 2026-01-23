@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"dropbear/broker/alpaca"
 	"dropbear/decimal"
 	"flag"
@@ -39,10 +40,12 @@ func boolFlag(name, usage string) *tristate {
 }
 
 var (
-	healthy   = flag.Bool("healthy", false, "use IsHealthy() preset (tradable, marginable, has-options, easy-to-borrow, no-ptp, standard-margin)")
-	showHelp  = flag.Bool("h", false, "show help")
-	classFlag = flag.String("class", "", "filter by class: equity, option, crypto, crypto-perp")
-	status    = flag.String("status", "", "filter by status: active, inactive")
+	healthy    = flag.Bool("healthy", false, "use IsHealthy() preset (tradable, marginable, has-options, easy-to-borrow, no-ptp, standard-margin)")
+	showHelp   = flag.Bool("h", false, "show help")
+	classFlag  = flag.String("class", "", "filter by class: equity, option, crypto, crypto-perp")
+	status     = flag.String("status", "", "filter by status: active, inactive")
+	sortVolume = flag.Bool("volume", false, "sort by previous day volume (descending), prints symbol and volume")
+	notional   = flag.Bool("notional", false, "with -volume, use notional volume (shares × price) instead of share count")
 
 	tradable            *tristate
 	marginable          *tristate
@@ -84,6 +87,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Class/Status:\n")
 		fmt.Fprintf(os.Stderr, "  -class string\n\tequity, option, crypto, crypto-perp\n")
 		fmt.Fprintf(os.Stderr, "  -status string\n\tactive, inactive\n\n")
+		fmt.Fprintf(os.Stderr, "Output:\n")
+		fmt.Fprintf(os.Stderr, "  -volume\n\tsort by previous day volume (descending), prints two columns\n")
+		fmt.Fprintf(os.Stderr, "  -notional\n\twith -volume, use notional volume (shares × price)\n\n")
 		fmt.Fprintf(os.Stderr, "Boolean filters (use -name or -no-name):\n")
 		fmt.Fprintf(os.Stderr, "  -tradable / -no-tradable\n")
 		fmt.Fprintf(os.Stderr, "  -marginable / -no-marginable\n")
@@ -106,6 +112,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  list -tradable -has-options # tradable assets with options\n")
 		fmt.Fprintf(os.Stderr, "  list -class crypto         # all crypto assets\n")
 		fmt.Fprintf(os.Stderr, "  list -no-marginable        # non-marginable assets\n")
+		fmt.Fprintf(os.Stderr, "  list -healthy -volume      # healthy assets sorted by volume\n")
+		fmt.Fprintf(os.Stderr, "  list -healthy -volume -notional # sorted by dollar volume\n")
 	}
 	flag.Parse()
 
@@ -179,9 +187,51 @@ func main() {
 		}
 		results = append(results, a.Symbol.String())
 	}
-	slices.Sort(results)
-	for _, s := range results {
-		fmt.Println(s)
+
+	if *sortVolume {
+		printByVolume(results, *notional)
+	} else {
+		slices.Sort(results)
+		for _, s := range results {
+			fmt.Println(s)
+		}
+	}
+}
+
+func printByVolume(symbols []string, useNotional bool) {
+	client := alpaca.NewClient()
+	snapshots, err := client.GetSnapshots(symbols)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error fetching snapshots: %v\n", err)
+		os.Exit(1)
+	}
+
+	type symbolVolume struct {
+		symbol string
+		volume decimal.Decimal
+	}
+
+	var results []symbolVolume
+	for sym, snap := range snapshots {
+		var vol decimal.Decimal
+		if snap != nil && snap.PrevDailyBar != nil {
+			vol = snap.PrevDailyBar.Volume
+			if useNotional {
+				vol = vol.Mul(snap.PrevDailyBar.Close)
+			}
+		}
+		results = append(results, symbolVolume{sym, vol})
+	}
+
+	slices.SortFunc(results, func(a, b symbolVolume) int {
+		if c := cmp.Compare(b.volume.Int64(), a.volume.Int64()); c != 0 {
+			return c // descending
+		}
+		return cmp.Compare(a.symbol, b.symbol) // alphabetical tiebreaker
+	})
+
+	for _, r := range results {
+		fmt.Printf("%s\t%d\n", r.symbol, r.volume.Int64())
 	}
 }
 
