@@ -45,12 +45,13 @@ func init() {
 }
 
 var (
-	flagSync   = flag.Bool("sync", false, "fetch latest data from Databento")
-	flagAsset  = flag.String("asset", "", "filter to specific asset (e.g., 6J, ES, NQ)")
-	flagType   = flag.String("type", "", "filter by type: currency, index, commodity, rate")
-	flagMinOI  = flag.Int("min-oi", 0, "minimum open interest (default 0, set higher to filter)")
-	flagUSRate = flag.Float64("us-rate", 4.5, "current US risk-free rate (for implied foreign rate calc)")
-	flagSimple = flag.Bool("simple", false, "show simple output: one contract per asset to trade")
+	flagSync      = flag.Bool("sync", false, "fetch latest data from Databento")
+	flagAsset     = flag.String("asset", "", "filter to specific asset (e.g., 6J, ES, NQ)")
+	flagType      = flag.String("type", "", "filter by type: currency, index, energy, metal, ag, rate, vol, crypto")
+	flagMinOI     = flag.Int("min-oi", 0, "minimum open interest (default 0, set higher to filter)")
+	flagUSRate    = flag.Float64("us-rate", 4.5, "current US risk-free rate (for implied foreign rate calc)")
+	flagSimple    = flag.Bool("simple", false, "show simple output: one contract per asset to trade")
+	flagFinancial = flag.Bool("financial", false, "only show financial futures (FX, rates, index) where carry is tradeable")
 )
 
 // FuturesContract represents a single futures contract
@@ -223,6 +224,16 @@ func main() {
 		}
 		if opp.FrontOI < int64(*flagMinOI) || opp.BackOI < int64(*flagMinOI) {
 			continue
+		}
+		// Financial filter: only show futures where carry is actually tradeable
+		// Physical commodities have "carry" that reflects storage costs, not arbitrage opportunity
+		if *flagFinancial {
+			switch opp.AssetType {
+			case "currency", "rate", "index":
+				// These are cash-settled, carry is tradeable
+			default:
+				continue // Skip physical commodities, crypto, vol
+			}
 		}
 		filtered = append(filtered, opp)
 	}
