@@ -587,9 +587,9 @@ func generateSpreadTrades(contracts []FuturesContract) []Trade {
 
 func printOutrights(trades []Trade) {
 	// Header
-	fmt.Printf("%-10s %-5s %-8s %10s %7s %9s %9s %9s\n",
-		"CONTRACT", "DIR", "TYPE", "MARGIN", "CARRY", "RIGHT10%", "RIGHT20%", "RIGHT40%")
-	fmt.Println(strings.Repeat("-", 80))
+	fmt.Printf("%-10s %-5s %-8s %10s %7s %8s %8s %8s %8s %8s %8s\n",
+		"CONTRACT", "DIR", "TYPE", "MARGIN", "CARRY", "RIGHT1%", "RIGHT2%", "RIGHT5%", "RIGHT10%", "RIGHT20%", "RIGHT40%")
+	fmt.Println(strings.Repeat("-", 104))
 
 	for _, t := range trades {
 		marginStr := "-"
@@ -600,16 +600,22 @@ func printOutrights(trades []Trade) {
 		// Calculate net return on margin for different directional moves
 		// "RIGHT X%" means your directional bet was correct by X%
 		// LONG right = price UP, SHORT right = price DOWN
+		right1 := t.Carry + 0.01*t.Leverage
+		right2 := t.Carry + 0.02*t.Leverage
+		right5 := t.Carry + 0.05*t.Leverage
 		right10 := t.Carry + 0.10*t.Leverage
 		right20 := t.Carry + 0.20*t.Leverage
 		right40 := t.Carry + 0.40*t.Leverage
 
-		fmt.Printf("%-10s %-5s %-8s %10s %+6.0f%% %+8.0f%% %+8.0f%% %+8.0f%%\n",
+		fmt.Printf("%-10s %-5s %-8s %10s %+6.0f%% %+7.0f%% %+7.0f%% %+7.0f%% %+7.0f%% %+7.0f%% %+7.0f%%\n",
 			t.Symbol,
 			t.Direction,
 			t.AssetType,
 			marginStr,
 			t.ReturnOnMargin*100,
+			right1*100,
+			right2*100,
+			right5*100,
 			right10*100,
 			right20*100,
 			right40*100)
