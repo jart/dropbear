@@ -52,6 +52,7 @@ var (
 	flagLong   = flag.Bool("long", false, "show long opportunities (backwardation)")
 	flagMinOI  = flag.Int("min-oi", 0, "minimum open interest (default 0, set higher to filter)")
 	flagUSRate = flag.Float64("us-rate", 4.5, "current US risk-free rate (for implied foreign rate calc)")
+	flagSimple = flag.Bool("simple", false, "show simple output: one contract per asset to trade")
 )
 
 // FuturesContract represents a single futures contract
@@ -220,41 +221,95 @@ func main() {
 	})
 
 	// Print results
-	fmt.Printf("%-8s %-8s %-12s %-12s %6s %12s %12s %8s %8s %10s %-5s\n",
-		"ASSET", "TYPE", "FRONT", "BACK", "DAYS", "FRONT_PX", "BACK_PX", "CARRY%", "IMP_RT%", "RET/MARGIN", "DIR")
-	fmt.Println(strings.Repeat("-", 120))
-
-	for _, opp := range filtered {
-		impliedRate := ""
-		if opp.AssetType == "currency" {
-			impliedRate = fmt.Sprintf("%6.2f%%", opp.ImpliedForeignRat*100)
-		} else {
-			impliedRate = "     -"
+	if *flagSimple {
+		// Simple mode: one contract per asset (front month only, with carry from front→next spread)
+		// Keep the shortest spread (front→next month) for each asset
+		byAsset := make(map[string]CarryOpportunity)
+		for _, opp := range filtered {
+			existing, ok := byAsset[opp.Asset]
+			if !ok || opp.DaysBetween < existing.DaysBetween {
+				byAsset[opp.Asset] = opp
+			}
 		}
-		retOnMargin := ""
-		if opp.ReturnOnMargin > 0 {
-			retOnMargin = fmt.Sprintf("%8.1f%%", opp.ReturnOnMargin*100)
-		} else {
-			retOnMargin = "       -"
+		var simple []CarryOpportunity
+		for _, opp := range byAsset {
+			simple = append(simple, opp)
 		}
-		fmt.Printf("%-8s %-8s %-12s %-12s %6d %12.6f %12.6f %7.2f%% %8s %10s %-5s\n",
-			opp.Asset,
-			opp.AssetType[:min(8, len(opp.AssetType))],
-			opp.FrontSymbol,
-			opp.BackSymbol,
-			opp.DaysBetween,
-			opp.FrontPrice,
-			opp.BackPrice,
-			opp.AnnualizedCarry*100,
-			impliedRate,
-			retOnMargin,
-			opp.Direction)
-	}
 
-	if len(filtered) == 0 {
-		fmt.Println("No opportunities found matching criteria.")
+		// Re-sort by return on margin descending
+		slices.SortFunc(simple, func(a, b CarryOpportunity) int {
+			return cmp.Compare(b.ReturnOnMargin, a.ReturnOnMargin)
+		})
+
+		fmt.Printf("%-10s %-8s %12s %10s %8s %10s %-5s\n",
+			"CONTRACT", "TYPE", "PRICE", "MARGIN", "CARRY%", "RET/MARGIN", "ACTION")
+		fmt.Println(strings.Repeat("-", 75))
+
+		for _, opp := range simple {
+			action := "SHORT"
+			if opp.Direction == "long" {
+				action = "LONG"
+			}
+			marginStr := fmt.Sprintf("$%.0f", opp.Margin)
+			retOnMargin := ""
+			if opp.ReturnOnMargin > 0 {
+				retOnMargin = fmt.Sprintf("%8.1f%%", opp.ReturnOnMargin*100)
+			} else {
+				retOnMargin = "       -"
+			}
+			fmt.Printf("%-10s %-8s %12.6f %10s %7.2f%% %10s %-5s\n",
+				opp.FrontSymbol,
+				opp.AssetType[:min(8, len(opp.AssetType))],
+				opp.FrontPrice,
+				marginStr,
+				opp.AnnualizedCarry*100,
+				retOnMargin,
+				action)
+		}
+
+		if len(simple) == 0 {
+			fmt.Println("No opportunities found matching criteria.")
+		} else {
+			fmt.Printf("\n%d contracts to trade\n", len(simple))
+		}
 	} else {
-		fmt.Printf("\n%d opportunities found\n", len(filtered))
+		// Detailed mode: show all front→back spreads
+		fmt.Printf("%-8s %-8s %-12s %-12s %6s %12s %12s %8s %8s %10s %-5s\n",
+			"ASSET", "TYPE", "FRONT", "BACK", "DAYS", "FRONT_PX", "BACK_PX", "CARRY%", "IMP_RT%", "RET/MARGIN", "DIR")
+		fmt.Println(strings.Repeat("-", 120))
+
+		for _, opp := range filtered {
+			impliedRate := ""
+			if opp.AssetType == "currency" {
+				impliedRate = fmt.Sprintf("%6.2f%%", opp.ImpliedForeignRat*100)
+			} else {
+				impliedRate = "     -"
+			}
+			retOnMargin := ""
+			if opp.ReturnOnMargin > 0 {
+				retOnMargin = fmt.Sprintf("%8.1f%%", opp.ReturnOnMargin*100)
+			} else {
+				retOnMargin = "       -"
+			}
+			fmt.Printf("%-8s %-8s %-12s %-12s %6d %12.6f %12.6f %7.2f%% %8s %10s %-5s\n",
+				opp.Asset,
+				opp.AssetType[:min(8, len(opp.AssetType))],
+				opp.FrontSymbol,
+				opp.BackSymbol,
+				opp.DaysBetween,
+				opp.FrontPrice,
+				opp.BackPrice,
+				opp.AnnualizedCarry*100,
+				impliedRate,
+				retOnMargin,
+				opp.Direction)
+		}
+
+		if len(filtered) == 0 {
+			fmt.Println("No opportunities found matching criteria.")
+		} else {
+			fmt.Printf("\n%d opportunities found\n", len(filtered))
+		}
 	}
 }
 
