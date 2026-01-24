@@ -152,3 +152,117 @@ type OhlcvMsg struct {
 
 // PriceScale is the fixed-point scale for prices (1e9).
 const PriceScale = 1_000_000_000
+
+// InstrumentDefMsg is an instrument definition record.
+// Size: 440 bytes (header + 424 bytes payload).
+type InstrumentDefMsg struct {
+	Header                  RecordHeader // 16 bytes
+	TsRecv                  uint64       // Receive timestamp
+	MinPriceIncrement       int64        // Tick size (fixed-point, divide by 1e9)
+	DisplayFactor           int64        // Multiplier for venue display price
+	Expiration              uint64       // Last eligible trade time (nanoseconds since epoch)
+	Activation              uint64       // Instrument activation time
+	HighLimitPrice          int64        // Daily high limit price
+	LowLimitPrice           int64        // Daily low limit price
+	MaxPriceVariation       int64        // Max price variation
+	TradingReferencePrice   int64        // Settlement price
+	UnitOfMeasureQty        int64        // Contract size (fixed-point)
+	MinPriceIncrementAmount int64        // Min price increment amount
+	PriceRatio              int64        // Price ratio
+	StrikePrice             int64        // Option strike price
+	InstAttribValue         int32        // Instrument attributes
+	UnderlyingID            uint32       // Underlying instrument ID
+	RawInstrumentID         uint32       // Publisher's instrument ID
+	MarketDepthImplied      int32        // Implied market depth
+	MarketDepth             int32        // Market depth
+	MarketSegmentID         uint32       // Market segment ID
+	MaxTradeVol             uint32       // Max trade volume
+	MinLotSize              int32        // Min lot size
+	MinLotSizeBlock         int32        // Min lot size for block trades
+	MinLotSizeRoundLot      int32        // Min lot size for round lots
+	MinTradeVol             uint32       // Min trade volume
+	ContractMultiplier      int32        // Contract multiplier (e.g., 125000 for /6J)
+	DecayQuantity           int32        // Decay quantity
+	OriginalContractSize    int32        // Original contract size
+	TradingReferenceDate    uint16       // Trading reference date (days since epoch)
+	ApplID                  int16        // Application ID
+	MaturityYear            uint16       // Maturity year
+	DecayStartDate          uint16       // Decay start date
+	ChannelID               uint16       // Channel ID
+	Currency                [4]byte      // Price currency (e.g., "USD")
+	SettlCurrency           [4]byte      // Settlement currency
+	Secsubtype              [6]byte      // Security subtype
+	RawSymbol               [72]byte     // Raw symbol (e.g., "6JH5")
+	Group                   [21]byte     // Product group
+	Exchange                [5]byte      // Exchange (e.g., "CME")
+	Asset                   [7]byte      // Asset/product root (e.g., "6J")
+	Cfi                     [7]byte      // CFI code
+	SecurityType            [7]byte      // Security type
+	UnitOfMeasure           [31]byte     // Unit of measure
+	Underlying              [21]byte     // Underlying symbol
+	StrikePriceCurrency     [4]byte      // Strike price currency
+	InstrumentClass         byte         // 'F'=Future, 'O'=Option, 'S'=Spread
+	MatchAlgorithm          byte         // Matching algorithm
+	MdSecurityTradingStatus uint8        // Trading status
+	MainFraction            uint8        // Main fraction
+	PriceDisplayFormat      uint8        // Price display format
+	SettlPriceType          uint8        // Settlement price type
+	SubFraction             uint8        // Sub fraction
+	UnderlyingProduct       uint8        // Underlying product
+	SecurityUpdateAction    byte         // 'A'=Add, 'D'=Delete, 'M'=Modify
+	MaturityMonth           uint8        // Maturity month (1-12)
+	MaturityDay             uint8        // Maturity day
+	MaturityWeek            uint8        // Maturity week
+	UserDefinedInstrument   byte         // 'Y' or 'N'
+	ContractMultiplierUnit  int8         // Multiplier unit
+	FlowScheduleType        int8         // Flow schedule type
+	TickRule                uint8        // Tick rule
+	Reserved                [10]byte     // Reserved padding
+}
+
+// GetRawSymbol returns the raw symbol as a string.
+func (m *InstrumentDefMsg) GetRawSymbol() string {
+	return nullTermString(m.RawSymbol[:])
+}
+
+// GetAsset returns the asset/product root as a string.
+func (m *InstrumentDefMsg) GetAsset() string {
+	return nullTermString(m.Asset[:])
+}
+
+// GetExchange returns the exchange as a string.
+func (m *InstrumentDefMsg) GetExchange() string {
+	return nullTermString(m.Exchange[:])
+}
+
+// GetCurrency returns the price currency as a string.
+func (m *InstrumentDefMsg) GetCurrency() string {
+	return nullTermString(m.Currency[:])
+}
+
+// GetSecurityType returns the security type as a string.
+func (m *InstrumentDefMsg) GetSecurityType() string {
+	return nullTermString(m.SecurityType[:])
+}
+
+// GetGroup returns the product group as a string.
+func (m *InstrumentDefMsg) GetGroup() string {
+	return nullTermString(m.Group[:])
+}
+
+// StatisticsMsg is a statistics record (open interest, settlement, etc).
+// Size: 80 bytes.
+type StatisticsMsg struct {
+	Header     RecordHeader // 16 bytes
+	TsRecv     uint64       // Receive timestamp
+	TsRef      uint64       // Reference timestamp
+	Price      int64        // Statistic price (fixed-point)
+	Quantity   int32        // Quantity (for open interest)
+	Sequence   uint32       // Sequence number
+	TsInDelta  int32        // Delta to exchange timestamp
+	StatType   uint16       // Statistic type (1=OpeningPrice, 5=SettlementPrice, etc)
+	ChannelID  uint16       // Channel ID
+	UpdateMode uint8        // 1=new, 2=delete
+	StatFlags  uint8        // Statistic flags
+	Reserved   [2]byte      // Padding
+}
