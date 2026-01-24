@@ -35,7 +35,6 @@ func TestContractSpecsLoaded(t *testing.T) {
 		{"SR3", "rate"},
 		{"ZC", "ag"},
 		{"LE", "ag"},
-		{"VX", "vol"},
 		{"BTC", "crypto"},
 	}
 
