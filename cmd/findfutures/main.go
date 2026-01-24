@@ -78,8 +78,90 @@ type CarryOpportunity struct {
 	ImpliedForeignRat float64 // for currency futures
 	FrontOI           int64
 	BackOI            int64
-	AssetType         string // currency, index, commodity, rate
-	Direction         string // "short" or "long"
+	AssetType         string  // currency, index, commodity, rate
+	Direction         string  // "short" or "long"
+	Margin            float64 // maintenance margin in USD
+	Notional          float64 // contract notional value in USD
+	ReturnOnMargin    float64 // annualized carry as % of margin
+}
+
+// CME maintenance margin requirements (USD) - updated Jan 2026
+// Source: https://www.cmegroup.com/clearing/margins/outright-vol-scans.html
+var marginRequirements = map[string]float64{
+	// FX futures
+	"6J": 2800,  // Japanese Yen
+	"6E": 2700,  // Euro
+	"6S": 4500,  // Swiss Franc
+	"6A": 1900,  // Australian Dollar
+	"6B": 2000,  // British Pound
+	"6C": 1000,  // Canadian Dollar
+	"6N": 1300,  // New Zealand Dollar
+	"6M": 2500,  // Mexican Peso (approx)
+
+	// Equity index futures
+	"ES":  22731, // E-mini S&P 500
+	"NQ":  33563, // E-mini Nasdaq 100
+	"YM":  14245, // E-mini Dow
+	"RTY": 9491,  // E-mini Russell 2000
+
+	// Metals
+	"GC": 24881, // Gold (100 oz)
+	"SI": 45417, // Silver (5000 oz)
+	"HG": 10000, // Copper
+
+	// Agriculture
+	"ZC": 975,  // Corn
+	"ZW": 1650, // Wheat
+	"ZS": 2000, // Soybeans
+
+	// Rates
+	"ZN": 2000, // 10-Year T-Note (approx)
+	"ZB": 3500, // 30-Year T-Bond (approx)
+	"ZT": 1000, // 2-Year T-Note (approx)
+	"ZF": 1500, // 5-Year T-Note (approx)
+
+	// Energy
+	"CL": 6500, // Crude Oil
+	"NG": 3000, // Natural Gas
+}
+
+// Contract multipliers for calculating notional value
+var contractMultipliers = map[string]float64{
+	// FX futures (units of foreign currency)
+	"6J": 12500000, // 12.5M JPY
+	"6E": 125000,   // 125K EUR
+	"6S": 125000,   // 125K CHF
+	"6A": 100000,   // 100K AUD
+	"6B": 62500,    // 62.5K GBP
+	"6C": 100000,   // 100K CAD
+	"6N": 100000,   // 100K NZD
+	"6M": 500000,   // 500K MXN
+
+	// Equity index (multiplier × index value)
+	"ES":  50, // $50 × S&P 500
+	"NQ":  20, // $20 × Nasdaq 100
+	"YM":  5,  // $5 × Dow Jones
+	"RTY": 50, // $50 × Russell 2000
+
+	// Metals
+	"GC": 100,   // 100 troy oz
+	"SI": 5000,  // 5000 troy oz
+	"HG": 25000, // 25,000 lbs
+
+	// Agriculture (bushels) - prices quoted in cents, so divide by 100
+	"ZC": 50, // 5000 bushels ÷ 100 (price in cents)
+	"ZW": 50, // 5000 bushels ÷ 100 (price in cents)
+	"ZS": 50, // 5000 bushels ÷ 100 (price in cents)
+
+	// Rates (face value / 1000 for display price)
+	"ZN": 1000, // $100K face
+	"ZB": 1000, // $100K face
+	"ZT": 2000, // $200K face
+	"ZF": 1000, // $100K face
+
+	// Energy
+	"CL": 1000, // 1000 barrels
+	"NG": 10000, // 10,000 MMBtu
 }
 
 func main() {
@@ -138,9 +220,9 @@ func main() {
 	})
 
 	// Print results
-	fmt.Printf("%-8s %-8s %-12s %-12s %6s %12s %12s %8s %8s %-5s\n",
-		"ASSET", "TYPE", "FRONT", "BACK", "DAYS", "FRONT_PX", "BACK_PX", "CARRY%", "IMP_RT%", "DIR")
-	fmt.Println(strings.Repeat("-", 105))
+	fmt.Printf("%-8s %-8s %-12s %-12s %6s %12s %12s %8s %8s %10s %-5s\n",
+		"ASSET", "TYPE", "FRONT", "BACK", "DAYS", "FRONT_PX", "BACK_PX", "CARRY%", "IMP_RT%", "RET/MARGIN", "DIR")
+	fmt.Println(strings.Repeat("-", 120))
 
 	for _, opp := range filtered {
 		impliedRate := ""
@@ -149,7 +231,13 @@ func main() {
 		} else {
 			impliedRate = "     -"
 		}
-		fmt.Printf("%-8s %-8s %-12s %-12s %6d %12.6f %12.6f %7.2f%% %8s %-5s\n",
+		retOnMargin := ""
+		if opp.ReturnOnMargin > 0 {
+			retOnMargin = fmt.Sprintf("%8.1f%%", opp.ReturnOnMargin*100)
+		} else {
+			retOnMargin = "       -"
+		}
+		fmt.Printf("%-8s %-8s %-12s %-12s %6d %12.6f %12.6f %7.2f%% %8s %10s %-5s\n",
 			opp.Asset,
 			opp.AssetType[:min(8, len(opp.AssetType))],
 			opp.FrontSymbol,
@@ -159,6 +247,7 @@ func main() {
 			opp.BackPrice,
 			opp.AnnualizedCarry*100,
 			impliedRate,
+			retOnMargin,
 			opp.Direction)
 	}
 
@@ -529,6 +618,28 @@ func analyzeCarry(contracts []FuturesContract) []CarryOpportunity {
 				impliedForeignRate = *flagUSRate/100.0 - carry
 			}
 
+			// Calculate margin and notional for return on margin
+			margin := marginRequirements[asset]
+			multiplier := contractMultipliers[asset]
+			notional := 0.0
+			returnOnMargin := 0.0
+
+			if multiplier > 0 {
+				// For FX: notional = price × multiplier (gives USD value)
+				// For index: notional = price × multiplier
+				// For commodities: notional = price × multiplier
+				notional = front.SettlementPrice * multiplier
+			}
+
+			if margin > 0 && notional > 0 {
+				// Return on margin = carry × (notional / margin)
+				// This is the leveraged return
+				returnOnMargin = carry * (notional / margin)
+				if returnOnMargin < 0 {
+					returnOnMargin = -returnOnMargin
+				}
+			}
+
 			opp := CarryOpportunity{
 				Asset:             asset,
 				FrontSymbol:       front.Symbol,
@@ -544,6 +655,9 @@ func analyzeCarry(contracts []FuturesContract) []CarryOpportunity {
 				BackOI:            back.OpenInterest,
 				AssetType:         assetType,
 				Direction:         direction,
+				Margin:            margin,
+				Notional:          notional,
+				ReturnOnMargin:    returnOnMargin,
 			}
 
 			opportunities = append(opportunities, opp)
