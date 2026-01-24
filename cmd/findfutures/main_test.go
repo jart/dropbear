@@ -72,7 +72,7 @@ func TestParseSymbol(t *testing.T) {
 	}
 }
 
-func TestAnalyzeCarry(t *testing.T) {
+func TestGenerateOutrightTrades(t *testing.T) {
 	now := time.Now()
 	contracts := []FuturesContract{
 		{
@@ -85,35 +85,93 @@ func TestAnalyzeCarry(t *testing.T) {
 			Symbol:          "6JM6",
 			Asset:           "6J",
 			Expiration:      now.Add(122 * 24 * time.Hour),
-			SettlementPrice: 0.006388, // Contango
+			SettlementPrice: 0.006388, // Contango (back > front)
 		},
 	}
 
-	opportunities := analyzeCarry(contracts)
+	trades := generateOutrightTrades(contracts)
 
-	if len(opportunities) == 0 {
-		t.Fatal("expected some opportunities")
+	// Should have 2 trades (LONG and SHORT) for the one asset
+	if len(trades) != 2 {
+		t.Fatalf("expected 2 trades (LONG and SHORT), got %d", len(trades))
 	}
 
-	opp := opportunities[0]
-
-	// In contango (back > front), shorting is profitable
-	if opp.Direction != "short" {
-		t.Errorf("expected direction=short for contango, got %s", opp.Direction)
+	// Find the SHORT trade
+	var shortTrade, longTrade Trade
+	for _, tr := range trades {
+		if tr.Direction == "SHORT" {
+			shortTrade = tr
+		} else if tr.Direction == "LONG" {
+			longTrade = tr
+		}
 	}
 
-	// Carry should be positive for contango
-	if opp.AnnualizedCarry <= 0 {
-		t.Errorf("expected positive carry for contango, got %f", opp.AnnualizedCarry)
+	// In contango (back > front), SHORT earns positive carry
+	if shortTrade.Carry <= 0 {
+		t.Errorf("expected positive carry for SHORT in contango, got %f", shortTrade.Carry)
 	}
 
-	// Currency futures should have implied rate calculated
-	if opp.AssetType != "currency" {
-		t.Errorf("expected currency asset type, got %s", opp.AssetType)
+	// LONG pays negative carry in contango
+	if longTrade.Carry >= 0 {
+		t.Errorf("expected negative carry for LONG in contango, got %f", longTrade.Carry)
 	}
 
-	t.Logf("6J carry: %.2f%% annualized", opp.AnnualizedCarry*100)
-	t.Logf("6J implied foreign rate: %.2f%%", opp.ImpliedForeignRat*100)
+	if shortTrade.CurveState != "contango" {
+		t.Errorf("expected curveState=contango, got %s", shortTrade.CurveState)
+	}
+
+	if shortTrade.AssetType != "currency" {
+		t.Errorf("expected currency asset type, got %s", shortTrade.AssetType)
+	}
+
+	t.Logf("6J SHORT carry: %+.2f%%, LONG carry: %+.2f%%", shortTrade.Carry*100, longTrade.Carry*100)
+}
+
+func TestGenerateSpreadTrades(t *testing.T) {
+	now := time.Now()
+	contracts := []FuturesContract{
+		{
+			Symbol:          "CLG6",
+			Asset:           "CL",
+			Expiration:      now.Add(20 * 24 * time.Hour),
+			SettlementPrice: 60.53,
+		},
+		{
+			Symbol:          "CLH6",
+			Asset:           "CL",
+			Expiration:      now.Add(51 * 24 * time.Hour),
+			SettlementPrice: 59.59, // Backwardation (front > back)
+		},
+	}
+
+	trades := generateSpreadTrades(contracts)
+
+	if len(trades) == 0 {
+		t.Fatal("expected some spread trades")
+	}
+
+	trade := trades[0]
+
+	// Spread should be positive (front - back = 60.53 - 59.59 = 0.94)
+	if trade.Price <= 0 {
+		t.Errorf("expected positive spread price for backwardation, got %f", trade.Price)
+	}
+
+	// Backwardation
+	if trade.CurveState != "backwrd" {
+		t.Errorf("expected curveState=backwrd, got %s", trade.CurveState)
+	}
+
+	if trade.AssetType != "energy" {
+		t.Errorf("expected energy asset type, got %s", trade.AssetType)
+	}
+
+	// Check that spread margin is less than outright margin
+	if trade.Margin >= marginRequirements["CL"] {
+		t.Errorf("spread margin %f should be less than outright %f", trade.Margin, marginRequirements["CL"])
+	}
+
+	t.Logf("CL spread: %.2f, margin: $%.0f, carry: %.2f%%", trade.Price, trade.Margin, trade.Carry*100)
 }
 
 func TestGenerateSymbols(t *testing.T) {
