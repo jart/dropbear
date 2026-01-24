@@ -86,81 +86,108 @@ type CarryOpportunity struct {
 
 // CME maintenance margin requirements (USD) - updated Jan 2026
 // Source: https://www.cmegroup.com/clearing/margins/outright-vol-scans.html
+// Note: margins vary by expiration month; these are approximate front-month values
 var marginRequirements = map[string]float64{
-	// FX futures
-	"6J": 2800, // Japanese Yen
-	"6E": 2700, // Euro
-	"6S": 4500, // Swiss Franc
-	"6A": 1900, // Australian Dollar
-	"6B": 2000, // British Pound
-	"6C": 1000, // Canadian Dollar
-	"6N": 1300, // New Zealand Dollar
-	"6M": 2500, // Mexican Peso (approx)
+	// ===== FX - G10 =====
+	"6J": 2800, "6E": 2700, "6S": 4500, "6A": 1900, "6B": 2000,
+	"6C": 1000, "6N": 1300, "6M": 2500,
+	"E7": 1350, "J7": 1400, // E-mini FX
+	"M6E": 270, "M6A": 190, "M6B": 200, "MCD": 100, "MSF": 450, "MJY": 280, // Micro FX
 
-	// Equity index futures
-	"ES":  22731, // E-mini S&P 500
-	"NQ":  33563, // E-mini Nasdaq 100
-	"YM":  14245, // E-mini Dow
-	"RTY": 9491,  // E-mini Russell 2000
+	// ===== FX - EM =====
+	"6L": 4000, "6R": 5000, "6Z": 3000, "PLS": 2000, "CZK": 1500,
+	"HUF": 2000, "ILS": 1500, "KRW": 2000, "CNH": 3500,
 
-	// Metals
-	"GC": 24881, // Gold (100 oz)
-	"SI": 45417, // Silver (5000 oz)
-	"HG": 10000, // Copper
+	// ===== EQUITY INDEX =====
+	"ES": 22731, "NQ": 33563, "YM": 14245, "RTY": 9491, "EMD": 15000, "NKD": 12000, "NIY": 1200000, // Note: NIY is JPY-denominated
+	"MES": 2273, "MNQ": 3356, "MYM": 1424, "M2K": 949, // Micro index (1/10th of E-mini)
+	"XAF": 2000, "XAK": 3500, "XAE": 4000, "XAU": 1500, "XAV": 2500,
+	"XAB": 1500, "XAY": 2500, "XAI": 2000, "XAP": 2000, // Sector futures
 
-	// Agriculture
-	"ZC": 975,  // Corn
-	"ZW": 1650, // Wheat
-	"ZS": 2000, // Soybeans
+	// ===== INTEREST RATES =====
+	"ZT": 1000, "Z3N": 1200, "ZF": 1500, "ZN": 2000, "TN": 2500, "ZB": 3500, "UB": 5000,
+	"SR3": 500, "SR1": 300, "FF": 300, "GE": 500,
 
-	// Rates
-	"ZN": 2000, // 10-Year T-Note (approx)
-	"ZB": 3500, // 30-Year T-Bond (approx)
-	"ZT": 1000, // 2-Year T-Note (approx)
-	"ZF": 1500, // 5-Year T-Note (approx)
+	// ===== ENERGY =====
+	"CL": 6500, "QM": 3250, "MCL": 650, // WTI Crude
+	"BZ": 7000,                          // Brent
+	"NG": 3000, "QG": 1500,              // Natural Gas
+	"HO": 7500, "RB": 7000,              // Refined products
 
-	// Energy
-	"CL": 6500, // Crude Oil
-	"NG": 3000, // Natural Gas
+	// ===== METALS =====
+	"GC": 24881, "SI": 45417, "HG": 10000, "PL": 3500, "PA": 15000,
+	"MGC": 2488, "SIL": 9000, "QC": 2500, "ALI": 3000,
+
+	// ===== AGRICULTURE =====
+	"ZC": 975, "ZS": 2000, "ZW": 1650, "KE": 1800, "ZO": 800,
+	"ZM": 1800, "ZL": 1200,
+	"XC": 195, "XW": 330, "XK": 400, // Mini grains
+
+	// ===== LIVESTOCK =====
+	"LE": 2200, "GF": 3500, "HE": 1800,
+
+	// ===== DAIRY =====
+	"DC": 1500, "DY": 800, "CB": 2000, "CSC": 1500,
+
+	// ===== OTHER =====
+	"LBS": 3500, // Lumber
+	"VX": 8000,  // VIX
+
+	// ===== CRYPTO =====
+	"BTC": 50000, "MBT": 5000, "ETH": 8000, "MET": 800,
 }
 
 // Contract multipliers for calculating notional value
+// For products quoted in cents, the multiplier is adjusted (÷100)
 var contractMultipliers = map[string]float64{
-	// FX futures (units of foreign currency)
-	"6J": 12500000, // 12.5M JPY
-	"6E": 125000,   // 125K EUR
-	"6S": 125000,   // 125K CHF
-	"6A": 100000,   // 100K AUD
-	"6B": 62500,    // 62.5K GBP
-	"6C": 100000,   // 100K CAD
-	"6N": 100000,   // 100K NZD
-	"6M": 500000,   // 500K MXN
+	// ===== FX - G10 (units of foreign currency) =====
+	"6J": 12500000, "6E": 125000, "6S": 125000, "6A": 100000, "6B": 62500,
+	"6C": 100000, "6N": 100000, "6M": 500000,
+	"E7": 62500, "J7": 6250000, // E-mini FX (half size)
+	"M6E": 12500, "M6A": 10000, "M6B": 6250, "MCD": 10000, "MSF": 12500, "MJY": 1250000, // Micro FX (1/10th)
 
-	// Equity index (multiplier × index value)
-	"ES":  50, // $50 × S&P 500
-	"NQ":  20, // $20 × Nasdaq 100
-	"YM":  5,  // $5 × Dow Jones
-	"RTY": 50, // $50 × Russell 2000
+	// ===== FX - EM =====
+	"6L": 100000, "6R": 2500000, "6Z": 500000, "PLS": 500000, "CZK": 4000000,
+	"HUF": 30000000, "ILS": 1000000, "KRW": 125000000, "CNH": 100000,
 
-	// Metals
-	"GC": 100,   // 100 troy oz
-	"SI": 5000,  // 5000 troy oz
-	"HG": 25000, // 25,000 lbs
+	// ===== EQUITY INDEX (multiplier × index value) =====
+	"ES": 50, "NQ": 20, "YM": 5, "RTY": 50, "EMD": 100, "NKD": 5, "NIY": 500,
+	"MES": 5, "MNQ": 2, "MYM": 0.5, "M2K": 5, // Micro (1/10th)
+	"XAF": 100, "XAK": 100, "XAE": 100, "XAU": 100, "XAV": 100,
+	"XAB": 100, "XAY": 100, "XAI": 100, "XAP": 100,
 
-	// Agriculture (bushels) - prices quoted in cents, so divide by 100
-	"ZC": 50, // 5000 bushels ÷ 100 (price in cents)
-	"ZW": 50, // 5000 bushels ÷ 100 (price in cents)
-	"ZS": 50, // 5000 bushels ÷ 100 (price in cents)
+	// ===== INTEREST RATES (face value / 1000 for price display) =====
+	"ZT": 2000, "Z3N": 1000, "ZF": 1000, "ZN": 1000, "TN": 1000, "ZB": 1000, "UB": 1000,
+	"SR3": 2500, "SR1": 4167, "FF": 4167, "GE": 2500, // $1M notional contracts
 
-	// Rates (face value / 1000 for display price)
-	"ZN": 1000, // $100K face
-	"ZB": 1000, // $100K face
-	"ZT": 2000, // $200K face
-	"ZF": 1000, // $100K face
+	// ===== ENERGY =====
+	"CL": 1000, "QM": 500, "MCL": 100,  // Crude (barrels)
+	"BZ": 1000,                          // Brent
+	"NG": 10000, "QG": 2500,             // Natural Gas (MMBtu)
+	"HO": 42000, "RB": 42000,            // 42,000 gallons
 
-	// Energy
-	"CL": 1000,  // 1000 barrels
-	"NG": 10000, // 10,000 MMBtu
+	// ===== METALS =====
+	"GC": 100, "SI": 5000, "HG": 25000, "PL": 50, "PA": 100,
+	"MGC": 10, "SIL": 1000, "QC": 12500, "ALI": 25,
+
+	// ===== AGRICULTURE (bushels, quoted in cents so ÷100) =====
+	"ZC": 50, "ZS": 50, "ZW": 50, "KE": 50, "ZO": 50, // 5000 bu ÷ 100
+	"ZM": 1,  // 100 short tons, price in $/ton
+	"ZL": 0.6, // 60,000 lbs, price in cents/lb
+	"XC": 10, "XW": 10, "XK": 10, // Mini grains (1000 bu ÷ 100)
+
+	// ===== LIVESTOCK (cents per lb, so ÷100) =====
+	"LE": 400, "GF": 500, "HE": 400, // 40,000 lbs ÷ 100
+
+	// ===== DAIRY =====
+	"DC": 2000, "DY": 440, "CB": 200, "CSC": 200, // Cwt or lbs
+
+	// ===== OTHER =====
+	"LBS": 27.5, // 27,500 board feet, price in $/MBF
+	"VX": 1000,  // $1000 × VIX
+
+	// ===== CRYPTO =====
+	"BTC": 5, "MBT": 0.1, "ETH": 50, "MET": 0.1, // Coins per contract
 }
 
 func main() {
@@ -400,54 +427,176 @@ func syncData() error {
 }
 
 func generateSymbols() []string {
-	// Generate symbols for major futures
+	// Generate symbols for CME Globex futures
 	// Format: ASSET + MONTH_CODE + YEAR_DIGIT
 	// Month codes: F=Jan, G=Feb, H=Mar, J=Apr, K=May, M=Jun, N=Jul, Q=Aug, U=Sep, V=Oct, X=Nov, Z=Dec
 
 	assets := []struct {
 		name   string
-		months string // which months are liquid
+		months string // which months have contracts
 	}{
-		// Currency futures (quarterly)
-		{"6J", "HMUZ"}, // Japanese Yen
-		{"6E", "HMUZ"}, // Euro
-		{"6B", "HMUZ"}, // British Pound
-		{"6A", "HMUZ"}, // Australian Dollar
-		{"6C", "HMUZ"}, // Canadian Dollar
-		{"6S", "HMUZ"}, // Swiss Franc
-		{"6N", "HMUZ"}, // New Zealand Dollar
-		{"6M", "HMUZ"}, // Mexican Peso
-
-		// Index futures (quarterly)
+		// ===== EQUITY INDEX =====
+		// E-mini index futures (quarterly)
 		{"ES", "HMUZ"},  // E-mini S&P 500
 		{"NQ", "HMUZ"},  // E-mini Nasdaq 100
-		{"YM", "HMUZ"},  // E-mini Dow
+		{"YM", "HMUZ"},  // E-mini Dow Jones
 		{"RTY", "HMUZ"}, // E-mini Russell 2000
+		{"EMD", "HMUZ"}, // E-mini S&P MidCap 400
+		{"NKD", "HMUZ"}, // Nikkei 225 (USD)
+		{"NIY", "HMUZ"}, // Nikkei 225 (Yen)
 
+		// Micro index futures (quarterly)
+		{"MES", "HMUZ"}, // Micro E-mini S&P 500
+		{"MNQ", "HMUZ"}, // Micro E-mini Nasdaq 100
+		{"MYM", "HMUZ"}, // Micro E-mini Dow
+		{"M2K", "HMUZ"}, // Micro E-mini Russell 2000
+
+		// Sector futures
+		{"XAF", "HMUZ"}, // E-mini Financial Select
+		{"XAK", "HMUZ"}, // E-mini Technology Select
+		{"XAE", "HMUZ"}, // E-mini Energy Select
+		{"XAU", "HMUZ"}, // E-mini Utilities Select
+		{"XAV", "HMUZ"}, // E-mini Health Care Select
+		{"XAB", "HMUZ"}, // E-mini Consumer Staples
+		{"XAY", "HMUZ"}, // E-mini Consumer Discretionary
+		{"XAI", "HMUZ"}, // E-mini Industrial Select
+		{"XAP", "HMUZ"}, // E-mini Materials Select
+
+		// ===== FX - G10 =====
+		// Standard FX (quarterly, some monthly)
+		{"6E", "FGHJKMNQUVXZ"}, // Euro
+		{"6J", "FGHJKMNQUVXZ"}, // Japanese Yen
+		{"6B", "FGHJKMNQUVXZ"}, // British Pound
+		{"6C", "FGHJKMNQUVXZ"}, // Canadian Dollar
+		{"6A", "FGHJKMNQUVXZ"}, // Australian Dollar
+		{"6S", "FGHJKMNQUVXZ"}, // Swiss Franc
+		{"6N", "HMUZ"},         // New Zealand Dollar
+		{"6M", "FGHJKMNQUVXZ"}, // Mexican Peso
+
+		// E-mini FX
+		{"E7", "HMUZ"}, // E-mini Euro
+		{"J7", "HMUZ"}, // E-mini Japanese Yen
+
+		// Micro FX
+		{"M6E", "HMUZ"}, // Micro Euro
+		{"M6A", "HMUZ"}, // Micro AUD
+		{"M6B", "HMUZ"}, // Micro GBP
+		{"MCD", "HMUZ"}, // Micro CAD
+		{"MSF", "HMUZ"}, // Micro CHF
+		{"MJY", "HMUZ"}, // Micro JPY
+
+		// ===== FX - EM =====
+		{"6L", "FGHJKMNQUVXZ"}, // Brazilian Real
+		{"6R", "HMUZ"},         // Russian Ruble (may be delisted)
+		{"6Z", "HMUZ"},         // South African Rand
+		{"PLS", "HMUZ"},        // Polish Zloty
+		{"CZK", "HMUZ"},        // Czech Koruna
+		{"HUF", "HMUZ"},        // Hungarian Forint
+		{"ILS", "HMUZ"},        // Israeli Shekel
+		{"KRW", "HMUZ"},        // Korean Won
+		{"CNH", "FGHJKMNQUVXZ"}, // Offshore Chinese Yuan
+
+		// ===== INTEREST RATES =====
 		// Treasury futures (quarterly)
-		{"ZN", "HMUZ"}, // 10-Year T-Note
-		{"ZB", "HMUZ"}, // 30-Year T-Bond
-		{"ZF", "HMUZ"}, // 5-Year T-Note
 		{"ZT", "HMUZ"}, // 2-Year T-Note
+		{"Z3N", "HMUZ"}, // 3-Year T-Note
+		{"ZF", "HMUZ"}, // 5-Year T-Note
+		{"ZN", "HMUZ"}, // 10-Year T-Note
+		{"TN", "HMUZ"}, // Ultra 10-Year T-Note
+		{"ZB", "HMUZ"}, // 30-Year T-Bond
+		{"UB", "HMUZ"}, // Ultra T-Bond
 
-		// Energy (monthly)
-		{"CL", "FGHJKMNQUVXZ"}, // Crude Oil
-		{"NG", "FGHJKMNQUVXZ"}, // Natural Gas
+		// SOFR futures (monthly and quarterly)
+		{"SR3", "FGHJKMNQUVXZ"}, // 3-Month SOFR
+		{"SR1", "FGHJKMNQUVXZ"}, // 1-Month SOFR
 
-		// Metals (bi-monthly typically, but varies)
-		{"GC", "GJMQVZ"}, // Gold
-		{"SI", "HKNUZ"},  // Silver
-		{"HG", "HKNUZ"},  // Copper
+		// Fed Funds
+		{"FF", "FGHJKMNQUVXZ"}, // 30-Day Fed Funds
 
-		// Agriculture (varies)
-		{"ZC", "HKNUZ"},   // Corn
-		{"ZS", "FHKNQUX"}, // Soybeans
-		{"ZW", "HKNUZ"},   // Wheat
+		// Eurodollars (being phased out but still trade)
+		{"GE", "HMUZ"}, // Eurodollar
+
+		// ===== ENERGY - NYMEX =====
+		// Crude Oil
+		{"CL", "FGHJKMNQUVXZ"}, // WTI Crude Oil
+		{"QM", "FGHJKMNQUVXZ"}, // E-mini Crude Oil
+		{"MCL", "FGHJKMNQUVXZ"}, // Micro WTI Crude
+
+		// Brent
+		{"BZ", "FGHJKMNQUVXZ"}, // Brent Crude (last day)
+
+		// Natural Gas
+		{"NG", "FGHJKMNQUVXZ"}, // Henry Hub Natural Gas
+		{"QG", "FGHJKMNQUVXZ"}, // E-mini Natural Gas
+
+		// Refined Products
+		{"HO", "FGHJKMNQUVXZ"}, // NY Harbor ULSD (Heating Oil)
+		{"RB", "FGHJKMNQUVXZ"}, // RBOB Gasoline
+
+		// ===== METALS - COMEX =====
+		// Precious Metals
+		{"GC", "FGHJKMNQUVXZ"}, // Gold
+		{"SI", "FHKNUZ"},       // Silver
+		{"PL", "FJNV"},         // Platinum
+		{"PA", "HMUZ"},         // Palladium
+
+		// Micro/Mini Metals
+		{"MGC", "FGHJKMNQUVXZ"}, // Micro Gold
+		{"SIL", "FGHJKMNQUVXZ"}, // Micro Silver (1000 oz)
+
+		// Base Metals
+		{"HG", "FHKNUZ"},       // Copper
+		{"ALI", "FGHJKMNQUVXZ"}, // Aluminum
+		{"QC", "FHKNUZ"},       // E-mini Copper
+
+		// ===== AGRICULTURE - CBOT =====
+		// Grains
+		{"ZC", "FHKNUZ"},       // Corn
+		{"ZS", "FHKNQUX"},      // Soybeans
+		{"ZW", "FHKNUZ"},       // Wheat (Chicago SRW)
+		{"KE", "FHKNUZ"},       // KC HRW Wheat
+		{"ZO", "FHKNUZ"},       // Oats
+
+		// Soybean Complex
+		{"ZM", "FHKNQUVZ"},     // Soybean Meal
+		{"ZL", "FHKNQUVZ"},     // Soybean Oil
+
+		// Mini Grains
+		{"XC", "FHKNUZ"},       // Mini Corn
+		{"XW", "FHKNUZ"},       // Mini Wheat
+		{"XK", "FHKNQUX"},      // Mini Soybeans
+
+		// ===== LIVESTOCK - CME =====
+		{"LE", "GJMQVZ"},       // Live Cattle
+		{"GF", "FHJKQUVX"},     // Feeder Cattle
+		{"HE", "GJKMNQVZ"},     // Lean Hogs
+
+		// ===== DAIRY - CME =====
+		{"DC", "FGHJKMNQUVXZ"}, // Class III Milk
+		{"DY", "FGHJKMNQUVXZ"}, // Dry Whey
+		{"CB", "FGHJKMNQUVXZ"}, // Cash-Settled Butter
+		{"CSC", "FGHJKMNQUVXZ"}, // Cash-Settled Cheese
+
+		// ===== LUMBER/SOFTS =====
+		{"LBS", "FHKNUX"},      // Random Length Lumber
+
+		// ===== WEATHER =====
+		{"H1", "FGHJKVXZ"},     // HDD (Heating Degree Day)
+		{"K1", "JKMNQV"},       // CDD (Cooling Degree Day)
+
+		// ===== VOLATILITY =====
+		{"VX", "FGHJKMNQUVXZ"}, // VIX Futures
+
+		// ===== BITCOIN/CRYPTO =====
+		{"BTC", "FGHJKMNQUVXZ"}, // Bitcoin Futures
+		{"MBT", "FGHJKMNQUVXZ"}, // Micro Bitcoin
+		{"ETH", "FGHJKMNQUVXZ"}, // Ether Futures
+		{"MET", "FGHJKMNQUVXZ"}, // Micro Ether
 	}
 
-	// Generate for current year and next year
+	// Generate for current year, next year, and year after
 	currentYear := time.Now().Year()
-	years := []int{currentYear % 10, (currentYear + 1) % 10}
+	years := []int{currentYear % 10, (currentYear + 1) % 10, (currentYear + 2) % 10}
 
 	var symbols []string
 	for _, asset := range assets {
@@ -720,16 +869,20 @@ func analyzeCarry(contracts []FuturesContract) []CarryOpportunity {
 }
 
 func classifyAsset(asset string) string {
-	// Currency futures typically start with 6
-	if strings.HasPrefix(asset, "6") {
+	// Currency futures typically start with 6, E7/J7, or M6/M prefix for micro
+	if strings.HasPrefix(asset, "6") || asset == "E7" || asset == "J7" ||
+		strings.HasPrefix(asset, "M6") || asset == "MCD" || asset == "MSF" || asset == "MJY" ||
+		asset == "CNH" || asset == "6L" || asset == "6R" || asset == "6Z" ||
+		asset == "PLS" || asset == "CZK" || asset == "HUF" || asset == "ILS" || asset == "KRW" {
 		return "currency"
 	}
 
-	// Major index futures
+	// Equity index futures
 	indexAssets := map[string]bool{
-		"ES": true, "NQ": true, "YM": true, "RTY": true,
-		"NKD": true, "NIY": true, "EMD": true,
+		"ES": true, "NQ": true, "YM": true, "RTY": true, "EMD": true, "NKD": true, "NIY": true,
 		"MES": true, "MNQ": true, "MYM": true, "M2K": true,
+		"XAF": true, "XAK": true, "XAE": true, "XAU": true, "XAV": true,
+		"XAB": true, "XAY": true, "XAI": true, "XAP": true,
 	}
 	if indexAssets[asset] {
 		return "index"
@@ -737,7 +890,7 @@ func classifyAsset(asset string) string {
 
 	// Interest rate futures
 	rateAssets := map[string]bool{
-		"ZQ": true, "ZT": true, "ZF": true, "ZN": true, "ZB": true,
+		"ZT": true, "Z3N": true, "ZF": true, "ZN": true, "TN": true, "ZB": true, "UB": true,
 		"GE": true, "SR3": true, "SR1": true, "FF": true,
 	}
 	if rateAssets[asset] {
@@ -746,30 +899,42 @@ func classifyAsset(asset string) string {
 
 	// Energy futures
 	energyAssets := map[string]bool{
-		"CL": true, "NG": true, "HO": true, "RB": true, "BZ": true,
-		"MCL": true, "MNG": true,
+		"CL": true, "QM": true, "MCL": true, "BZ": true,
+		"NG": true, "QG": true, "HO": true, "RB": true,
 	}
 	if energyAssets[asset] {
-		return "commodity"
+		return "energy"
 	}
 
 	// Metals
 	metalAssets := map[string]bool{
 		"GC": true, "SI": true, "HG": true, "PL": true, "PA": true,
-		"MGC": true, "SIL": true,
+		"MGC": true, "SIL": true, "QC": true, "ALI": true,
 	}
 	if metalAssets[asset] {
-		return "commodity"
+		return "metal"
 	}
 
 	// Agricultural
 	agAssets := map[string]bool{
-		"ZC": true, "ZS": true, "ZW": true, "ZM": true, "ZL": true,
+		"ZC": true, "ZS": true, "ZW": true, "ZM": true, "ZL": true, "KE": true, "ZO": true,
+		"XC": true, "XW": true, "XK": true,
 		"LE": true, "HE": true, "GF": true,
-		"KC": true, "SB": true, "CC": true, "CT": true,
+		"DC": true, "DY": true, "CB": true, "CSC": true,
+		"LBS": true,
 	}
 	if agAssets[asset] {
-		return "commodity"
+		return "ag"
+	}
+
+	// Volatility
+	if asset == "VX" {
+		return "vol"
+	}
+
+	// Crypto
+	if asset == "BTC" || asset == "MBT" || asset == "ETH" || asset == "MET" {
+		return "crypto"
 	}
 
 	return "other"
