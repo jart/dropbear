@@ -5,10 +5,16 @@ import (
 	"time"
 )
 
-func TestClassifyAsset(t *testing.T) {
+func init() {
+	if err := loadContractSpecs(); err != nil {
+		panic(err)
+	}
+}
+
+func TestContractSpecsLoaded(t *testing.T) {
 	tests := []struct {
-		asset string
-		want  string
+		asset    string
+		wantType string
 	}{
 		{"6J", "currency"},
 		{"6E", "currency"},
@@ -31,13 +37,16 @@ func TestClassifyAsset(t *testing.T) {
 		{"LE", "ag"},
 		{"VX", "vol"},
 		{"BTC", "crypto"},
-		{"ABC", "other"},
 	}
 
 	for _, tt := range tests {
-		got := classifyAsset(tt.asset)
-		if got != tt.want {
-			t.Errorf("classifyAsset(%q) = %q, want %q", tt.asset, got, tt.want)
+		spec := getSpec(tt.asset)
+		if spec.Asset == "" {
+			t.Errorf("getSpec(%q) returned empty spec", tt.asset)
+			continue
+		}
+		if spec.Type != tt.wantType {
+			t.Errorf("getSpec(%q).Type = %q, want %q", tt.asset, spec.Type, tt.wantType)
 		}
 	}
 }
@@ -167,8 +176,9 @@ func TestGenerateSpreadTrades(t *testing.T) {
 	}
 
 	// Check that spread margin is less than outright margin
-	if trade.Margin >= marginRequirements["CL"] {
-		t.Errorf("spread margin %f should be less than outright %f", trade.Margin, marginRequirements["CL"])
+	clSpec := getSpec("CL")
+	if trade.Margin >= clSpec.Margin {
+		t.Errorf("spread margin %f should be less than outright %f", trade.Margin, clSpec.Margin)
 	}
 
 	t.Logf("CL spread: %.2f, margin: $%.0f, carry: %.2f%%", trade.Price, trade.Margin, trade.Carry*100)

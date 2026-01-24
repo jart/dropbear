@@ -16,6 +16,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"dropbear/broker/databento"
@@ -30,8 +31,11 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -234,99 +238,94 @@ type FuturesContract struct {
 	Volume          uint64
 }
 
-// CME maintenance margin requirements (USD)
-var marginRequirements = map[string]float64{
-	// FX - G10
-	"6J": 2800, "6E": 2700, "6S": 4500, "6A": 1900, "6B": 2000,
-	"6C": 1000, "6N": 1300, "6M": 2500,
-	"E7": 1350, "J7": 1400,
-	"M6E": 270, "M6A": 190, "M6B": 200, "MCD": 100, "MSF": 450, "MJY": 280,
-	// FX - EM
-	"6L": 4000, "6R": 5000, "6Z": 3000, "PLS": 2000, "CZK": 1500,
-	"HUF": 2000, "ILS": 1500, "KRW": 2000, "CNH": 3500,
-	// Equity Index
-	"ES": 22731, "NQ": 33563, "YM": 14245, "RTY": 9491, "EMD": 15000, "NKD": 12000, "NIY": 1200000,
-	"MES": 2273, "MNQ": 3356, "MYM": 1424, "M2K": 949,
-	"XAF": 2000, "XAK": 3500, "XAE": 4000, "XAU": 1500, "XAV": 2500,
-	"XAB": 1500, "XAY": 2500, "XAI": 2000, "XAP": 2000,
-	// Interest Rates
-	"ZT": 1000, "Z3N": 1200, "ZF": 1500, "ZN": 2000, "TN": 2500, "ZB": 3500, "UB": 5000,
-	"SR3": 500, "SR1": 300, "FF": 300, "GE": 500,
-	// Energy
-	"CL": 6500, "QM": 3250, "MCL": 650,
-	"BZ": 7000,
-	"NG": 3000, "QG": 1500,
-	"HO": 7500, "RB": 7000,
-	// Metals
-	"GC": 24881, "SI": 45417, "HG": 10000, "PL": 3500, "PA": 15000,
-	"MGC": 2488, "SIL": 9000, "QC": 2500, "ALI": 3000,
-	// Agriculture
-	"ZC": 975, "ZS": 2000, "ZW": 1650, "KE": 1800, "ZO": 800,
-	"ZM": 1800, "ZL": 1200,
-	"XC": 195, "XW": 330, "XK": 400,
-	// Livestock
-	"LE": 2200, "GF": 3500, "HE": 1800,
-	// Dairy
-	"DC": 1500, "DY": 800, "CB": 2000, "CSC": 1500,
-	// Other
-	"LBS": 3500, "VX": 8000,
-	// Crypto
-	"BTC": 50000, "MBT": 5000, "ETH": 8000, "MET": 800,
+// ContractSpec holds specifications for a futures contract loaded from CSV
+type ContractSpec struct {
+	Asset       string  // CME product code (e.g., 6J, ES, CL)
+	Type        string  // asset class (currency, index, energy, metal, ag, rate, vol, crypto)
+	Margin      float64 // maintenance margin in USD
+	Multiplier  float64 // contract multiplier for notional calculation
+	SpreadRatio float64 // calendar spread margin as fraction of outright
+	Months      string  // which months trade (F=Jan, G=Feb, etc.)
 }
 
-// Spread margin is typically much lower than outright
-// These are approximate calendar spread margins
-var spreadMarginRatio = map[string]float64{
-	// FX spreads are about 15-20% of outright
-	"6J": 0.18, "6E": 0.18, "6S": 0.18, "6A": 0.18, "6B": 0.18,
-	"6C": 0.18, "6N": 0.18, "6M": 0.18,
-	// Energy spreads are about 15% of outright
-	"CL": 0.15, "NG": 0.20, "HO": 0.15, "RB": 0.15, "BZ": 0.15,
-	// Metals about 10-15%
-	"GC": 0.10, "SI": 0.10, "HG": 0.15,
-	// Grains about 20-25%
-	"ZC": 0.25, "ZS": 0.20, "ZW": 0.25, "ZM": 0.20, "ZL": 0.20,
-	// Index about 10%
-	"ES": 0.10, "NQ": 0.10, "YM": 0.10, "RTY": 0.10,
+// contractSpecs holds all loaded contract specifications
+var contractSpecs = make(map[string]ContractSpec)
+
+// loadContractSpecs loads contract specifications from etc/cme/outrights.csv
+func loadContractSpecs() error {
+	// Find the project root by looking for etc/cme/outrights.csv
+	_, thisFile, _, _ := runtime.Caller(0)
+	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	csvPath := filepath.Join(projectRoot, "etc", "cme", "outrights.csv")
+
+	file, err := os.Open(csvPath)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", csvPath, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Skip header
+		if strings.HasPrefix(line, "asset,") {
+			continue
+		}
+
+		fields := strings.Split(line, ",")
+		if len(fields) < 6 {
+			continue
+		}
+
+		margin, err := strconv.ParseFloat(fields[2], 64)
+		if err != nil {
+			log.Printf("warning: line %d: invalid margin %q", lineNum, fields[2])
+			continue
+		}
+
+		multiplier, err := strconv.ParseFloat(fields[3], 64)
+		if err != nil {
+			log.Printf("warning: line %d: invalid multiplier %q", lineNum, fields[3])
+			continue
+		}
+
+		spreadRatio, err := strconv.ParseFloat(fields[4], 64)
+		if err != nil {
+			spreadRatio = 0.20 // default
+		}
+
+		contractSpecs[fields[0]] = ContractSpec{
+			Asset:       fields[0],
+			Type:        fields[1],
+			Margin:      margin,
+			Multiplier:  multiplier,
+			SpreadRatio: spreadRatio,
+			Months:      fields[5],
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read %s: %w", csvPath, err)
+	}
+
+	if len(contractSpecs) == 0 {
+		return fmt.Errorf("no contracts loaded from %s", csvPath)
+	}
+
+	return nil
 }
 
-// Contract multipliers
-var contractMultipliers = map[string]float64{
-	// FX
-	"6J": 12500000, "6E": 125000, "6S": 125000, "6A": 100000, "6B": 62500,
-	"6C": 100000, "6N": 100000, "6M": 500000,
-	"E7": 62500, "J7": 6250000,
-	"M6E": 12500, "M6A": 10000, "M6B": 6250, "MCD": 10000, "MSF": 12500, "MJY": 1250000,
-	"6L": 100000, "6R": 2500000, "6Z": 500000, "PLS": 500000, "CZK": 4000000,
-	"HUF": 30000000, "ILS": 1000000, "KRW": 125000000, "CNH": 100000,
-	// Equity Index
-	"ES": 50, "NQ": 20, "YM": 5, "RTY": 50, "EMD": 100, "NKD": 5, "NIY": 500,
-	"MES": 5, "MNQ": 2, "MYM": 0.5, "M2K": 5,
-	"XAF": 100, "XAK": 100, "XAE": 100, "XAU": 100, "XAV": 100,
-	"XAB": 100, "XAY": 100, "XAI": 100, "XAP": 100,
-	// Interest Rates
-	"ZT": 2000, "Z3N": 1000, "ZF": 1000, "ZN": 1000, "TN": 1000, "ZB": 1000, "UB": 1000,
-	"SR3": 2500, "SR1": 4167, "FF": 4167, "GE": 2500,
-	// Energy
-	"CL": 1000, "QM": 500, "MCL": 100,
-	"BZ": 1000,
-	"NG": 10000, "QG": 2500,
-	"HO": 42000, "RB": 42000,
-	// Metals
-	"GC": 100, "SI": 5000, "HG": 25000, "PL": 50, "PA": 100,
-	"MGC": 10, "SIL": 1000, "QC": 12500, "ALI": 25,
-	// Agriculture (bushels, quoted in cents so ÷100)
-	"ZC": 50, "ZS": 50, "ZW": 50, "KE": 50, "ZO": 50,
-	"ZM": 1, "ZL": 0.6,
-	"XC": 10, "XW": 10, "XK": 10,
-	// Livestock
-	"LE": 400, "GF": 500, "HE": 400,
-	// Dairy
-	"DC": 2000, "DY": 440, "CB": 200, "CSC": 200,
-	// Other
-	"LBS": 27.5, "VX": 1000,
-	// Crypto
-	"BTC": 5, "MBT": 0.1, "ETH": 50, "MET": 0.1,
+// getSpec returns the contract specification for an asset
+func getSpec(asset string) ContractSpec {
+	return contractSpecs[asset]
 }
 
 func main() {
@@ -336,6 +335,11 @@ func main() {
 	if *flagTutorial {
 		fmt.Print(tutorial)
 		return
+	}
+
+	// Load contract specifications from CSV
+	if err := loadContractSpecs(); err != nil {
+		loggy.Fatalf("load contract specs: %v", err)
 	}
 
 	if *flagSync {
@@ -427,9 +431,12 @@ func generateOutrightTrades(contracts []FuturesContract) []Trade {
 			curveState = "backwrd"
 		}
 
-		assetType := classifyAsset(asset)
-		margin := marginRequirements[asset]
-		multiplier := contractMultipliers[asset]
+		spec := getSpec(asset)
+		if spec.Asset == "" {
+			continue // Skip assets not in our specs
+		}
+		margin := spec.Margin
+		multiplier := spec.Multiplier
 		notional := front.SettlementPrice * multiplier
 		daysToExp := int(front.Expiration.Sub(now).Hours() / 24)
 
@@ -451,7 +458,7 @@ func generateOutrightTrades(contracts []FuturesContract) []Trade {
 			Symbol:         front.Symbol,
 			Asset:          asset,
 			TradeType:      "outright",
-			AssetType:      assetType,
+			AssetType:      spec.Type,
 			Direction:      "SHORT",
 			Price:          front.SettlementPrice,
 			Margin:         margin,
@@ -468,7 +475,7 @@ func generateOutrightTrades(contracts []FuturesContract) []Trade {
 			Symbol:         front.Symbol,
 			Asset:          asset,
 			TradeType:      "outright",
-			AssetType:      assetType,
+			AssetType:      spec.Type,
 			Direction:      "LONG",
 			Price:          front.SettlementPrice,
 			Margin:         margin,
@@ -506,9 +513,12 @@ func generateSpreadTrades(contracts []FuturesContract) []Trade {
 			return a.Expiration.Compare(b.Expiration)
 		})
 
-		assetType := classifyAsset(asset)
-		outrightMargin := marginRequirements[asset]
-		spreadRatio := spreadMarginRatio[asset]
+		spec := getSpec(asset)
+		if spec.Asset == "" {
+			continue // Skip assets not in our specs
+		}
+		outrightMargin := spec.Margin
+		spreadRatio := spec.SpreadRatio
 		if spreadRatio == 0 {
 			spreadRatio = 0.20 // default 20%
 		}
@@ -535,7 +545,7 @@ func generateSpreadTrades(contracts []FuturesContract) []Trade {
 			}
 
 			spreadMargin := outrightMargin * spreadRatio
-			multiplier := contractMultipliers[asset]
+			multiplier := spec.Multiplier
 			// For spreads, the "notional" exposure is the spread value * multiplier
 			spreadNotional := math.Abs(spreadValue) * multiplier
 			daysToExp := int(front.Expiration.Sub(now).Hours() / 24)
@@ -559,7 +569,7 @@ func generateSpreadTrades(contracts []FuturesContract) []Trade {
 				Symbol:         fmt.Sprintf("%s-%s", front.Symbol, back.Symbol),
 				Asset:          asset,
 				TradeType:      "spread",
-				AssetType:      assetType,
+				AssetType:      spec.Type,
 				Direction:      "BUY",
 				Price:          spreadValue,
 				Margin:         spreadMargin,
@@ -662,69 +672,6 @@ func formatPrice(price float64) string {
 	return fmt.Sprintf("%.6f", price)
 }
 
-func classifyAsset(asset string) string {
-	if strings.HasPrefix(asset, "6") || asset == "E7" || asset == "J7" ||
-		strings.HasPrefix(asset, "M6") || asset == "MCD" || asset == "MSF" || asset == "MJY" ||
-		asset == "CNH" || asset == "PLS" || asset == "CZK" || asset == "HUF" || asset == "ILS" || asset == "KRW" {
-		return "currency"
-	}
-
-	indexAssets := map[string]bool{
-		"ES": true, "NQ": true, "YM": true, "RTY": true, "EMD": true, "NKD": true, "NIY": true,
-		"MES": true, "MNQ": true, "MYM": true, "M2K": true,
-		"XAF": true, "XAK": true, "XAE": true, "XAU": true, "XAV": true,
-		"XAB": true, "XAY": true, "XAI": true, "XAP": true,
-	}
-	if indexAssets[asset] {
-		return "index"
-	}
-
-	rateAssets := map[string]bool{
-		"ZT": true, "Z3N": true, "ZF": true, "ZN": true, "TN": true, "ZB": true, "UB": true,
-		"GE": true, "SR3": true, "SR1": true, "FF": true,
-	}
-	if rateAssets[asset] {
-		return "rate"
-	}
-
-	energyAssets := map[string]bool{
-		"CL": true, "QM": true, "MCL": true, "BZ": true,
-		"NG": true, "QG": true, "HO": true, "RB": true,
-	}
-	if energyAssets[asset] {
-		return "energy"
-	}
-
-	metalAssets := map[string]bool{
-		"GC": true, "SI": true, "HG": true, "PL": true, "PA": true,
-		"MGC": true, "SIL": true, "QC": true, "ALI": true,
-	}
-	if metalAssets[asset] {
-		return "metal"
-	}
-
-	agAssets := map[string]bool{
-		"ZC": true, "ZS": true, "ZW": true, "ZM": true, "ZL": true, "KE": true, "ZO": true,
-		"XC": true, "XW": true, "XK": true,
-		"LE": true, "HE": true, "GF": true,
-		"DC": true, "DY": true, "CB": true, "CSC": true,
-		"LBS": true,
-	}
-	if agAssets[asset] {
-		return "ag"
-	}
-
-	if asset == "VX" {
-		return "vol"
-	}
-
-	if asset == "BTC" || asset == "MBT" || asset == "ETH" || asset == "MET" {
-		return "crypto"
-	}
-
-	return "other"
-}
-
 // ============================================================================
 // Data fetching (unchanged from original)
 // ============================================================================
@@ -816,61 +763,14 @@ func syncData() error {
 }
 
 func generateSymbols() []string {
-	assets := []struct {
-		name   string
-		months string
-	}{
-		// Equity Index
-		{"ES", "HMUZ"}, {"NQ", "HMUZ"}, {"YM", "HMUZ"}, {"RTY", "HMUZ"},
-		{"EMD", "HMUZ"}, {"NKD", "HMUZ"}, {"NIY", "HMUZ"},
-		{"MES", "HMUZ"}, {"MNQ", "HMUZ"}, {"MYM", "HMUZ"}, {"M2K", "HMUZ"},
-		{"XAF", "HMUZ"}, {"XAK", "HMUZ"}, {"XAE", "HMUZ"}, {"XAU", "HMUZ"},
-		{"XAV", "HMUZ"}, {"XAB", "HMUZ"}, {"XAY", "HMUZ"}, {"XAI", "HMUZ"}, {"XAP", "HMUZ"},
-		// FX - G10
-		{"6E", "FGHJKMNQUVXZ"}, {"6J", "FGHJKMNQUVXZ"}, {"6B", "FGHJKMNQUVXZ"},
-		{"6C", "FGHJKMNQUVXZ"}, {"6A", "FGHJKMNQUVXZ"}, {"6S", "FGHJKMNQUVXZ"},
-		{"6N", "HMUZ"}, {"6M", "FGHJKMNQUVXZ"},
-		{"E7", "HMUZ"}, {"J7", "HMUZ"},
-		{"M6E", "HMUZ"}, {"M6A", "HMUZ"}, {"M6B", "HMUZ"}, {"MCD", "HMUZ"},
-		{"MSF", "HMUZ"}, {"MJY", "HMUZ"},
-		// FX - EM
-		{"6L", "FGHJKMNQUVXZ"}, {"6R", "HMUZ"}, {"6Z", "HMUZ"},
-		{"PLS", "HMUZ"}, {"CZK", "HMUZ"}, {"HUF", "HMUZ"},
-		{"ILS", "HMUZ"}, {"KRW", "HMUZ"}, {"CNH", "FGHJKMNQUVXZ"},
-		// Interest Rates
-		{"ZT", "HMUZ"}, {"Z3N", "HMUZ"}, {"ZF", "HMUZ"}, {"ZN", "HMUZ"},
-		{"TN", "HMUZ"}, {"ZB", "HMUZ"}, {"UB", "HMUZ"},
-		{"SR3", "FGHJKMNQUVXZ"}, {"SR1", "FGHJKMNQUVXZ"}, {"FF", "FGHJKMNQUVXZ"}, {"GE", "HMUZ"},
-		// Energy
-		{"CL", "FGHJKMNQUVXZ"}, {"QM", "FGHJKMNQUVXZ"}, {"MCL", "FGHJKMNQUVXZ"},
-		{"BZ", "FGHJKMNQUVXZ"}, {"NG", "FGHJKMNQUVXZ"}, {"QG", "FGHJKMNQUVXZ"},
-		{"HO", "FGHJKMNQUVXZ"}, {"RB", "FGHJKMNQUVXZ"},
-		// Metals
-		{"GC", "FGHJKMNQUVXZ"}, {"SI", "FHKNUZ"}, {"PL", "FJNV"}, {"PA", "HMUZ"},
-		{"MGC", "FGHJKMNQUVXZ"}, {"SIL", "FGHJKMNQUVXZ"},
-		{"HG", "FHKNUZ"}, {"ALI", "FGHJKMNQUVXZ"}, {"QC", "FHKNUZ"},
-		// Agriculture
-		{"ZC", "FHKNUZ"}, {"ZS", "FHKNQUX"}, {"ZW", "FHKNUZ"}, {"KE", "FHKNUZ"}, {"ZO", "FHKNUZ"},
-		{"ZM", "FHKNQUVZ"}, {"ZL", "FHKNQUVZ"},
-		{"XC", "FHKNUZ"}, {"XW", "FHKNUZ"}, {"XK", "FHKNQUX"},
-		// Livestock
-		{"LE", "GJMQVZ"}, {"GF", "FHJKQUVX"}, {"HE", "GJKMNQVZ"},
-		// Dairy
-		{"DC", "FGHJKMNQUVXZ"}, {"DY", "FGHJKMNQUVXZ"}, {"CB", "FGHJKMNQUVXZ"}, {"CSC", "FGHJKMNQUVXZ"},
-		// Other
-		{"LBS", "FHKNUX"}, {"VX", "FGHJKMNQUVXZ"},
-		// Crypto
-		{"BTC", "FGHJKMNQUVXZ"}, {"MBT", "FGHJKMNQUVXZ"}, {"ETH", "FGHJKMNQUVXZ"}, {"MET", "FGHJKMNQUVXZ"},
-	}
-
 	currentYear := time.Now().Year()
 	years := []int{currentYear % 10, (currentYear + 1) % 10, (currentYear + 2) % 10}
 
 	var symbols []string
-	for _, asset := range assets {
-		for _, month := range asset.months {
+	for _, spec := range contractSpecs {
+		for _, month := range spec.Months {
 			for _, year := range years {
-				sym := fmt.Sprintf("%s%c%d", asset.name, month, year)
+				sym := fmt.Sprintf("%s%c%d", spec.Asset, month, year)
 				symbols = append(symbols, sym)
 			}
 		}
