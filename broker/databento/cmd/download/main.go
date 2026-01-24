@@ -11,6 +11,7 @@ package main
 import (
 	"dropbear/broker/databento"
 	"dropbear/loggy"
+	"dropbear/netty"
 	"encoding/binary"
 	"flag"
 	"fmt"
@@ -135,8 +136,7 @@ func downloadDay(apiKey, symbol string, date time.Time, outDir string) error {
 	req.SetBasicAuth(apiKey, "")
 
 	// Execute request
-	client := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := client.Do(req)
+	resp, err := netty.BulkHttpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request: %w", err)
 	}

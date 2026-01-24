@@ -17,13 +17,12 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"cmp"
 	"dropbear/broker/databento"
 	"dropbear/db"
 	"dropbear/loggy"
 	"dropbear/netty"
-	"encoding/binary"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -37,13 +36,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-	"unsafe"
 )
-
-func init() {
-	netty.SetOffline()
-}
 
 var (
 	flagSync     = flag.Bool("sync", false, "fetch latest data from Databento")
@@ -706,11 +701,75 @@ func syncData() error {
 	_, _ = conn.Exec(`CREATE INDEX IF NOT EXISTS idx_futures_asset ON futures_contracts(asset)`)
 
 	symbols := generateSymbols()
-	log.Printf("fetching %d CME futures contracts from Databento...", len(symbols))
 
-	yesterday := time.Now().AddDate(0, 0, -3).Format("2006-01-02")
+	// Filter symbols if -asset specified
+	if *flagAsset != "" {
+		var filtered []string
+		for _, sym := range symbols {
+			asset, _ := parseSymbol(sym)
+			if asset == *flagAsset {
+				filtered = append(filtered, sym)
+			}
+		}
+		symbols = filtered
+	}
+
+	log.Printf("fetching %d symbols with 50 workers...", len(symbols))
+
+	yesterday := time.Now().AddDate(0, 0, -7).Format("2006-01-02")
 	today := time.Now().Format("2006-01-02")
 
+	// Fetch all symbols in parallel with 50 workers
+	type symbolResult struct {
+		symbol string
+		data   symbolData
+		err    error
+	}
+
+	resultsChan := make(chan symbolResult, len(symbols))
+	symbolChan := make(chan string, len(symbols))
+
+	// Start 50 workers
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for sym := range symbolChan {
+				data, err := fetchSymbolPrice(apiKey, sym, yesterday, today)
+				resultsChan <- symbolResult{symbol: sym, data: data, err: err}
+			}
+		}()
+	}
+
+	// Send symbols to workers
+	for _, sym := range symbols {
+		symbolChan <- sym
+	}
+	close(symbolChan)
+
+	// Wait for workers and close results channel
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	// Collect results
+	allResults := make(map[string]symbolData)
+	fetchErrors := 0
+	for sr := range resultsChan {
+		if sr.err != nil {
+			fetchErrors++
+			continue
+		}
+		if sr.data.Price > 0 {
+			allResults[sr.symbol] = sr.data
+		}
+	}
+
+	log.Printf("fetched %d contracts (%d errors)", len(allResults), fetchErrors)
+
+	// Store in database
 	tx, err := conn.Begin()
 	if err != nil {
 		return err
@@ -729,30 +788,16 @@ func syncData() error {
 
 	now := time.Now().Unix()
 	stored := 0
-	errors := 0
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	rateLimiter := netty.NewTokenBucketPerMinute(100)
-
-	for _, sym := range symbols {
-		rateLimiter.Get()
-
-		price, volume, err := fetchSymbolPrice(client, apiKey, sym, yesterday, today)
-		if err != nil {
-			errors++
+	for sym, data := range allResults {
+		if data.Price <= 0 {
 			continue
 		}
-
-		if price <= 0 {
-			continue
-		}
-
 		asset, expiry := parseSymbol(sym)
 		if asset == "" {
 			continue
 		}
-
-		_, err = stmt.Exec(sym, asset, expiry.UnixNano(), price, 0, volume, now)
+		_, err = stmt.Exec(sym, asset, expiry.UnixNano(), data.Price, 0, data.Volume, now)
 		if err != nil {
 			log.Printf("error storing %s: %v", sym, err)
 			continue
@@ -764,100 +809,116 @@ func syncData() error {
 		return err
 	}
 
-	log.Printf("stored %d contracts (%d errors)", stored, errors)
+	log.Printf("stored %d contracts", stored)
 	return nil
 }
 
-func generateSymbols() []string {
-	currentYear := time.Now().Year()
-	years := []int{currentYear % 10, (currentYear + 1) % 10, (currentYear + 2) % 10}
-
-	var symbols []string
-	for _, spec := range contractSpecs {
-		for _, month := range spec.Months {
-			for _, year := range years {
-				sym := fmt.Sprintf("%s%c%d", spec.Asset, month, year)
-				symbols = append(symbols, sym)
-			}
-		}
-	}
-
-	return symbols
+type symbolData struct {
+	Price  float64
+	Volume uint64
 }
 
-func fetchSymbolPrice(client *http.Client, apiKey, symbol, startDate, endDate string) (float64, uint64, error) {
+func fetchSymbolPrice(apiKey, symbol, startDate, endDate string) (symbolData, error) {
 	url := fmt.Sprintf(
-		"https://hist.databento.com/v0/timeseries.get_range?dataset=GLBX.MDP3&symbols=%s&schema=ohlcv-1d&start=%sT00:00:00&end=%sT00:00:00&encoding=dbn",
+		"https://hist.databento.com/v0/timeseries.get_range?dataset=GLBX.MDP3&symbols=%s&schema=ohlcv-1d&start=%sT00:00:00&end=%sT00:00:00&encoding=json",
 		symbol, startDate, endDate,
 	)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return 0, 0, err
+		log.Printf("GET %s -> error: %v", url, err)
+		return symbolData{}, err
 	}
 	req.SetBasicAuth(apiKey, "")
 
-	resp, err := client.Do(req)
+	resp, err := netty.BulkHttpClient.Do(req)
 	if err != nil {
-		return 0, 0, err
+		log.Printf("GET %s -> error: %v", url, err)
+		return symbolData{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return 0, 0, nil
+		log.Printf("GET %s -> 404", url)
+		return symbolData{}, nil
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
-		return 0, 0, fmt.Errorf("HTTP %d", resp.StatusCode)
+		log.Printf("GET %s -> HTTP %d", url, resp.StatusCode)
+		return symbolData{}, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := parseOHLCVJSON(resp.Body)
 	if err != nil {
-		return 0, 0, err
+		log.Printf("GET %s -> parse error: %v", url, err)
+		return data, err
 	}
-
-	return parseOHLCVSingle(data)
+	if data.Price > 0 {
+		log.Printf("GET %s -> %.4f", url, data.Price)
+	} else {
+		log.Printf("GET %s -> no data", url)
+	}
+	return data, nil
 }
 
-func parseOHLCVSingle(data []byte) (float64, uint64, error) {
-	if len(data) < 8 {
-		return 0, 0, nil
-	}
-	if string(data[:3]) != "DBN" {
-		return 0, 0, fmt.Errorf("invalid DBN magic")
-	}
+type ohlcvRecord struct {
+	Close  string `json:"close"`
+	Volume string `json:"volume"`
+}
 
-	metaLen := binary.LittleEndian.Uint32(data[4:8])
-	headerSize := 8 + int(metaLen)
+func parseOHLCVJSON(r io.Reader) (symbolData, error) {
+	decoder := json.NewDecoder(r)
+	var last symbolData
 
-	if headerSize >= len(data) {
-		return 0, 0, nil
-	}
-
-	records := data[headerSize:]
-	ohlcvSize := int(unsafe.Sizeof(databento.OhlcvMsg{}))
-
-	var lastClose int64
-	var lastVolume uint64
-
-	for offset := 0; offset+ohlcvSize <= len(records); offset += ohlcvSize {
-		var ohlcv databento.OhlcvMsg
-		reader := bytes.NewReader(records[offset : offset+ohlcvSize])
-		if err := binary.Read(reader, binary.LittleEndian, &ohlcv); err != nil {
-			continue
+	for {
+		var record ohlcvRecord
+		if err := decoder.Decode(&record); err == io.EOF {
+			break
+		} else if err != nil {
+			return last, fmt.Errorf("decode JSON: %w", err)
 		}
 
-		if ohlcv.Header.RType == databento.RTypeOhlcv1D {
-			lastClose = ohlcv.Close
-			lastVolume = ohlcv.Volume
+		if record.Close != "" {
+			// Databento JSON uses fixed-point prices as strings scaled by 1e9
+			var close float64
+			var volume uint64
+			fmt.Sscanf(record.Close, "%f", &close)
+			fmt.Sscanf(record.Volume, "%d", &volume)
+			last = symbolData{Price: close / 1e9, Volume: volume}
 		}
 	}
 
-	if lastClose == 0 {
-		return 0, 0, nil
+	return last, nil
+}
+
+func generateSymbols() []string {
+	now := time.Now()
+	currentYear := now.Year()
+	currentMonth := int(now.Month())
+
+	var symbols []string
+	for _, spec := range contractSpecs {
+		// Only generate next 6 valid contract months per asset
+		count := 0
+		for yearOffset := 0; yearOffset < 2 && count < 6; yearOffset++ {
+			year := currentYear + yearOffset
+			for _, monthCode := range spec.Months {
+				month := monthCodes[byte(monthCode)]
+				// Skip if this month already passed (contracts expire mid-month)
+				if year == currentYear && month <= currentMonth {
+					continue
+				}
+				sym := fmt.Sprintf("%s%c%d", spec.Asset, monthCode, year%10)
+				symbols = append(symbols, sym)
+				count++
+				if count >= 6 {
+					break
+				}
+			}
+		}
 	}
 
-	return float64(lastClose) / float64(databento.PriceScale), lastVolume, nil
+	return symbols
 }
 
 var monthCodes = map[byte]int{
@@ -922,6 +983,7 @@ func loadContracts() ([]FuturesContract, error) {
 		var expNanos int64
 		err := rows.Scan(&c.Symbol, &c.Asset, &expNanos, &c.SettlementPrice, &c.OpenInterest, &c.Volume)
 		if err != nil {
+			log.Printf("error scanning row: %v", err)
 			continue
 		}
 		c.Expiration = time.Unix(0, expNanos)
