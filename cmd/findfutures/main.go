@@ -48,8 +48,6 @@ var (
 	flagSync   = flag.Bool("sync", false, "fetch latest data from Databento")
 	flagAsset  = flag.String("asset", "", "filter to specific asset (e.g., 6J, ES, NQ)")
 	flagType   = flag.String("type", "", "filter by type: currency, index, commodity, rate")
-	flagShort  = flag.Bool("short", true, "show short opportunities (contango)")
-	flagLong   = flag.Bool("long", false, "show long opportunities (backwardation)")
 	flagMinOI  = flag.Int("min-oi", 0, "minimum open interest (default 0, set higher to filter)")
 	flagUSRate = flag.Float64("us-rate", 4.5, "current US risk-free rate (for implied foreign rate calc)")
 	flagSimple = flag.Bool("simple", false, "show simple output: one contract per asset to trade")
@@ -90,14 +88,14 @@ type CarryOpportunity struct {
 // Source: https://www.cmegroup.com/clearing/margins/outright-vol-scans.html
 var marginRequirements = map[string]float64{
 	// FX futures
-	"6J": 2800,  // Japanese Yen
-	"6E": 2700,  // Euro
-	"6S": 4500,  // Swiss Franc
-	"6A": 1900,  // Australian Dollar
-	"6B": 2000,  // British Pound
-	"6C": 1000,  // Canadian Dollar
-	"6N": 1300,  // New Zealand Dollar
-	"6M": 2500,  // Mexican Peso (approx)
+	"6J": 2800, // Japanese Yen
+	"6E": 2700, // Euro
+	"6S": 4500, // Swiss Franc
+	"6A": 1900, // Australian Dollar
+	"6B": 2000, // British Pound
+	"6C": 1000, // Canadian Dollar
+	"6N": 1300, // New Zealand Dollar
+	"6M": 2500, // Mexican Peso (approx)
 
 	// Equity index futures
 	"ES":  22731, // E-mini S&P 500
@@ -161,7 +159,7 @@ var contractMultipliers = map[string]float64{
 	"ZF": 1000, // $100K face
 
 	// Energy
-	"CL": 1000, // 1000 barrels
+	"CL": 1000,  // 1000 barrels
 	"NG": 10000, // 10,000 MMBtu
 }
 
@@ -199,12 +197,7 @@ func main() {
 		if opp.FrontOI < int64(*flagMinOI) || opp.BackOI < int64(*flagMinOI) {
 			continue
 		}
-		if *flagShort && opp.Direction == "short" {
-			filtered = append(filtered, opp)
-		}
-		if *flagLong && opp.Direction == "long" {
-			filtered = append(filtered, opp)
-		}
+		filtered = append(filtered, opp)
 	}
 
 	// Sort by absolute annualized carry descending
@@ -242,7 +235,7 @@ func main() {
 		})
 
 		fmt.Printf("%-10s %-8s %12s %10s %8s %10s %-5s\n",
-			"CONTRACT", "TYPE", "PRICE", "MARGIN", "CARRY%", "RET/MARGIN", "ACTION")
+			"CONTRACT", "TYPE", "PRICE", "MARGIN", "YIELD%", "RET/MARGIN", "ACTION")
 		fmt.Println(strings.Repeat("-", 75))
 
 		for _, opp := range simple {
@@ -257,20 +250,23 @@ func main() {
 			} else {
 				retOnMargin = "       -"
 			}
+			// Show absolute carry since ACTION tells you the direction
+			absCarry := opp.AnnualizedCarry
+			if absCarry < 0 {
+				absCarry = -absCarry
+			}
 			fmt.Printf("%-10s %-8s %12.6f %10s %7.2f%% %10s %-5s\n",
 				opp.FrontSymbol,
 				opp.AssetType[:min(8, len(opp.AssetType))],
 				opp.FrontPrice,
 				marginStr,
-				opp.AnnualizedCarry*100,
+				absCarry*100,
 				retOnMargin,
 				action)
 		}
 
 		if len(simple) == 0 {
 			fmt.Println("No opportunities found matching criteria.")
-		} else {
-			fmt.Printf("\n%d contracts to trade\n", len(simple))
 		}
 	} else {
 		// Detailed mode: show all front→back spreads
@@ -687,12 +683,13 @@ func analyzeCarry(contracts []FuturesContract) []CarryOpportunity {
 			}
 
 			if margin > 0 && notional > 0 {
-				// Return on margin = carry × (notional / margin)
-				// This is the leveraged return
-				returnOnMargin = carry * (notional / margin)
-				if returnOnMargin < 0 {
-					returnOnMargin = -returnOnMargin
+				// Return on margin = |carry| × (notional / margin)
+				// This is the leveraged return from taking the correct direction
+				absCarry := carry
+				if absCarry < 0 {
+					absCarry = -absCarry
 				}
+				returnOnMargin = absCarry * (notional / margin)
 			}
 
 			opp := CarryOpportunity{
