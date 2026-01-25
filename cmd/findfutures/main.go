@@ -19,6 +19,7 @@ import (
 	"bufio"
 	"cmp"
 	"dropbear/broker/databento"
+	"dropbear/broker/tradovate"
 	"dropbear/db"
 	"dropbear/loggy"
 	"dropbear/netty"
@@ -41,12 +42,14 @@ import (
 )
 
 var (
-	flagSync     = flag.Bool("sync", false, "fetch latest data from Databento")
-	flagAsset    = flag.String("asset", "", "filter to specific asset (e.g., 6J, ES, CL)")
-	flagType     = flag.String("type", "", "filter by type: currency, index, energy, metal, ag, rate")
-	flagSpreads  = flag.Bool("spreads", false, "show calendar spreads instead of outrights")
-	flagUSRate   = flag.Float64("us-rate", 4.5, "current US risk-free rate for FX carry calc")
-	flagTutorial = flag.Bool("tutorial", false, "show detailed tutorial with example scenarios")
+	flagSync             = flag.Bool("sync", false, "fetch latest data from Databento")
+	flagAsset            = flag.String("asset", "", "filter to specific asset (e.g., 6J, ES, CL)")
+	flagType             = flag.String("type", "", "filter by type: currency, index, energy, metal, ag, rate")
+	flagSpreads          = flag.Bool("spreads", false, "show calendar spreads instead of outrights")
+	flagUSRate           = flag.Float64("us-rate", 4.5, "current US risk-free rate for FX carry calc")
+	flagTutorial         = flag.Bool("tutorial", false, "show detailed tutorial with example scenarios")
+	flagTradovateDay     = flag.Bool("tradovate-day", false, "use Tradovate day margin rates (filters to Tradovate-supported symbols)")
+	flagTradovateInitial = flag.Bool("tradovate-initial", false, "use Tradovate initial/overnight margin rates (filters to Tradovate-supported symbols)")
 )
 
 const tutorial = `
@@ -323,6 +326,25 @@ func getSpec(asset string) ContractSpec {
 	return contractSpecs[asset]
 }
 
+// getMargin returns the margin for an asset, using Tradovate rates if flags are set
+func getMargin(asset string) (float64, bool) {
+	if *flagTradovateDay || *flagTradovateInitial {
+		rate, ok := tradovate.MarginRates[asset]
+		if !ok {
+			return 0, false // not supported by Tradovate
+		}
+		if *flagTradovateDay {
+			return rate.Day.Float64(), true
+		}
+		return rate.Initial.Float64(), true
+	}
+	spec := getSpec(asset)
+	if spec.Asset == "" {
+		return 0, false
+	}
+	return spec.Margin, true
+}
+
 func main() {
 	flag.Parse()
 	loggy.Init()
@@ -430,7 +452,10 @@ func generateOutrightTrades(contracts []FuturesContract) []Trade {
 		if spec.Asset == "" {
 			continue // Skip assets not in our specs
 		}
-		margin := spec.Margin
+		margin, ok := getMargin(asset)
+		if !ok {
+			continue // Skip assets not supported (e.g., not on Tradovate when flag set)
+		}
 		multiplier := spec.Multiplier
 		notional := front.SettlementPrice * multiplier
 		daysToExp := int(front.Expiration.Sub(now).Hours() / 24)
@@ -512,7 +537,10 @@ func generateSpreadTrades(contracts []FuturesContract) []Trade {
 		if spec.Asset == "" {
 			continue // Skip assets not in our specs
 		}
-		outrightMargin := spec.Margin
+		outrightMargin, ok := getMargin(asset)
+		if !ok {
+			continue // Skip assets not supported (e.g., not on Tradovate when flag set)
+		}
 		spreadRatio := spec.SpreadRatio
 		if spreadRatio == 0 {
 			spreadRatio = 0.20 // default 20%
