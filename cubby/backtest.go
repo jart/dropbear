@@ -123,6 +123,8 @@ func (m *backtest) Run() {
 				order.simulateFill(now, entry.bar)
 			}
 		}
+		// Check margin AFTER orders fill (so LOC orders reduce position first)
+		m.checkMarketClose(now)
 		for _, entry := range entries {
 			entry.equity.OnBar(entry.bar)
 		}
@@ -198,7 +200,17 @@ func (m *backtest) setTime(now clocky.Time) {
 	if !m.opened && !now.Before(openTime) && now.Before(closeTime) {
 		m.onMarketOpen()
 	}
-	if !m.closed && !now.Before(closeTime) {
+	// Note: onMarketClose is called separately in Run() AFTER order fills
+}
+
+func (m *backtest) checkMarketClose(now clocky.Time) {
+	if m.closed {
+		return
+	}
+	year, month, day := now.Date()
+	closeTime := getCloseTime(year, month, day)
+	if !now.Before(closeTime) {
+		m.closed = true
 		m.onMarketClose(now)
 	}
 }

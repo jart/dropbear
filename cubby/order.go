@@ -58,15 +58,19 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 
 	// check order time
 	year, month, day := now.Date()
-	hour, minute, _ := now.Clock()
 	openTime := getOpenTime(year, month, day)
 	closeTime := getCloseTime(year, month, day)
 	if now.Before(openTime) {
 		return
 	}
-	time := hour*100 + minute
 	if o.TimeInForce == alpaca.TimeInForceOPG {
-		if time != 630 {
+		// OPG orders only fill at market open
+		if now != openTime {
+			return
+		}
+	} else if o.TimeInForce == alpaca.TimeInForceCLS {
+		// CLS orders only fill at market close
+		if now != closeTime {
 			return
 		}
 	} else if !now.Before(closeTime) || now.Sub(o.OrderedAt) > *FlagPatience {
@@ -77,7 +81,7 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 	// check if bar crosses limit price
 	var mayPass bool
 	var barPrice decimal.Decimal
-	if o.TimeInForce == alpaca.TimeInForceOPG {
+	if o.TimeInForce == alpaca.TimeInForceOPG || o.TimeInForce == alpaca.TimeInForceCLS {
 		barPrice = bar.Open
 	} else {
 		barPrice = bar.VWAP
@@ -88,7 +92,7 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 		mayPass = barPrice.Cmp(o.LimitPrice) >= 0
 	}
 	if !mayPass {
-		if o.TimeInForce == alpaca.TimeInForceOPG {
+		if o.TimeInForce == alpaca.TimeInForceOPG || o.TimeInForce == alpaca.TimeInForceCLS {
 			o.setStatus(alpaca.OrderStatusCanceled)
 		}
 		return
@@ -96,7 +100,7 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 
 	// calculate how many shares we can take
 	var availableQuantity decimal.Decimal
-	if o.TimeInForce == alpaca.TimeInForceOPG {
+	if o.TimeInForce == alpaca.TimeInForceOPG || o.TimeInForce == alpaca.TimeInForceCLS {
 		availableQuantity = o.Quantity
 	} else {
 		availableQuantity = bar.Volume.Mul(*FlagVWAP).Truncate()
@@ -115,7 +119,7 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 	// calculate weighted average fill price if we already have partial fills
 	// OPG orders fill at the opening auction price (bar.Open), not VWAP
 	fillPrice := bar.VWAP
-	if o.TimeInForce == alpaca.TimeInForceOPG {
+	if o.TimeInForce == alpaca.TimeInForceOPG || o.TimeInForce == alpaca.TimeInForceCLS {
 		fillPrice = bar.Open
 	}
 	oldValue := o.FilledPrice.Mul(o.FilledQuantity)
@@ -161,7 +165,7 @@ func (o *Order) setStatus(newStatus alpaca.OrderStatus) {
 		delete(o.Equity.Orders, o.OrderID)
 		gMarginHold = gMarginHold.Sub(o.MarginHeld)
 		if Verbose || o.FilledQuantity.IsPositive() {
-			log.Printf("%s %s %s out of %s %s at %s notional %s fee %s id %s", o.Status, o.Side, o.FilledQuantity, o.Quantity, o.Equity.Symbol, o.FilledPrice, o.FilledPrice.Mul(o.FilledQuantity), o.TotalFees, o.OrderID)
+			log.Printf("%s %s %s %s out of %s %s at %s notional %s fee %s id %s", o.Status, o.TimeInForce, o.Side, o.FilledQuantity, o.Quantity, o.Equity.Symbol, o.FilledPrice, o.FilledPrice.Mul(o.FilledQuantity), o.TotalFees, o.OrderID)
 		}
 	}
 }

@@ -71,6 +71,7 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 
 // Order places a volume weighted limit order for the given quantity of shares.
 // If you place your order from 6:00:00 to 6:27:58 a.m. PT, it'll be a LOO order.
+// If you place your order from 12:45:00 to 12:49:58 p.m. PT, it'll be a LOC order.
 func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 
 	// validate order
@@ -127,10 +128,10 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 	year, month, day := now.Date()
 	openTime := getOpenTime(year, month, day)
 	closeTime := getCloseTime(year, month, day)
+	time := now.ClockInt()
 	if now.Before(openTime) || !now.Before(closeTime) {
 		// OPG orders submitted after 9:28am but before 7:00pm ET will be rejected
 		// https://docs.alpaca.markets/docs/orders-at-alpaca
-		time := now.ClockInt()
 		if time >= 6_27_59 {
 			return nil, ErrMissedLOODeadline
 		} else if time >= 6_00_00 {
@@ -138,6 +139,11 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 			timeInForce = alpaca.TimeInForceOPG
 		} else {
 			return nil, ErrMarketNotOpen
+		}
+	} else if now.After(openTime) && now.Before(closeTime) {
+		// Alpaca requires LOC orders be placed at least 10 minutes before close.
+		if time >= 12_45_00 {
+			timeInForce = alpaca.TimeInForceCLS
 		}
 	}
 

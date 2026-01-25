@@ -41,13 +41,14 @@ var (
 )
 
 const (
-	marginCheckTime = 10 * clocky.Minute
-	orderStaleness  = 5 * clocky.Minute
+	orderStaleness = 5 * clocky.Minute
 )
 
 var (
-	flagSlipClose = decimal.FlagBPS("slip-close", "0", "slippage on close orders")
-	flagUrgency   = decimal.FlagBPS("urgency", "0", "extra slippage per minute when closing late")
+	// End-of-day position management
+	flagNoBuyTime = clocky.DurationFlag("no-buy-time", "30m", "stop buying this long before close")
+	flagLOCTime   = clocky.DurationFlag("loc-time", "11m", "time before close to place limit-on-close orders")
+	flagLOCSlip   = decimal.FlagBPS("loc-slip", "300", "slippage for limit-on-close orders (bps)")
 )
 
 // Opportunistic intraday trading flags
@@ -205,9 +206,9 @@ func (h *Holding) onBar(bar *ds.Bar) {
 		return
 	}
 
-	// before close: aggressively reduce to overnight leverage
-	if closeTime.Sub(now) <= marginCheckTime {
-		h.reduceForOvernight(now, closeTime)
+	// before close: place limit-on-close orders to reduce to overnight leverage
+	if closeTime.Sub(now) <= *flagLOCTime {
+		h.reduceForOvernight(bar)
 		return
 	}
 
@@ -316,9 +317,14 @@ func (h *Holding) rebalanceToLeverage(targetLeverage decimal.Decimal) {
 	targetValue := targetExposure.Mul(h.targetWeight)
 	targetShares := targetValue.Div(h.equity.Price).Truncate()
 
-	// calculate current position value
+	// calculate current "core" position (excluding temporary intraday shares)
+	// dipShares are temporary momo/dip positions that will be closed by EOD
 	currentShares := h.equity.Quantity
-	diff := targetShares.Sub(currentShares)
+	coreShares := currentShares.Sub(h.dipShares)
+	if coreShares.IsNegative() {
+		coreShares = decimal.Zero
+	}
+	diff := targetShares.Sub(coreShares)
 
 	// only rebalance if difference is significant (>5% of target)
 	if targetShares.IsPositive() {
@@ -327,6 +333,22 @@ func (h *Holding) rebalanceToLeverage(targetLeverage decimal.Decimal) {
 			return // close enough
 		}
 	} else if diff.IsZero() {
+		return
+	}
+
+	// prevent going short - don't sell more than core position
+	// (momo/dip shares are managed separately by their own exit logic)
+	if diff.IsNegative() && diff.Abs().Cmp(coreShares) > 0 {
+		diff = coreShares.Neg()
+		if diff.IsZero() {
+			return
+		}
+	}
+
+	// no buying in the "no buy" window before close
+	now := clocky.Now()
+	closeTime := cubby.GetCloseTime(now)
+	if diff.IsPositive() && closeTime.Sub(now) <= *flagNoBuyTime {
 		return
 	}
 
@@ -353,13 +375,15 @@ func (h *Holding) rebalanceToLeverage(targetLeverage decimal.Decimal) {
 	}
 }
 
-// reduceForOvernight aggressively reduces position to overnight margin requirements.
-// Unlike rebalanceToLeverage, this function:
-// 1. Cancels and replaces stale orders if price has moved
-// 2. Uses urgency-based slippage that increases as we approach close
-// 3. Doesn't use any threshold - acts on any difference
-func (h *Holding) reduceForOvernight(now, closeTime clocky.Time) {
+// reduceForOvernight places limit-on-close orders to reduce to overnight margin.
+// Places a single aggressive order with loc-slip to ensure execution before close.
+func (h *Holding) reduceForOvernight(bar *ds.Bar) {
 	if !h.equity.Price.IsPositive() {
+		return
+	}
+
+	// already have a pending sell order for EOD - let it ride
+	if h.order != nil && h.order.Status.IsOpen() && h.order.Side == ds.SideSell {
 		return
 	}
 
@@ -376,42 +400,23 @@ func (h *Holding) reduceForOvernight(now, closeTime clocky.Time) {
 		return
 	}
 
-	// calculate urgency: 0 at marginCheckTime, 1 at closeTime
-	urgency := decimal.Zero
-	timeLeft := closeTime.Sub(now)
-	if timeLeft > 0 {
-		timeRemaining := decimal.FromInt64(timeLeft.Milliseconds())
-		totalWindow := decimal.FromInt64(marginCheckTime.Milliseconds())
-		urgency = timeRemaining.Div(totalWindow)
-	}
-	adaptiveSlip := flagSlipClose.Add(urgency.Mul(*flagUrgency))
-
-	// check if we should cancel and replace stale order
-	if h.order != nil && h.order.Status.IsOpen() {
-		if h.order.Side == ds.SideSell {
-			// cancel if price moved significantly
-			priceDiff := h.equity.Price.Sub(h.order.LimitPrice).Div(h.equity.Price).Abs()
-			if priceDiff.Cmp(decimal.Parse("0.005")) > 0 {
-				h.order.Cancel()
-				h.order = nil
-			} else {
-				return // order is still good
-			}
-		} else {
-			// we have a buy order but need to sell - let it be
+	// prevent going short - don't sell more than we own
+	if diff.Abs().Cmp(currentShares) > 0 {
+		diff = currentShares.Neg()
+		if diff.IsZero() {
 			return
 		}
 	}
 
-	// place sell order with urgency-based slippage
-	limitPrice := h.equity.Price.Mul(decimal.One.Sub(adaptiveSlip))
+	// place aggressive limit-on-close order (crosses spread by loc-slip %)
+	limitPrice := bar.Close.Mul(decimal.One.Sub(*flagLOCSlip))
 	limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
 
-	sellQty := diff.Abs()                          // diff is negative, so abs gives us shares to sell
-	order, err := h.equity.Order(diff, limitPrice) // diff is negative = sell
+	sellQty := diff.Abs()
+	order, err := h.equity.Order(diff, limitPrice)
 	if err != nil {
 		if cubby.Verbose {
-			log.Printf("EOD reduce %s: error selling %s shares: %v",
+			log.Printf("LOC %s: error selling %s shares: %v",
 				h.equity.Symbol, sellQty, err)
 		}
 		return
@@ -419,9 +424,8 @@ func (h *Holding) reduceForOvernight(now, closeTime clocky.Time) {
 	h.order = order
 
 	if cubby.Verbose {
-		log.Printf("EOD reduce %s: sell %s shares at $%s (urgency %.0f%%, slip %.2f%%)",
-			h.equity.Symbol, sellQty, limitPrice,
-			urgency.MulInt(100).Float64(), adaptiveSlip.MulInt(100).Float64())
+		log.Printf("LOC %s: sell %s shares at $%s (%.0f bps below close)",
+			h.equity.Symbol, sellQty, limitPrice, flagLOCSlip.MulInt(10000).Float64())
 	}
 }
 
@@ -461,11 +465,21 @@ func (h *Holding) handleDipTrading(bar *ds.Bar, now clocky.Time, openTime clocky
 			h.dipOrder.Cancel()
 			h.dipOrder = nil
 		}
-		// force close any open dip position at deadline
+		// force close any open dip position at deadline (but don't go short)
 		if h.dipShares.IsPositive() {
+			sellShares := h.dipShares
+			if sellShares.Cmp(h.equity.Quantity) > 0 {
+				sellShares = h.equity.Quantity
+			}
+			if !sellShares.IsPositive() {
+				h.dipShares = decimal.Zero
+				h.dipEntryPrice = decimal.Zero
+				h.dipPeakPrice = decimal.Zero
+				return
+			}
 			limitPrice := bar.Close.Mul(decimal.One.Sub(*flagExitGreed))
 			limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
-			order, err := h.equity.Order(h.dipShares.Neg(), limitPrice)
+			order, err := h.equity.Order(sellShares.Neg(), limitPrice)
 			if err == nil {
 				if cubby.Verbose {
 					pnl := bar.Close.Sub(h.dipEntryPrice).Div(h.dipEntryPrice).MulInt(10000)
@@ -606,11 +620,23 @@ func (h *Holding) manageDipExit(bar *ds.Bar) {
 		return // haven't hit stop yet
 	}
 
+	// don't sell more than we actually have (prevent going short)
+	sellShares := h.dipShares
+	if sellShares.Cmp(h.equity.Quantity) > 0 {
+		sellShares = h.equity.Quantity
+	}
+	if !sellShares.IsPositive() {
+		h.dipShares = decimal.Zero
+		h.dipEntryPrice = decimal.Zero
+		h.dipPeakPrice = decimal.Zero
+		return
+	}
+
 	// place exit order with greed
 	limitPrice := bar.Close.Mul(decimal.One.Sub(*flagExitGreed))
 	limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
 
-	order, err := h.equity.Order(h.dipShares.Neg(), limitPrice)
+	order, err := h.equity.Order(sellShares.Neg(), limitPrice)
 	if err != nil {
 		if cubby.Verbose {
 			log.Printf("dip exit %s: error selling %s shares: %v",
@@ -666,16 +692,23 @@ func (h *Holding) handleMomoTrading(bar *ds.Bar, now clocky.Time, openTime clock
 			h.dipOrder = nil
 		}
 		if h.dipShares.IsPositive() {
-			limitPrice := bar.Close.Mul(decimal.One.Sub(*flagExitGreed))
-			limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
-			order, err := h.equity.Order(h.dipShares.Neg(), limitPrice)
-			if err == nil {
-				if cubby.Verbose {
-					pnl := bar.Close.Sub(h.dipEntryPrice).Div(h.dipEntryPrice).MulInt(10000)
-					log.Printf("momo deadline %s: closing %s shares at $%s (pnl %.0f bps)",
-						h.equity.Symbol, h.dipShares, limitPrice, pnl.Float64())
+			// don't sell more than we have (prevent going short)
+			sellShares := h.dipShares
+			if sellShares.Cmp(h.equity.Quantity) > 0 {
+				sellShares = h.equity.Quantity
+			}
+			if sellShares.IsPositive() {
+				limitPrice := bar.Close.Mul(decimal.One.Sub(*flagExitGreed))
+				limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
+				order, err := h.equity.Order(sellShares.Neg(), limitPrice)
+				if err == nil {
+					if cubby.Verbose {
+						pnl := bar.Close.Sub(h.dipEntryPrice).Div(h.dipEntryPrice).MulInt(10000)
+						log.Printf("momo deadline %s: closing %s shares at $%s (pnl %.0f bps)",
+							h.equity.Symbol, sellShares, limitPrice, pnl.Float64())
+					}
+					h.order = order
 				}
-				h.order = order
 			}
 			h.dipShares = decimal.Zero
 			h.dipEntryPrice = decimal.Zero
