@@ -151,6 +151,11 @@ func GetMarginUsed() decimal.Decimal {
 	return total
 }
 
+// GetAvailableBuyingPower returns the remaining day trading buying power.
+func GetAvailableBuyingPower() decimal.Decimal {
+	return gDayTradingBuyingPower.Sub(GetMarginUsed()).Sub(gMarginHold)
+}
+
 func onMarketOpen() {
 	// Calculate BOD DTBP from previous close values (already snapshotted in onMarketClose)
 	// bod_dtbp = 4 × (last_equity - last_maintenance_margin) for PDT

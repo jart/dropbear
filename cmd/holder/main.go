@@ -311,49 +311,58 @@ func (h *Holding) rebalanceToLeverage(targetLeverage decimal.Decimal) {
 		return
 	}
 
-	// calculate target position value
-	portfolioValue := cubby.GetPortfolioValue()
-	targetExposure := portfolioValue.Mul(targetLeverage)
-	targetValue := targetExposure.Mul(h.targetWeight)
-	targetShares := targetValue.Div(h.equity.Price).Truncate()
+	// no buying in the "no buy" window before close
+	now := clocky.Now()
+	closeTime := cubby.GetCloseTime(now)
+	inNoBuyWindow := closeTime.Sub(now) <= *flagNoBuyTime
 
-	// calculate current "core" position (excluding temporary intraday shares)
-	// dipShares are temporary momo/dip positions that will be closed by EOD
+	limitPrice := h.equity.Price.QuantizeNearest(decimal.Cent)
+
+	// current position (excluding temporary intraday shares)
 	currentShares := h.equity.Quantity
 	coreShares := currentShares.Sub(h.dipShares)
 	if coreShares.IsNegative() {
 		coreShares = decimal.Zero
 	}
+
+	// target core position = overnight leverage * weight
+	// this is the position we want to HOLD, not trade in and out of
+	portfolioValue := cubby.GetPortfolioValue()
+	targetExposure := portfolioValue.Mul(targetLeverage)
+	targetValue := targetExposure.Mul(h.targetWeight)
+	targetShares := targetValue.Div(h.equity.Price).Truncate()
 	diff := targetShares.Sub(coreShares)
 
-	// only rebalance if difference is significant (>5% of target)
-	if targetShares.IsPositive() {
-		diffPct := diff.Abs().Div(targetShares)
+	// cap buys by available margin (divided by N symbols)
+	if diff.IsPositive() {
+		if inNoBuyWindow {
+			return // don't buy in no-buy window
+		}
+		maxTotalShares := h.equity.GetMaxOrderQuantity(limitPrice)
+		maxNewShares := maxTotalShares.DivInt(len(gHoldings)).Truncate()
+		if diff.Cmp(maxNewShares) > 0 {
+			diff = maxNewShares
+		}
+	}
+
+	// only act if difference is significant
+	if diff.IsZero() {
+		return
+	}
+	if coreShares.IsPositive() {
+		diffPct := diff.Abs().Div(coreShares)
 		if diffPct.Cmp(decimal.Parse("0.05")) < 0 {
 			return // close enough
 		}
-	} else if diff.IsZero() {
-		return
 	}
 
-	// prevent going short - don't sell more than core position
-	// (momo/dip shares are managed separately by their own exit logic)
+	// prevent going short
 	if diff.IsNegative() && diff.Abs().Cmp(coreShares) > 0 {
 		diff = coreShares.Neg()
 		if diff.IsZero() {
 			return
 		}
 	}
-
-	// no buying in the "no buy" window before close
-	now := clocky.Now()
-	closeTime := cubby.GetCloseTime(now)
-	if diff.IsPositive() && closeTime.Sub(now) <= *flagNoBuyTime {
-		return
-	}
-
-	// place order at midpoint
-	limitPrice := h.equity.Price.QuantizeNearest(decimal.Cent)
 
 	order, err := h.equity.Order(diff, limitPrice)
 	if err != nil {
@@ -370,7 +379,7 @@ func (h *Holding) rebalanceToLeverage(targetLeverage decimal.Decimal) {
 		if diff.IsNegative() {
 			action = "sell"
 		}
-		log.Printf("rebalance %s: %s %s shares (target weight %.1f%%)",
+		log.Printf("rebalance %s: %s %s shares (weight %.1f%%)",
 			h.equity.Symbol, action, diff.Abs(), h.targetWeight.MulInt(100).Float64())
 	}
 }
