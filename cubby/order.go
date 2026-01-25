@@ -109,6 +109,23 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 		}
 	}
 
+	// check if fill would cause margin call (prices may have moved since order placed)
+	if o.Side == ds.SideBuy {
+		unfilledQuantity := o.Quantity.Sub(o.FilledQuantity)
+		fillQuantity := unfilledQuantity.Min(availableQuantity)
+		newQty := o.Equity.Quantity.Add(fillQuantity)
+		newMaintMargin := o.Equity.Asset.GetMaintenanceMargin(newQty, barPrice)
+		oldMaintMargin := o.Equity.Asset.GetMaintenanceMargin(o.Equity.Quantity, barPrice)
+		maintMarginDelta := newMaintMargin.Sub(oldMaintMargin)
+		totalMaintMargin := GetMarginUsed().Add(maintMarginDelta)
+		portfolioValue := GetPortfolioValue()
+		if totalMaintMargin.Cmp(portfolioValue) > 0 {
+			// cancel order - filling it would cause margin call
+			o.setStatus(alpaca.OrderStatusCanceled)
+			return
+		}
+	}
+
 	// calculate remaining quantity to fill
 	unfilledQuantity := o.Quantity.Sub(o.FilledQuantity)
 	fillQuantity := unfilledQuantity.Min(availableQuantity)
@@ -154,6 +171,38 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 		o.setStatus(alpaca.OrderStatusFilled)
 	} else {
 		o.setStatus(alpaca.OrderStatusPartiallyFilled)
+	}
+
+	// assert margin constraints after fill
+	assertMarginConstraints(o)
+}
+
+// assertMarginConstraints verifies we haven't exceeded margin limits after a fill.
+// This catches bugs in the margin checking logic.
+func assertMarginConstraints(o *Order) {
+	marginUsed := GetMarginUsed()
+	marginHold := gMarginHold
+	totalMargin := marginUsed.Add(marginHold)
+	portfolioValue := GetPortfolioValue()
+
+	// Check 1: Total margin (used + held) should not exceed DTBP
+	// This would mean we placed orders we couldn't afford
+	if totalMargin.Cmp(gDayTradingBuyingPower) > 0 {
+		log.Printf("MARGIN VIOLATION: total margin $%s (used $%s + hold $%s) exceeds DTBP $%s after %s %s %s",
+			totalMargin.FormatThousand(2),
+			marginUsed.FormatThousand(2),
+			marginHold.FormatThousand(2),
+			gDayTradingBuyingPower.FormatThousand(2),
+			o.Side, o.FilledQuantity, o.Equity.Symbol)
+	}
+
+	// Check 2: Maintenance margin should not exceed portfolio value (margin call)
+	// This shouldn't happen intraday if we're checking initial margin on entry
+	if marginUsed.Cmp(portfolioValue) > 0 {
+		log.Printf("MARGIN CALL: maintenance margin $%s exceeds portfolio value $%s after %s %s %s",
+			marginUsed.FormatThousand(2),
+			portfolioValue.FormatThousand(2),
+			o.Side, o.FilledQuantity, o.Equity.Symbol)
 	}
 }
 

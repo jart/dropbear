@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 
 	"dropbear/broker/alpaca"
@@ -34,7 +35,6 @@ var (
 	flagSymbols       = flag.String("symbol", "GOOG", "symbols to hold (space-separated)")
 	flagMomentum      = flag.Int("momentum", 20, "momentum lookback period in bars")
 	flagRebalance     = flag.Int("rebalance", 30, "minutes between rebalance checks")
-	flagDayLeverage   = decimal.Flag("day-leverage", "2.5", "max intraday leverage")
 	flagNightLeverage = decimal.Flag("night-leverage", "2", "overnight leverage (leave room for day trading)")
 	flagMinWeight     = decimal.Flag("min-weight", "0.1", "minimum weight per symbol (0-1)")
 	flagEqualWeight   = flag.Bool("equal-weight", false, "use equal weights instead of momentum-weighted")
@@ -114,7 +114,7 @@ func main() {
 	for _, h := range gHoldings {
 		log.Printf("    %s", h.equity.Symbol)
 	}
-	log.Printf("  Day leverage: %s / Night leverage: %s", *flagDayLeverage, *flagNightLeverage)
+	log.Printf("  Night leverage: %s", *flagNightLeverage)
 
 	cubby.Run()
 }
@@ -224,11 +224,83 @@ func (h *Holding) onBar(bar *ds.Bar) {
 	if now.Sub(gLastRebalance) >= clocky.Duration(*flagRebalance)*clocky.Minute {
 		gLastRebalance = now
 		updateWeights()
-		// rebalance ALL holdings, not just the one that triggered
-		for _, holding := range gHoldings {
-			holding.rebalanceToLeverage(*flagDayLeverage)
-		}
+		logLeverageStatus()
+		rebalanceAll()
 	}
+}
+
+// rebalanceAll rebalances all holdings, allocating available BP proportionally by weight
+func rebalanceAll() {
+	now := clocky.Now()
+	closeTime := cubby.GetCloseTime(now)
+	inNoBuyWindow := closeTime.Sub(now) <= *flagNoBuyTime
+
+	for _, h := range gHoldings {
+		if h.order != nil && h.order.Status.IsOpen() {
+			continue
+		}
+		if !h.equity.Price.IsPositive() {
+			continue
+		}
+
+		coreShares := h.equity.Quantity.Sub(h.dipShares)
+		if coreShares.IsNegative() {
+			coreShares = decimal.Zero
+		}
+
+		limitPrice := h.equity.Price.QuantizeNearest(decimal.Cent)
+
+		// Use GetMaxOrderQuantity which properly handles per-symbol margin rates
+		maxShares := h.equity.GetMaxOrderQuantity(limitPrice)
+		// Scale by this holding's weight
+		targetBuyShares := maxShares.Mul(h.targetWeight).Truncate()
+
+		var diff decimal.Decimal
+		if !inNoBuyWindow && targetBuyShares.IsPositive() {
+			diff = targetBuyShares
+		}
+		// TODO: handle sells for rebalancing if needed
+
+		if diff.IsZero() {
+			continue
+		}
+
+		// Skip small changes
+		if coreShares.IsPositive() {
+			diffPct := diff.Abs().Div(coreShares)
+			if diffPct.Cmp(decimal.Parse("0.05")) < 0 {
+				continue
+			}
+		}
+
+		order, err := h.equity.Order(diff, limitPrice)
+		if err != nil {
+			continue
+		}
+		h.order = order
+
+		log.Printf("rebalance %s: buy %s shares @ $%s (have %s, weight %.1f%%)",
+			h.equity.Symbol, diff, limitPrice, coreShares, h.targetWeight.MulInt(100).Float64())
+	}
+}
+
+// logLeverageStatus logs current leverage and margin usage
+func logLeverageStatus() {
+	portfolioValue := cubby.GetPortfolioValue()
+	investedValue := cubby.GetInvestedValue()
+	marginUsed := cubby.GetMarginUsed()
+	availableBP := cubby.GetAvailableBuyingPower()
+
+	currentLeverage := decimal.Zero
+	if portfolioValue.IsPositive() {
+		currentLeverage = investedValue.Div(portfolioValue)
+	}
+
+	log.Printf("leverage: %.2fx | invested $%s | margin used $%s | available BP $%s",
+		currentLeverage.Float64(),
+		investedValue.FormatThousand(0),
+		marginUsed.FormatThousand(0),
+		availableBP.FormatThousand(0))
 }
 
 // updateWeights calculates momentum-weighted target allocations
@@ -302,87 +374,6 @@ func updateWeights() {
 	}
 }
 
-func (h *Holding) rebalanceToLeverage(targetLeverage decimal.Decimal) {
-	if h.order != nil && h.order.Status.IsOpen() {
-		return // already have pending order
-	}
-
-	if !h.equity.Price.IsPositive() {
-		return
-	}
-
-	// no buying in the "no buy" window before close
-	now := clocky.Now()
-	closeTime := cubby.GetCloseTime(now)
-	inNoBuyWindow := closeTime.Sub(now) <= *flagNoBuyTime
-
-	limitPrice := h.equity.Price.QuantizeNearest(decimal.Cent)
-
-	// current position (excluding temporary intraday shares)
-	currentShares := h.equity.Quantity
-	coreShares := currentShares.Sub(h.dipShares)
-	if coreShares.IsNegative() {
-		coreShares = decimal.Zero
-	}
-
-	// target core position = overnight leverage * weight
-	// this is the position we want to HOLD, not trade in and out of
-	portfolioValue := cubby.GetPortfolioValue()
-	targetExposure := portfolioValue.Mul(targetLeverage)
-	targetValue := targetExposure.Mul(h.targetWeight)
-	targetShares := targetValue.Div(h.equity.Price).Truncate()
-	diff := targetShares.Sub(coreShares)
-
-	// cap buys by available margin (divided by N symbols)
-	if diff.IsPositive() {
-		if inNoBuyWindow {
-			return // don't buy in no-buy window
-		}
-		maxTotalShares := h.equity.GetMaxOrderQuantity(limitPrice)
-		maxNewShares := maxTotalShares.DivInt(len(gHoldings)).Truncate()
-		if diff.Cmp(maxNewShares) > 0 {
-			diff = maxNewShares
-		}
-	}
-
-	// only act if difference is significant
-	if diff.IsZero() {
-		return
-	}
-	if coreShares.IsPositive() {
-		diffPct := diff.Abs().Div(coreShares)
-		if diffPct.Cmp(decimal.Parse("0.05")) < 0 {
-			return // close enough
-		}
-	}
-
-	// prevent going short
-	if diff.IsNegative() && diff.Abs().Cmp(coreShares) > 0 {
-		diff = coreShares.Neg()
-		if diff.IsZero() {
-			return
-		}
-	}
-
-	order, err := h.equity.Order(diff, limitPrice)
-	if err != nil {
-		if cubby.Verbose {
-			log.Printf("rebalance %s: error ordering %s shares: %v",
-				h.equity.Symbol, diff, err)
-		}
-		return
-	}
-	h.order = order
-
-	if cubby.Verbose {
-		action := "buy"
-		if diff.IsNegative() {
-			action = "sell"
-		}
-		log.Printf("rebalance %s: %s %s shares (weight %.1f%%)",
-			h.equity.Symbol, action, diff.Abs(), h.targetWeight.MulInt(100).Float64())
-	}
-}
 
 // reduceForOvernight places limit-on-close orders to reduce to overnight margin.
 // Places a single aggressive order with loc-slip to ensure execution before close.
@@ -684,12 +675,11 @@ func (h *Holding) handleMomoTrading(bar *ds.Bar, now clocky.Time, openTime clock
 			h.dipShares = h.dipOrder.FilledQuantity
 			h.dipPeakPrice = bar.Close
 			h.dipOrder = nil
-			if cubby.Verbose {
-				log.Printf("momo %s: filled %s shares at $%s",
-					h.equity.Symbol, h.dipShares, h.dipEntryPrice)
-			}
+			log.Printf("momo %s: filled %s shares at $%s", h.equity.Symbol, h.dipShares, h.dipEntryPrice)
+			logLeverageStatus()
 			return
 		} else if h.dipOrder.Status.IsFinal() {
+			log.Printf("momo %s: order %s", h.equity.Symbol, h.dipOrder.Status)
 			h.dipOrder = nil
 		}
 	}
@@ -785,6 +775,7 @@ func (h *Holding) handleMomoTrading(bar *ds.Bar, now clocky.Time, openTime clock
 
 	maxShares := h.equity.GetMaxOrderQuantity(limitPrice)
 	if !maxShares.IsPositive() {
+		log.Printf("momo %s: no buying power available (gain %.0f bps)", h.equity.Symbol, gainBps.Float64())
 		return
 	}
 
@@ -792,7 +783,8 @@ func (h *Holding) handleMomoTrading(bar *ds.Bar, now clocky.Time, openTime clock
 	portfolioValue := cubby.GetPortfolioValue()
 	maxValue := portfolioValue.Mul(*flagDipMaxPct)
 	maxPctShares := maxValue.Div(limitPrice).Truncate()
-	if maxShares.Cmp(maxPctShares) > 0 {
+	cappedByPct := maxShares.Cmp(maxPctShares) > 0
+	if cappedByPct {
 		maxShares = maxPctShares
 	}
 	if !maxShares.IsPositive() {
@@ -802,17 +794,17 @@ func (h *Holding) handleMomoTrading(bar *ds.Bar, now clocky.Time, openTime clock
 	// place order
 	order, err := h.equity.Order(maxShares, limitPrice)
 	if err != nil {
-		if cubby.Verbose {
-			log.Printf("momo %s: error ordering %s shares at $%s: %v",
-				h.equity.Symbol, maxShares, limitPrice, err)
-		}
+		log.Printf("momo %s: order rejected: %v (tried %s shares at $%s)",
+			h.equity.Symbol, err, maxShares, limitPrice)
 		return
 	}
 	h.dipOrder = order
 	h.intradayTraded = true
 
-	if cubby.Verbose {
-		log.Printf("momo %s: buying %s shares at $%s (gain %.0f bps from open)",
-			h.equity.Symbol, maxShares, limitPrice, gainBps.Float64())
+	capReason := "margin"
+	if cappedByPct {
+		capReason = fmt.Sprintf("%.0f%% cap", flagDipMaxPct.MulInt(100).Float64())
 	}
+	log.Printf("momo %s: buying %s shares at $%s (gain %.0f bps, capped by %s)",
+		h.equity.Symbol, maxShares, limitPrice, gainBps.Float64(), capReason)
 }

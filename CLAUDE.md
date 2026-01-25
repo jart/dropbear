@@ -85,7 +85,7 @@ unix nanoseconds in a single `int64` word.
 our best equities trading strategy is
 
 ```bash
-go run ./cmd/holder -backtest -start 2025-10-01 -symbol "GOOG JNJ LLY GILD GLD SLV" -bench "JNJ" -day-leverage 3.3 -momo
+go run ./cmd/holder -backtest -start 2025-10-01 -symbol "GOOG JNJ LLY GILD GLD SLV" -bench "JNJ" -momo
 ```
 
 which says

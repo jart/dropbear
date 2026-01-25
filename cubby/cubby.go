@@ -163,6 +163,12 @@ func onMarketOpen() {
 	gIsPatternDayTrader = gLastEquity.Cmp(decimal.FromInt(25_000)) >= 0
 	excessEquity := gLastEquity.Sub(gLastMaintenanceMargin)
 	gDayTradingBuyingPower = excessEquity.Mul(getBuyingPowerMultiplier())
+	log.Printf("market open: last_equity=$%s last_maint=$%s excess=$%s multiplier=%s DTBP=$%s",
+		gLastEquity.FormatThousand(2),
+		gLastMaintenanceMargin.FormatThousand(2),
+		excessEquity.FormatThousand(2),
+		getBuyingPowerMultiplier(),
+		gDayTradingBuyingPower.FormatThousand(2))
 }
 
 func onMarketClose(now clocky.Time) {

@@ -122,6 +122,20 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 		}
 	}
 
+	// check that new position won't cause maintenance margin to exceed portfolio value
+	// this prevents margin calls even when DTBP (based on previous day) allows the trade
+	newMaintMargin := e.Asset.GetMaintenanceMargin(newQty, price)
+	oldMaintMargin := e.Asset.GetMaintenanceMargin(e.Quantity, price)
+	maintMarginDelta := newMaintMargin.Sub(oldMaintMargin)
+	currentMarginUsed := GetMarginUsed()
+	totalMaintMargin := currentMarginUsed.Add(maintMarginDelta)
+	portfolioValue := GetPortfolioValue()
+	// Only check buys (positive delta) - sells should always be allowed to reduce exposure
+	if maintMarginDelta.IsPositive() && totalMaintMargin.Cmp(portfolioValue) > 0 {
+		return nil, fmt.Errorf("would cause margin call: maint margin %s > portfolio %s",
+			totalMaintMargin, portfolioValue)
+	}
+
 	// check time
 	now := clocky.Now()
 	timeInForce := alpaca.TimeInForceDay
