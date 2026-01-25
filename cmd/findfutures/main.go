@@ -618,10 +618,6 @@ func printOutrights(trades []Trade) {
 
 	if len(trades) == 0 {
 		fmt.Println("No trades found matching criteria.")
-	} else {
-		fmt.Printf("\n%d positions shown. Use -spreads to see calendar spreads.\n", len(trades))
-		fmt.Println("CARRY = annual return on margin if price stays flat (+ = earn, - = pay)")
-		fmt.Println("RIGHT X% = total return on margin if your direction is correct by X%")
 	}
 }
 
