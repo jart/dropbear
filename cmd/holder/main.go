@@ -34,7 +34,7 @@ var (
 	flagSymbols       = flag.String("symbol", "GOOG", "symbols to hold (space-separated)")
 	flagMomentum      = flag.Int("momentum", 20, "momentum lookback period in bars")
 	flagRebalance     = flag.Int("rebalance", 30, "minutes between rebalance checks")
-	flagDayLeverage   = decimal.Flag("day-leverage", "2", "max intraday leverage")
+	flagDayLeverage   = decimal.Flag("day-leverage", "2.5", "max intraday leverage")
 	flagNightLeverage = decimal.Flag("night-leverage", "2", "overnight leverage (leave room for day trading)")
 	flagMinWeight     = decimal.Flag("min-weight", "0.1", "minimum weight per symbol (0-1)")
 	flagEqualWeight   = flag.Bool("equal-weight", false, "use equal weights instead of momentum-weighted")
@@ -46,21 +46,27 @@ const (
 )
 
 var (
-	flagSlipClose = decimal.FlagBPS("slip-close", "50", "slippage on close orders")
-	flagUrgency   = decimal.FlagBPS("urgency", "100", "extra slippage per minute when closing late")
+	flagSlipClose = decimal.FlagBPS("slip-close", "0", "slippage on close orders")
+	flagUrgency   = decimal.FlagBPS("urgency", "0", "extra slippage per minute when closing late")
 )
 
-// Opportunistic dip-buying flags
+// Opportunistic intraday trading flags
 var (
-	flagDipMin      = decimal.FlagBPS("dip-min", "200", "minimum dip from open to trigger (bps)")
+	flagDipEnabled  = flag.Bool("dip", false, "enable opportunistic dip-buying (mean reversion)")
+	flagMomoEnabled = flag.Bool("momo", false, "enable momentum buying (trend following)")
+	flagDipMin      = decimal.FlagBPS("dip-min", "150", "minimum dip from open to trigger (bps)")
+	flagMomoMin     = decimal.FlagBPS("momo-min", "100", "minimum gain from open to trigger momentum buy (bps)")
 	flagDipWindow   = clocky.DurationFlag("dip-window", "1h", "time window from open to look for dips")
-	flagDipDeadline = clocky.DurationFlag("dip-deadline", "3h30m", "max time from open to keep dip order (10am PT = 3h30m from 6:30)")
-	flagRedBars     = flag.Int("red-bars", 0, "consecutive red bars needed before entry")
+	flagMomoWindow  = clocky.DurationFlag("momo-window", "2h", "time window from open to look for momentum")
+	flagDipDeadline = clocky.DurationFlag("dip-deadline", "3h30m", "max time from open to keep position (10am PT)")
+	flagRedBars     = flag.Int("red-bars", 0, "consecutive red bars needed before dip entry")
+	flagGreenBars   = flag.Int("green-bars", 2, "consecutive green bars needed before momentum entry")
 	flagRecoveryMin = decimal.FlagBPS("recovery-min", "0", "min recovery as % of dip to confirm reversal (500 = 5%)")
 	flagRecoveryMax = decimal.FlagBPS("recovery-max", "2000", "max recovery as % of dip to still enter (2000 = 20%)")
-	flagTrailStop   = decimal.FlagBPS("trail-stop", "150", "drawdown from peak to exit dip trade (bps)")
-	flagDipGreed    = decimal.FlagBPS("dip-greed", "10", "greed on dip entry (subtracted from current price)")
-	flagExitGreed   = decimal.FlagBPS("exit-greed", "10", "greed on dip exit (subtracted from current price)")
+	flagTrailStop   = decimal.FlagBPS("trail-stop", "150", "drawdown from peak to exit trade (bps)")
+	flagDipMaxPct   = decimal.Flag("dip-max-pct", "0.5", "max intraday position as fraction of portfolio (0.5 = 50%)")
+	flagDipGreed    = decimal.FlagBPS("dip-greed", "10", "greed on entry (subtracted from current price)")
+	flagExitGreed   = decimal.FlagBPS("exit-greed", "10", "greed on exit (subtracted from current price)")
 )
 
 var (
@@ -121,15 +127,19 @@ type Holding struct {
 	barCount      int
 	lastDate      int // track last date seen for per-holding reset
 
-	// Dip-buying state
-	openPrice     decimal.Decimal // first bar's open price for the day
-	lowestPrice   decimal.Decimal // lowest close seen so far today
-	redBarCount   int             // consecutive red bars
-	sawRedBars    bool            // have we seen enough red bars?
-	dipOrder      *cubby.Order    // opportunistic buy order (separate from rebalance order)
-	dipEntryPrice decimal.Decimal // price we entered the dip trade
-	dipShares     decimal.Decimal // shares from the opportunistic buy
-	dipPeakPrice  decimal.Decimal // highest price since entry (for trailing stop)
+	// Intraday trading state
+	openPrice      decimal.Decimal // first bar's open price for the day
+	lowestPrice    decimal.Decimal // lowest close seen so far today
+	highestPrice   decimal.Decimal // highest close seen so far today
+	redBarCount    int             // consecutive red bars
+	greenBarCount  int             // consecutive green bars
+	sawRedBars     bool            // have we seen enough red bars?
+	sawGreenBars   bool            // have we seen enough green bars?
+	dipOrder       *cubby.Order    // opportunistic buy order (separate from rebalance order)
+	dipEntryPrice  decimal.Decimal // price we entered the intraday trade
+	dipShares      decimal.Decimal // shares from the opportunistic buy
+	dipPeakPrice   decimal.Decimal // highest price since entry (for trailing stop)
+	intradayTraded bool            // already traded today (limit to one trade)
 }
 
 func NewHolding(equity *cubby.Equity) *Holding {
@@ -155,15 +165,19 @@ func (h *Holding) onBar(bar *ds.Bar) {
 	if date != h.lastDate {
 		h.lastDate = date
 		h.barCount = 0
-		// reset dip-buying state (actual prices set at market open)
+		// reset intraday trading state (actual prices set at market open)
 		h.openPrice = decimal.Zero
 		h.lowestPrice = decimal.Zero
+		h.highestPrice = decimal.Zero
 		h.redBarCount = 0
+		h.greenBarCount = 0
 		h.sawRedBars = false
+		h.sawGreenBars = false
 		h.dipOrder = nil
 		h.dipEntryPrice = decimal.Zero
 		h.dipShares = decimal.Zero
 		h.dipPeakPrice = decimal.Zero
+		h.intradayTraded = false
 	}
 
 	if cubby.IsWarmingUp {
@@ -197,8 +211,13 @@ func (h *Holding) onBar(bar *ds.Bar) {
 		return
 	}
 
-	// opportunistic dip-buying
-	h.handleDipTrading(bar, now, openTime)
+	// opportunistic intraday trading (if enabled)
+	if *flagDipEnabled {
+		h.handleDipTrading(bar, now, openTime)
+	}
+	if *flagMomoEnabled {
+		h.handleMomoTrading(bar, now, openTime)
+	}
 
 	// during day: rebalance periodically to day leverage
 	if now.Sub(gLastRebalance) >= clocky.Duration(*flagRebalance)*clocky.Minute {
@@ -418,12 +437,6 @@ func (h *Holding) handleDipTrading(bar *ds.Bar, now clocky.Time, openTime clocky
 		h.lowestPrice = bar.Low
 	}
 
-	// check if we're in an active dip trade (have shares to manage)
-	if h.dipShares.IsPositive() {
-		h.manageDipExit(bar)
-		return
-	}
-
 	// check if dip order filled
 	if h.dipOrder != nil {
 		if h.dipOrder.Status == alpaca.OrderStatusFilled {
@@ -442,12 +455,35 @@ func (h *Holding) handleDipTrading(bar *ds.Bar, now clocky.Time, openTime clocky
 		}
 	}
 
-	// past deadline? cancel any pending dip order
+	// past deadline? cancel pending orders and close any open dip position
 	if now.Sub(openTime) >= *flagDipDeadline {
 		if h.dipOrder != nil && h.dipOrder.Status.IsOpen() {
 			h.dipOrder.Cancel()
 			h.dipOrder = nil
 		}
+		// force close any open dip position at deadline
+		if h.dipShares.IsPositive() {
+			limitPrice := bar.Close.Mul(decimal.One.Sub(*flagExitGreed))
+			limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
+			order, err := h.equity.Order(h.dipShares.Neg(), limitPrice)
+			if err == nil {
+				if cubby.Verbose {
+					pnl := bar.Close.Sub(h.dipEntryPrice).Div(h.dipEntryPrice).MulInt(10000)
+					log.Printf("dip deadline %s: closing %s shares at $%s (pnl %.0f bps)",
+						h.equity.Symbol, h.dipShares, limitPrice, pnl.Float64())
+				}
+				h.order = order
+			}
+			h.dipShares = decimal.Zero
+			h.dipEntryPrice = decimal.Zero
+			h.dipPeakPrice = decimal.Zero
+		}
+		return
+	}
+
+	// check if we're in an active dip trade (have shares to manage)
+	if h.dipShares.IsPositive() {
+		h.manageDipExit(bar)
 		return
 	}
 
@@ -522,6 +558,17 @@ func (h *Holding) handleDipTrading(bar *ds.Bar, now clocky.Time, openTime clocky
 			return // no buying power available
 		}
 
+		// cap dip position to dip-max-pct of portfolio value
+		portfolioValue := cubby.GetPortfolioValue()
+		maxDipValue := portfolioValue.Mul(*flagDipMaxPct)
+		maxDipShares := maxDipValue.Div(limitPrice).Truncate()
+		if maxShares.Cmp(maxDipShares) > 0 {
+			maxShares = maxDipShares
+		}
+		if !maxShares.IsPositive() {
+			return
+		}
+
 		// place the order
 		order, err := h.equity.Order(maxShares, limitPrice)
 		if err != nil {
@@ -584,4 +631,146 @@ func (h *Holding) manageDipExit(bar *ds.Bar) {
 	h.dipEntryPrice = decimal.Zero
 	h.dipPeakPrice = decimal.Zero
 	h.order = order // use the regular order slot for the exit
+}
+
+// handleMomoTrading implements momentum-based intraday trading.
+// Instead of buying dips, buy when the stock is UP from open (trend following).
+func (h *Holding) handleMomoTrading(bar *ds.Bar, now clocky.Time, openTime clocky.Time) {
+	// initialize prices at market open
+	if h.openPrice.IsZero() {
+		h.openPrice = bar.Open
+		h.highestPrice = bar.High
+	}
+
+	// check if order filled
+	if h.dipOrder != nil {
+		if h.dipOrder.Status == alpaca.OrderStatusFilled {
+			h.dipEntryPrice = h.dipOrder.FilledPrice
+			h.dipShares = h.dipOrder.FilledQuantity
+			h.dipPeakPrice = bar.Close
+			h.dipOrder = nil
+			if cubby.Verbose {
+				log.Printf("momo %s: filled %s shares at $%s",
+					h.equity.Symbol, h.dipShares, h.dipEntryPrice)
+			}
+			return
+		} else if h.dipOrder.Status.IsFinal() {
+			h.dipOrder = nil
+		}
+	}
+
+	// past deadline? close any open position
+	if now.Sub(openTime) >= *flagDipDeadline {
+		if h.dipOrder != nil && h.dipOrder.Status.IsOpen() {
+			h.dipOrder.Cancel()
+			h.dipOrder = nil
+		}
+		if h.dipShares.IsPositive() {
+			limitPrice := bar.Close.Mul(decimal.One.Sub(*flagExitGreed))
+			limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
+			order, err := h.equity.Order(h.dipShares.Neg(), limitPrice)
+			if err == nil {
+				if cubby.Verbose {
+					pnl := bar.Close.Sub(h.dipEntryPrice).Div(h.dipEntryPrice).MulInt(10000)
+					log.Printf("momo deadline %s: closing %s shares at $%s (pnl %.0f bps)",
+						h.equity.Symbol, h.dipShares, limitPrice, pnl.Float64())
+				}
+				h.order = order
+			}
+			h.dipShares = decimal.Zero
+			h.dipEntryPrice = decimal.Zero
+			h.dipPeakPrice = decimal.Zero
+		}
+		return
+	}
+
+	// manage existing position with trail stop
+	if h.dipShares.IsPositive() {
+		h.manageDipExit(bar)
+		return
+	}
+
+	// already have pending order or already traded today
+	if h.dipOrder != nil && h.dipOrder.Status.IsOpen() {
+		return
+	}
+	if h.intradayTraded {
+		return
+	}
+
+	// only look for momentum within the window
+	if now.Sub(openTime) > *flagMomoWindow {
+		return
+	}
+
+	// track highest price and green bars
+	if bar.High.Cmp(h.highestPrice) > 0 {
+		h.highestPrice = bar.High
+	}
+
+	isGreenBar := bar.Close.Cmp(bar.Open) > 0
+	if isGreenBar {
+		h.greenBarCount++
+	} else {
+		if h.greenBarCount >= *flagGreenBars {
+			h.sawGreenBars = true
+		}
+		h.greenBarCount = 0
+	}
+
+	// check momentum entry conditions
+	if !h.openPrice.IsPositive() || !h.sawGreenBars {
+		return
+	}
+
+	// calculate gain from open
+	gainBps := bar.Close.Sub(h.openPrice).Div(h.openPrice).MulInt(10000)
+	gainMinBps := flagMomoMin.MulInt(10000)
+
+	// is the gain big enough?
+	if gainBps.Cmp(gainMinBps) < 0 {
+		return
+	}
+
+	// require current bar to be green (continuation)
+	if !isGreenBar {
+		return
+	}
+
+	// calculate position size - pay up slightly for momentum
+	limitPrice := bar.Close.Mul(decimal.One.Add(*flagDipGreed))
+	limitPrice = limitPrice.QuantizeNearest(decimal.Cent)
+
+	maxShares := h.equity.GetMaxOrderQuantity(limitPrice)
+	if !maxShares.IsPositive() {
+		return
+	}
+
+	// cap position size
+	portfolioValue := cubby.GetPortfolioValue()
+	maxValue := portfolioValue.Mul(*flagDipMaxPct)
+	maxPctShares := maxValue.Div(limitPrice).Truncate()
+	if maxShares.Cmp(maxPctShares) > 0 {
+		maxShares = maxPctShares
+	}
+	if !maxShares.IsPositive() {
+		return
+	}
+
+	// place order
+	order, err := h.equity.Order(maxShares, limitPrice)
+	if err != nil {
+		if cubby.Verbose {
+			log.Printf("momo %s: error ordering %s shares at $%s: %v",
+				h.equity.Symbol, maxShares, limitPrice, err)
+		}
+		return
+	}
+	h.dipOrder = order
+	h.intradayTraded = true
+
+	if cubby.Verbose {
+		log.Printf("momo %s: buying %s shares at $%s (gain %.0f bps from open)",
+			h.equity.Symbol, maxShares, limitPrice, gainBps.Float64())
+	}
 }
