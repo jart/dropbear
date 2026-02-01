@@ -33,10 +33,10 @@ var (
 type SymbolState struct {
 	Symbol        string
 	Pair          *teddy.Pair
-	PriceWWMA     *indicators.WWMA // smoothed price for sell target
+	PriceMA      *indicators.WWMA  // smoothed price for sell target
 	StinkOrder    *teddy.Order     // current stink bid (nil if none or filled)
 	SellOrder     *teddy.Order     // current recovery sell (nil if none or filled)
-	PreCrashPrice decimal.Decimal  // sell target after fill (WWMA when bid placed)
+	PreCrashPrice decimal.Decimal  // sell target after fill (SMA when bid placed)
 	Allocation    decimal.Decimal  // quote currency allocated to this symbol
 	Lock          sync.Mutex
 }
@@ -84,9 +84,9 @@ func main() {
 		}
 		pair := gCoinbase.Pairs.Get(symbol + "-" + quoteCurrency)
 		state := &SymbolState{
-			Symbol:    symbol,
-			Pair:      pair,
-			PriceWWMA: indicators.NewWWMA(20), // smooth price for sell target
+			Symbol:   symbol,
+			Pair:     pair,
+			PriceMA: indicators.NewWWMA(20), // smooth price for sell target
 		}
 		gStates = append(gStates, state)
 	}
@@ -136,9 +136,9 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 		return
 	}
 
-	// feed trade prices to WWMA for smoothed sell target
+	// feed trade prices to SMA for smoothed sell target
 	for i := range tick.TradeCount() {
-		state.PriceWWMA.Add(tick.Trade(i).Price)
+		state.PriceMA.Add(tick.Trade(i).Price)
 	}
 
 	state.Lock.Lock()
@@ -185,10 +185,10 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 	stinkPrice := midPrice.Mul(decimal.One.Sub(dropPercent))
 	stinkPrice = stinkPrice.QuantizeTruncate(state.Pair.QuoteIncrement.Load())
 
-	// use WWMA of trade prices for sell target (smoother than raw midpoint)
-	// fall back to midpoint if WWMA not ready yet
-	sellTarget := state.PriceWWMA.Value
-	if !state.PriceWWMA.IsReady() {
+	// use SMA of trade prices for sell target (smoother than raw midpoint)
+	// fall back to midpoint if SMA not ready yet
+	sellTarget := state.PriceMA.Value
+	if !state.PriceMA.IsReady() {
 		sellTarget = midPrice
 	}
 
@@ -258,7 +258,7 @@ func placeStinkBid(state *SymbolState, naiveStinkPrice, sellTarget decimal.Decim
 	}
 
 	state.StinkOrder = order
-	state.PreCrashPrice = sellTarget // WWMA of trade prices (smoother than raw midpoint)
+	state.PreCrashPrice = sellTarget // smoothed trade prices (smoother than raw midpoint)
 
 	log.Printf("[placed] %s %s @ $%s (%.1f%% below, target $%s)",
 		state.Symbol, qty, stinkPrice.FormatThousand(2), flagDrop.MulInt(100).Float64(),
