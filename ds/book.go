@@ -348,8 +348,8 @@ func (b *Book) FindFattestBidBelow(startPrice, minDepth decimal.Decimal) (fatPri
 	var depth decimal.Decimal
 	for idx := b.bids.first(); idx != -1; idx = b.bids.next(idx) {
 		n := b.arena.get(idx)
-		// skip bids above our start price
-		if n.price > startPrice {
+		// skip bids at or above our start price (we can only outbid walls BELOW)
+		if n.price >= startPrice {
 			continue
 		}
 		// track the fattest bid we've seen

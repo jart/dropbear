@@ -191,6 +191,138 @@ func TestMarketBuyCostLimited(t *testing.T) {
 	}
 }
 
+func TestFindFattestBidBelow(t *testing.T) {
+	// User's scenario: price is 10, targeting 30% down = naive price of 7
+	// Big wall AT 7 (100 units), small bids in between, another wall at 3 (200 units)
+	// Question: does the interval include the bid exactly at startPrice (7)?
+	//
+	// Algorithm: walk down from startPrice, accumulate depth until >= minDepth,
+	// return the fattest bid seen in that interval.
+
+	book := NewBook()
+
+	// Order book (bids from high to low):
+	// 9.00: 5 units (above our naive price, should be skipped)
+	// 8.00: 5 units (above our naive price, should be skipped)
+	// 7.00: 100 units (BIG WALL - exactly at our naive price)
+	// 6.00: 2 units
+	// 5.00: 2 units
+	// 4.00: 2 units
+	// 3.00: 200 units (BIGGER WALL)
+
+	book.UpdateBid(decimal.Parse("9"), decimal.Parse("5"))
+	book.UpdateBid(decimal.Parse("8"), decimal.Parse("5"))
+	book.UpdateBid(decimal.Parse("7"), decimal.Parse("100")) // wall at naive price
+	book.UpdateBid(decimal.Parse("6"), decimal.Parse("2"))
+	book.UpdateBid(decimal.Parse("5"), decimal.Parse("2"))
+	book.UpdateBid(decimal.Parse("4"), decimal.Parse("2"))
+	book.UpdateBid(decimal.Parse("3"), decimal.Parse("200")) // bigger wall below
+
+	tests := []struct {
+		name       string
+		startPrice string
+		minDepth   string
+		wantPrice  string
+		wantSize   string
+	}{
+		{
+			// With minDepth=1, we skip the bid at 7 (boundary), find bid at 6
+			name:       "small order finds first bid below boundary",
+			startPrice: "7",
+			minDepth:   "1",
+			wantPrice:  "6",
+			wantSize:   "2",
+		},
+		{
+			// With minDepth=5, we need: 6(2) + 5(2) + 4(2) = 6, fattest is 2
+			name:       "medium order scans several levels",
+			startPrice: "7",
+			minDepth:   "5",
+			wantPrice:  "6", // all same size, first one wins
+			wantSize:   "2",
+		},
+		{
+			// With minDepth=7, we need: 6(2) + 5(2) + 4(2) + 3(200) = 206
+			// Now we see the wall at 3.00 with 200
+			name:       "larger order finds the deep wall",
+			startPrice: "7",
+			minDepth:   "7",
+			wantPrice:  "3",
+			wantSize:   "200",
+		},
+		{
+			// Start above the wall at 7 so it IS included
+			// With minDepth=1, we hit the wall at 7 immediately
+			name:       "starting above wall includes it",
+			startPrice: "7.01",
+			minDepth:   "1",
+			wantPrice:  "7",
+			wantSize:   "100",
+		},
+		{
+			// CRITICAL TEST: If startPrice is 7, should the bid AT 7 be included?
+			// NO - we can only outbid walls BELOW our naive price.
+			// If there's a wall at 7, outbidding would put us at 7.01 > 7.
+			// So we skip bids at startPrice and look for walls below.
+			name:       "wall exactly at startPrice is excluded",
+			startPrice: "7",
+			minDepth:   "1",
+			wantPrice:  "6", // Skip the wall at 7, find the bid at 6
+			wantSize:   "2",
+		},
+		{
+			// If we use startPrice=6.99 (just below 7), we skip the wall at 7
+			name:       "slightly below startPrice skips the wall",
+			startPrice: "6.99",
+			minDepth:   "1",
+			wantPrice:  "6",
+			wantSize:   "2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			price, size := book.FindFattestBidBelow(
+				decimal.Parse(tt.startPrice),
+				decimal.Parse(tt.minDepth),
+			)
+			if price.String() != tt.wantPrice {
+				t.Errorf("price: got %s, want %s", price.String(), tt.wantPrice)
+			}
+			if size.String() != tt.wantSize {
+				t.Errorf("size: got %s, want %s", size.String(), tt.wantSize)
+			}
+		})
+	}
+}
+
+func TestFindFattestBidBelow_ExcludesBoundary(t *testing.T) {
+	// Verify that walls exactly at startPrice are excluded.
+	// This is correct because we can only outbid walls BELOW our naive price.
+
+	book := NewBook()
+	book.UpdateBid(decimal.Parse("7"), decimal.Parse("100"))   // wall at boundary (excluded)
+	book.UpdateBid(decimal.Parse("6.5"), decimal.Parse("50"))  // wall below (included)
+	book.UpdateBid(decimal.Parse("6"), decimal.Parse("10"))
+
+	// With boundary excluded, we find the wall at 6.5
+	price, size := book.FindFattestBidBelow(decimal.Parse("7"), decimal.Parse("1"))
+
+	if price.String() != "6.5" || size.String() != "50" {
+		t.Errorf("expected wall at 6.5 (below boundary), got %s @ %s", size, price)
+	}
+
+	// Verify we can actually use this result:
+	quoteIncrement := decimal.Parse("0.01")
+	naivePrice := decimal.Parse("7")
+	optimizedPrice := price.Add(quoteIncrement) // 6.51
+
+	// The check in stink code: optimizedPrice < naivePrice
+	if optimizedPrice.Cmp(naivePrice) >= 0 {
+		t.Errorf("optimization should be usable: %s < %s", optimizedPrice, naivePrice)
+	}
+}
+
 func TestMarketSellProceedsLimited(t *testing.T) {
 	book := NewBook()
 
