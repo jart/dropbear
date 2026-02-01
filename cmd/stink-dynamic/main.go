@@ -28,6 +28,7 @@ var (
 	flagDrop     = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
 	flagBuffer   = decimal.Flag("buffer", "0", "quote currency to keep in reserve")
 	flagCooldown = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
+	flagWall     = flag.Bool("wall", false, "optimize bid placement by front-running the fattest bid in range")
 	flagVerbose  = flag.Bool("verbose", false, "enable verbose logging")
 	flagDry      = flag.Bool("dry", false, "dry run mode - don't place real orders")
 	flagCash     = decimal.Flag("cash", "100000", "USDC balance for backtesting")
@@ -218,11 +219,11 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 	replaceStinkBid(state, stinkPrice)
 }
 
-func placeStinkBid(state *SymbolState, stinkPrice, dropPercent decimal.Decimal) {
+func placeStinkBid(state *SymbolState, naiveStinkPrice, dropPercent decimal.Decimal) {
 	// compute quantity based on allocation, accounting for maker fee reserve
 	// use 99.9% of allocation to give headroom for rounding
 	makerFee := gCoinbase.MakerFee.Load()
-	maxCostPerCoin := stinkPrice.Mul(decimal.One.Add(makerFee))
+	maxCostPerCoin := naiveStinkPrice.Mul(decimal.One.Add(makerFee))
 	effectiveAlloc := state.Allocation.MulInt(999).DivInt(1000)
 	qty := effectiveAlloc.Div(maxCostPerCoin)
 	qty = qty.QuantizeTruncate(state.Pair.BaseIncrement.Load())
@@ -234,6 +235,30 @@ func placeStinkBid(state *SymbolState, stinkPrice, dropPercent decimal.Decimal) 
 				state.Symbol, qty, state.Pair.BaseMinSize.Load())
 		}
 		return
+	}
+
+	// optimize stink price by front-running the fattest bid in range
+	stinkPrice := naiveStinkPrice
+	if *flagWall {
+		state.Pair.Lock.RLock()
+		fatPrice, fatSize := state.Pair.Book.FindFattestBidBelow(naiveStinkPrice, qty)
+		state.Pair.Lock.RUnlock()
+		if fatPrice.IsPositive() {
+			// outbid the fattest bid by one increment
+			optimizedPrice := fatPrice.Add(state.Pair.QuoteIncrement.Load())
+			if optimizedPrice.Cmp(naiveStinkPrice) < 0 {
+				if *flagVerbose {
+					log.Printf("[wall] %s found fat bid %s @ $%s, optimizing $%s -> $%s",
+						state.Symbol, fatSize, fatPrice.FormatThousand(2),
+						naiveStinkPrice.FormatThousand(2), optimizedPrice.FormatThousand(2))
+				}
+				stinkPrice = optimizedPrice
+				// recalculate qty for the new (lower) price - we can buy more
+				maxCostPerCoin = stinkPrice.Mul(decimal.One.Add(makerFee))
+				qty = effectiveAlloc.Div(maxCostPerCoin)
+				qty = qty.QuantizeTruncate(state.Pair.BaseIncrement.Load())
+			}
+		}
 	}
 
 	if *flagVerbose {
@@ -258,7 +283,7 @@ func placeStinkBid(state *SymbolState, stinkPrice, dropPercent decimal.Decimal) 
 	state.PreCrashPrice = state.LastPrice // capture current price as sell target
 	state.LastUpdate = clocky.Now()
 
-	dropBps := dropPercent.MulInt(10000)
+	dropBps := state.LastPrice.Sub(stinkPrice).Div(state.LastPrice).MulInt(10000)
 	log.Printf("[placed] %s %s @ $%s (%.0f bps below, target $%s)",
 		state.Symbol, qty, stinkPrice.FormatThousand(2), dropBps.Float64(),
 		state.PreCrashPrice.FormatThousand(2))
