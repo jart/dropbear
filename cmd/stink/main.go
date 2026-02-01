@@ -8,7 +8,6 @@
 package main
 
 import (
-	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/loggy"
@@ -20,13 +19,12 @@ import (
 )
 
 var (
-	flagSymbols  = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
-	flagDrop     = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
-	flagBuffer   = decimal.Flag("buffer", "0", "quote currency to keep in reserve")
-	flagCooldown = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
-	flagVerbose  = flag.Bool("verbose", false, "enable verbose logging")
-	flagDry      = flag.Bool("dry", false, "dry run mode - don't place real orders")
-	flagCash     = decimal.Flag("cash", "100000", "USDC balance for backtesting")
+	flagSymbols = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
+	flagDrop    = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
+	flagBuffer  = decimal.Flag("buffer", "0", "quote currency to keep in reserve")
+	flagVerbose = flag.Bool("verbose", false, "enable verbose logging")
+	flagDry     = flag.Bool("dry", false, "dry run mode - don't place real orders")
+	flagCash    = decimal.Flag("cash", "100000", "USDC balance for backtesting")
 )
 
 // SymbolState tracks state for a single trading symbol
@@ -35,10 +33,8 @@ type SymbolState struct {
 	Pair          *teddy.Pair
 	StinkOrder    *teddy.Order    // current stink bid (nil if none or filled)
 	SellOrder     *teddy.Order    // current recovery sell (nil if none or filled)
-	StinkPrice    decimal.Decimal // current bid price
 	PreCrashPrice decimal.Decimal // sell target after fill (captured when bid placed)
 	Allocation    decimal.Decimal // quote currency allocated to this symbol
-	LastUpdate    clocky.Time     // last time we updated the bid
 	LastPrice     decimal.Decimal // last seen trade price
 	Lock          sync.Mutex
 }
@@ -165,7 +161,6 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 			placeRecoverySell(state, filled)
 		}
 		state.StinkOrder = nil
-		state.StinkPrice = decimal.Zero
 	}
 
 	// if we have a pending sell, don't place new stink bids yet
@@ -187,31 +182,10 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 	stinkPrice := currentPrice.Mul(decimal.One.Sub(dropPercent))
 	stinkPrice = stinkPrice.QuantizeTruncate(state.Pair.QuoteIncrement.Load())
 
-	// check cooldown
-	now := clocky.Now()
-	if now.Sub(state.LastUpdate) < *flagCooldown {
-		return
-	}
-
-	// if no order, place one
+	// if no order, place one and leave it alone until filled
 	if state.StinkOrder == nil {
 		placeStinkBid(state, stinkPrice, dropPercent)
-		return
 	}
-
-	// replace threshold scales with stink distance to avoid API spam
-	// if stink is 100bps below market, only replace when price moves 10bps
-	replaceThreshold := dropPercent.DivInt(10)
-	oldPrice := state.StinkPrice
-	if oldPrice.IsPositive() {
-		priceDelta := stinkPrice.Sub(oldPrice).Abs().Div(oldPrice)
-		if priceDelta.Cmp(replaceThreshold) < 0 {
-			return
-		}
-	}
-
-	// replace the order
-	replaceStinkBid(state, stinkPrice)
 }
 
 func placeStinkBid(state *SymbolState, stinkPrice, dropPercent decimal.Decimal) {
@@ -250,9 +224,7 @@ func placeStinkBid(state *SymbolState, stinkPrice, dropPercent decimal.Decimal) 
 	}
 
 	state.StinkOrder = order
-	state.StinkPrice = stinkPrice
 	state.PreCrashPrice = state.LastPrice // capture current price as sell target
-	state.LastUpdate = clocky.Now()
 
 	dropBps := dropPercent.MulInt(10000)
 	log.Printf("[placed] %s %s @ $%s (%.0f bps below, target $%s)",
@@ -291,69 +263,4 @@ func placeRecoverySell(state *SymbolState, filled decimal.Decimal) {
 	}
 
 	state.SellOrder = sellOrder
-}
-
-func replaceStinkBid(state *SymbolState, newPrice decimal.Decimal) {
-	if state.StinkOrder == nil {
-		return
-	}
-
-	// don't replace orders that have partial fills - let them complete
-	if state.StinkOrder.Filled.Load().IsPositive() {
-		return
-	}
-
-	// compute new quantity based on allocation, accounting for maker fee reserve
-	// use 99.9% of allocation to give headroom for rounding
-	makerFee := gCoinbase.MakerFee.Load()
-	maxCostPerCoin := newPrice.Mul(decimal.One.Add(makerFee))
-	effectiveAlloc := state.Allocation.MulInt(999).DivInt(1000)
-	newQty := effectiveAlloc.Div(maxCostPerCoin)
-	newQty = newQty.QuantizeTruncate(state.Pair.BaseIncrement.Load())
-
-	// delta := newPrice.Sub(state.StinkPrice)
-	// deltaBps := delta.Div(state.StinkPrice).MulInt(10000)
-	// log.Printf("[replace] %s $%s -> $%s (%+.1f bps)", state.Symbol, state.StinkPrice.FormatThousand(2), newPrice.FormatThousand(2), deltaBps.Float64())
-
-	order := state.StinkOrder
-	if err := order.Replace(newQty, newPrice); err != nil {
-		if err == ds.ErrTooManyRequests {
-			// rate limited, will retry next tick
-			return
-		}
-		if err == ds.ErrNotFound || err == ds.ErrOrderNotOpen {
-			// order was filled or cancelled, clear it
-			log.Printf("[info] %s order no longer exists, will place new one", state.Symbol)
-			state.StinkOrder = nil
-			state.StinkPrice = decimal.Zero
-		} else {
-			log.Printf("[error] %s failed to replace: %v", state.Symbol, err)
-		}
-		return
-	}
-
-	state.StinkPrice = newPrice
-	state.PreCrashPrice = state.LastPrice // update sell target to current price
-	state.LastUpdate = clocky.Now()
-}
-
-func cancelStinkBid(state *SymbolState, reason string) {
-	if state.StinkOrder == nil {
-		return
-	}
-
-	log.Printf("[cancel] %s cancelling stink bid: %s", state.Symbol, reason)
-
-	if err := state.StinkOrder.Cancel(); err != nil {
-		if err == ds.ErrTooManyRequests {
-			// rate limited, will retry next tick
-			return
-		}
-		if err != ds.ErrNotFound {
-			log.Printf("[error] %s failed to cancel: %v", state.Symbol, err)
-		}
-	}
-
-	state.StinkOrder = nil
-	state.StinkPrice = decimal.Zero
 }
