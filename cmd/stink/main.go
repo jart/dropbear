@@ -36,19 +36,19 @@ var (
 
 // SymbolState tracks state for a single trading symbol
 type SymbolState struct {
-	Symbol          string
-	Pair            *teddy.Pair
-	Volatility      *indicators.Welford // rolling stddev of minute returns
-	StinkOrder      *teddy.Order        // current stink bid (nil if none or filled)
-	SellOrder       *teddy.Order        // current recovery sell (nil if none or filled)
-	StinkPrice      decimal.Decimal     // current bid price
-	PreCrashPrice   decimal.Decimal     // sell target after fill (captured when bid placed)
-	Allocation      decimal.Decimal     // quote currency allocated to this symbol
-	LastUpdate      clocky.Time         // last time we updated the bid
-	LastPrice       decimal.Decimal     // last seen trade price
-	LastMinute      int64               // unix minute of last volatility update
-	LastMinuteClose decimal.Decimal     // close price of that minute
-	Lock            sync.Mutex
+	Symbol         string
+	Pair           *teddy.Pair
+	Volatility     *indicators.Welford // rolling stddev of daily returns
+	StinkOrder     *teddy.Order        // current stink bid (nil if none or filled)
+	SellOrder      *teddy.Order        // current recovery sell (nil if none or filled)
+	StinkPrice     decimal.Decimal     // current bid price
+	PreCrashPrice  decimal.Decimal     // sell target after fill (captured when bid placed)
+	Allocation     decimal.Decimal     // quote currency allocated to this symbol
+	LastUpdate     clocky.Time         // last time we updated the bid
+	LastPrice      decimal.Decimal     // last seen trade price
+	LastDay        int                 // day of last volatility update (1-365)
+	LastDayClose   decimal.Decimal     // close price of that day
+	Lock           sync.Mutex
 }
 
 var (
@@ -143,8 +143,8 @@ func seedIndicators() {
 			lastClose = candle.Close
 		}
 		state.LastPrice = lastClose
-		state.LastMinuteClose = lastClose
-		state.LastMinute = now.Unix() / 60
+		state.LastDayClose = lastClose
+		state.LastDay = now.Day() + now.Month()*31 + now.Year()*366
 
 		log.Printf("[startup] %s: seeded %d candles, volatility %.4f%% ready, stddev=%s",
 			state.Symbol, len(candles), state.Volatility.Progress()*100,
@@ -184,41 +184,28 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 		return
 	}
 
-	// update price from trades and aggregate into minute bars for volatility
+	// update price from trades and aggregate into daily bars for volatility
 	for i := range tick.TradeCount() {
 		trade := tick.Trade(i)
 		state.LastPrice = trade.Price
 
-		// check if we crossed into a new minute
-		currentMinute := trade.Time.Unix() / 60
-		if state.LastMinute == 0 {
+		// check if we crossed into a new day
+		currentDay := trade.Time.Day() + trade.Time.Month()*31 + trade.Time.Year()*366
+		if state.LastDay == 0 {
 			// initialize
-			state.LastMinute = currentMinute
-			state.LastMinuteClose = trade.Price
+			state.LastDay = currentDay
+			state.LastDayClose = trade.Price
 			continue
 		}
-		if currentMinute > state.LastMinute {
-			// fill in any skipped minutes with 0% return
-			for m := state.LastMinute + 1; m < currentMinute; m++ {
-				state.Volatility.Add(decimal.Zero)
-			}
-			// add actual return for this minute
-			if state.LastMinuteClose.IsPositive() {
-				ret := trade.Price.Sub(state.LastMinuteClose).Div(state.LastMinuteClose)
+		if currentDay > state.LastDay {
+			// add return for the completed day
+			if state.LastDayClose.IsPositive() {
+				ret := trade.Price.Sub(state.LastDayClose).Div(state.LastDayClose)
 				state.Volatility.Add(ret)
 			}
-			state.LastMinuteClose = trade.Price
-			state.LastMinute = currentMinute
+			state.LastDayClose = trade.Price
+			state.LastDay = currentDay
 		}
-	}
-
-	// need at least some volatility data
-	if !state.Volatility.IsReady() {
-		if tick.TradeCount() > 0 && *flagVerbose {
-			log.Printf("[warmup] %s volatility %.1f%% ready",
-				state.Symbol, state.Volatility.Progress()*100)
-		}
-		return
 	}
 
 	// check buffer day - cancel bids if we're close to payment due date
@@ -269,18 +256,15 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 	}
 	currentPrice := bid.Add(ask).DivInt(2)
 
-	// compute stink price
+	// compute stink price: drop = sigma * stddev, or just use min-drop if no volatility yet
 	stddev := state.Volatility.Stddev()
-	if stddev.IsZero() {
-		if *flagVerbose {
-			log.Printf("[skip] %s zero volatility", state.Symbol)
-		}
-		return
+	var dropPercent decimal.Decimal
+	if stddev.IsPositive() {
+		dropPercent = flagSigma.Mul(stddev)
 	}
-
-	dropPercent := flagSigma.Mul(stddev)
-	dropPercent = dropPercent.Max(*flagMinDrop)
-	dropPercent = dropPercent.Min(*flagMaxDrop)
+	if dropPercent.Cmp(*flagMinDrop) < 0 {
+		dropPercent = *flagMinDrop
+	}
 	stinkPrice := currentPrice.Mul(decimal.One.Sub(dropPercent))
 	stinkPrice = stinkPrice.QuantizeTruncate(state.Pair.QuoteIncrement.Load())
 
