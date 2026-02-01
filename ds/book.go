@@ -339,3 +339,29 @@ func (b *Book) EachAsk(fn func(price, size decimal.Decimal) bool) {
 		}
 	}
 }
+
+// FindFattestBidBelow walks down from startPrice through the bid book,
+// accumulates depth until minDepth is reached, then returns the price
+// and size of the largest single bid in that interval. Used for stink
+// bid optimization - place your bid just above the fattest bid in range.
+func (b *Book) FindFattestBidBelow(startPrice, minDepth decimal.Decimal) (fatPrice, fatSize decimal.Decimal) {
+	var depth decimal.Decimal
+	for idx := b.bids.first(); idx != -1; idx = b.bids.next(idx) {
+		n := b.arena.get(idx)
+		// skip bids above our start price
+		if n.price > startPrice {
+			continue
+		}
+		// track the fattest bid we've seen
+		if n.size.Cmp(fatSize) > 0 {
+			fatPrice = n.price
+			fatSize = n.size
+		}
+		// accumulate depth
+		depth = depth.Add(n.size)
+		if depth.Cmp(minDepth) >= 0 {
+			break
+		}
+	}
+	return
+}
