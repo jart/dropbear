@@ -251,9 +251,8 @@ func placeStinkBid(state *SymbolState, naiveStinkPrice, dropPercent decimal.Deci
 	state.StinkOrder = order
 	state.PreCrashPrice = state.LastPrice // capture current price as sell target
 
-	dropBps := state.LastPrice.Sub(stinkPrice).Div(state.LastPrice).MulInt(10000)
-	log.Printf("[placed] %s %s @ $%s (%.0f bps below, target $%s)",
-		state.Symbol, qty, stinkPrice.FormatThousand(2), dropBps.Float64(),
+	log.Printf("[placed] %s %s @ $%s (%.1f%% below, target $%s)",
+		state.Symbol, qty, stinkPrice.FormatThousand(2), flagDrop.MulInt(100).Float64(),
 		state.PreCrashPrice.FormatThousand(2))
 }
 

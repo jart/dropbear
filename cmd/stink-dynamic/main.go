@@ -283,9 +283,8 @@ func placeStinkBid(state *SymbolState, naiveStinkPrice, dropPercent decimal.Deci
 	state.PreCrashPrice = state.LastPrice // capture current price as sell target
 	state.LastUpdate = clocky.Now()
 
-	dropBps := state.LastPrice.Sub(stinkPrice).Div(state.LastPrice).MulInt(10000)
-	log.Printf("[placed] %s %s @ $%s (%.0f bps below, target $%s)",
-		state.Symbol, qty, stinkPrice.FormatThousand(2), dropBps.Float64(),
+	log.Printf("[placed] %s %s @ $%s (%.1f%% below, target $%s)",
+		state.Symbol, qty, stinkPrice.FormatThousand(2), flagDrop.MulInt(100).Float64(),
 		state.PreCrashPrice.FormatThousand(2))
 }
 
@@ -322,7 +321,7 @@ func placeRecoverySell(state *SymbolState, filled decimal.Decimal) {
 	state.SellOrder = sellOrder
 }
 
-func replaceStinkBid(state *SymbolState, newPrice decimal.Decimal) {
+func replaceStinkBid(state *SymbolState, naiveNewPrice decimal.Decimal) {
 	if state.StinkOrder == nil {
 		return
 	}
@@ -335,10 +334,34 @@ func replaceStinkBid(state *SymbolState, newPrice decimal.Decimal) {
 	// compute new quantity based on allocation, accounting for maker fee reserve
 	// use 99.9% of allocation to give headroom for rounding
 	makerFee := gCoinbase.MakerFee.Load()
-	maxCostPerCoin := newPrice.Mul(decimal.One.Add(makerFee))
+	maxCostPerCoin := naiveNewPrice.Mul(decimal.One.Add(makerFee))
 	effectiveAlloc := state.Allocation.MulInt(999).DivInt(1000)
 	newQty := effectiveAlloc.Div(maxCostPerCoin)
 	newQty = newQty.QuantizeTruncate(state.Pair.BaseIncrement.Load())
+
+	// optimize price by front-running the fattest bid in range
+	newPrice := naiveNewPrice
+	if *flagWall {
+		state.Pair.Lock.RLock()
+		fatPrice, fatSize := state.Pair.Book.FindFattestBidBelow(naiveNewPrice, newQty)
+		state.Pair.Lock.RUnlock()
+		if fatPrice.IsPositive() {
+			// outbid the fattest bid by one increment
+			optimizedPrice := fatPrice.Add(state.Pair.QuoteIncrement.Load())
+			if optimizedPrice.Cmp(naiveNewPrice) < 0 {
+				if *flagVerbose {
+					log.Printf("[wall] %s replace: found fat bid %s @ $%s, optimizing $%s -> $%s",
+						state.Symbol, fatSize, fatPrice.FormatThousand(2),
+						naiveNewPrice.FormatThousand(2), optimizedPrice.FormatThousand(2))
+				}
+				newPrice = optimizedPrice
+				// recalculate qty for the new (lower) price - we can buy more
+				maxCostPerCoin = newPrice.Mul(decimal.One.Add(makerFee))
+				newQty = effectiveAlloc.Div(maxCostPerCoin)
+				newQty = newQty.QuantizeTruncate(state.Pair.BaseIncrement.Load())
+			}
+		}
+	}
 
 	order := state.StinkOrder
 	if err := order.Replace(newQty, newPrice); err != nil {
