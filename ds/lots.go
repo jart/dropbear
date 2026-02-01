@@ -110,7 +110,7 @@ func (ls *Lots) GetCostBasis(size, fallbackPrice decimal.Decimal) decimal.Decima
 // Consume removes lots to cover the given quantity and returns the cost basis.
 func (ls *Lots) Consume(size, fallbackPrice decimal.Decimal) decimal.Decimal {
 	if !size.IsPositive() {
-		loggy.Fatalf("size must be positive, got %s", size)
+		return decimal.Zero // skip zero-size transactions
 	}
 	if fallbackPrice.IsNegative() {
 		loggy.Fatalf("fallbackPrice cannot be negative, got %s", fallbackPrice)
