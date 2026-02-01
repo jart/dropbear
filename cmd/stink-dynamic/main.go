@@ -25,28 +25,30 @@ import (
 )
 
 var (
-	flagSymbols  = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
-	flagDrop     = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
-	flagBuffer   = decimal.Flag("buffer", "0", "quote currency to keep in reserve")
-	flagCooldown = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
-	flagWall     = flag.Bool("wall", false, "optimize bid placement by front-running the fattest bid in range")
-	flagVerbose  = flag.Bool("verbose", false, "enable verbose logging")
-	flagDry      = flag.Bool("dry", false, "dry run mode - don't place real orders")
-	flagCash     = decimal.Flag("cash", "100000", "USDC balance for backtesting")
+	flagSymbols     = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
+	flagDrop        = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
+	flagBuffer      = decimal.Flag("buffer", "0", "quote currency to keep in reserve")
+	flagCooldown    = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
+	flagBuyDeadline = clocky.DurationFlag("buy-deadline", "10s", "cancel partial fills that don't complete in time")
+	flagWall        = flag.Bool("wall", false, "optimize bid placement by front-running the fattest bid in range")
+	flagVerbose     = flag.Bool("verbose", false, "enable verbose logging")
+	flagDry         = flag.Bool("dry", false, "dry run mode - don't place real orders")
+	flagCash        = decimal.Flag("cash", "100000", "USDC balance for backtesting")
 )
 
 // SymbolState tracks state for a single trading symbol
 type SymbolState struct {
-	Symbol        string
-	Pair          *teddy.Pair
-	PriceMA      *indicators.WWMA  // smoothed price for sell target
-	StinkOrder    *teddy.Order     // current stink bid (nil if none or filled)
-	SellOrder     *teddy.Order     // current recovery sell (nil if none or filled)
-	StinkPrice    decimal.Decimal  // current bid price
-	PreCrashPrice decimal.Decimal  // sell target after fill (SMA when bid placed)
-	Allocation    decimal.Decimal  // quote currency allocated to this symbol
-	LastUpdate    clocky.Time      // last time we updated the bid
-	Lock          sync.Mutex
+	Symbol           string
+	Pair             *teddy.Pair
+	PriceMA          *indicators.WWMA // smoothed price for sell target
+	StinkOrder       *teddy.Order     // current stink bid (nil if none or filled)
+	SellOrder        *teddy.Order     // current recovery sell (nil if none or filled)
+	StinkPrice       decimal.Decimal  // current bid price
+	PreCrashPrice    decimal.Decimal  // sell target after fill (WWMA when bid placed)
+	Allocation       decimal.Decimal  // quote currency allocated to this symbol
+	LastUpdate       clocky.Time      // last time we updated the bid
+	PartialFillStart clocky.Time      // when partial fill was first detected (zero if none)
+	Lock             sync.Mutex
 }
 
 var (
@@ -104,7 +106,7 @@ func main() {
 	}
 
 	log.Printf("[startup] trading %d symbols: %s", len(gStates), *flagSymbols)
-	log.Printf("[startup] drop=%s buffer=%s cooldown=%s", *flagDrop, *flagBuffer, *flagCooldown)
+	log.Printf("[startup] drop=%s buffer=%s cooldown=%s buy-deadline=%s", *flagDrop, *flagBuffer, *flagCooldown, *flagBuyDeadline)
 
 	// setup callbacks and run
 	teddy.Brokers.OnReady = onReady
@@ -173,6 +175,37 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 		}
 		state.StinkOrder = nil
 		state.StinkPrice = decimal.Zero
+		state.PartialFillStart = 0
+	}
+
+	// check for stale partial fills - cancel if deadline exceeded
+	if state.StinkOrder != nil && !state.StinkOrder.State.Load().IsFinal() {
+		filled := state.StinkOrder.Filled.Load()
+		if filled.IsPositive() {
+			now := clocky.Now()
+			if state.PartialFillStart == 0 {
+				state.PartialFillStart = now
+				if *flagVerbose {
+					log.Printf("[partial] %s got partial fill %s, starting deadline",
+						state.Symbol, filled)
+				}
+			} else if now.Sub(state.PartialFillStart) >= *flagBuyDeadline {
+				// deadline exceeded - cancel and recover what we got
+				log.Printf("[deadline] %s partial fill %s exceeded %s, canceling",
+					state.Symbol, filled, *flagBuyDeadline)
+				if err := state.StinkOrder.Cancel(); err != nil {
+					log.Printf("[error] %s failed to cancel: %v", state.Symbol, err)
+				} else {
+					// place recovery sell for the partial fill
+					if state.SellOrder == nil {
+						placeRecoverySell(state, filled)
+					}
+					state.StinkOrder = nil
+					state.StinkPrice = decimal.Zero
+					state.PartialFillStart = 0
+				}
+			}
+		}
 	}
 
 	// if we have a pending sell, don't place new stink bids yet
