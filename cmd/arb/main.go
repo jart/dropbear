@@ -32,8 +32,8 @@ var (
 	flagPredictor = flag.String("predictor", "BTCFDUSD@binance", "predictor symbol@broker")
 	flagPricer    = flag.String("pricer", "", "currency to usd pair, e.g. FDUSDUSDT@binance")
 	flagDepth     = decimal.Flag("depth", "1", "order book depth for determining bid/ask")
-	flagUSD       = decimal.Flag("usd", "50000", "coinbase usd balance")
 	flagCoin      = decimal.Flag("coin", "0.4", "symbol balance in base currency")
+	flagCash      = decimal.Flag("cash", "100000", "USD balance for backtesting")
 	flagBuffer    = decimal.FlagPercent("buffer", "1", "percent of balance buffer to keep free")
 	flagThreshold = decimal.FlagBPS("threshold", "5", "minimum spread deviation to trade (basis points)")
 	flagCooldown  = clocky.DurationFlag("cooldown", "400ms", "minimum time between trades")
@@ -95,7 +95,9 @@ func main() {
 	gPricerPrice = decimal.One
 	teddy.Brokers.OnReady = onReady
 	teddy.SetBalance(ds.BrokerCoinbase, *flagSymbol, *flagCoin)
-	teddy.SetBalance(ds.BrokerCoinbase, "USD", *flagUSD)
+	if !teddy.Live && flagCash.IsPositive() {
+		teddy.SetBalance(ds.BrokerCoinbase, "USD", *flagCash)
+	}
 	teddy.SetBenchmark(gCoinbasePair)
 	teddy.Run()
 }
