@@ -34,9 +34,8 @@ type SymbolState struct {
 	Pair          *teddy.Pair
 	StinkOrder    *teddy.Order    // current stink bid (nil if none or filled)
 	SellOrder     *teddy.Order    // current recovery sell (nil if none or filled)
-	PreCrashPrice decimal.Decimal // sell target after fill (captured when bid placed)
+	PreCrashPrice decimal.Decimal // sell target after fill (midpoint when bid placed)
 	Allocation    decimal.Decimal // quote currency allocated to this symbol
-	LastPrice     decimal.Decimal // last seen trade price
 	Lock          sync.Mutex
 }
 
@@ -134,11 +133,6 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 		return
 	}
 
-	// update price from trades
-	for i := range tick.TradeCount() {
-		state.LastPrice = tick.Trade(i).Price
-	}
-
 	state.Lock.Lock()
 	defer state.Lock.Unlock()
 
@@ -169,27 +163,27 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 		return
 	}
 
-	// get current price
+	// get current price (midpoint)
 	state.Pair.Lock.RLock()
 	bid, ask := state.Pair.Book.BestBidAsk()
 	state.Pair.Lock.RUnlock()
 	if !bid.IsPositive() || !ask.IsPositive() {
 		return
 	}
-	currentPrice := bid.Add(ask).DivInt(2)
+	midPrice := bid.Add(ask).DivInt(2)
 
 	// compute stink price
 	dropPercent := *flagDrop
-	stinkPrice := currentPrice.Mul(decimal.One.Sub(dropPercent))
+	stinkPrice := midPrice.Mul(decimal.One.Sub(dropPercent))
 	stinkPrice = stinkPrice.QuantizeTruncate(state.Pair.QuoteIncrement.Load())
 
 	// if no order, place one and leave it alone until filled
 	if state.StinkOrder == nil {
-		placeStinkBid(state, stinkPrice, dropPercent)
+		placeStinkBid(state, stinkPrice, midPrice)
 	}
 }
 
-func placeStinkBid(state *SymbolState, naiveStinkPrice, dropPercent decimal.Decimal) {
+func placeStinkBid(state *SymbolState, naiveStinkPrice, midPrice decimal.Decimal) {
 	// compute quantity based on allocation, accounting for maker fee reserve
 	// use 99.9% of allocation to give headroom for rounding
 	makerFee := gCoinbase.MakerFee.Load()
@@ -232,10 +226,10 @@ func placeStinkBid(state *SymbolState, naiveStinkPrice, dropPercent decimal.Deci
 	}
 
 	if *flagVerbose {
-		log.Printf("[stink] %s placing bid %s @ $%s (%.1f%% below market, pre-crash target $%s)",
+		log.Printf("[stink] %s placing bid %s @ $%s (%.1f%% below midpoint $%s)",
 			state.Symbol, qty, stinkPrice,
-			decimal.One.Sub(stinkPrice.Div(state.LastPrice)).MulInt(100).Float64(),
-			state.PreCrashPrice)
+			decimal.One.Sub(stinkPrice.Div(midPrice)).MulInt(100).Float64(),
+			midPrice.FormatThousand(2))
 	}
 
 	order, err := state.Pair.LimitOrder(ds.SideBuy, qty, stinkPrice, ds.OrderStrategyPostOnly)
@@ -249,7 +243,7 @@ func placeStinkBid(state *SymbolState, naiveStinkPrice, dropPercent decimal.Deci
 	}
 
 	state.StinkOrder = order
-	state.PreCrashPrice = state.LastPrice // capture current price as sell target
+	state.PreCrashPrice = midPrice // capture midpoint as sell target (not noisy trade price)
 
 	log.Printf("[placed] %s %s @ $%s (%.1f%% below, target $%s)",
 		state.Symbol, qty, stinkPrice.FormatThousand(2), flagDrop.MulInt(100).Float64(),
