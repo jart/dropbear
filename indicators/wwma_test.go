@@ -39,11 +39,11 @@ func TestWWMA_MatchesQuantConnect(t *testing.T) {
 
 	w.Add(decimal.FromInt(13))
 	// 13/3 + 11*2/3 = 13/3 + 22/3 = 35/3 = 11.666...
-	assertEq(t, "step 4", w.Value, decimal.Parse("11.66666666"))
+	assertEq(t, "step 4", w.Value, decimal.Parse("11.666666666"))
 
 	w.Add(decimal.FromInt(14))
 	// 14/3 + (35/3)*2/3 = 14/3 + 70/9 = 42/9 + 70/9 = 112/9 = 12.444...
-	assertEq(t, "step 5", w.Value, decimal.Parse("12.44444443"))
+	assertEq(t, "step 5", w.Value, decimal.Parse("12.444444443"))
 }
 
 func TestWWMA_Period14(t *testing.T) {
@@ -63,7 +63,7 @@ func TestWWMA_Period14(t *testing.T) {
 	// Add 15, k = 1/14
 	// WWMA = 15/14 + 7.5*13/14 = 15/14 + 97.5/14 = 112.5/14 = 8.035714...
 	w.Add(decimal.FromInt(15))
-	assertEq(t, "after warmup", w.Value, decimal.Parse("8.03571427"))
+	assertEq(t, "after warmup", w.Value, decimal.Parse("8.035714283"))
 }
 
 func TestWWMA_ConstantInput(t *testing.T) {

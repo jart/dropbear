@@ -11,9 +11,9 @@ func TestString(t *testing.T) {
 		{"zero", Zero, "0"},
 		{"one", One, "1"},
 		{"1.1", Parse("1.10"), "1.1"},
-		{"satoshi", Satoshi, "0.00000001"},
-		{"max", Max, "92233720368.54775807"},
-		{"min", Min, "-92233720368.54775808"},
+		{"satoshi", Satoshi, "0.000000001"},
+		{"max", Max, "9223372036.854775807"},
+		{"min", Min, "-9223372036.854775808"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

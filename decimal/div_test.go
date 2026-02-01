@@ -68,12 +68,12 @@ func TestDiv(t *testing.T) {
 		{"-1 / -2 = 0.5", NegOne, -Two, Half},
 
 		// Repeating decimals (rounded)
-		{"1 / 3 = 0.33333333", One, Parse("3"), Parse("0.33333333")},
-		{"2 / 3 = 0.66666667", Two, Parse("3"), Parse("0.66666667")},
-		{"1 / 6 = 0.16666667", One, Parse("6"), Parse("0.16666667")},
-		{"1 / 7 = 0.14285714", One, Parse("7"), Parse("0.14285714")},
-		{"1 / 9 = 0.11111111", One, Parse("9"), Parse("0.11111111")},
-		{"1 / 11 = 0.09090909", One, Parse("11"), Parse("0.09090909")},
+		{"1 / 3 = 0.333333333", One, Parse("3"), Parse("0.333333333")},
+		{"2 / 3 = 0.666666667", Two, Parse("3"), Parse("0.666666667")},
+		{"1 / 6 = 0.166666667", One, Parse("6"), Parse("0.166666667")},
+		{"1 / 7 = 0.142857143", One, Parse("7"), Parse("0.142857143")},
+		{"1 / 9 = 0.111111111", One, Parse("9"), Parse("0.111111111")},
+		{"1 / 11 = 0.090909091", One, Parse("11"), Parse("0.090909091")},
 
 		// Powers of 10
 		{"10 / 1 = 10", Parse("10"), One, Parse("10")},
@@ -82,17 +82,18 @@ func TestDiv(t *testing.T) {
 		{"1 / 100 = 0.01", One, Parse("100"), Parse("0.01")},
 		{"1 / 1000 = 0.001", One, Parse("1000"), Parse("0.001")},
 		{"1 / 10000000 = 0.0000001", One, Parse("10000000"), Parse("0.0000001")},
-		{"1 / 100000000 = 0.00000001", One, Parse("100000000"), Epsilon},
+		{"1 / 100000000 = 0.00000001", One, Parse("100000000"), Parse("0.00000001")},
+		{"1 / 1000000000 = 0.000000001", One, Parse("1000000000"), Epsilon},
 
 		// Near-epsilon results
-		{"0.00000001 / 1 = 0.00000001", Epsilon, One, Epsilon},
-		{"0.00000002 / 2 = 0.00000001", Decimal(2), Two, Epsilon},
-		{"0.00000010 / 10 = 0.00000001", Decimal(10), Parse("10"), Epsilon},
+		{"0.000000001 / 1 = 0.000000001", Epsilon, One, Epsilon},
+		{"0.000000002 / 2 = 0.000000001", Decimal(2), Two, Epsilon},
+		{"0.000000010 / 10 = 0.000000001", Decimal(10), Parse("10"), Epsilon},
 
 		// Financial calculations
-		{"100 / 1.05 = 95.23809524", Parse("100"), Parse("1.05"), Parse("95.23809524")},
+		{"100 / 1.05 = 95.238095238", Parse("100"), Parse("1.05"), Parse("95.238095238")},
 		{"72.5 / 1000 = 0.0725", Parse("72.5"), Parse("1000"), Parse("0.0725")},
-		{"1 / 365 = 0.00273973", One, Parse("365"), Parse("0.00273973")},
+		{"1 / 365 = 0.002739726", One, Parse("365"), Parse("0.002739726")},
 
 		// Large dividends
 		{"1000000 / 1000 = 1000", Parse("1000000"), Parse("1000"), Parse("1000")},
@@ -102,13 +103,13 @@ func TestDiv(t *testing.T) {
 		{"1 / 0.1 = 10", One, Parse("0.1"), Parse("10")},
 		{"1 / 0.01 = 100", One, Parse("0.01"), Parse("100")},
 		{"1 / 0.001 = 1000", One, Parse("0.001"), Parse("1000")},
-		{"1 / 0.00000001 = 100000000", One, Epsilon, Parse("100000000")},
+		{"1 / 0.00000001 = 100000000", One, Parse("0.00000001"), Parse("100000000")},
 		{"2 / 0.5 = 4", Two, Half, Parse("4")},
 		{"10 / 0.5 = 20", Parse("10"), Half, Parse("20")},
 
 		// Commutative property verification (a/b != b/a usually)
 		{"6 / 2 = 3", Parse("6"), Two, Parse("3")},
-		{"2 / 6 = 0.33333333", Two, Parse("6"), Parse("0.33333333")},
+		{"2 / 6 = 0.333333333", Two, Parse("6"), Parse("0.333333333")},
 
 		// Half of various values
 		{"1 / 2 = 0.5", One, Two, Half},
@@ -161,10 +162,10 @@ func TestDiv(t *testing.T) {
 		{"0.15 / 10 = 0.015 (exact)", Parse("0.15"), Parse("10"), Parse("0.015")},
 
 		// division by odd numbers (no exact half possible)
-		{"1 / 3 = 0.33333333", One, Parse("3"), Parse("0.33333333")},
-		{"2 / 3 = 0.66666667", Two, Parse("3"), Parse("0.66666667")},
-		{"10 / 3 = 3.33333333", Parse("10"), Parse("3"), Parse("3.33333333")},
-		{"20 / 3 = 6.66666667", Parse("20"), Parse("3"), Parse("6.66666667")},
+		{"1 / 3 = 0.333333333", One, Parse("3"), Parse("0.333333333")},
+		{"2 / 3 = 0.666666667", Two, Parse("3"), Parse("0.666666667")},
+		{"10 / 3 = 3.333333333", Parse("10"), Parse("3"), Parse("3.333333333")},
+		{"20 / 3 = 6.666666667", Parse("20"), Parse("3"), Parse("6.666666667")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

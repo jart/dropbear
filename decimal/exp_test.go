@@ -70,19 +70,19 @@ func BenchmarkExpSmall(b *testing.B) {
 }
 
 func TestExpMax(t *testing.T) {
-	// 25.24762513 is approx ln(MaxInt64/Scale) for Scale=1e8
-	d := Parse("25.24762513")
+	// 22.9450416 is approx ln(MaxInt64/Scale) for Scale=1e9
+	d := Parse("22.9450416")
 	got := d.Exp().String()
-	want := "92233720368.54775807" // close to MaxInt64
+	want := "9223372036.854775807" // MaxInt64 / 1e9
 	if got != want {
-		t.Errorf("exp(25.24762513) = %s, want %s", got, want)
+		t.Errorf("exp(22.9450416) = %s, want %s", got, want)
 	}
 }
 
 func TestExpMin(t *testing.T) {
 	d := Parse("-21.416413017")
 	got := d.Exp().String()
-	want := "0"
+	want := "0.000000001"
 	if got != want {
 		t.Errorf("exp(-21.416413017) = %s, want %s", got, want)
 	}

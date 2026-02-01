@@ -16,14 +16,14 @@ const (
 	Two     = Decimal(Scale * 2)
 	Half    = Decimal(Scale / 2)
 	Tenth   = Decimal(Scale / 10)
-	Max     = Decimal(math.MaxInt64) // +92'233'720'368.54775807
-	Min     = Decimal(math.MinInt64) // -92'233'720'368.54775808
+	Max     = Decimal(math.MaxInt64) // +9'223'372'036.854775807
+	Min     = Decimal(math.MinInt64) // -9'223'372'036.854775808
 	Epsilon = Satoshi                // Satoshi is The One
-	Satoshi = Decimal(1)             // 0.00000001
+	Satoshi = Decimal(1)             // 0.000000001
 	Cent    = Decimal(Scale / 100)   // 0.01
 	Lot     = Decimal(Scale * 100)   // 100
-	Scale   = 100_000_000
-	Places  = 8
+	Scale   = 1_000_000_000
+	Places  = 9
 )
 
 // FromInt converts int to Decimal.

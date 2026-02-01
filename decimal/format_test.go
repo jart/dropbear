@@ -17,12 +17,12 @@ func TestFormat(t *testing.T) {
 		{"rounding up", Parse("1.9999"), 3, "2.000"},
 		{"lots of digits", Parse("1.23456789"), 8, "1.23456789"},
 		{"bone", Parse("1.23456789"), 5, "1.23457"},
-		{"int64 max 8 places", Decimal(Max), 8, "92233720368.54775807"},
-		{"int64 max 7 places", Decimal(Max), 7, "92233720368.5477581"},
-		{"int64 max 0 places", Decimal(Max), 0, "92233720369"},
-		{"int64 min 8 places", Decimal(Min), 8, "-92233720368.54775808"},
-		{"int64 min 7 places", Decimal(Min), 7, "-92233720368.5477581"},
-		{"int64 min 0 places", Decimal(Min), 0, "-92233720369"},
+		{"int64 max 8 places", Decimal(Max), 8, "9223372036.85477581"},
+		{"int64 max 7 places", Decimal(Max), 7, "9223372036.8547758"},
+		{"int64 max 0 places", Decimal(Max), 0, "9223372037"},
+		{"int64 min 8 places", Decimal(Min), 8, "-9223372036.85477581"},
+		{"int64 min 7 places", Decimal(Min), 7, "-9223372036.8547758"},
+		{"int64 min 0 places", Decimal(Min), 0, "-9223372037"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

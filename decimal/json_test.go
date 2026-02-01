@@ -14,13 +14,13 @@ func TestDecimalUnmarshalJSON(t *testing.T) {
 		{`"123.45"`, Parse("123.45")},
 		{`"0"`, Zero},
 		{`"-99.99"`, Parse("-99.99")},
-		{`"0.00000001"`, Satoshi},
+		{`"0.000000001"`, Satoshi},
 
 		// JSON number values
 		{`123.45`, Parse("123.45")},
 		{`0`, Zero},
 		{`-99.99`, Parse("-99.99")},
-		{`1e-8`, Satoshi},
+		{`1e-9`, Satoshi},
 		{`1.5e2`, Parse("150")},
 	}
 
@@ -44,7 +44,7 @@ func TestDecimalMarshalJSON(t *testing.T) {
 		{Parse("123.45"), `"123.45"`},
 		{Zero, `"0"`},
 		{Parse("-99.99"), `"-99.99"`},
-		{Satoshi, `"0.00000001"`},
+		{Satoshi, `"0.000000001"`},
 		{Parse("1000000"), `"1000000"`},
 	}
 
@@ -67,8 +67,8 @@ func TestDecimalJSONRoundTrip(t *testing.T) {
 	}
 
 	original := Order{
-		Price:    Parse("12345.67890123"),
-		Quantity: Parse("0.00000001"),
+		Price:    Parse("12345.678901234"),
+		Quantity: Parse("0.000000001"),
 	}
 
 	data, err := json.Marshal(original)
