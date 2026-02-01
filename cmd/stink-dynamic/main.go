@@ -26,8 +26,8 @@ import (
 
 var (
 	flagSymbols      = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
-	flagDrop         = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
-	flagGreed        = decimal.Flag("greed", "1", "fraction of recovery to target (0.9 = take 90% of profit)")
+	flagDrop         = decimal.FlagPercent("drop", "0.2", "percent below market to place stink bid")
+	flagGreed        = decimal.Flag("greed", "1.5", "fraction of recovery to target (0.9 = take 90% of profit)")
 	flagBuffer       = decimal.Flag("buffer", "0", "quote currency to keep in reserve")
 	flagCooldown     = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
 	flagBuyDeadline  = clocky.DurationFlag("buy-deadline", "10s", "cancel partial fills that don't complete in time")
