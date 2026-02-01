@@ -20,14 +20,13 @@ import (
 )
 
 var (
-	flagSymbols   = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
-	flagDrop      = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
-	flagBuffer    = decimal.Flag("buffer", "10000", "USDC to reserve for credit card payment")
-	flagBufferDay = flag.Int("buffer-day", 7, "day of month to cancel bids for payment (2 days before through this day)")
-	flagCooldown  = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
-	flagVerbose   = flag.Bool("verbose", false, "enable verbose logging")
-	flagDry       = flag.Bool("dry", false, "dry run mode - don't place real orders")
-	flagCash      = decimal.Flag("cash", "100000", "USDC balance for backtesting")
+	flagSymbols  = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
+	flagDrop     = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
+	flagBuffer   = decimal.Flag("buffer", "0", "quote currency to keep in reserve")
+	flagCooldown = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
+	flagVerbose  = flag.Bool("verbose", false, "enable verbose logging")
+	flagDry      = flag.Bool("dry", false, "dry run mode - don't place real orders")
+	flagCash     = decimal.Flag("cash", "100000", "USDC balance for backtesting")
 )
 
 // SymbolState tracks state for a single trading symbol
@@ -98,8 +97,7 @@ func main() {
 	}
 
 	log.Printf("[startup] trading %d symbols: %s", len(gStates), *flagSymbols)
-	log.Printf("[startup] drop=%s buffer=%s buffer-day=%d",
-		*flagDrop, *flagBuffer, *flagBufferDay)
+	log.Printf("[startup] drop=%s buffer=%s", *flagDrop, *flagBuffer)
 
 	// setup callbacks and run
 	teddy.Brokers.OnReady = onReady
@@ -142,14 +140,6 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 	// update price from trades
 	for i := range tick.TradeCount() {
 		state.LastPrice = tick.Trade(i).Price
-	}
-
-	// check buffer day - cancel bids if we're close to payment due date
-	if isNearBufferDay() {
-		if state.StinkOrder != nil {
-			cancelStinkBid(state, "buffer day approaching")
-		}
-		return
 	}
 
 	state.Lock.Lock()
@@ -225,8 +215,12 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 }
 
 func placeStinkBid(state *SymbolState, stinkPrice, dropPercent decimal.Decimal) {
-	// compute quantity based on allocation
-	qty := state.Allocation.Div(stinkPrice)
+	// compute quantity based on allocation, accounting for maker fee reserve
+	// use 99.9% of allocation to give headroom for rounding
+	makerFee := gCoinbase.MakerFee.Load()
+	maxCostPerCoin := stinkPrice.Mul(decimal.One.Add(makerFee))
+	effectiveAlloc := state.Allocation.MulInt(999).DivInt(1000)
+	qty := effectiveAlloc.Div(maxCostPerCoin)
 	qty = qty.QuantizeTruncate(state.Pair.BaseIncrement.Load())
 
 	// check minimum order size
@@ -304,8 +298,12 @@ func replaceStinkBid(state *SymbolState, newPrice decimal.Decimal) {
 		return
 	}
 
-	// compute new quantity based on allocation
-	newQty := state.Allocation.Div(newPrice)
+	// compute new quantity based on allocation, accounting for maker fee reserve
+	// use 99.9% of allocation to give headroom for rounding
+	makerFee := gCoinbase.MakerFee.Load()
+	maxCostPerCoin := newPrice.Mul(decimal.One.Add(makerFee))
+	effectiveAlloc := state.Allocation.MulInt(999).DivInt(1000)
+	newQty := effectiveAlloc.Div(maxCostPerCoin)
 	newQty = newQty.QuantizeTruncate(state.Pair.BaseIncrement.Load())
 
 	// delta := newPrice.Sub(state.StinkPrice)
@@ -353,11 +351,4 @@ func cancelStinkBid(state *SymbolState, reason string) {
 
 	state.StinkOrder = nil
 	state.StinkPrice = decimal.Zero
-}
-
-func isNearBufferDay() bool {
-	day := clocky.Now().Day()
-	bufferDay := *flagBufferDay
-	// Cancel 2 days before through buffer-day (e.g., days 5,6,7 for buffer-day=7)
-	return day >= bufferDay-2 && day <= bufferDay
 }
