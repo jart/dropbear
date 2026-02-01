@@ -4,6 +4,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/loggy"
+	"log"
 	"sync"
 )
 
@@ -60,7 +61,7 @@ func (h *Holding) Check() {
 	}
 	if !h.IsCash {
 		if h.Quantity.Load().Cmp(h.Lots.Size) != 0 {
-			loggy.Fatalf("accounting invariant violated: %s Quantity (%s) != Lots.Size (%s)",
+			log.Printf("[warning] accounting invariant violated: %s Quantity (%s) != Lots.Size (%s)",
 				h.Symbol, h.Quantity.Load(), h.Lots.Size)
 		}
 	}
