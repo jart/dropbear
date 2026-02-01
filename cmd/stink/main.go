@@ -298,6 +298,11 @@ func replaceStinkBid(state *SymbolState, newPrice decimal.Decimal) {
 		return
 	}
 
+	// don't replace orders that have partial fills - let them complete
+	if state.StinkOrder.Filled.Load().IsPositive() {
+		return
+	}
+
 	// compute new quantity based on allocation, accounting for maker fee reserve
 	// use 99.9% of allocation to give headroom for rounding
 	makerFee := gCoinbase.MakerFee.Load()
