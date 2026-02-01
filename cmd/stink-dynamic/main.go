@@ -25,15 +25,16 @@ import (
 )
 
 var (
-	flagSymbols     = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
-	flagDrop        = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
-	flagBuffer      = decimal.Flag("buffer", "0", "quote currency to keep in reserve")
-	flagCooldown    = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
-	flagBuyDeadline = clocky.DurationFlag("buy-deadline", "10s", "cancel partial fills that don't complete in time")
-	flagWall        = flag.Bool("wall", false, "optimize bid placement by front-running the fattest bid in range")
-	flagVerbose     = flag.Bool("verbose", false, "enable verbose logging")
-	flagDry         = flag.Bool("dry", false, "dry run mode - don't place real orders")
-	flagCash        = decimal.Flag("cash", "100000", "USDC balance for backtesting")
+	flagSymbols      = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
+	flagDrop         = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
+	flagBuffer       = decimal.Flag("buffer", "0", "quote currency to keep in reserve")
+	flagCooldown     = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
+	flagBuyDeadline  = clocky.DurationFlag("buy-deadline", "10s", "cancel partial fills that don't complete in time")
+	flagSellDeadline = clocky.DurationFlag("sell-deadline", "0", "dump at market if recovery sell doesn't fill in time (0=disabled)")
+	flagWall         = flag.Bool("wall", false, "optimize bid placement by front-running the fattest bid in range")
+	flagVerbose      = flag.Bool("verbose", false, "enable verbose logging")
+	flagDry          = flag.Bool("dry", false, "dry run mode - don't place real orders")
+	flagCash         = decimal.Flag("cash", "100000", "USDC balance for backtesting")
 )
 
 // SymbolState tracks state for a single trading symbol
@@ -45,9 +46,11 @@ type SymbolState struct {
 	SellOrder        *teddy.Order     // current recovery sell (nil if none or filled)
 	StinkPrice       decimal.Decimal  // current bid price
 	PreCrashPrice    decimal.Decimal  // sell target after fill (WWMA when bid placed)
+	SellTargetPrice  decimal.Decimal  // current sell limit price (for deadline logic)
 	Allocation       decimal.Decimal  // quote currency allocated to this symbol
 	LastUpdate       clocky.Time      // last time we updated the bid
 	PartialFillStart clocky.Time      // when partial fill was first detected (zero if none)
+	SellOrderStart   clocky.Time      // when recovery sell was placed (zero if none)
 	Lock             sync.Mutex
 }
 
@@ -106,7 +109,8 @@ func main() {
 	}
 
 	log.Printf("[startup] trading %d symbols: %s", len(gStates), *flagSymbols)
-	log.Printf("[startup] drop=%s buffer=%s cooldown=%s buy-deadline=%s", *flagDrop, *flagBuffer, *flagCooldown, *flagBuyDeadline)
+	log.Printf("[startup] drop=%s buffer=%s cooldown=%s buy-deadline=%s sell-deadline=%s",
+		*flagDrop, *flagBuffer, *flagCooldown, *flagBuyDeadline, *flagSellDeadline)
 
 	// setup callbacks and run
 	teddy.Brokers.OnReady = onReady
@@ -164,7 +168,45 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 				state.Symbol, sold, sellPrice.FormatThousand(2), notional.FormatThousand(2))
 		}
 		state.SellOrder = nil
+		state.SellTargetPrice = decimal.Zero
+		state.SellOrderStart = 0
 		// will place new stink bid below
+	}
+
+	// check for stale recovery sell - dump at market if deadline exceeded
+	if *flagSellDeadline > 0 && state.SellOrder != nil && !state.SellOrder.State.Load().IsFinal() {
+		now := clocky.Now()
+		if state.SellOrderStart == 0 {
+			state.SellOrderStart = now
+		}
+		elapsed := now.Sub(state.SellOrderStart)
+		if elapsed >= *flagSellDeadline {
+			// get current market price
+			state.Pair.Lock.RLock()
+			bid, _ := state.Pair.Book.BestBidAsk()
+			state.Pair.Lock.RUnlock()
+			targetPrice := state.SellTargetPrice
+			qty := state.SellOrder.Quantity.Load().Sub(state.SellOrder.Filled.Load())
+			if bid.IsPositive() && targetPrice.IsPositive() && qty.IsPositive() {
+				lossBps := targetPrice.Sub(bid).Div(targetPrice).MulInt(10000)
+				log.Printf("[dump] %s recovery sell exceeded %s, dumping %s @ $%s (%+.0f bps vs target $%s)",
+					state.Symbol, *flagSellDeadline, qty, bid.FormatThousand(2), lossBps.Neg().Float64(), targetPrice.FormatThousand(2))
+				// cancel old sell and place market sell at current bid
+				if err := state.SellOrder.Cancel(); err != nil {
+					log.Printf("[error] %s failed to cancel stale sell: %v", state.Symbol, err)
+				} else {
+					dumpPrice := bid.QuantizeTruncate(state.Pair.QuoteIncrement.Load())
+					dumpOrder, err := state.Pair.LimitOrder(ds.SideSell, qty, dumpPrice, ds.OrderStrategyMarketable)
+					if err != nil {
+						log.Printf("[error] %s failed to place dump sell: %v", state.Symbol, err)
+					} else {
+						state.SellOrder = dumpOrder
+						state.SellTargetPrice = dumpPrice
+						state.SellOrderStart = now // reset deadline for the dump order
+					}
+				}
+			}
+		}
 	}
 
 	// check if stink bid filled -> place recovery sell
@@ -361,6 +403,8 @@ func placeRecoverySell(state *SymbolState, filled decimal.Decimal) {
 	}
 
 	state.SellOrder = sellOrder
+	state.SellTargetPrice = sellPrice
+	state.SellOrderStart = clocky.Now()
 }
 
 func replaceStinkBid(state *SymbolState, naiveNewPrice, sellTarget decimal.Decimal) {
