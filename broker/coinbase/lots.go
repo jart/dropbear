@@ -62,7 +62,7 @@ func (c *Client) GetLots(currency string, method ds.CostBasisMethod) (*ds.Lots, 
 			} else {
 				lots.Consume(absAmount, decimal.Zero)
 			}
-		case "sell":
+		case "sell", "credit_card_balance_payment":
 			lots.Consume(absAmount, decimal.Zero)
 		case "interest", "subscription_rebate", "credit_card_reward":
 			cost := decimal.Parse(nativeAmountStr).Abs()
