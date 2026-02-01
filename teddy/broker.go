@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	flagCoinbaseMakerFee = decimal.FlagBPS("coinbase-maker-fee", "2.5", "coinbase maker fee in basis points")
-	flagCoinbaseTakerFee = decimal.FlagBPS("coinbase-taker-fee", "6.5", "coinbase taker fee in basis points")
+	flagCoinbaseMakerFee = decimal.FlagBPS("coinbase-maker-fee", "6", "coinbase maker fee in basis points")
+	flagCoinbaseTakerFee = decimal.FlagBPS("coinbase-taker-fee", "12.5", "coinbase taker fee in basis points")
 	flagCoinbaseRebate   = decimal.FlagPercent("coinbase-rebate", "25", "coinbase percent rebate on fees")
 )
 
