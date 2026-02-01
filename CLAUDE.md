@@ -128,8 +128,14 @@ our best alpaca etf day trading strategy
 go run ./cmd/levi -backtest -v -lookback 10 -start 2025-01-01 -symbol "etc/picks/levi" -cash 161845
 ```
 
-our best crypto trading strategy
+crypto arbitrage strategy (market taking based on binance price prediction)
 
 ```bash
-go run ./cmd/arb -backtest churu -symbol ETH -predictor ETHFDUSD@binance -pricer FDUSDUSDT@binance -threshold 2.2 -level2 -samples 2000 -usd 50000 -clean 10
+go run ./cmd/arb -backtest churu -symbol ETH -predictor ETHFDUSD@binance -pricer FDUSDUSDT@binance -threshold 2.2 -level2 -samples 2000 -cash 50000 -clean 10
+```
+
+stink bid strategy (catch whale panic sells with limit bids below market)
+
+```bash
+go run ./cmd/stink -backtest churu -symbol ETH -window 100
 ```

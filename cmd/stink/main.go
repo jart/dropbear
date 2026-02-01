@@ -31,7 +31,6 @@ var (
 	flagCooldown  = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
 	flagVerbose   = flag.Bool("verbose", false, "enable verbose logging")
 	flagDry       = flag.Bool("dry", false, "dry run mode - don't place real orders")
-	flagSellWWMA  = flag.Int("sell-wwma", 120, "WWMA period for pre-crash sell target")
 	flagCash      = decimal.Flag("cash", "100000", "USDC balance for backtesting")
 )
 
@@ -40,11 +39,10 @@ type SymbolState struct {
 	Symbol        string
 	Pair          *teddy.Pair
 	Volatility    *indicators.Welford // rolling stddev of returns
-	PriceWWMA     *indicators.WWMA    // slow price for pre-crash sell target
 	StinkOrder    *teddy.Order        // current stink bid (nil if none or filled)
 	SellOrder     *teddy.Order        // current recovery sell (nil if none or filled)
 	StinkPrice    decimal.Decimal     // current bid price
-	PreCrashPrice decimal.Decimal     // sell target after fill
+	PreCrashPrice decimal.Decimal     // sell target after fill (captured when bid placed)
 	Allocation    decimal.Decimal     // quote currency allocated to this symbol
 	LastUpdate    clocky.Time         // last time we updated the bid
 	LastPrice     decimal.Decimal     // last seen price for return calculation
@@ -97,7 +95,6 @@ func main() {
 			Symbol:     symbol,
 			Pair:       pair,
 			Volatility: indicators.NewWelford(*flagWindow),
-			PriceWWMA:  indicators.NewWWMA(*flagSellWWMA),
 		}
 		gStates = append(gStates, state)
 	}
@@ -141,7 +138,6 @@ func seedIndicators() {
 				ret := candle.Close.Sub(lastClose).Div(lastClose)
 				state.Volatility.Add(ret)
 			}
-			state.PriceWWMA.Add(candle.Close)
 			lastClose = candle.Close
 		}
 		state.LastPrice = lastClose
@@ -191,7 +187,6 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 			ret := trade.Price.Sub(state.LastPrice).Div(state.LastPrice)
 			state.Volatility.Add(ret)
 		}
-		state.PriceWWMA.Add(trade.Price)
 		state.LastPrice = trade.Price
 	}
 
@@ -267,9 +262,6 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 	stinkPrice := currentPrice.Mul(decimal.One.Sub(dropPercent))
 	stinkPrice = stinkPrice.QuantizeTruncate(state.Pair.QuoteIncrement.Load())
 
-	// update pre-crash price target
-	state.PreCrashPrice = state.PriceWWMA.Value
-
 	// check cooldown
 	now := clocky.Now()
 	if now.Sub(state.LastUpdate) < *flagCooldown {
@@ -330,11 +322,13 @@ func placeStinkBid(state *SymbolState, stinkPrice, dropPercent decimal.Decimal) 
 
 	state.StinkOrder = order
 	state.StinkPrice = stinkPrice
+	state.PreCrashPrice = state.LastPrice // capture current price as sell target
 	state.LastUpdate = clocky.Now()
 
 	dropBps := dropPercent.MulInt(10000)
-	log.Printf("[placed] %s %s @ $%s (%.0f bps below)",
-		state.Symbol, qty, stinkPrice.FormatThousand(2), dropBps.Float64())
+	log.Printf("[placed] %s %s @ $%s (%.0f bps below, target $%s)",
+		state.Symbol, qty, stinkPrice.FormatThousand(2), dropBps.Float64(),
+		state.PreCrashPrice.FormatThousand(2))
 }
 
 func placeRecoverySell(state *SymbolState, filled decimal.Decimal) {
@@ -343,11 +337,12 @@ func placeRecoverySell(state *SymbolState, filled decimal.Decimal) {
 	log.Printf("[filled] %s bought %s @ $%s ($%s)",
 		state.Symbol, filled, fillPrice.FormatThousand(2), notional.FormatThousand(2))
 
-	// place limit sell at pre-crash price (using Marketable strategy)
+	// sell target = where price was before the crash
+	// if we bid 3% below and got filled, target selling at the pre-crash level
 	sellPrice := state.PreCrashPrice
 	if sellPrice.Cmp(fillPrice) <= 0 {
-		// pre-crash price is at or below fill, use a small profit target instead
-		sellPrice = fillPrice.MulInt(101).DivInt(100) // 1% above fill
+		// pre-crash tracking failed, shouldn't happen but fallback to 1% profit
+		sellPrice = fillPrice.MulInt(101).DivInt(100)
 	}
 	sellPrice = sellPrice.QuantizeAway(state.Pair.QuoteIncrement.Load())
 
@@ -403,6 +398,7 @@ func replaceStinkBid(state *SymbolState, newPrice decimal.Decimal) {
 	}
 
 	state.StinkPrice = newPrice
+	state.PreCrashPrice = state.LastPrice // update sell target to current price
 	state.LastUpdate = clocky.Now()
 }
 
