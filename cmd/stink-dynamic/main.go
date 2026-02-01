@@ -27,6 +27,7 @@ import (
 var (
 	flagSymbols      = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
 	flagDrop         = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
+	flagGreed        = decimal.Flag("greed", "1", "fraction of recovery to target (0.9 = take 90% of profit)")
 	flagBuffer       = decimal.Flag("buffer", "0", "quote currency to keep in reserve")
 	flagCooldown     = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
 	flagBuyDeadline  = clocky.DurationFlag("buy-deadline", "10s", "cancel partial fills that don't complete in time")
@@ -109,8 +110,8 @@ func main() {
 	}
 
 	log.Printf("[startup] trading %d symbols: %s", len(gStates), *flagSymbols)
-	log.Printf("[startup] drop=%s buffer=%s cooldown=%s buy-deadline=%s sell-deadline=%s",
-		*flagDrop, *flagBuffer, *flagCooldown, *flagBuyDeadline, *flagSellDeadline)
+	log.Printf("[startup] drop=%s greed=%s buffer=%s cooldown=%s buy-deadline=%s sell-deadline=%s",
+		*flagDrop, *flagGreed, *flagBuffer, *flagCooldown, *flagBuyDeadline, *flagSellDeadline)
 
 	// setup callbacks and run
 	teddy.Brokers.OnReady = onReady
@@ -378,13 +379,14 @@ func placeRecoverySell(state *SymbolState, filled decimal.Decimal) {
 	log.Printf("[filled] %s bought %s @ $%s ($%s)",
 		state.Symbol, filled, fillPrice.FormatThousand(2), notional.FormatThousand(2))
 
-	// sell target = where price was before the crash
-	// if we bid 3% below and got filled, target selling at the pre-crash level
-	sellPrice := state.PreCrashPrice
-	if sellPrice.Cmp(fillPrice) <= 0 {
+	// sell target = fillPrice + greed * (PreCrashPrice - fillPrice)
+	// greed=1.0 means full recovery, greed=0.9 means take 90% of profit
+	recoveryAmount := state.PreCrashPrice.Sub(fillPrice)
+	if !recoveryAmount.IsPositive() {
 		// pre-crash tracking failed, shouldn't happen but fallback to 1% profit
-		sellPrice = fillPrice.MulInt(101).DivInt(100)
+		recoveryAmount = fillPrice.DivInt(100)
 	}
+	sellPrice := fillPrice.Add(recoveryAmount.Mul(*flagGreed))
 	sellPrice = sellPrice.QuantizeAway(state.Pair.QuoteIncrement.Load())
 
 	profitBps := sellPrice.Sub(fillPrice).Div(fillPrice).MulInt(10000)
