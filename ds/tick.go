@@ -51,7 +51,13 @@ func (t Tick) IsZero() bool {
 
 // Time returns the timestamp of this tick.
 func (t Tick) Time() clocky.Time {
-	return clocky.Time(*(*uint64)(t.ptr))
+	ts := *(*uint64)(t.ptr)
+	// Old files stored microseconds, new files store nanoseconds.
+	// Detect old format: if timestamp is before year 2000 in nanos, it's micros.
+	if ts < 946684800_000_000_000 {
+		ts *= 1000 // convert microseconds to nanoseconds
+	}
+	return clocky.Time(ts)
 }
 
 // Snap returns true if this is a full snapshot (vs incremental update).
@@ -101,9 +107,14 @@ func (t Tick) Trade(i int) Trade {
 	} else {
 		side = SideSell
 	}
+	ts := *(*uint64)(unsafe.Add(p, 1))
+	// Old files stored microseconds, new files store nanoseconds.
+	if ts < 946684800_000_000_000 {
+		ts *= 1000
+	}
 	return Trade{
 		Side:     side,
-		Time:     clocky.Time(*(*uint64)(unsafe.Add(p, 1))),
+		Time:     clocky.Time(ts),
 		Price:    decimal.Decimal(*(*uint64)(unsafe.Add(p, 9))),
 		Quantity: decimal.Decimal(*(*uint64)(unsafe.Add(p, 17))),
 	}

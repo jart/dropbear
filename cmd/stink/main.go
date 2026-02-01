@@ -183,7 +183,6 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 	if !gReady {
 		return
 	}
-	log.Printf("hey")
 
 	// update price from trades and aggregate into minute bars for volatility
 	for i := range tick.TradeCount() {
