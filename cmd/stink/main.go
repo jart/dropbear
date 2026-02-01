@@ -11,7 +11,6 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/indicators"
 	"dropbear/loggy"
 	"dropbear/teddy"
 	"flag"
@@ -22,12 +21,9 @@ import (
 
 var (
 	flagSymbols   = flag.String("symbol", "BTC", "comma-separated symbols to trade (e.g. BTC,ETH,SOL)")
-	flagSigma     = decimal.Flag("sigma", "3", "standard deviations below price for stink bid")
-	flagWindow    = flag.Int("window", 1440, "volatility window in minutes (24h default)")
+	flagDrop      = decimal.FlagPercent("drop", "0.5", "percent below market to place stink bid")
 	flagBuffer    = decimal.Flag("buffer", "10000", "USDC to reserve for credit card payment")
 	flagBufferDay = flag.Int("buffer-day", 7, "day of month to cancel bids for payment (2 days before through this day)")
-	flagMinDrop   = decimal.FlagPercent("min-drop", "3", "minimum drop percent for stink bid")
-	flagMaxDrop   = decimal.FlagPercent("max-drop", "20", "maximum drop (safety limit)")
 	flagCooldown  = clocky.DurationFlag("cooldown", "30s", "minimum time between bid updates")
 	flagVerbose   = flag.Bool("verbose", false, "enable verbose logging")
 	flagDry       = flag.Bool("dry", false, "dry run mode - don't place real orders")
@@ -36,19 +32,16 @@ var (
 
 // SymbolState tracks state for a single trading symbol
 type SymbolState struct {
-	Symbol         string
-	Pair           *teddy.Pair
-	Volatility     *indicators.Welford // rolling stddev of daily returns
-	StinkOrder     *teddy.Order        // current stink bid (nil if none or filled)
-	SellOrder      *teddy.Order        // current recovery sell (nil if none or filled)
-	StinkPrice     decimal.Decimal     // current bid price
-	PreCrashPrice  decimal.Decimal     // sell target after fill (captured when bid placed)
-	Allocation     decimal.Decimal     // quote currency allocated to this symbol
-	LastUpdate     clocky.Time         // last time we updated the bid
-	LastPrice      decimal.Decimal     // last seen trade price
-	LastDay        int                 // day of last volatility update (1-365)
-	LastDayClose   decimal.Decimal     // close price of that day
-	Lock           sync.Mutex
+	Symbol        string
+	Pair          *teddy.Pair
+	StinkOrder    *teddy.Order    // current stink bid (nil if none or filled)
+	SellOrder     *teddy.Order    // current recovery sell (nil if none or filled)
+	StinkPrice    decimal.Decimal // current bid price
+	PreCrashPrice decimal.Decimal // sell target after fill (captured when bid placed)
+	Allocation    decimal.Decimal // quote currency allocated to this symbol
+	LastUpdate    clocky.Time     // last time we updated the bid
+	LastPrice     decimal.Decimal // last seen trade price
+	Lock          sync.Mutex
 }
 
 var (
@@ -94,9 +87,8 @@ func main() {
 		}
 		pair := gCoinbase.Pairs.Get(symbol + "-" + quoteCurrency)
 		state := &SymbolState{
-			Symbol:     symbol,
-			Pair:       pair,
-			Volatility: indicators.NewWelford(*flagWindow),
+			Symbol: symbol,
+			Pair:   pair,
 		}
 		gStates = append(gStates, state)
 	}
@@ -106,50 +98,13 @@ func main() {
 	}
 
 	log.Printf("[startup] trading %d symbols: %s", len(gStates), *flagSymbols)
-	log.Printf("[startup] sigma=%s window=%d buffer=%s buffer-day=%d",
-		*flagSigma, *flagWindow, *flagBuffer, *flagBufferDay)
-
-	// seed indicators from historical data (only in live mode)
-	if teddy.Live {
-		seedIndicators()
-	} else {
-		log.Printf("[startup] backtest mode - indicators will warm up from dataset")
-	}
+	log.Printf("[startup] drop=%s buffer=%s buffer-day=%d",
+		*flagDrop, *flagBuffer, *flagBufferDay)
 
 	// setup callbacks and run
 	teddy.Brokers.OnReady = onReady
 	teddy.SetBenchmark(gStates[0].Pair)
 	teddy.Run()
-}
-
-func seedIndicators() {
-	now := clocky.Now()
-	start := now.Add(-clocky.Duration(*flagWindow) * clocky.Minute)
-	log.Printf("[startup] seeding volatility from %d minute candles", *flagWindow)
-
-	for _, state := range gStates {
-		candles, err := teddy.CoinbaseClient.GetMinuteCandlesRange(state.Symbol, start, now)
-		if err != nil {
-			log.Printf("[warning] failed to get candles for %s: %v", state.Symbol, err)
-			continue
-		}
-
-		var lastClose decimal.Decimal
-		for _, candle := range candles {
-			if lastClose.IsPositive() {
-				ret := candle.Close.Sub(lastClose).Div(lastClose)
-				state.Volatility.Add(ret)
-			}
-			lastClose = candle.Close
-		}
-		state.LastPrice = lastClose
-		state.LastDayClose = lastClose
-		state.LastDay = now.Day() + now.Month()*31 + now.Year()*366
-
-		log.Printf("[startup] %s: seeded %d candles, volatility %.4f%% ready, stddev=%s",
-			state.Symbol, len(candles), state.Volatility.Progress()*100,
-			state.Volatility.Stddev().MulInt(100).Format(4))
-	}
 }
 
 func onReady() {
@@ -184,28 +139,9 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 		return
 	}
 
-	// update price from trades and aggregate into daily bars for volatility
+	// update price from trades
 	for i := range tick.TradeCount() {
-		trade := tick.Trade(i)
-		state.LastPrice = trade.Price
-
-		// check if we crossed into a new day
-		currentDay := trade.Time.Day() + trade.Time.Month()*31 + trade.Time.Year()*366
-		if state.LastDay == 0 {
-			// initialize
-			state.LastDay = currentDay
-			state.LastDayClose = trade.Price
-			continue
-		}
-		if currentDay > state.LastDay {
-			// add return for the completed day
-			if state.LastDayClose.IsPositive() {
-				ret := trade.Price.Sub(state.LastDayClose).Div(state.LastDayClose)
-				state.Volatility.Add(ret)
-			}
-			state.LastDayClose = trade.Price
-			state.LastDay = currentDay
-		}
+		state.LastPrice = tick.Trade(i).Price
 	}
 
 	// check buffer day - cancel bids if we're close to payment due date
@@ -256,15 +192,8 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 	}
 	currentPrice := bid.Add(ask).DivInt(2)
 
-	// compute stink price: drop = sigma * stddev, or just use min-drop if no volatility yet
-	stddev := state.Volatility.Stddev()
-	var dropPercent decimal.Decimal
-	if stddev.IsPositive() {
-		dropPercent = flagSigma.Mul(stddev)
-	}
-	if dropPercent.Cmp(*flagMinDrop) < 0 {
-		dropPercent = *flagMinDrop
-	}
+	// compute stink price
+	dropPercent := *flagDrop
 	stinkPrice := currentPrice.Mul(decimal.One.Sub(dropPercent))
 	stinkPrice = stinkPrice.QuantizeTruncate(state.Pair.QuoteIncrement.Load())
 
@@ -375,18 +304,15 @@ func replaceStinkBid(state *SymbolState, newPrice decimal.Decimal) {
 		return
 	}
 
-	oldPrice := state.StinkPrice
-	order := state.StinkOrder
-
 	// compute new quantity based on allocation
 	newQty := state.Allocation.Div(newPrice)
 	newQty = newQty.QuantizeTruncate(state.Pair.BaseIncrement.Load())
 
-	delta := newPrice.Sub(oldPrice)
-	deltaBps := delta.Div(oldPrice).MulInt(10000)
-	log.Printf("[replace] %s $%s -> $%s (%+.1f bps)",
-		state.Symbol, oldPrice.FormatThousand(2), newPrice.FormatThousand(2), deltaBps.Float64())
+	// delta := newPrice.Sub(state.StinkPrice)
+	// deltaBps := delta.Div(state.StinkPrice).MulInt(10000)
+	// log.Printf("[replace] %s $%s -> $%s (%+.1f bps)", state.Symbol, state.StinkPrice.FormatThousand(2), newPrice.FormatThousand(2), deltaBps.Float64())
 
+	order := state.StinkOrder
 	if err := order.Replace(newQty, newPrice); err != nil {
 		if err == ds.ErrTooManyRequests {
 			// rate limited, will retry next tick
