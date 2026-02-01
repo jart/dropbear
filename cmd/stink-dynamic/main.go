@@ -15,6 +15,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/indicators"
 	"dropbear/loggy"
 	"dropbear/teddy"
 	"flag"
@@ -38,12 +39,13 @@ var (
 type SymbolState struct {
 	Symbol        string
 	Pair          *teddy.Pair
-	StinkOrder    *teddy.Order    // current stink bid (nil if none or filled)
-	SellOrder     *teddy.Order    // current recovery sell (nil if none or filled)
-	StinkPrice    decimal.Decimal // current bid price
-	PreCrashPrice decimal.Decimal // sell target after fill (midpoint when bid placed)
-	Allocation    decimal.Decimal // quote currency allocated to this symbol
-	LastUpdate    clocky.Time     // last time we updated the bid
+	PriceWWMA     *indicators.WWMA // smoothed price for sell target
+	StinkOrder    *teddy.Order     // current stink bid (nil if none or filled)
+	SellOrder     *teddy.Order     // current recovery sell (nil if none or filled)
+	StinkPrice    decimal.Decimal  // current bid price
+	PreCrashPrice decimal.Decimal  // sell target after fill (WWMA when bid placed)
+	Allocation    decimal.Decimal  // quote currency allocated to this symbol
+	LastUpdate    clocky.Time      // last time we updated the bid
 	Lock          sync.Mutex
 }
 
@@ -90,8 +92,9 @@ func main() {
 		}
 		pair := gCoinbase.Pairs.Get(symbol + "-" + quoteCurrency)
 		state := &SymbolState{
-			Symbol: symbol,
-			Pair:   pair,
+			Symbol:    symbol,
+			Pair:      pair,
+			PriceWWMA: indicators.NewWWMA(20), // smooth price for sell target
 		}
 		gStates = append(gStates, state)
 	}
@@ -139,6 +142,11 @@ func onReady() {
 func handleTick(state *SymbolState, tick ds.Tick) {
 	if !gReady {
 		return
+	}
+
+	// feed trade prices to WWMA for smoothed sell target
+	for i := range tick.TradeCount() {
+		state.PriceWWMA.Add(tick.Trade(i).Price)
 	}
 
 	state.Lock.Lock()
@@ -192,9 +200,16 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 		return
 	}
 
+	// use WWMA of trade prices for sell target (smoother than raw midpoint)
+	// fall back to midpoint if WWMA not ready yet
+	sellTarget := state.PriceWWMA.Value
+	if !state.PriceWWMA.IsReady() {
+		sellTarget = currentPrice
+	}
+
 	// if no order, place one
 	if state.StinkOrder == nil {
-		placeStinkBid(state, stinkPrice, currentPrice)
+		placeStinkBid(state, stinkPrice, sellTarget)
 		return
 	}
 
@@ -210,10 +225,10 @@ func handleTick(state *SymbolState, tick ds.Tick) {
 	}
 
 	// replace the order
-	replaceStinkBid(state, stinkPrice, currentPrice)
+	replaceStinkBid(state, stinkPrice, sellTarget)
 }
 
-func placeStinkBid(state *SymbolState, naiveStinkPrice, midPrice decimal.Decimal) {
+func placeStinkBid(state *SymbolState, naiveStinkPrice, sellTarget decimal.Decimal) {
 	// compute quantity based on allocation, accounting for maker fee reserve
 	// use 99.9% of allocation to give headroom for rounding
 	makerFee := gCoinbase.MakerFee.Load()
@@ -256,10 +271,10 @@ func placeStinkBid(state *SymbolState, naiveStinkPrice, midPrice decimal.Decimal
 	}
 
 	if *flagVerbose {
-		log.Printf("[stink] %s placing bid %s @ $%s (%.1f%% below midpoint $%s)",
+		log.Printf("[stink] %s placing bid %s @ $%s (%.1f%% below, target $%s)",
 			state.Symbol, qty, stinkPrice,
-			decimal.One.Sub(stinkPrice.Div(midPrice)).MulInt(100).Float64(),
-			midPrice.FormatThousand(2))
+			decimal.One.Sub(stinkPrice.Div(sellTarget)).MulInt(100).Float64(),
+			sellTarget.FormatThousand(2))
 	}
 
 	order, err := state.Pair.LimitOrder(ds.SideBuy, qty, stinkPrice, ds.OrderStrategyPostOnly)
@@ -274,7 +289,7 @@ func placeStinkBid(state *SymbolState, naiveStinkPrice, midPrice decimal.Decimal
 
 	state.StinkOrder = order
 	state.StinkPrice = stinkPrice
-	state.PreCrashPrice = midPrice // capture midpoint as sell target (not noisy trade price)
+	state.PreCrashPrice = sellTarget // WWMA of trade prices (smoother than raw midpoint)
 	state.LastUpdate = clocky.Now()
 
 	log.Printf("[placed] %s %s @ $%s (%.1f%% below, target $%s)",
@@ -315,7 +330,7 @@ func placeRecoverySell(state *SymbolState, filled decimal.Decimal) {
 	state.SellOrder = sellOrder
 }
 
-func replaceStinkBid(state *SymbolState, naiveNewPrice, midPrice decimal.Decimal) {
+func replaceStinkBid(state *SymbolState, naiveNewPrice, sellTarget decimal.Decimal) {
 	if state.StinkOrder == nil {
 		return
 	}
@@ -375,6 +390,6 @@ func replaceStinkBid(state *SymbolState, naiveNewPrice, midPrice decimal.Decimal
 	}
 
 	state.StinkPrice = newPrice
-	state.PreCrashPrice = midPrice // update sell target to midpoint (not noisy trade price)
+	state.PreCrashPrice = sellTarget // WWMA of trade prices (smoother than raw midpoint)
 	state.LastUpdate = clocky.Now()
 }
