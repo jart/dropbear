@@ -8,11 +8,115 @@ import (
 	"strings"
 	"testing"
 
+	"dropbear/broker/alpaca"
+	"dropbear/decimal"
+	"dropbear/ds"
 	"dropbear/netty"
 )
 
 func init() {
 	netty.SetOffline()
+}
+
+// TestMlegOrderRequestJSON verifies that an mleg OrderRequest serializes to
+// exactly the JSON body that Alpaca's POST /v2/orders expects: no top-level
+// symbol/side, legs array with string ratio_qty, and all numeric fields as
+// quoted strings.
+func TestMlegOrderRequestJSON(t *testing.T) {
+	req := alpaca.OrderRequest{
+		Qty:         decimal.FromInt(400),
+		Type:        alpaca.OrderTypeLimit,
+		TimeInForce: alpaca.TimeInForceDay,
+		LimitPrice:  decimal.Parse("10.99"),
+		OrderClass:  alpaca.OrderClassMleg,
+		Legs: []alpaca.OrderLeg{
+			{Symbol: "QQQ260217C00593000", Side: ds.SideBuy, RatioQty: decimal.One},
+			{Symbol: "QQQ260217C00604000", Side: ds.SideSell, RatioQty: decimal.One},
+			{Symbol: "QQQ260217P00604000", Side: ds.SideBuy, RatioQty: decimal.One},
+			{Symbol: "QQQ260217P00593000", Side: ds.SideSell, RatioQty: decimal.One},
+		},
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal error: %v", err)
+	}
+
+	// Parse back to a generic map to check structure
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+
+	// No top-level symbol (omitempty should drop it)
+	if _, ok := m["symbol"]; ok {
+		t.Error("mleg request should not have top-level symbol")
+	}
+
+	// No top-level side (omitempty should drop it)
+	if _, ok := m["side"]; ok {
+		t.Error("mleg request should not have top-level side")
+	}
+
+	// order_class must be "mleg"
+	if m["order_class"] != "mleg" {
+		t.Errorf("order_class = %v, want \"mleg\"", m["order_class"])
+	}
+
+	// qty must be string "400"
+	if m["qty"] != "400" {
+		t.Errorf("qty = %v (type %T), want string \"400\"", m["qty"], m["qty"])
+	}
+
+	// limit_price must be string "10.99"
+	if m["limit_price"] != "10.99" {
+		t.Errorf("limit_price = %v, want \"10.99\"", m["limit_price"])
+	}
+
+	// type must be "limit"
+	if m["type"] != "limit" {
+		t.Errorf("type = %v, want \"limit\"", m["type"])
+	}
+
+	// legs must be array of 4
+	legsAny, ok := m["legs"].([]any)
+	if !ok {
+		t.Fatalf("legs is not an array: %T", m["legs"])
+	}
+	if len(legsAny) != 4 {
+		t.Fatalf("legs has %d elements, want 4", len(legsAny))
+	}
+
+	// Check first leg structure
+	leg0, ok := legsAny[0].(map[string]any)
+	if !ok {
+		t.Fatalf("leg[0] is not a map: %T", legsAny[0])
+	}
+	if leg0["symbol"] != "QQQ260217C00593000" {
+		t.Errorf("leg[0].symbol = %v", leg0["symbol"])
+	}
+	if leg0["side"] != "buy" {
+		t.Errorf("leg[0].side = %v", leg0["side"])
+	}
+	if leg0["ratio_qty"] != "1" {
+		t.Errorf("leg[0].ratio_qty = %v (type %T), want string \"1\"", leg0["ratio_qty"], leg0["ratio_qty"])
+	}
+
+	// Check second leg (sell side)
+	leg1, ok := legsAny[1].(map[string]any)
+	if !ok {
+		t.Fatalf("leg[1] is not a map: %T", legsAny[1])
+	}
+	if leg1["side"] != "sell" {
+		t.Errorf("leg[1].side = %v", leg1["side"])
+	}
+
+	// position_intent should be omitted when not set
+	if _, ok := leg0["position_intent"]; ok {
+		t.Error("leg[0] should not have position_intent when unset")
+	}
+
+	t.Logf("serialized JSON:\n%s", string(data))
 }
 
 func TestIsOptionSymbol(t *testing.T) {
@@ -185,6 +289,7 @@ func TestMCPProtocol(t *testing.T) {
 		"place_order", "get_quote", "get_account", "get_positions",
 		"get_orders", "cancel_order", "cancel_all_orders", "get_bars",
 		"get_snapshot", "get_auctions", "get_option_chain",
+		"place_mleg_order", "place_box_spread",
 	}
 	toolNames := make(map[string]bool)
 	for _, tool := range toolsAny {
@@ -279,6 +384,62 @@ func TestToolCallValidation(t *testing.T) {
 	if !strings.Contains(result.Content[0].Text, "unknown tool") {
 		t.Errorf("unexpected error message: %s", result.Content[0].Text)
 	}
+
+	// Test place_order with mleg but no legs
+	result = handleToolCall(ToolCallParams{
+		Name: "place_order",
+		Arguments: map[string]any{
+			"order_type":  "limit",
+			"order_class": "mleg",
+			"qty":         "400",
+			"limit_price": "10.999",
+		},
+	})
+	if !result.IsError {
+		t.Error("expected error when mleg has no legs")
+	}
+	if !strings.Contains(result.Content[0].Text, "legs array is required") {
+		t.Errorf("unexpected error message: %s", result.Content[0].Text)
+	}
+
+	// Test place_order with mleg but missing qty
+	result = handleToolCall(ToolCallParams{
+		Name: "place_order",
+		Arguments: map[string]any{
+			"order_type":  "limit",
+			"order_class": "mleg",
+			"limit_price": "10.999",
+			"legs": []any{
+				map[string]any{"symbol": "QQQ260217C00593000", "side": "buy", "ratio_qty": 1.0},
+			},
+		},
+	})
+	if !result.IsError {
+		t.Error("expected error when mleg has no qty")
+	}
+	if !strings.Contains(result.Content[0].Text, "qty must be a positive") {
+		t.Errorf("unexpected error message: %s", result.Content[0].Text)
+	}
+
+	// Test place_order with mleg and invalid leg symbol
+	result = handleToolCall(ToolCallParams{
+		Name: "place_order",
+		Arguments: map[string]any{
+			"order_type":  "limit",
+			"order_class": "mleg",
+			"qty":         "400",
+			"limit_price": "10.999",
+			"legs": []any{
+				map[string]any{"symbol": "NOTANOPTION", "side": "buy"},
+			},
+		},
+	})
+	if !result.IsError {
+		t.Error("expected error for invalid OCC symbol in mleg leg")
+	}
+	if !strings.Contains(result.Content[0].Text, "invalid OCC option symbol") {
+		t.Errorf("unexpected error message: %s", result.Content[0].Text)
+	}
 }
 
 func TestPanicRecovery(t *testing.T) {
@@ -358,6 +519,366 @@ func processRequest(t *testing.T, reqJSON string) Response {
 	}
 
 	return decoded
+}
+
+func TestBuildOCCSymbol(t *testing.T) {
+	tests := []struct {
+		name       string
+		root       string
+		expiration string
+		optionType string
+		strike     string
+		want       string
+		wantErr    bool
+	}{
+		{
+			name:       "SPY call at 500",
+			root:       "SPY",
+			expiration: "2026-03-20",
+			optionType: "C",
+			strike:     "500",
+			want:       "SPY260320C00500000",
+		},
+		{
+			name:       "SPY put at 450",
+			root:       "SPY",
+			expiration: "2026-03-20",
+			optionType: "P",
+			strike:     "450",
+			want:       "SPY260320P00450000",
+		},
+		{
+			name:       "decimal strike",
+			root:       "AAPL",
+			expiration: "2026-01-16",
+			optionType: "C",
+			strike:     "190.5",
+			want:       "AAPL260116C00190500",
+		},
+		{
+			name:       "single letter root",
+			root:       "A",
+			expiration: "2026-06-19",
+			optionType: "P",
+			strike:     "100",
+			want:       "A260619P00100000",
+		},
+		{
+			name:       "six letter root",
+			root:       "ABCDEF",
+			expiration: "2026-12-18",
+			optionType: "C",
+			strike:     "50",
+			want:       "ABCDEF261218C00050000",
+		},
+		{
+			name:       "small strike",
+			root:       "SPY",
+			expiration: "2026-03-20",
+			optionType: "C",
+			strike:     "1.5",
+			want:       "SPY260320C00001500",
+		},
+		{
+			name:       "empty root",
+			root:       "",
+			expiration: "2026-03-20",
+			optionType: "C",
+			strike:     "500",
+			wantErr:    true,
+		},
+		{
+			name:       "root too long",
+			root:       "ABCDEFG",
+			expiration: "2026-03-20",
+			optionType: "C",
+			strike:     "500",
+			wantErr:    true,
+		},
+		{
+			name:       "lowercase root",
+			root:       "spy",
+			expiration: "2026-03-20",
+			optionType: "C",
+			strike:     "500",
+			wantErr:    true,
+		},
+		{
+			name:       "bad date format",
+			root:       "SPY",
+			expiration: "03/20/2026",
+			optionType: "C",
+			strike:     "500",
+			wantErr:    true,
+		},
+		{
+			name:       "bad option type",
+			root:       "SPY",
+			expiration: "2026-03-20",
+			optionType: "X",
+			strike:     "500",
+			wantErr:    true,
+		},
+		{
+			name:       "negative strike",
+			root:       "SPY",
+			expiration: "2026-03-20",
+			optionType: "C",
+			strike:     "-100",
+			wantErr:    true,
+		},
+		{
+			name:       "zero strike",
+			root:       "SPY",
+			expiration: "2026-03-20",
+			optionType: "C",
+			strike:     "0",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid strike string",
+			root:       "SPY",
+			expiration: "2026-03-20",
+			optionType: "C",
+			strike:     "abc",
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := buildOCCSymbol(tt.root, tt.expiration, tt.optionType, tt.strike)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("buildOCCSymbol() = %q, want error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("buildOCCSymbol() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("buildOCCSymbol() = %q, want %q", got, tt.want)
+			}
+			// Verify result is a valid OCC symbol
+			if !isOptionSymbol(got) {
+				t.Errorf("buildOCCSymbol() = %q is not a valid OCC symbol", got)
+			}
+		})
+	}
+}
+
+func TestGetMapSlice(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    map[string]any
+		key     string
+		wantLen int
+	}{
+		{
+			name: "array of maps",
+			args: map[string]any{
+				"legs": []any{
+					map[string]any{"symbol": "SPY260320C00500000", "side": "buy"},
+					map[string]any{"symbol": "SPY260320C00550000", "side": "sell"},
+				},
+			},
+			key:     "legs",
+			wantLen: 2,
+		},
+		{
+			name:    "missing key",
+			args:    map[string]any{},
+			key:     "legs",
+			wantLen: 0,
+		},
+		{
+			name:    "wrong type (string)",
+			args:    map[string]any{"legs": "not an array"},
+			key:     "legs",
+			wantLen: 0,
+		},
+		{
+			name: "mixed types in array",
+			args: map[string]any{
+				"legs": []any{
+					map[string]any{"symbol": "SPY260320C00500000"},
+					"not a map",
+					map[string]any{"symbol": "SPY260320P00500000"},
+				},
+			},
+			key:     "legs",
+			wantLen: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getMapSlice(tt.args, tt.key)
+			if len(got) != tt.wantLen {
+				t.Errorf("getMapSlice() returned %d items, want %d", len(got), tt.wantLen)
+			}
+		})
+	}
+}
+
+func TestPlaceMlegOrderValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    map[string]any
+		wantMsg string
+	}{
+		{
+			name:    "missing qty",
+			args:    map[string]any{"legs": []any{map[string]any{"symbol": "SPY260320C00500000", "side": "buy"}}, "limit_price": "10"},
+			wantMsg: "qty is required",
+		},
+		{
+			name:    "missing limit_price",
+			args:    map[string]any{"legs": []any{map[string]any{"symbol": "SPY260320C00500000", "side": "buy"}}, "qty": "1"},
+			wantMsg: "limit_price is required",
+		},
+		{
+			name:    "no legs",
+			args:    map[string]any{"legs": []any{}, "qty": "1", "limit_price": "10"},
+			wantMsg: "legs array is required",
+		},
+		{
+			name: "too many legs",
+			args: map[string]any{
+				"legs": []any{
+					map[string]any{"symbol": "SPY260320C00500000", "side": "buy"},
+					map[string]any{"symbol": "SPY260320C00510000", "side": "sell"},
+					map[string]any{"symbol": "SPY260320P00510000", "side": "buy"},
+					map[string]any{"symbol": "SPY260320P00500000", "side": "sell"},
+					map[string]any{"symbol": "SPY260320C00520000", "side": "buy"},
+				},
+				"qty": "1", "limit_price": "10",
+			},
+			wantMsg: "max 4 legs",
+		},
+		{
+			name: "invalid OCC symbol",
+			args: map[string]any{
+				"legs":        []any{map[string]any{"symbol": "NOTVALID", "side": "buy"}},
+				"qty":         "1",
+				"limit_price": "10",
+			},
+			wantMsg: "invalid OCC option symbol",
+		},
+		{
+			name: "missing side on leg",
+			args: map[string]any{
+				"legs":        []any{map[string]any{"symbol": "SPY260320C00500000"}},
+				"qty":         "1",
+				"limit_price": "10",
+			},
+			wantMsg: "side is required",
+		},
+		{
+			name: "negative qty",
+			args: map[string]any{
+				"legs":        []any{map[string]any{"symbol": "SPY260320C00500000", "side": "buy"}},
+				"qty":         "-1",
+				"limit_price": "10",
+			},
+			wantMsg: "qty must be a positive number",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := handleToolCall(ToolCallParams{
+				Name:      "place_mleg_order",
+				Arguments: tt.args,
+			})
+			if !result.IsError {
+				t.Error("expected error")
+			}
+			if !strings.Contains(result.Content[0].Text, tt.wantMsg) {
+				t.Errorf("error message %q does not contain %q", result.Content[0].Text, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestPlaceBoxSpreadValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    map[string]any
+		wantMsg string
+	}{
+		{
+			name:    "missing underlying",
+			args:    map[string]any{"expiration": "2026-03-20", "strike_low": "500", "strike_high": "550", "qty": "1"},
+			wantMsg: "underlying symbol is required",
+		},
+		{
+			name:    "missing expiration",
+			args:    map[string]any{"underlying": "SPY", "strike_low": "500", "strike_high": "550", "qty": "1"},
+			wantMsg: "expiration date is required",
+		},
+		{
+			name:    "missing strike_low",
+			args:    map[string]any{"underlying": "SPY", "expiration": "2026-03-20", "strike_high": "550", "qty": "1"},
+			wantMsg: "strike_low is required",
+		},
+		{
+			name:    "missing strike_high",
+			args:    map[string]any{"underlying": "SPY", "expiration": "2026-03-20", "strike_low": "500", "qty": "1"},
+			wantMsg: "strike_high is required",
+		},
+		{
+			name:    "strike_low equals strike_high",
+			args:    map[string]any{"underlying": "SPY", "expiration": "2026-03-20", "strike_low": "500", "strike_high": "500", "qty": "1"},
+			wantMsg: "strike_low",
+		},
+		{
+			name:    "strike_low greater than strike_high",
+			args:    map[string]any{"underlying": "SPY", "expiration": "2026-03-20", "strike_low": "550", "strike_high": "500", "qty": "1"},
+			wantMsg: "strike_low",
+		},
+		{
+			name:    "missing qty",
+			args:    map[string]any{"underlying": "SPY", "expiration": "2026-03-20", "strike_low": "500", "strike_high": "550"},
+			wantMsg: "qty is required",
+		},
+		{
+			name:    "negative strike",
+			args:    map[string]any{"underlying": "SPY", "expiration": "2026-03-20", "strike_low": "-100", "strike_high": "550", "qty": "1"},
+			wantMsg: "strike_low must be a positive number",
+		},
+		{
+			name:    "invalid strike string",
+			args:    map[string]any{"underlying": "SPY", "expiration": "2026-03-20", "strike_low": "abc", "strike_high": "550", "qty": "1"},
+			wantMsg: "strike_low must be a positive number",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := handleToolCall(ToolCallParams{
+				Name:      "place_box_spread",
+				Arguments: tt.args,
+			})
+			if !result.IsError {
+				t.Error("expected error")
+			}
+			if !strings.Contains(result.Content[0].Text, tt.wantMsg) {
+				t.Errorf("error message %q does not contain %q", result.Content[0].Text, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func BenchmarkBuildOCCSymbol(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buildOCCSymbol("SPY", "2026-03-20", "C", "500")
+		buildOCCSymbol("AAPL", "2026-01-16", "P", "190.5")
+		buildOCCSymbol("A", "2026-06-19", "C", "100")
+	}
 }
 
 func BenchmarkIsOptionSymbol(b *testing.B) {

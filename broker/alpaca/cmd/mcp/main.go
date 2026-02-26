@@ -17,6 +17,7 @@ import (
 // isOptionSymbol returns true if the symbol looks like an OCC options symbol.
 // OCC format: ROOT + YYMMDD + C/P + STRIKE (e.g., AAPL240119C00190000)
 var optionSymbolRegex = regexp.MustCompile(`^[A-Z]{1,6}\d{6}[CP]\d{8}$`)
+var occDateRegex = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 func isOptionSymbol(symbol string) bool {
 	return optionSymbolRegex.MatchString(symbol)
@@ -73,9 +74,10 @@ type JSONSchema struct {
 }
 
 type Property struct {
-	Type        string   `json:"type"`
-	Description string   `json:"description"`
-	Enum        []string `json:"enum,omitempty"`
+	Type        string      `json:"type"`
+	Description string      `json:"description"`
+	Enum        []string    `json:"enum,omitempty"`
+	Items       *JSONSchema `json:"items,omitempty"`
 }
 
 type ToolsListResult struct {
@@ -177,11 +179,39 @@ var tools = []Tool{
 				},
 				"order_class": {
 					Type:        "string",
-					Description: "Order class: simple, bracket, oco, oto",
-					Enum:        []string{"simple", "bracket", "oco", "oto"},
+					Description: "Order class: simple, bracket, oco, oto, mleg (multi-leg options)",
+					Enum:        []string{"simple", "bracket", "oco", "oto", "mleg"},
+				},
+				"legs": {
+					Type:        "array",
+					Description: "For mleg orders: array of leg objects (max 4). When using mleg, symbols/qty sign/amt are ignored; set qty to the positive contract count.",
+					Items: &JSONSchema{
+						Type: "object",
+						Properties: map[string]Property{
+							"symbol": {
+								Type:        "string",
+								Description: "OCC option symbol (e.g., QQQ260217C00593000)",
+							},
+							"side": {
+								Type:        "string",
+								Description: "buy or sell",
+								Enum:        []string{"buy", "sell"},
+							},
+							"ratio_qty": {
+								Type:        "integer",
+								Description: "Ratio quantity for this leg (e.g., 1)",
+							},
+							"position_intent": {
+								Type:        "string",
+								Description: "Position intent for this leg",
+								Enum:        []string{"buy_to_open", "buy_to_close", "sell_to_open", "sell_to_close"},
+							},
+						},
+						Required: []string{"symbol", "side", "ratio_qty"},
+					},
 				},
 			},
-			Required: []string{"symbols", "order_type"},
+			Required: []string{"order_type"},
 		},
 	},
 	{
@@ -350,6 +380,96 @@ var tools = []Tool{
 		},
 	},
 	{
+		Name:        "place_mleg_order",
+		Description: "Place a multi-leg (mleg) option order. Each leg specifies an OCC option symbol, side, ratio quantity, and optional position intent. Max 4 legs.",
+		InputSchema: JSONSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"legs": {
+					Type:        "array",
+					Description: "Array of leg objects (max 4).",
+					Items: &JSONSchema{
+						Type: "object",
+						Properties: map[string]Property{
+							"symbol": {
+								Type:        "string",
+								Description: "OCC option symbol (e.g., SPY260320C00500000)",
+							},
+							"side": {
+								Type:        "string",
+								Description: "buy or sell",
+								Enum:        []string{"buy", "sell"},
+							},
+							"ratio_qty": {
+								Type:        "integer",
+								Description: "Ratio quantity for this leg (e.g., 1)",
+							},
+							"position_intent": {
+								Type:        "string",
+								Description: "Position intent for this leg",
+								Enum:        []string{"buy_to_open", "buy_to_close", "sell_to_open", "sell_to_close"},
+							},
+						},
+						Required: []string{"symbol", "side", "ratio_qty"},
+					},
+				},
+				"qty": {
+					Type:        "string",
+					Description: "Number of contracts for the overall order (positive integer)",
+				},
+				"limit_price": {
+					Type:        "string",
+					Description: "Net debit (positive) or credit (negative) limit price for the spread",
+				},
+				"time_in_force": {
+					Type:        "string",
+					Description: "Time in force: day, gtc, fok, ioc (default: day)",
+					Enum:        []string{"day", "gtc", "fok", "ioc"},
+				},
+			},
+			Required: []string{"legs", "qty", "limit_price"},
+		},
+	},
+	{
+		Name:        "place_box_spread",
+		Description: "Place a box spread (synthetic loan). Buys call spread + put spread at same strikes to lock in fixed payoff at expiration. The debit paid approximates a loan; the spread width is the payoff. Example: buy call@K1, sell call@K2, buy put@K2, sell put@K1.",
+		InputSchema: JSONSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"underlying": {
+					Type:        "string",
+					Description: "Underlying stock symbol (e.g., SPY)",
+				},
+				"expiration": {
+					Type:        "string",
+					Description: "Expiration date in YYYY-MM-DD format (e.g., 2026-03-20)",
+				},
+				"strike_low": {
+					Type:        "string",
+					Description: "Lower strike price (K1)",
+				},
+				"strike_high": {
+					Type:        "string",
+					Description: "Upper strike price (K2)",
+				},
+				"qty": {
+					Type:        "string",
+					Description: "Number of contracts (positive integer)",
+				},
+				"limit_price": {
+					Type:        "string",
+					Description: "Net debit limit price for the box spread. If omitted, uses natural midpoint from quotes.",
+				},
+				"time_in_force": {
+					Type:        "string",
+					Description: "Time in force: day, gtc, fok, ioc (default: day)",
+					Enum:        []string{"day", "gtc", "fok", "ioc"},
+				},
+			},
+			Required: []string{"underlying", "expiration", "strike_low", "strike_high", "qty"},
+		},
+	},
+	{
 		Name:        "get_option_chain",
 		Description: "Get option chain data for an underlying symbol including latest trade, quote, greeks, and implied volatility for each contract",
 		InputSchema: JSONSchema{
@@ -480,6 +600,10 @@ func handleToolCall(params ToolCallParams) (result ToolCallResult) {
 		return getAuctions(params.Arguments)
 	case "get_option_chain":
 		return getOptionChain(params.Arguments)
+	case "place_mleg_order":
+		return placeMlegOrder(params.Arguments)
+	case "place_box_spread":
+		return placeBoxSpread(params.Arguments)
 	default:
 		return ToolCallResult{
 			Content: []Content{{Type: "text", Text: "unknown tool: " + params.Name}},
@@ -519,21 +643,9 @@ func getStrSlice(args map[string]any, key string) []string {
 
 func placeOrder(args map[string]any) ToolCallResult {
 	symbols := getStrSlice(args, "symbols")
-	if len(symbols) == 0 {
-		return ToolCallResult{
-			Content: []Content{{Type: "text", Text: "no symbols specified"}},
-			IsError: true,
-		}
-	}
 
 	qtyStr := getStr(args, "qty")
 	amtStr := getStr(args, "amt")
-	if qtyStr == "" && amtStr == "" {
-		return ToolCallResult{
-			Content: []Content{{Type: "text", Text: "must specify qty or amt"}},
-			IsError: true,
-		}
-	}
 
 	qty := decimal.Zero
 	amt := decimal.Zero
@@ -744,10 +856,31 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 		orderClass = alpaca.OrderClassOCO
 	case "oto":
 		orderClass = alpaca.OrderClassOTO
+	case "mleg":
+		orderClass = alpaca.OrderClassMleg
 	}
 
 	client := alpaca.NewClient()
+
+	// Handle mleg orders: legs define the symbols/sides, not the top-level fields
+	if orderClass == alpaca.OrderClassMleg {
+		return placeMlegViaPlaceOrder(args, client, qty, limitPrice, orderType, timeInForce)
+	}
+
 	var results []string
+
+	if len(symbols) == 0 {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "no symbols specified"}},
+			IsError: true,
+		}
+	}
+	if qtyStr == "" && amtStr == "" {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "must specify qty or amt"}},
+			IsError: true,
+		}
+	}
 
 	for _, sym := range symbols {
 		// Get bid/ask prices - handle options vs stocks differently
@@ -855,6 +988,146 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 
 	return ToolCallResult{
 		Content: []Content{{Type: "text", Text: join(results, "\n")}},
+	}
+}
+
+func placeMlegViaPlaceOrder(args map[string]any, client *alpaca.Client, qty decimal.Decimal, limitPrice decimal.Decimal, orderType alpaca.OrderType, timeInForce alpaca.TimeInForce) ToolCallResult {
+	legs := getMapSlice(args, "legs")
+	if len(legs) == 0 {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "legs array is required for mleg orders"}},
+			IsError: true,
+		}
+	}
+	if len(legs) > 4 {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("max 4 legs allowed, got %d", len(legs))}},
+			IsError: true,
+		}
+	}
+	if !qty.IsPositive() {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "qty must be a positive number for mleg orders"}},
+			IsError: true,
+		}
+	}
+
+	var orderLegs []alpaca.OrderLeg
+	for i, leg := range legs {
+		sym := getStr(leg, "symbol")
+		if sym == "" {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("leg %d: symbol is required", i+1)}},
+				IsError: true,
+			}
+		}
+		if !isOptionSymbol(sym) {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("leg %d: invalid OCC option symbol: %s", i+1, sym)}},
+				IsError: true,
+			}
+		}
+
+		sideStr := getStr(leg, "side")
+		if sideStr == "" {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("leg %d: side is required (buy or sell)", i+1)}},
+				IsError: true,
+			}
+		}
+		var side ds.Side
+		switch sideStr {
+		case "buy":
+			side = ds.SideBuy
+		case "sell":
+			side = ds.SideSell
+		default:
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("leg %d: side must be buy or sell, got %s", i+1, sideStr)}},
+				IsError: true,
+			}
+		}
+
+		// ratio_qty may come as string or float64 from JSON
+		ratioQty := decimal.One
+		if v, ok := leg["ratio_qty"]; ok {
+			switch r := v.(type) {
+			case string:
+				if parsed, err := decimal.ParseString(r); err == nil && parsed.IsPositive() {
+					ratioQty = parsed
+				}
+			case float64:
+				if r > 0 {
+					ratioQty = decimal.FromInt(int(r))
+				}
+			}
+		}
+
+		var posIntent alpaca.PositionIntent
+		switch getStr(leg, "position_intent") {
+		case "buy_to_open":
+			posIntent = alpaca.PositionIntentBuyToOpen
+		case "buy_to_close":
+			posIntent = alpaca.PositionIntentBuyToClose
+		case "sell_to_open":
+			posIntent = alpaca.PositionIntentSellToOpen
+		case "sell_to_close":
+			posIntent = alpaca.PositionIntentSellToClose
+		}
+
+		orderLegs = append(orderLegs, alpaca.OrderLeg{
+			Symbol:         sym,
+			Side:           side,
+			RatioQty:       ratioQty,
+			PositionIntent: posIntent,
+		})
+	}
+
+	// Fetch quotes for all legs
+	var quoteLines []string
+	for _, leg := range orderLegs {
+		snap, err := client.GetOptionSnapshot(leg.Symbol)
+		if err != nil {
+			quoteLines = append(quoteLines, fmt.Sprintf("  %s: error getting quote: %v", leg.Symbol, err))
+			continue
+		}
+		if snap.LatestQuote != nil {
+			q := snap.LatestQuote
+			mid := q.BidPrice.Add(q.AskPrice).DivInt(2)
+			quoteLines = append(quoteLines, fmt.Sprintf("  %s (%s): bid %s ask %s mid %s",
+				leg.Symbol, leg.Side, q.BidPrice, q.AskPrice, mid))
+		} else {
+			quoteLines = append(quoteLines, fmt.Sprintf("  %s: no quote available", leg.Symbol))
+		}
+	}
+
+	order, err := client.CreateOrder(&alpaca.OrderRequest{
+		Qty:         qty,
+		Type:        orderType,
+		TimeInForce: timeInForce,
+		LimitPrice:  limitPrice,
+		OrderClass:  alpaca.OrderClassMleg,
+		Legs:        orderLegs,
+	})
+	if err != nil {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("error placing mleg order: %v\n\nQuotes:\n%s", err, join(quoteLines, "\n"))}},
+			IsError: true,
+		}
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("mleg order placed (id: %s)", order.ID))
+	lines = append(lines, fmt.Sprintf("  qty: %s  limit: %s  tif: %s", qty, limitPrice, timeInForce))
+	lines = append(lines, "  legs:")
+	for _, leg := range orderLegs {
+		lines = append(lines, fmt.Sprintf("    %s %s ratio %s", leg.Side, leg.Symbol, leg.RatioQty))
+	}
+	lines = append(lines, "\nQuotes:")
+	lines = append(lines, quoteLines...)
+
+	return ToolCallResult{
+		Content: []Content{{Type: "text", Text: join(lines, "\n")}},
 	}
 }
 
@@ -1567,6 +1840,450 @@ func getOptionChain(args map[string]any) ToolCallResult {
 		}
 
 		lines = append(lines, "")
+	}
+
+	return ToolCallResult{
+		Content: []Content{{Type: "text", Text: join(lines, "\n")}},
+	}
+}
+
+func getMapSlice(args map[string]any, key string) []map[string]any {
+	v, ok := args[key]
+	if !ok {
+		return nil
+	}
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]map[string]any, 0, len(arr))
+	for _, item := range arr {
+		if m, ok := item.(map[string]any); ok {
+			result = append(result, m)
+		}
+	}
+	return result
+}
+
+// buildOCCSymbol constructs an OCC option symbol from components.
+// root: underlying symbol (1-6 uppercase letters)
+// expiration: date in YYYY-MM-DD format
+// optionType: "C" or "P"
+// strike: strike price as decimal string (e.g., "500", "12.50")
+func buildOCCSymbol(root, expiration, optionType, strike string) (string, error) {
+	if root == "" {
+		return "", fmt.Errorf("root symbol is required")
+	}
+	if len(root) > 6 {
+		return "", fmt.Errorf("root symbol too long: %s", root)
+	}
+	for _, c := range root {
+		if c < 'A' || c > 'Z' {
+			return "", fmt.Errorf("root symbol must be uppercase letters: %s", root)
+		}
+	}
+	if !occDateRegex.MatchString(expiration) {
+		return "", fmt.Errorf("expiration must be YYYY-MM-DD format: %s", expiration)
+	}
+	if optionType != "C" && optionType != "P" {
+		return "", fmt.Errorf("option type must be C or P: %s", optionType)
+	}
+	strikeD, err := decimal.ParseString(strike)
+	if err != nil {
+		return "", fmt.Errorf("invalid strike price: %s", strike)
+	}
+	if !strikeD.IsPositive() {
+		return "", fmt.Errorf("strike price must be positive: %s", strike)
+	}
+	// OCC strike is strike * 1000, zero-padded to 8 digits
+	strikeInt := strikeD.MulInt(1000).Int64()
+	// Format: ROOT + YYMMDD + C/P + 8-digit strike
+	dateStr := expiration[2:4] + expiration[5:7] + expiration[8:10]
+	return fmt.Sprintf("%s%s%s%08d", root, dateStr, optionType, strikeInt), nil
+}
+
+func placeMlegOrder(args map[string]any) ToolCallResult {
+	legs := getMapSlice(args, "legs")
+	if len(legs) == 0 {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "legs array is required and must contain at least one leg"}},
+			IsError: true,
+		}
+	}
+	if len(legs) > 4 {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("max 4 legs allowed, got %d", len(legs))}},
+			IsError: true,
+		}
+	}
+
+	qtyStr := getStr(args, "qty")
+	if qtyStr == "" {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "qty is required"}},
+			IsError: true,
+		}
+	}
+	qty, err := decimal.ParseString(qtyStr)
+	if err != nil || !qty.IsPositive() {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "qty must be a positive number"}},
+			IsError: true,
+		}
+	}
+
+	limitStr := getStr(args, "limit_price")
+	if limitStr == "" {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "limit_price is required for mleg orders"}},
+			IsError: true,
+		}
+	}
+	limitPrice, err := decimal.ParseString(limitStr)
+	if err != nil {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid limit_price: %v", err)}},
+			IsError: true,
+		}
+	}
+
+	var orderLegs []alpaca.OrderLeg
+	for i, leg := range legs {
+		sym := getStr(leg, "symbol")
+		if sym == "" {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("leg %d: symbol is required", i+1)}},
+				IsError: true,
+			}
+		}
+		if !isOptionSymbol(sym) {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("leg %d: invalid OCC option symbol: %s", i+1, sym)}},
+				IsError: true,
+			}
+		}
+
+		sideStr := getStr(leg, "side")
+		if sideStr == "" {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("leg %d: side is required (buy or sell)", i+1)}},
+				IsError: true,
+			}
+		}
+		var side ds.Side
+		switch sideStr {
+		case "buy":
+			side = ds.SideBuy
+		case "sell":
+			side = ds.SideSell
+		default:
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("leg %d: side must be buy or sell, got %s", i+1, sideStr)}},
+				IsError: true,
+			}
+		}
+
+		ratioStr := getStr(leg, "ratio_qty")
+		ratioQty := decimal.One
+		if ratioStr != "" {
+			ratioQty, err = decimal.ParseString(ratioStr)
+			if err != nil || !ratioQty.IsPositive() {
+				return ToolCallResult{
+					Content: []Content{{Type: "text", Text: fmt.Sprintf("leg %d: ratio_qty must be a positive number", i+1)}},
+					IsError: true,
+				}
+			}
+		}
+
+		var posIntent alpaca.PositionIntent
+		switch getStr(leg, "position_intent") {
+		case "buy_to_open":
+			posIntent = alpaca.PositionIntentBuyToOpen
+		case "buy_to_close":
+			posIntent = alpaca.PositionIntentBuyToClose
+		case "sell_to_open":
+			posIntent = alpaca.PositionIntentSellToOpen
+		case "sell_to_close":
+			posIntent = alpaca.PositionIntentSellToClose
+		}
+
+		orderLegs = append(orderLegs, alpaca.OrderLeg{
+			Symbol:         sym,
+			Side:           side,
+			RatioQty:       ratioQty,
+			PositionIntent: posIntent,
+		})
+	}
+
+	tifStr := getStr(args, "time_in_force")
+	timeInForce := alpaca.TimeInForceDay
+	switch tifStr {
+	case "gtc":
+		timeInForce = alpaca.TimeInForceGTC
+	case "fok":
+		timeInForce = alpaca.TimeInForceFOK
+	case "ioc":
+		timeInForce = alpaca.TimeInForceIOC
+	}
+
+	// Fetch quotes for all legs
+	client := alpaca.NewClient()
+	var quoteLines []string
+	for _, leg := range orderLegs {
+		snap, err := client.GetOptionSnapshot(leg.Symbol)
+		if err != nil {
+			quoteLines = append(quoteLines, fmt.Sprintf("  %s: error getting quote: %v", leg.Symbol, err))
+			continue
+		}
+		if snap.LatestQuote != nil {
+			q := snap.LatestQuote
+			mid := q.BidPrice.Add(q.AskPrice).DivInt(2)
+			quoteLines = append(quoteLines, fmt.Sprintf("  %s: bid %s ask %s mid %s (side: %s, ratio: %s)",
+				leg.Symbol, q.BidPrice, q.AskPrice, mid, leg.Side, leg.RatioQty))
+		} else {
+			quoteLines = append(quoteLines, fmt.Sprintf("  %s: no quote available", leg.Symbol))
+		}
+	}
+
+	order, err := client.CreateOrder(&alpaca.OrderRequest{
+		Qty:         qty,
+		Type:        alpaca.OrderTypeLimit,
+		TimeInForce: timeInForce,
+		LimitPrice:  limitPrice,
+		OrderClass:  alpaca.OrderClassMleg,
+		Legs:        orderLegs,
+	})
+	if err != nil {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("error placing mleg order: %v\n\nQuotes:\n%s", err, join(quoteLines, "\n"))}},
+			IsError: true,
+		}
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("mleg order placed (id: %s)", order.ID))
+	lines = append(lines, fmt.Sprintf("  qty: %s  limit: %s  tif: %s", qty, limitPrice, timeInForce))
+	lines = append(lines, "  legs:")
+	for _, leg := range orderLegs {
+		lines = append(lines, fmt.Sprintf("    %s %s ratio %s", leg.Side, leg.Symbol, leg.RatioQty))
+	}
+	lines = append(lines, "\nQuotes:")
+	lines = append(lines, quoteLines...)
+
+	return ToolCallResult{
+		Content: []Content{{Type: "text", Text: join(lines, "\n")}},
+	}
+}
+
+func placeBoxSpread(args map[string]any) ToolCallResult {
+	underlying := getStr(args, "underlying")
+	if underlying == "" {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "underlying symbol is required"}},
+			IsError: true,
+		}
+	}
+
+	expiration := getStr(args, "expiration")
+	if expiration == "" {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "expiration date is required (YYYY-MM-DD)"}},
+			IsError: true,
+		}
+	}
+
+	strikeLowStr := getStr(args, "strike_low")
+	if strikeLowStr == "" {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "strike_low is required"}},
+			IsError: true,
+		}
+	}
+	strikeLow, err := decimal.ParseString(strikeLowStr)
+	if err != nil || !strikeLow.IsPositive() {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "strike_low must be a positive number"}},
+			IsError: true,
+		}
+	}
+
+	strikeHighStr := getStr(args, "strike_high")
+	if strikeHighStr == "" {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "strike_high is required"}},
+			IsError: true,
+		}
+	}
+	strikeHigh, err := decimal.ParseString(strikeHighStr)
+	if err != nil || !strikeHigh.IsPositive() {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "strike_high must be a positive number"}},
+			IsError: true,
+		}
+	}
+
+	if strikeLow.Cmp(strikeHigh) >= 0 {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("strike_low (%s) must be less than strike_high (%s)", strikeLow, strikeHigh)}},
+			IsError: true,
+		}
+	}
+
+	qtyStr := getStr(args, "qty")
+	if qtyStr == "" {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "qty is required"}},
+			IsError: true,
+		}
+	}
+	qty, err := decimal.ParseString(qtyStr)
+	if err != nil || !qty.IsPositive() {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "qty must be a positive number"}},
+			IsError: true,
+		}
+	}
+
+	// Build OCC symbols for the 4 legs
+	buyCallSym, err := buildOCCSymbol(underlying, expiration, "C", strikeLowStr)
+	if err != nil {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("error building buy call symbol: %v", err)}},
+			IsError: true,
+		}
+	}
+	sellCallSym, err := buildOCCSymbol(underlying, expiration, "C", strikeHighStr)
+	if err != nil {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("error building sell call symbol: %v", err)}},
+			IsError: true,
+		}
+	}
+	buyPutSym, err := buildOCCSymbol(underlying, expiration, "P", strikeHighStr)
+	if err != nil {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("error building buy put symbol: %v", err)}},
+			IsError: true,
+		}
+	}
+	sellPutSym, err := buildOCCSymbol(underlying, expiration, "P", strikeLowStr)
+	if err != nil {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("error building sell put symbol: %v", err)}},
+			IsError: true,
+		}
+	}
+
+	orderLegs := []alpaca.OrderLeg{
+		{Symbol: buyCallSym, Side: ds.SideBuy, RatioQty: decimal.One, PositionIntent: alpaca.PositionIntentBuyToOpen},
+		{Symbol: sellCallSym, Side: ds.SideSell, RatioQty: decimal.One, PositionIntent: alpaca.PositionIntentSellToOpen},
+		{Symbol: buyPutSym, Side: ds.SideBuy, RatioQty: decimal.One, PositionIntent: alpaca.PositionIntentBuyToOpen},
+		{Symbol: sellPutSym, Side: ds.SideSell, RatioQty: decimal.One, PositionIntent: alpaca.PositionIntentSellToOpen},
+	}
+
+	// Fetch quotes for all legs and compute natural midpoint
+	client := alpaca.NewClient()
+	var quoteLines []string
+	naturalDebit := decimal.Zero
+	allQuoted := true
+	for _, leg := range orderLegs {
+		snap, err := client.GetOptionSnapshot(leg.Symbol)
+		if err != nil {
+			quoteLines = append(quoteLines, fmt.Sprintf("  %s: error getting quote: %v", leg.Symbol, err))
+			allQuoted = false
+			continue
+		}
+		if snap.LatestQuote != nil {
+			q := snap.LatestQuote
+			mid := q.BidPrice.Add(q.AskPrice).DivInt(2)
+			quoteLines = append(quoteLines, fmt.Sprintf("  %s (%s): bid %s ask %s mid %s",
+				leg.Symbol, leg.Side, q.BidPrice, q.AskPrice, mid))
+			if leg.Side == ds.SideBuy {
+				naturalDebit = naturalDebit.Add(mid)
+			} else {
+				naturalDebit = naturalDebit.Sub(mid)
+			}
+		} else {
+			quoteLines = append(quoteLines, fmt.Sprintf("  %s: no quote available", leg.Symbol))
+			allQuoted = false
+		}
+	}
+
+	// Theoretical value of box spread is (K2 - K1) per contract
+	spreadWidth := strikeHigh.Sub(strikeLow)
+
+	limitPrice := decimal.Zero
+	limitStr := getStr(args, "limit_price")
+	if limitStr != "" {
+		limitPrice, err = decimal.ParseString(limitStr)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid limit_price: %v", err)}},
+				IsError: true,
+			}
+		}
+	} else if allQuoted {
+		// Use natural midpoint
+		limitPrice = naturalDebit.QuantizeTruncate(decimal.Cent)
+	} else {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "could not get quotes for all legs; please specify limit_price explicitly\n\nQuotes:\n" + join(quoteLines, "\n")}},
+			IsError: true,
+		}
+	}
+
+	// Warn if limit price exceeds theoretical value
+	var warnings []string
+	if limitPrice.Cmp(spreadWidth) > 0 {
+		warnings = append(warnings, fmt.Sprintf("WARNING: limit_price %s exceeds theoretical max value %s (K2-K1)", limitPrice, spreadWidth))
+	}
+
+	tifStr := getStr(args, "time_in_force")
+	timeInForce := alpaca.TimeInForceDay
+	switch tifStr {
+	case "gtc":
+		timeInForce = alpaca.TimeInForceGTC
+	case "fok":
+		timeInForce = alpaca.TimeInForceFOK
+	case "ioc":
+		timeInForce = alpaca.TimeInForceIOC
+	}
+
+	order, err := client.CreateOrder(&alpaca.OrderRequest{
+		Qty:         qty,
+		Type:        alpaca.OrderTypeLimit,
+		TimeInForce: timeInForce,
+		LimitPrice:  limitPrice,
+		OrderClass:  alpaca.OrderClassMleg,
+		Legs:        orderLegs,
+	})
+	if err != nil {
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: fmt.Sprintf("error placing box spread: %v\n\nQuotes:\n%s", err, join(quoteLines, "\n"))}},
+			IsError: true,
+		}
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("box spread placed (id: %s)", order.ID))
+	lines = append(lines, fmt.Sprintf("  %s %s/%s exp %s", underlying, strikeLow, strikeHigh, expiration))
+	lines = append(lines, fmt.Sprintf("  qty: %s  limit: %s  tif: %s", qty, limitPrice, timeInForce))
+	lines = append(lines, fmt.Sprintf("  spread width: %s (theoretical max value per contract)", spreadWidth))
+	if allQuoted {
+		lines = append(lines, fmt.Sprintf("  natural midpoint: %s", naturalDebit.Format(2)))
+		if !naturalDebit.IsZero() {
+			impliedReturn := spreadWidth.Sub(naturalDebit).Div(naturalDebit).MulInt(100)
+			lines = append(lines, fmt.Sprintf("  implied return: %s%%", impliedReturn.Format(2)))
+		}
+	}
+	lines = append(lines, "\nLegs:")
+	for _, leg := range orderLegs {
+		lines = append(lines, fmt.Sprintf("  %s %s ratio %s", leg.Side, leg.Symbol, leg.RatioQty))
+	}
+	lines = append(lines, "\nQuotes:")
+	lines = append(lines, quoteLines...)
+	for _, w := range warnings {
+		lines = append(lines, "\n"+w)
 	}
 
 	return ToolCallResult{

@@ -33,12 +33,21 @@ type Order struct {
 	FailedAt       clocky.Time     `json:"failed_at"`        //
 	ReplacedAt     clocky.Time     `json:"replaced_at"`      //
 	ExtendedHours  bool            `json:"extended_hours"`   // eligible for execution outside regular trading hours
+	Legs           []Order         `json:"legs,omitempty"`   // nested leg orders for multi-leg orders
+}
+
+// OrderLeg represents a single leg in a multi-leg order.
+type OrderLeg struct {
+	Symbol         string          `json:"symbol"`
+	RatioQty       decimal.Decimal `json:"ratio_qty"`
+	Side           ds.Side         `json:"side"`
+	PositionIntent PositionIntent  `json:"position_intent,omitempty"`
 }
 
 type OrderRequest struct {
-	Symbol               string                `json:"symbol"`
+	Symbol               string                `json:"symbol,omitempty"`
 	Qty                  decimal.Decimal       `json:"qty"`
-	Side                 ds.Side               `json:"side"`
+	Side                 ds.Side               `json:"side,omitempty"`
 	Type                 OrderType             `json:"type"`
 	TimeInForce          TimeInForce           `json:"time_in_force"`
 	ExtendedHours        bool                  `json:"extended_hours,omitempty"` // only works with type limit and time_in_force day
@@ -53,6 +62,7 @@ type OrderRequest struct {
 	AdvancedInstructions *AdvancedInstructions `json:"advanced_instructions,omitempty"`
 	TakeProfit           *TakeProfit           `json:"take_profit,omitempty"`
 	StopLoss             *StopLoss             `json:"stop_loss,omitempty"`
+	Legs                 []OrderLeg            `json:"legs,omitempty"`
 }
 
 // https://docs.alpaca.markets/docs/alpaca-elite-smart-router?ref=alpaca.markets
