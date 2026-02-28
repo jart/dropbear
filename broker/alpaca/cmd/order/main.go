@@ -18,6 +18,7 @@ var (
 	flagIOC           = flag.Bool("ioc", false, "use immediate or cancel time in force")
 	flagTWAP          = flag.Bool("twap", false, "use time weighted average price algorithm")
 	flagVWAP          = flag.Bool("vwap", false, "use volume weighted average price algorithm")
+	flagDMA           = flag.String("dma", "", "directly route order to lit exchange (NYSE, NASDAQ, ARCA)")
 	flagExt           = flag.Bool("ext", false, "participate in extended hours trading (must be limit order with default (day) time in force)")
 	flagLimit         = decimal.Flag("limit", "0", "sets an explicit limit price (the default is to use the midpoint plus/minus greed depending on the side) must be positve")
 	flagAmt           = decimal.Flag("amt", "0", "usd notional value of order (negative to sell) which is mutually exclusive with -qty")
@@ -80,7 +81,7 @@ options:
 			fmt.Fprintf(os.Stderr, "-greed only works with limit orders\n")
 			os.Exit(1)
 		}
-	} else {
+	} else if *flagLimit <= decimal.Zero {
 		fmt.Fprintf(os.Stderr, "must specify either -limit or -market\n")
 		os.Exit(1)
 	}
@@ -265,6 +266,19 @@ options:
 			}
 		}
 
+		// figure out exchange destination
+		var destination alpaca.OrderDestination
+		if *flagDMA != "" {
+			destination, err = alpaca.ParseOrderDestination(*flagDMA)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "invalid DMA destination %s: %v\n", *flagDMA, err)
+				if exitCode < 255 {
+					exitCode++
+				}
+				continue
+			}
+		}
+
 		// give the order
 		_, err = client.CreateOrder(&alpaca.OrderRequest{
 			Symbol:        sym,
@@ -281,6 +295,7 @@ options:
 				Algorithm:     algorithm,
 				EndTime:       endTime,
 				MaxPercentage: maxPercentage,
+				Destination:   destination,
 			},
 		})
 		if err != nil {
