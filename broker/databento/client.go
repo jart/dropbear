@@ -3,7 +3,7 @@
 // The client connects to Databento's Live Subscription Gateway (LSG) using
 // a binary protocol over TCP. Authentication uses CRAM-SHA256.
 //
-// Reference: https://github.com/NimbleMarkets/dbn-go
+// Reference: https://github.com/databento/databento-cpp
 package databento
 
 import (
@@ -47,7 +47,7 @@ func NewClient(dataset, apiKey string) *Client {
 
 // Connect establishes a TCP connection to the Databento gateway.
 func (c *Client) Connect() error {
-	addr := fmt.Sprintf("%s.lsg.databento.com:%d", strings.ToLower(c.dataset), DefaultPort)
+	addr := fmt.Sprintf("%s.lsg.databento.com:%d", strings.ToLower(strings.ReplaceAll(c.dataset, ".", "-")), DefaultPort)
 	conn, err := net.DialTimeout("tcp", addr, DefaultTimeout)
 	if err != nil {
 		return fmt.Errorf("databento: connect to %s: %w", addr, err)
@@ -92,11 +92,12 @@ func (c *Client) Authenticate() (string, error) {
 	bucketID := c.apiKey[len(c.apiKey)-5:]
 	h := sha256.New()
 	h.Write([]byte(cramKey))
+	h.Write([]byte("|"))
 	h.Write([]byte(c.apiKey))
 	cramReply := hex.EncodeToString(h.Sum(nil)) + "-" + bucketID
 
 	// Send authentication request
-	authMsg := fmt.Sprintf("auth=%s|dataset=%s|encoding=dbn\n", cramReply, c.dataset)
+	authMsg := fmt.Sprintf("auth=%s|dataset=%s|encoding=dbn|ts_out=0|compression=none\n", cramReply, c.dataset)
 	if _, err := c.conn.Write([]byte(authMsg)); err != nil {
 		return "", fmt.Errorf("databento: send auth: %w", err)
 	}
