@@ -19,10 +19,7 @@ import (
 )
 
 const (
-	// DefaultPort is the Databento LSG port.
-	DefaultPort = 13000
-
-	// DefaultTimeout for connection and reads.
+	DefaultPort    = 13000
 	DefaultTimeout = 30 * time.Second
 )
 
@@ -129,7 +126,6 @@ func (c *Client) readControlMessage() (map[string]string, error) {
 		return nil, err
 	}
 	line = strings.TrimSuffix(line, "\n")
-
 	result := make(map[string]string)
 	for _, part := range strings.Split(line, "|") {
 		if idx := strings.Index(part, "="); idx > 0 {
