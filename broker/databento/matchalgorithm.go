@@ -1,5 +1,7 @@
 package databento
 
+import "fmt"
+
 type MatchAlgorithm byte
 
 const (
@@ -18,35 +20,8 @@ const (
 
 func (ma MatchAlgorithm) String() string {
 	switch ma {
-	case MatchAlgorithmUndefined:
-		return "undefined"
-	case MatchAlgorithmFIFO:
-		return "fifo"
-	case MatchAlgorithmConfigurable:
-		return "configurable"
-	case MatchAlgorithmProRata:
-		return "pro-rata"
-	case MatchAlgorithmFIFOLMM:
-		return "fifo-lmm"
-	case MatchAlgorithmThresholdProRata:
-		return "threshold-pro-rata"
-	case MatchAlgorithmFIFOTopLMM:
-		return "fifo-top-lmm"
-	case MatchAlgorithmThresholdProRataLMM:
-		return "threshold-pro-rata-lmm"
-	case MatchAlgorithmEurodollarFutures:
-		return "eurodollar-futures"
-	case MatchAlgorithmTimeProRata:
-		return "time-pro-rata"
-	case MatchAlgorithmInstitutionalPrioritization:
-		return "institutional-prioritization"
-	default:
-		return string(ma)
-	}
-}
-
-func (ma MatchAlgorithm) GoString() string {
-	switch ma {
+	case 0:
+		return "0"
 	case MatchAlgorithmUndefined:
 		return "MatchAlgorithmUndefined"
 	case MatchAlgorithmFIFO:
@@ -70,6 +45,6 @@ func (ma MatchAlgorithm) GoString() string {
 	case MatchAlgorithmInstitutionalPrioritization:
 		return "MatchAlgorithmInstitutionalPrioritization"
 	default:
-		return string(ma)
+		return fmt.Sprintf("MatchAlgorithm(%d)", ma)
 	}
 }

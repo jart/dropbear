@@ -1,5 +1,7 @@
 package databento
 
+import "fmt"
+
 // Side indicates side of market for resting orders, or side of aggressor in trades
 type Side byte
 
@@ -11,19 +13,8 @@ const (
 
 func (s Side) String() string {
 	switch s {
-	case SideAsk:
-		return "ask"
-	case SideBid:
-		return "bid"
-	case SideNone:
-		return "none"
-	default:
-		return string(s)
-	}
-}
-
-func (s Side) GoString() string {
-	switch s {
+	case 0:
+		return "0"
 	case SideAsk:
 		return "SideAsk"
 	case SideBid:
@@ -31,6 +22,6 @@ func (s Side) GoString() string {
 	case SideNone:
 		return "SideNone"
 	default:
-		return string(s)
+		return fmt.Sprintf("Side(%d)", s)
 	}
 }

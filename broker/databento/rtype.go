@@ -32,57 +32,6 @@ const (
 func (rt RType) String() string {
 	switch rt {
 	case RTypeMBP0:
-		return "mbp0"
-	case RTypeMBP1:
-		return "mbp1"
-	case RTypeMBP10:
-		return "mbp10"
-	case RTypeOHLCV1S:
-		return "ohlcv1s"
-	case RTypeOHLCV1M:
-		return "ohlcv1m"
-	case RTypeOHLCV1H:
-		return "ohlcv1h"
-	case RTypeOHLCV1D:
-		return "ohlcv1d"
-	case RTypeOHLCVEOD:
-		return "ohlcveod"
-	case RTypeStatus:
-		return "status"
-	case RTypeInstrumentDef:
-		return "instrument"
-	case RTypeImbalance:
-		return "imbalance"
-	case RTypeError:
-		return "error"
-	case RTypeSymbolMapping:
-		return "symbols"
-	case RTypeSystem:
-		return "system"
-	case RTypeStatistics:
-		return "statistics"
-	case RTypeMBO:
-		return "mbo"
-	case RTypeCMBP1:
-		return "cmbp1"
-	case RTypeCMBP1S:
-		return "cmbp1s"
-	case RTypeCMBP1M:
-		return "cmbp1m"
-	case RTypeTCBBO:
-		return "tcbbo"
-	case RTypeBBO1S:
-		return "bbo1s"
-	case RTypeBBO1M:
-		return "bbo1m"
-	default:
-		return fmt.Sprintf("RType(0x%02x)", uint8(rt))
-	}
-}
-
-func (rt RType) GoString() string {
-	switch rt {
-	case RTypeMBP0:
 		return "RTypeMBP0"
 	case RTypeMBP1:
 		return "RTypeMBP1"

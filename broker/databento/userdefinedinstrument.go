@@ -1,5 +1,7 @@
 package databento
 
+import "fmt"
+
 type UserDefinedInstrument byte
 
 const (
@@ -14,7 +16,7 @@ func (udi UserDefinedInstrument) String() string {
 	case UserDefinedInstrumentYes:
 		return "yes"
 	default:
-		return string(udi)
+		return fmt.Sprintf("UserDefinedInstrument(%d)", udi)
 	}
 }
 
@@ -25,6 +27,6 @@ func (udi UserDefinedInstrument) GoString() string {
 	case UserDefinedInstrumentYes:
 		return "UserDefinedInstrumentYes"
 	default:
-		return string(udi)
+		return fmt.Sprintf("UserDefinedInstrument(%d)", udi)
 	}
 }

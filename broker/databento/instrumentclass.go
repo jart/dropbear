@@ -19,33 +19,8 @@ const (
 
 func (ic InstrumentClass) String() string {
 	switch ic {
-	case InstrumentClassBond:
-		return "bond"
-	case InstrumentClassCall:
-		return "call"
-	case InstrumentClassFuture:
-		return "future"
-	case InstrumentClassStock:
-		return "stock"
-	case InstrumentClassMixedSpread:
-		return "mixed spread"
-	case InstrumentClassPut:
-		return "put"
-	case InstrumentClassFutureSpread:
-		return "future spread"
-	case InstrumentClassOptionSpread:
-		return "option spread"
-	case InstrumentClassFXSpot:
-		return "fx spot"
-	case InstrumentClassCommoditySpot:
-		return "commodity spot"
-	default:
-		return string(ic)
-	}
-}
-
-func (ic InstrumentClass) GoString() string {
-	switch ic {
+	case 0:
+		return "0"
 	case InstrumentClassBond:
 		return "InstrumentClassBond"
 	case InstrumentClassCall:
@@ -67,6 +42,6 @@ func (ic InstrumentClass) GoString() string {
 	case InstrumentClassCommoditySpot:
 		return "InstrumentClassCommoditySpot"
 	default:
-		return fmt.Sprintf("InstrumentClass(0x%02x)", byte(ic))
+		return fmt.Sprintf("InstrumentClass(%d)", ic)
 	}
 }

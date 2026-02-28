@@ -70,7 +70,7 @@ func (rt Schema) String() string {
 	case SchemaBBO1M:
 		return "bbo1m"
 	default:
-		return fmt.Sprintf("Schema(0x%02x)", uint8(rt))
+		return fmt.Sprintf("%d", rt)
 	}
 }
 

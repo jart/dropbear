@@ -13,3 +13,21 @@ func TestInstrument_Size(t *testing.T) {
 		t.Errorf("expected Instrument alignment to be 8 bytes, got %d", align)
 	}
 }
+
+func TestInstrumentV2_Size(t *testing.T) {
+	if size := unsafe.Sizeof(InstrumentV2{}); size != 400 {
+		t.Errorf("expected InstrumentV2 size to be 400 bytes, got %d", size)
+	}
+	if align := unsafe.Alignof(InstrumentV2{}); align != 8 {
+		t.Errorf("expected InstrumentV2 alignment to be 8 bytes, got %d", align)
+	}
+}
+
+func TestInstrumentV1_Size(t *testing.T) {
+	if size := unsafe.Sizeof(InstrumentV1{}); size != 360 {
+		t.Errorf("expected InstrumentV1 size to be 360 bytes, got %d", size)
+	}
+	if align := unsafe.Alignof(InstrumentV1{}); align != 8 {
+		t.Errorf("expected InstrumentV1 alignment to be 8 bytes, got %d", align)
+	}
+}

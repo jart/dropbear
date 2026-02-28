@@ -21,6 +21,39 @@ const (
 func (st SType) String() string {
 	switch st {
 	case STypeInstrumentID:
+		return "instrument_id"
+	case STypeRawSymbol:
+		return "raw_symbol"
+	case STypeSmart:
+		return "smart"
+	case STypeContinuous:
+		return "continuous"
+	case STypeParent:
+		return "parent"
+	case STypeNasdaqSymbol:
+		return "nasdaq_symbol"
+	case STypeCMSSymbol:
+		return "cms_symbol"
+	case STypeISIN:
+		return "isin"
+	case STypeUSCode:
+		return "us_code"
+	case STypeBBGCompID:
+		return "bbg_comp_id"
+	case STypeBBGCompTicker:
+		return "bbg_comp_ticker"
+	case STypeFIGI:
+		return "figi"
+	case STypeFIGITicker:
+		return "figi_ticker"
+	default:
+		return "unknown"
+	}
+}
+
+func (st SType) GoString() string {
+	switch st {
+	case STypeInstrumentID:
 		return "STypeInstrumentID"
 	case STypeRawSymbol:
 		return "STypeRawSymbol"

@@ -1,5 +1,7 @@
 package databento
 
+import "fmt"
+
 type SecurityUpdateAction byte
 
 const (
@@ -10,19 +12,8 @@ const (
 
 func (sua SecurityUpdateAction) String() string {
 	switch sua {
-	case SecurityUpdateActionAdd:
-		return "add"
-	case SecurityUpdateActionModify:
-		return "modify"
-	case SecurityUpdateActionDelete:
-		return "delete"
-	default:
-		return string(sua)
-	}
-}
-
-func (sua SecurityUpdateAction) GoString() string {
-	switch sua {
+	case 0:
+		return "0"
 	case SecurityUpdateActionAdd:
 		return "SecurityUpdateActionAdd"
 	case SecurityUpdateActionModify:
@@ -30,6 +21,6 @@ func (sua SecurityUpdateAction) GoString() string {
 	case SecurityUpdateActionDelete:
 		return "SecurityUpdateActionDelete"
 	default:
-		return string(sua)
+		return fmt.Sprintf("SecurityUpdateAction(%d)", sua)
 	}
 }
