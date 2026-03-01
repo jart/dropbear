@@ -45,3 +45,7 @@ func (ic InstrumentClass) String() string {
 		return fmt.Sprintf("InstrumentClass(%d)", ic)
 	}
 }
+
+func (ic InstrumentClass) GoString() string {
+	return ic.String()
+}

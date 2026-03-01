@@ -25,3 +25,7 @@ func (s Side) String() string {
 		return fmt.Sprintf("Side(%d)", s)
 	}
 }
+
+func (s Side) GoString() string {
+	return s.String()
+}

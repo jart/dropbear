@@ -24,3 +24,7 @@ func (sua SecurityUpdateAction) String() string {
 		return fmt.Sprintf("SecurityUpdateAction(%d)", sua)
 	}
 }
+
+func (sua SecurityUpdateAction) GoString() string {
+	return sua.String()
+}

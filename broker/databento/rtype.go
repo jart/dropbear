@@ -79,3 +79,7 @@ func (rt RType) String() string {
 		return fmt.Sprintf("RType(0x%02x)", uint8(rt))
 	}
 }
+
+func (rt RType) GoString() string {
+	return rt.String()
+}

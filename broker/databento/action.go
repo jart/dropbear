@@ -38,3 +38,7 @@ func (a Action) String() string {
 		return fmt.Sprintf("Action(%d)", a)
 	}
 }
+
+func (a Action) GoString() string {
+	return a.String()
+}

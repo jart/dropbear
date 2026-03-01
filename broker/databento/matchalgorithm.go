@@ -48,3 +48,7 @@ func (ma MatchAlgorithm) String() string {
 		return fmt.Sprintf("MatchAlgorithm(%d)", ma)
 	}
 }
+
+func (ma MatchAlgorithm) GoString() string {
+	return ma.String()
+}

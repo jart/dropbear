@@ -174,3 +174,7 @@ func (v Venue) String() string {
 		return fmt.Sprintf("Venue(%d)", v)
 	}
 }
+
+func (v Venue) GoString() string {
+	return v.String()
+}

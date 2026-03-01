@@ -1,6 +1,10 @@
 package databento
 
-import "dropbear/clocky"
+import (
+	"dropbear/clocky"
+	"strconv"
+	"strings"
+)
 
 // Metadata contains DBN file header information.
 type Metadata struct {
@@ -18,6 +22,42 @@ type Metadata struct {
 	Partial       []string        // symbols that didn't resolve for at least one dayin query time range
 	NotFound      []string        // symbols that didn't resolve for any day in query time range
 	Mappings      []SymbolMapping // symbol mappings containing a native symbol and its mapping intervals
+}
+
+func (m *Metadata) GoString() string {
+	var b strings.Builder
+	b.WriteString("Metadata{\n")
+	appendName(&b, "Version")
+	appendField(&b, m.Version)
+	appendName(&b, "Dataset")
+	appendField(&b, m.Dataset)
+	appendName(&b, "Schema")
+	appendField(&b, m.Schema)
+	appendName(&b, "Start")
+	appendTimestamp(&b, m.Start)
+	appendName(&b, "End")
+	appendTimestamp(&b, m.End)
+	appendName(&b, "Limit")
+	appendField(&b, m.Limit)
+	appendName(&b, "STypeIn")
+	appendField(&b, m.STypeIn)
+	appendName(&b, "STypeOut")
+	appendField(&b, m.STypeOut)
+	appendName(&b, "TSOut")
+	appendField(&b, m.TSOut)
+	appendName(&b, "SymbolCstrLen")
+	appendField(&b, m.SymbolCstrLen)
+	appendName(&b, "Symbols")
+	appendField(&b, m.Symbols)
+	appendName(&b, "Partial")
+	appendField(&b, m.Partial)
+	appendName(&b, "NotFound")
+	appendField(&b, m.NotFound)
+	b.WriteString("/* ")
+	b.WriteString(strconv.Itoa(len(m.Mappings)))
+	b.WriteString(" Mappings */\n")
+	b.WriteString("}")
+	return b.String()
 }
 
 type SymbolMapping struct {
