@@ -40,7 +40,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("decode metadata: %v", err)
 	}
-	fmt.Println(databento.PrettyPrint(&meta))
+	fmt.Println(databento.Indent(&meta))
 
 	// Count records by type.
 	counts := make(map[databento.RType]int)
@@ -82,19 +82,19 @@ func printRecord(rec []byte, rtype databento.RType, index int) {
 	case databento.RTypeInstrumentDef:
 		if len(rec) >= int(unsafe.Sizeof(databento.Instrument{})) {
 			inst := (*databento.Instrument)(unsafe.Pointer(&rec[0]))
-			fmt.Printf("\n[%d] %s\n", index, databento.PrettyPrint(inst))
+			fmt.Printf("\n[%d] %s\n", index, databento.Indent(inst))
 		} else {
 			fmt.Printf("\n[%d] InstrumentDef: too small (%d bytes)\n", index, len(rec))
 		}
 	case databento.RTypeCMBP1S, databento.RTypeCMBP1M:
 		if len(rec) >= int(unsafe.Sizeof(databento.CBBO{})) {
 			cbbo := (*databento.CBBO)(unsafe.Pointer(&rec[0]))
-			fmt.Printf("\n[%d] %s\n", index, databento.PrettyPrint(cbbo))
+			fmt.Printf("\n[%d] %s\n", index, databento.Indent(cbbo))
 		}
 	case databento.RTypeCMBP1, databento.RTypeTCBBO:
 		if len(rec) >= int(unsafe.Sizeof(databento.CMBP1{})) {
 			cmbp := (*databento.CMBP1)(unsafe.Pointer(&rec[0]))
-			fmt.Printf("\n[%d] %s\n", index, databento.PrettyPrint(cmbp))
+			fmt.Printf("\n[%d] %s\n", index, databento.Indent(cmbp))
 		}
 	default:
 		hdr := (*databento.RecordHeader)(unsafe.Pointer(&rec[0]))

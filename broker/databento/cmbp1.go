@@ -17,7 +17,7 @@ type CMBP1 struct {
 	Size      uint32       // last event size
 	Action    Action       // event that caused this record
 	Side      Side         // side of the last event
-	Flags     uint8        // event flags
+	Flags     FlagSet      // event flags
 	_pad1     byte
 	TSRecv    clocky.Time // capture-server-received timestamp
 	TSInDelta int32       // delta from TSEvent to send time (nanoseconds)
@@ -39,7 +39,8 @@ func (c *CMBP1) GoString() string {
 	appendName(&b, "Side")
 	appendField(&b, c.Side)
 	appendName(&b, "Flags")
-	appendField(&b, c.Flags)
+	b.WriteString(c.Flags.GoString())
+	b.WriteString(",\n")
 	appendName(&b, "TSRecv")
 	appendTimestamp(&b, c.TSRecv)
 	appendName(&b, "TSInDelta")

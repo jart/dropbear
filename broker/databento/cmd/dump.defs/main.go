@@ -51,7 +51,7 @@ func main() {
 		log.Fatalf("GetRange: %v", err)
 	}
 
-	fmt.Println(databento.PrettyPrint(&meta))
+	fmt.Println(databento.Indent(&meta))
 	fmt.Printf("total records: %d\n", len(records))
 
 	// Filter for 0DTE instruments and print all fields
@@ -72,7 +72,7 @@ func main() {
 		}
 
 		printed++
-		fmt.Println(databento.PrettyPrint(inst))
+		fmt.Println(databento.Indent(inst))
 	}
 	fmt.Printf("\n0DTE instruments: %d (of %d total)\n", printed, len(records))
 }

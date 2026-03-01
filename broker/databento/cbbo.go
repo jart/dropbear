@@ -47,7 +47,7 @@ type CBBO struct {
 	Size   uint32       // last event size
 	_pad1  byte
 	Side   Side  // side of the last event
-	Flags  uint8 // event flags
+	Flags  FlagSet // event flags
 	_pad2  byte
 	TSRecv clocky.Time // capture-server-received timestamp (nanoseconds since UNIX epoch)
 	_pad3  [8]byte
@@ -66,7 +66,8 @@ func (c *CBBO) GoString() string {
 	appendName(&b, "Side")
 	appendField(&b, c.Side)
 	appendName(&b, "Flags")
-	appendField(&b, c.Flags)
+	b.WriteString(c.Flags.GoString())
+	b.WriteString(",\n")
 	appendName(&b, "TSRecv")
 	appendTimestamp(&b, c.TSRecv)
 	b.WriteString("Levels: [1]ConsolidatedBidAskPair{")

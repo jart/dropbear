@@ -227,45 +227,53 @@ func TestPrettyPrintDecimalOutput(t *testing.T) {
 	if !strings.Contains(got, "Length:       130") {
 		t.Errorf("missing decimal Length in:\n%s", got)
 	}
-	if !strings.Contains(got, "PublisherID:  30") {
-		t.Errorf("missing decimal PublisherID in:\n%s", got)
+	if !strings.Contains(got, "PublisherOpraPillarOpra") {
+		t.Errorf("missing PublisherID constant in:\n%s", got)
 	}
 	if !strings.Contains(got, "InstrumentID: 12345") {
 		t.Errorf("missing decimal InstrumentID in:\n%s", got)
 	}
 }
 
+var benchCBBO = CBBO{
+	Header: RecordHeader{
+		Length:       20,
+		RType:        RTypeCMBP1S,
+		PublisherID:  40,
+		InstrumentID: 99999,
+		TSEvent:      clocky.MustParseTime("2026-02-27T15:00:00Z"),
+	},
+	Price:  5975000000000,
+	Size:   100,
+	Side:   SideAsk,
+	Flags:  0,
+	TSRecv: clocky.MustParseTime("2026-02-27T15:00:00.001Z"),
+	Levels: [1]ConsolidatedBidAskPair{{
+		BidPx: 5974500000000,
+		AskPx: 5975500000000,
+		BidSz: 50,
+		AskSz: 30,
+		BidPb: 40,
+		AskPb: 40,
+	}},
+}
+
 func BenchmarkPrettyPrintCBBO(b *testing.B) {
-	c := CBBO{
-		Header: RecordHeader{
-			Length:       20,
-			RType:        RTypeCMBP1S,
-			PublisherID:  40,
-			InstrumentID: 99999,
-			TSEvent:      clocky.MustParseTime("2026-02-27T15:00:00Z"),
-		},
-		Price:  5975000000000,
-		Size:   100,
-		Side:   SideAsk,
-		Flags:  0,
-		TSRecv: clocky.MustParseTime("2026-02-27T15:00:00.001Z"),
-		Levels: [1]ConsolidatedBidAskPair{{
-			BidPx: 5974500000000,
-			AskPx: 5975500000000,
-			BidSz: 50,
-			AskSz: 30,
-			BidPb: 40,
-			AskPb: 40,
-		}},
-	}
-	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		PrettyPrint(&c)
+		PrettyPrint(&benchCBBO)
 	}
 }
 
-func BenchmarkPrettyPrintInstrument(b *testing.B) {
-	inst := Instrument{
+func BenchmarkIndentCBBO(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		Indent(&benchCBBO)
+	}
+}
+
+var benchInstrument Instrument
+
+func init() {
+	benchInstrument = Instrument{
 		Header: RecordHeader{
 			Length:       130,
 			RType:        RTypeInstrumentDef,
@@ -278,9 +286,17 @@ func BenchmarkPrettyPrintInstrument(b *testing.B) {
 		HighLimitPrice:  UndefPrice,
 		LowLimitPrice:   UndefPrice,
 	}
-	copy(inst.RawSymbol[:], "SPXW  260227C05000")
-	b.ResetTimer()
+	copy(benchInstrument.RawSymbol[:], "SPXW  260227C05000")
+}
+
+func BenchmarkPrettyPrintInstrument(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		PrettyPrint(&inst)
+		PrettyPrint(&benchInstrument)
+	}
+}
+
+func BenchmarkIndentInstrument(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		Indent(&benchInstrument)
 	}
 }
