@@ -120,13 +120,13 @@ func main() {
 	defsPath := flag.String("defs", "", "path to definitions .dbn")
 	dataPath := flag.String("data", "", "path to 0DTE CMBP1 .dbn")
 	widthInt := flag.Int("width", 50, "box width in SPX points")
-	edgeStr := flag.String("edge", "0.10", "minimum edge per share after commission")
+	edgeStr := flag.String("edge", "0.05", "minimum edge per share after commission")
 	maxEdgeStr := flag.String("maxedge", "2.00", "max edge per share (filter garbage)")
 	maxSpreadStr := flag.String("maxspread", "1.00", "max bid-ask spread per leg")
-	minBidStr := flag.String("minbid", "1.00", "minimum bid on each leg")
+	minBidStr := flag.String("minbid", "0.05", "minimum bid on each leg")
 	maxOpen := flag.Int("maxopen", 5, "max active (incomplete) boxes at once")
-	startStr := flag.String("start", "09:45", "earliest time to start legging (HH:MM ET)")
-	cutoffStr := flag.String("cutoff", "15:30", "stop opening new boxes after this time")
+	startStr := flag.String("start", "09:30:05", "earliest time to start legging (HH:MM:SS ET)")
+	cutoffStr := flag.String("cutoff", "15:00:00", "stop opening new boxes after this time")
 	cashInt := flag.Int("cash", 100000, "starting cash in dollars")
 	verbose := flag.Bool("v", false, "verbose output")
 	flag.Parse()
@@ -152,14 +152,14 @@ func main() {
 	commPerShare := commission.DivInt(100)        // $0.0488 per share (100× multiplier)
 	startingCash := decimal.FromInt(*cashInt)
 
-	st, err := time.Parse("15:04", *startStr)
+	st, err := time.Parse("15:04:05", *startStr)
 	if err != nil {
 		log.Fatalf("bad start time %q: %v", *startStr, err)
 	}
 	startET := clocky.Time(time.Date(date.Year(), date.Month(), date.Day(),
 		st.Hour(), st.Minute(), 0, 0, clocky.NYC).UnixNano())
 
-	ct, err := time.Parse("15:04", *cutoffStr)
+	ct, err := time.Parse("15:04:05", *cutoffStr)
 	if err != nil {
 		log.Fatalf("bad cutoff time %q: %v", *cutoffStr, err)
 	}
