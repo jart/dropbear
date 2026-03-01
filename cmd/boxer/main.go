@@ -27,6 +27,9 @@ import (
 	"dropbear/decimal"
 )
 
+// SPX options trade in $0.05 increments.
+var nickel = decimal.Parse("0.05")
+
 type optionInfo struct {
 	strike decimal.Decimal
 	class  byte // 'C' or 'P'
@@ -53,7 +56,7 @@ type boxPair struct {
 type pendingOrder struct {
 	instID   uint32
 	side     byte            // 'B' buy or 'S' sell
-	limitPx  decimal.Decimal // our limit price
+	limitPx  decimal.Decimal // our limit price (on $0.05 grid)
 	cumFill  float64         // accumulated pro-rata fills
 	postTime clocky.Time     // when order was posted/repriced
 }
@@ -65,7 +68,7 @@ type boxLeg struct {
 	side    byte // 'B' bought or 'S' sold
 	fillPx  decimal.Decimal
 	fillTS  clocky.Time
-	orderTS clocky.Time // when order was posted
+	orderTS clocky.Time
 }
 
 type activeBox struct {
@@ -82,7 +85,7 @@ type completedBox struct {
 	legs  [4]boxLeg
 	long  bool
 	debit decimal.Decimal // net outflow (positive = we paid)
-	pnl   decimal.Decimal
+	pnl   decimal.Decimal // per share at expiry
 }
 
 // dbnPrice converts a Databento int64 price (scale 1e9) to decimal.Decimal (scale 1e6).
@@ -102,15 +105,29 @@ func formatPnl(d decimal.Decimal) string {
 	return "+$" + d.Format(2)
 }
 
+// snapBid rounds a bid price down to the nearest $0.05 tick.
+func snapBid(px decimal.Decimal) decimal.Decimal {
+	return px.QuantizeTruncate(nickel)
+}
+
+// snapAsk rounds an ask price up to the nearest $0.05 tick.
+func snapAsk(px decimal.Decimal) decimal.Decimal {
+	return px.QuantizeAway(nickel)
+}
+
 func main() {
 	dateStr := flag.String("date", "2026-02-27", "trading date")
 	defsPath := flag.String("defs", "", "path to definitions .dbn")
 	dataPath := flag.String("data", "", "path to 0DTE CMBP1 .dbn")
 	widthInt := flag.Int("width", 50, "box width in SPX points")
 	edgeStr := flag.String("edge", "0.10", "minimum edge per share after commission")
+	maxEdgeStr := flag.String("maxedge", "2.00", "max edge per share (filter garbage)")
+	maxSpreadStr := flag.String("maxspread", "1.00", "max bid-ask spread per leg")
+	minBidStr := flag.String("minbid", "1.00", "minimum bid on each leg")
 	maxOpen := flag.Int("maxopen", 5, "max active (incomplete) boxes at once")
 	startStr := flag.String("start", "09:45", "earliest time to start legging (HH:MM ET)")
 	cutoffStr := flag.String("cutoff", "15:30", "stop opening new boxes after this time")
+	cashInt := flag.Int("cash", 100000, "starting cash in dollars")
 	verbose := flag.Bool("v", false, "verbose output")
 	flag.Parse()
 
@@ -128,8 +145,12 @@ func main() {
 
 	width := decimal.FromInt(*widthInt)
 	minEdge := decimal.Parse(*edgeStr)
-	commission := decimal.Parse("1.22").MulInt(4) // $4.88 per box
-	commPerShare := commission.Div(width)         // $0.0488 per share for 50-wide
+	maxEdge := decimal.Parse(*maxEdgeStr)
+	maxSpread := decimal.Parse(*maxSpreadStr)
+	minBid := decimal.Parse(*minBidStr)
+	commission := decimal.Parse("1.22").MulInt(4) // $4.88 per box (4 legs)
+	commPerShare := commission.DivInt(100)        // $0.0488 per share (100× multiplier)
+	startingCash := decimal.FromInt(*cashInt)
 
 	st, err := time.Parse("15:04", *startStr)
 	if err != nil {
@@ -175,6 +196,7 @@ func main() {
 	var active []*activeBox
 	var completed []completedBox
 	var partialPnl decimal.Decimal
+	var partialCount int
 
 	f, err := os.Open(*dataPath)
 	if err != nil {
@@ -214,32 +236,38 @@ func main() {
 			continue
 		}
 
-		// Update quote.
-		bidPx := tick.Levels[0].BidPx
-		askPx := tick.Levels[0].AskPx
-		if bidPx == databento.UndefPrice || askPx == databento.UndefPrice {
-			continue
-		}
+		// Update quote. UndefPrice → zero (clears stale quotes).
 		q, ok := quotes[instID]
 		if !ok {
 			q = &quote{}
 			quotes[instID] = q
 		}
-		q.bidPx = dbnPrice(bidPx)
-		q.askPx = dbnPrice(askPx)
-		q.bidSz = tick.Levels[0].BidSz
-		q.askSz = tick.Levels[0].AskSz
-		q.bidPb = tick.Levels[0].BidPb
-		q.askPb = tick.Levels[0].AskPb
+		bidPx := tick.Levels[0].BidPx
+		askPx := tick.Levels[0].AskPx
+		if bidPx != databento.UndefPrice {
+			q.bidPx = dbnPrice(bidPx)
+			q.bidSz = tick.Levels[0].BidSz
+			q.bidPb = tick.Levels[0].BidPb
+		} else {
+			q.bidPx = decimal.Zero
+			q.bidSz = 0
+		}
+		if askPx != databento.UndefPrice {
+			q.askPx = dbnPrice(askPx)
+			q.askSz = tick.Levels[0].AskSz
+			q.askPb = tick.Levels[0].AskPb
+		} else {
+			q.askPx = decimal.Zero
+			q.askSz = 0
+		}
 
 		ts := tick.Header.TSEvent
-
 		if ts.Before(startET) {
 			continue
 		}
 
 		// Process fills on active boxes.
-		if tick.Action == databento.ActionTrade {
+		if tick.Action == databento.ActionTrade && tick.Size > 0 {
 			tradePx := dbnPrice(tick.Price)
 			tradeSz := tick.Size
 			for _, ab := range active {
@@ -266,7 +294,6 @@ func main() {
 					}
 					ord.cumFill += float64(tradeSz) / float64(queueSz)
 					if ord.cumFill >= 1.0 {
-						// Filled!
 						info := instruments[instID]
 						ab.legs[i] = &boxLeg{
 							instID:  instID,
@@ -303,9 +330,12 @@ func main() {
 				}
 				var newPx decimal.Decimal
 				if ord.side == 'B' {
-					newPx = q.bidPx
+					newPx = snapBid(q.bidPx)
 				} else {
-					newPx = q.askPx
+					newPx = snapAsk(q.askPx)
+				}
+				if newPx.IsZero() {
+					continue // undef → keep old order
 				}
 				if newPx.Cmp(ord.limitPx) != 0 {
 					ord.limitPx = newPx
@@ -341,13 +371,13 @@ func main() {
 		j = 0
 		for _, ab := range active {
 			if ab.filled > 0 && ab.filled < 4 {
-				loss := partialMTM(ab, quotes, width)
-				if loss.Neg().Cmp(maxPartialLoss.MulInt(ab.filled)) > 0 {
-					// Cut: cross spread to close filled legs.
+				mtm := partialMTM(ab, quotes)
+				if mtm.Neg().Cmp(maxPartialLoss.MulInt(ab.filled)) > 0 {
 					pl := closePartial(ab, quotes)
 					partialPnl = partialPnl.Add(pl)
+					partialCount++
 					if *verbose {
-						fmt.Printf("  CUT partial %d/%d (%d legs) P&L: %s\n",
+						fmt.Printf("  CUT partial %d/%d (%d legs) P&L: %s/share\n",
 							ab.pair.loStrike.Int(), ab.pair.hiStrike.Int(),
 							ab.filled, formatPnl(pl))
 					}
@@ -368,6 +398,7 @@ func main() {
 				} else if ab.filled > 0 {
 					pl := closePartial(ab, quotes)
 					partialPnl = partialPnl.Add(pl)
+					partialCount++
 				}
 			}
 			active = active[:0]
@@ -384,21 +415,16 @@ func main() {
 			continue
 		}
 
-		// Only scan when this tick's instrument is part of a box pair.
 		instPairs := pairsByInst[instID]
-		if len(instPairs) == 0 {
-			continue
-		}
-
 		for _, bp := range instPairs {
 			if len(active) >= *maxOpen {
 				break
 			}
-			// Skip if we already have an active box on this pair.
 			if hasActivePair(active, bp) {
 				continue
 			}
-			// Need all 4 quotes.
+
+			// Need all 4 valid quotes with real liquidity.
 			qCL := quotes[bp.callLoID]
 			qCH := quotes[bp.callHiID]
 			qPL := quotes[bp.putLoID]
@@ -406,42 +432,48 @@ func main() {
 			if qCL == nil || qCH == nil || qPL == nil || qPH == nil {
 				continue
 			}
-			if qCL.bidPx.IsZero() || qCH.bidPx.IsZero() ||
-				qPL.bidPx.IsZero() || qPH.bidPx.IsZero() {
+			if !legQualified(qCL, minBid, maxSpread) ||
+				!legQualified(qCH, minBid, maxSpread) ||
+				!legQualified(qPL, minBid, maxSpread) ||
+				!legQualified(qPH, minBid, maxSpread) {
 				continue
 			}
 
-			// Long box: buy at bids, sell at asks.
+			// Long box: buy at bids, sell at asks (provide liquidity).
 			// debit = bid(C_K1) + bid(P_K2) - ask(C_K2) - ask(P_K1)
-			longDebit := qCL.bidPx.Add(qPH.bidPx).Sub(qCH.askPx).Sub(qPL.askPx)
+			longDebit := snapBid(qCL.bidPx).Add(snapBid(qPH.bidPx)).
+				Sub(snapAsk(qCH.askPx)).Sub(snapAsk(qPL.askPx))
 			longEdge := width.Sub(longDebit).Sub(commPerShare)
 
-			// Short box: sell at asks, buy at bids.
+			// Short box: sell at asks, buy at bids (provide liquidity).
 			// credit = ask(C_K1) + ask(P_K2) - bid(C_K2) - bid(P_K1)
-			shortCredit := qCL.askPx.Add(qPH.askPx).Sub(qCH.bidPx).Sub(qPL.bidPx)
+			shortCredit := snapAsk(qCL.askPx).Add(snapAsk(qPH.askPx)).
+				Sub(snapBid(qCH.bidPx)).Sub(snapBid(qPL.bidPx))
 			shortEdge := shortCredit.Sub(width).Sub(commPerShare)
 
-			if longEdge.Cmp(minEdge) >= 0 && longEdge.Cmp(shortEdge) >= 0 {
+			if longEdge.Cmp(minEdge) >= 0 && longEdge.Cmp(maxEdge) <= 0 &&
+				longEdge.Cmp(shortEdge) >= 0 {
 				ab := startBox(bp, true, quotes, ts)
 				active = append(active, ab)
 				if *verbose {
-					fmt.Printf("\n  box #%d LONG %d/%d  est.debit: $%s  est.edge: %s\n",
+					fmt.Printf("\n  box #%d LONG %d/%d  est.debit: $%s  est.edge: %s/share\n",
 						len(completed)+len(active),
 						bp.loStrike.Int(), bp.hiStrike.Int(),
 						longDebit.Format(2), formatPnl(longEdge))
+					printLegQuotes(bp, quotes)
 				}
-			} else if shortEdge.Cmp(minEdge) >= 0 {
+			} else if shortEdge.Cmp(minEdge) >= 0 && shortEdge.Cmp(maxEdge) <= 0 {
 				ab := startBox(bp, false, quotes, ts)
 				active = append(active, ab)
 				if *verbose {
-					fmt.Printf("\n  box #%d SHORT %d/%d  est.credit: $%s  est.edge: %s\n",
+					fmt.Printf("\n  box #%d SHORT %d/%d  est.credit: $%s  est.edge: %s/share\n",
 						len(completed)+len(active),
 						bp.loStrike.Int(), bp.hiStrike.Int(),
 						shortCredit.Format(2), formatPnl(shortEdge))
+					printLegQuotes(bp, quotes)
 				}
 			}
 		}
-
 	}
 
 	// Settle any remaining active boxes at close.
@@ -452,34 +484,48 @@ func main() {
 		} else if ab.filled > 0 {
 			pl := closePartial(ab, quotes)
 			partialPnl = partialPnl.Add(pl)
+			partialCount++
 			if *verbose {
-				fmt.Printf("  close partial %d/%d (%d legs) at expiry: %s\n",
+				fmt.Printf("  close partial %d/%d (%d legs) at expiry: %s/share\n",
 					ab.pair.loStrike.Int(), ab.pair.hiStrike.Int(),
 					ab.filled, formatPnl(pl))
 			}
 		}
 	}
 
-	// Print results.
-	fmt.Printf("%s 0DTE box spread legging\n", *dateStr)
-	fmt.Printf("  parameters: width=%d  edge=%s  maxopen=%d\n",
-		*widthInt, minEdge.String(), *maxOpen)
-	fmt.Printf("  commission: $%s/box ($%s/share)\n",
-		commission.Format(2), commPerShare.Format(4))
-	fmt.Println()
-
+	// Compute totals.
 	var totalPnl decimal.Decimal
 	var totalFillTime time.Duration
 	var totalLegs int
 	var longCount, shortCount int
+	for _, cb := range completed {
+		if cb.long {
+			longCount++
+		} else {
+			shortCount++
+		}
+		totalPnl = totalPnl.Add(cb.pnl)
+		for _, leg := range cb.legs {
+			totalFillTime += time.Duration(leg.fillTS-leg.orderTS) * time.Nanosecond
+			totalLegs++
+		}
+	}
+	netPnl := totalPnl.Add(partialPnl)
+	endingCash := startingCash.Add(netPnl.MulInt(100))
+
+	// Print results.
+	fmt.Printf("%s 0DTE box spread legging\n", *dateStr)
+	fmt.Printf("  parameters: width=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d\n",
+		*widthInt, minEdge.String(), maxSpread.String(), minBid.String(), *maxOpen)
+	fmt.Printf("  commission: $%s/box ($%s/share)\n",
+		commission.Format(2), commPerShare.Format(4))
+	fmt.Printf("  starting cash: $%s\n", startingCash.Format(2))
+	fmt.Println()
 
 	for i, cb := range completed {
 		dir := "LONG"
 		if !cb.long {
 			dir = "SHORT"
-			shortCount++
-		} else {
-			longCount++
 		}
 		fmt.Printf("  box #%d %s %d/%d\n", i+1, dir,
 			cb.pair.loStrike.Int(), cb.pair.hiStrike.Int())
@@ -489,8 +535,6 @@ func main() {
 				side = "Sell"
 			}
 			fillDur := time.Duration(leg.fillTS-leg.orderTS) * time.Nanosecond
-			totalFillTime += fillDur
-			totalLegs++
 			fmt.Printf("    %s %c%-5d %s @ %-8s (fill time: %s)\n",
 				side, leg.class, leg.strike.Int(),
 				formatET(leg.fillTS), leg.fillPx.Format(2),
@@ -499,7 +543,6 @@ func main() {
 		fmt.Printf("    debit: $%s  profit: %s/share (%s/contract)\n",
 			cb.debit.Format(2), formatPnl(cb.pnl),
 			formatPnl(cb.pnl.MulInt(100)))
-		totalPnl = totalPnl.Add(cb.pnl)
 	}
 
 	fmt.Println()
@@ -512,15 +555,54 @@ func main() {
 		avgFill := totalFillTime / time.Duration(totalLegs)
 		fmt.Printf("  avg fill time: %s per leg\n", avgFill.Truncate(time.Second))
 	}
-	if !partialPnl.IsZero() {
-		fmt.Printf("  partial boxes P&L: %s\n", formatPnl(partialPnl))
+	if partialCount > 0 {
+		fmt.Printf("  partial boxes closed: %d (P&L: %s/share)\n",
+			partialCount, formatPnl(partialPnl))
 	}
-	netPnl := totalPnl.Add(partialPnl)
 	fmt.Printf("  net P&L: %s/share (%s/contract)\n",
 		formatPnl(netPnl), formatPnl(netPnl.MulInt(100)))
-	totalComm := commPerShare.MulInt(len(completed))
-	fmt.Printf("  commission: $%s\n", totalComm.Format(2))
+	fmt.Printf("  ending cash: $%s\n", endingCash.Format(2))
 	fmt.Printf("  records: %d\n", records)
+}
+
+// legQualified checks if a quote has real liquidity for box spread legging.
+func legQualified(q *quote, minBid, maxSpread decimal.Decimal) bool {
+	if q.bidPx.Cmp(minBid) < 0 {
+		return false
+	}
+	if q.askPx.Cmp(q.bidPx) <= 0 {
+		return false
+	}
+	if q.askPx.Sub(q.bidPx).Cmp(maxSpread) > 0 {
+		return false
+	}
+	return true
+}
+
+// printLegQuotes shows the 4 leg quotes for a box pair.
+func printLegQuotes(bp *boxPair, quotes map[uint32]*quote) {
+	type legInfo struct {
+		name string
+		id   uint32
+	}
+	legs := []legInfo{
+		{fmt.Sprintf("C%d", bp.loStrike.Int()), bp.callLoID},
+		{fmt.Sprintf("C%d", bp.hiStrike.Int()), bp.callHiID},
+		{fmt.Sprintf("P%d", bp.loStrike.Int()), bp.putLoID},
+		{fmt.Sprintf("P%d", bp.hiStrike.Int()), bp.putHiID},
+	}
+	for _, l := range legs {
+		q := quotes[l.id]
+		if q == nil {
+			fmt.Printf("      %-8s no quote\n", l.name)
+			continue
+		}
+		fmt.Printf("      %-8s %s × %-4d / %s × %-4d  sprd %s\n",
+			l.name,
+			q.bidPx.Format(2), q.bidSz,
+			q.askPx.Format(2), q.askSz,
+			q.askPx.Sub(q.bidPx).Format(2))
+	}
 }
 
 // startBox creates an activeBox and posts limit orders for all 4 legs.
@@ -530,11 +612,9 @@ func startBox(bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time) 
 		long:    long,
 		startTS: ts,
 	}
-	// Long box: Buy C_K1 at bid, Sell C_K2 at ask, Buy P_K2 at bid, Sell P_K1 at ask
-	// Short box: Sell C_K1 at ask, Buy C_K2 at bid, Sell P_K2 at ask, Buy P_K1 at bid
 	type legSpec struct {
 		instID uint32
-		side   byte // 'B' or 'S'
+		side   byte
 	}
 	var specs [4]legSpec
 	if long {
@@ -556,9 +636,9 @@ func startBox(bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time) 
 		q := quotes[s.instID]
 		var px decimal.Decimal
 		if s.side == 'B' {
-			px = q.bidPx
+			px = snapBid(q.bidPx)
 		} else {
-			px = q.askPx
+			px = snapAsk(q.askPx)
 		}
 		ab.orders[i] = &pendingOrder{
 			instID:   s.instID,
@@ -586,9 +666,6 @@ func settleBox(ab *activeBox, width, commPerShare decimal.Decimal) completedBox 
 		}
 	}
 	cb.debit = netOutflow
-	// Long box: profit = width - debit - commission
-	// Short box: profit = -debit - width - commission (debit is negative = credit)
-	//   which is: credit - width - commission = -debit - width - commission
 	if ab.long {
 		cb.pnl = width.Sub(netOutflow).Sub(commPerShare)
 	} else {
@@ -597,30 +674,28 @@ func settleBox(ab *activeBox, width, commPerShare decimal.Decimal) completedBox 
 	return cb
 }
 
-// partialMTM computes unrealized P&L on a partial box's filled legs.
-func partialMTM(ab *activeBox, quotes map[uint32]*quote, width decimal.Decimal) decimal.Decimal {
+// partialMTM computes unrealized P&L (per share) on a partial box's filled legs.
+func partialMTM(ab *activeBox, quotes map[uint32]*quote) decimal.Decimal {
 	var mtm decimal.Decimal
 	for _, leg := range ab.legs {
 		if leg == nil {
 			continue
 		}
 		q := quotes[leg.instID]
-		if q == nil {
+		if q == nil || q.bidPx.IsZero() || q.askPx.IsZero() {
 			continue
 		}
 		mid := q.bidPx.Add(q.askPx).DivInt(2)
 		if leg.side == 'B' {
-			// We bought at fillPx, current value is mid.
 			mtm = mtm.Add(mid.Sub(leg.fillPx))
 		} else {
-			// We sold at fillPx, current value is mid.
 			mtm = mtm.Add(leg.fillPx.Sub(mid))
 		}
 	}
 	return mtm
 }
 
-// closePartial closes filled legs at market (crossing spread) and returns P&L.
+// closePartial closes filled legs at market (crossing spread) and returns per-share P&L.
 func closePartial(ab *activeBox, quotes map[uint32]*quote) decimal.Decimal {
 	var pnl decimal.Decimal
 	for _, leg := range ab.legs {
@@ -633,14 +708,19 @@ func closePartial(ab *activeBox, quotes map[uint32]*quote) decimal.Decimal {
 		}
 		if leg.side == 'B' {
 			// Close long by selling at bid.
-			pnl = pnl.Add(q.bidPx.Sub(leg.fillPx))
+			if !q.bidPx.IsZero() {
+				pnl = pnl.Add(q.bidPx.Sub(leg.fillPx))
+			}
 		} else {
 			// Close short by buying at ask.
-			pnl = pnl.Add(leg.fillPx.Sub(q.askPx))
+			if !q.askPx.IsZero() {
+				pnl = pnl.Add(leg.fillPx.Sub(q.askPx))
+			}
 		}
 	}
-	// Commission: $1.22/leg round trip (open + close = 2 per filled leg).
-	pnl = pnl.Sub(decimal.Parse("1.22").MulInt(ab.filled * 2))
+	// Commission per share: $1.22/contract / 100 multiplier = $0.0122/share per leg.
+	// Round trip (open + close) = 2 per filled leg.
+	pnl = pnl.Sub(decimal.Parse("0.0122").MulInt(ab.filled * 2))
 	return pnl
 }
 
@@ -744,7 +824,6 @@ func loadDefinitions(path string, queryDateInt, widthInt int) (map[uint32]option
 	var pairs []boxPair
 	for i, lo := range strikes {
 		target := lo.strike.Add(widthDec)
-		// Binary search for the hi strike.
 		hi := sort.Search(len(strikes)-i-1, func(j int) bool {
 			return strikes[i+1+j].strike.Cmp(target) >= 0
 		})
