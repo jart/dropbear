@@ -25,11 +25,11 @@ func formatPnl(d decimal.Decimal) string {
 }
 
 func snapBid(px decimal.Decimal) decimal.Decimal {
-	return px.QuantizeTruncate(tick)
+	return px.QuantizeTruncate(*tickFlag)
 }
 
 func snapAsk(px decimal.Decimal) decimal.Decimal {
-	return px.QuantizeAway(tick)
+	return px.QuantizeAway(*tickFlag)
 }
 
 func greedyMid(q *quote, side byte, greed decimal.Decimal) decimal.Decimal {
@@ -57,10 +57,10 @@ func computeGreed(greedFlag decimal.Decimal, elapsed, patience clocky.Duration, 
 	return greedFlag.Add(f.Mul(decimal.One.Sub(greedFlag)))
 }
 
-func budgetLimit(ab *activeBox, legIdx int, width, minEdge decimal.Decimal, quotes map[uint32]*quote) decimal.Decimal {
-	targetValue := width.Sub(minEdge)
+func budgetLimit(ab *activeBox, legIdx int, width decimal.Decimal, quotes map[uint32]*quote) decimal.Decimal {
+	targetValue := width.Sub(*edgeFlag)
 	if !ab.long {
-		targetValue = width.Add(minEdge).Neg()
+		targetValue = width.Add(*edgeFlag).Neg()
 	}
 	var currentNet decimal.Decimal
 	for i := range 4 {
@@ -98,15 +98,15 @@ func clampLimit(side byte, px, budget decimal.Decimal) decimal.Decimal {
 	if side == 'B' {
 		return px.Min(budget).Max(decimal.Zero)
 	}
-	return px.Max(budget).Max(tick)
+	return px.Max(budget).Max(*tickFlag)
 }
 
-func legQualified(q *quote, minBid, maxSpread decimal.Decimal) bool {
-	if q.bidPx.Cmp(minBid) < 0 {
+func legQualified(q *quote) bool {
+	if q.bidPx.Cmp(*minBidFlag) < 0 {
 		return false
 	}
 	spread := q.askPx.Sub(q.bidPx)
-	return spread.Cmp(maxSpread) <= 0
+	return spread.Cmp(*maxSpreadFlag) <= 0
 }
 
 func parseOSI(osi string) (strike decimal.Decimal, class byte, expDateInt int, err error) {
@@ -135,27 +135,14 @@ func hasActivePair(active []*activeBox, bp *boxPair) bool {
 	return false
 }
 
-func legSpecs(bp *boxPair, long bool) [4]struct {
-	instID uint32
-	side   byte
-} {
+func legSpecs(bp *boxPair, long bool) [4]legSpec {
 	if long {
-		return [4]struct {
-			instID uint32
-			side   byte
-		}{
-			{bp.callLoID, 'B'}, {bp.callHiID, 'S'}, {bp.putLoID, 'S'}, {bp.putHiID, 'B'},
-		}
+		return [4]legSpec{{bp.callLoID, 'B'}, {bp.callHiID, 'S'}, {bp.putLoID, 'S'}, {bp.putHiID, 'B'}}
 	}
-	return [4]struct {
-		instID uint32
-		side   byte
-	}{
-		{bp.callLoID, 'S'}, {bp.callHiID, 'B'}, {bp.putLoID, 'B'}, {bp.putHiID, 'S'},
-	}
+	return [4]legSpec{{bp.callLoID, 'S'}, {bp.callHiID, 'B'}, {bp.putLoID, 'B'}, {bp.putHiID, 'S'}}
 }
 
-func startBox(b *broker, bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time, greed, width, minEdge decimal.Decimal) *activeBox {
+func startBox(b *broker, bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time, width decimal.Decimal) *activeBox {
 	ab := &activeBox{
 		pair:    bp,
 		long:    long,
@@ -164,7 +151,7 @@ func startBox(b *broker, bp *boxPair, long bool, quotes map[uint32]*quote, ts cl
 	specs := legSpecs(bp, long)
 	for i, s := range specs {
 		q := quotes[s.instID]
-		px := greedyMid(q, s.side, greed)
+		px := greedyMid(q, s.side, *greedFlag)
 		ab.orders[i] = b.limitOrder(s.instID, s.side, px, ts)
 	}
 	return ab

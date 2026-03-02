@@ -5,7 +5,6 @@ import (
 	"flag"
 	"io"
 	"log"
-	"os"
 	"time"
 	"unsafe"
 
@@ -16,44 +15,36 @@ import (
 )
 
 var (
-	tick             decimal.Decimal
-	multiplier       int
 	records          int
 	lastDefTS        clocky.Time
 	bestObservedEdge decimal.Decimal
 )
 
-func main() {
-	symbol := flag.String("symbol", "SPXW", "underlying symbol")
-	dataset := flag.String("dataset", "OPRA.PILLAR", "dataset")
-	live := flag.Bool("live", false, "live mode")
-	dataPath := flag.String("data", "", "path to data")
-	defsPath := flag.String("defs", "", "path to defs")
-	widthInt := flag.Int("width", 50, "box width")
-	tickFlag := flag.String("tick", "0.05", "tick")
-	multFlag := flag.Int("mult", 100, "multiplier")
-	edgeFlag := flag.String("edge", "0.10", "min edge")
-	maxEdgeFlag := flag.String("maxedge", "10.00", "max edge")
-	maxSpreadFlag := flag.String("maxspread", "1.00", "max spread")
-	minBidFlag := flag.String("minbid", "0.05", "min bid")
-	maxOpen := flag.Int("maxopen", 4, "max open")
-	latencyFlag := clocky.DurationFlag("latency", "70ms", "latency")
-	greedFlag := flag.String("greed", "0.00", "starting greed")
-	patienceFlag := clocky.DurationFlag("patience", "500ms", "patience")
-	startStr := flag.String("start", "06:30:05", "start time (HH:MM:SS PT)")
-	cutoffStr := flag.String("cutoff", "07:30:00", "cutoff time (HH:MM:SS PT)")
-	cashInt := flag.Int("cash", 100000, "starting cash")
-	verbose := flag.Bool("v", false, "verbose")
+var (
+	symbol        = flag.String("symbol", "SPXW", "underlying symbol")
+	dataset       = flag.String("dataset", "OPRA.PILLAR", "dataset")
+	dataPath      = flag.String("data", "", "path to data")
+	defsPath      = flag.String("defs", "", "path to defs")
+	widthInt      = flag.Int("width", 50, "box width")
+	tickFlag      = decimal.Flag("tick", "0.05", "tick")
+	multFlag      = flag.Int("mult", 100, "multiplier")
+	edgeFlag      = decimal.Flag("edge", "0.10", "min edge")
+	maxEdgeFlag   = decimal.Flag("maxedge", "10.00", "max edge")
+	maxSpreadFlag = decimal.Flag("maxspread", "1.00", "max spread")
+	minBidFlag    = decimal.Flag("minbid", "0.05", "min bid")
+	maxOpen       = flag.Int("maxopen", 4, "max open")
+	latencyFlag   = clocky.DurationFlag("latency", "70ms", "latency")
+	greedFlag     = decimal.Flag("greed", "0.00", "greed factor for spread placement")
+	patienceFlag  = clocky.DurationFlag("patience", "500ms", "patience")
+	cashInt       = flag.Int("cash", 100000, "starting cash")
+	verbose       = flag.Bool("v", false, "verbose")
+)
 
+func main() {
 	loggy.Init()
 	flag.Parse()
+	loggy.AlsoLogToFile()
 
-	tick = decimal.Parse(*tickFlag)
-	multiplier = *multFlag
-	minEdge := decimal.Parse(*edgeFlag)
-	maxEdge := decimal.Parse(*maxEdgeFlag)
-	maxSpread := decimal.Parse(*maxSpreadFlag)
-	minBid := decimal.Parse(*minBidFlag)
 	width := decimal.FromInt(*widthInt)
 	bestObservedEdge = decimal.FromInt(-999)
 
@@ -61,76 +52,41 @@ func main() {
 	queryDateInt := date.Year()*10000 + int(date.Month())*100 + date.Day()
 
 	var startMTV, cutoffMTV, expiryMTV clocky.Time
-	if !*live {
-		st, _ := time.Parse("15:04:05", *startStr)
-		startMTV = clocky.Time(time.Date(date.Year(), date.Month(), date.Day(), st.Hour(), st.Minute(), st.Second(), 0, clocky.MTV).UnixNano())
-		ct, _ := time.Parse("15:04:05", *cutoffStr)
-		cutoffMTV = clocky.Time(time.Date(date.Year(), date.Month(), date.Day(), ct.Hour(), ct.Minute(), ct.Second(), 0, clocky.MTV).UnixNano())
-		expiryMTV = clocky.Time(time.Date(date.Year(), date.Month(), date.Day(), 13, 0, 0, 0, clocky.MTV).UnixNano())
-	}
 
 	var instruments map[uint32]optionInfo
 	var pairs []boxPair
 	pairsByInst := make(map[uint32][]*boxPair)
-	var cleanup func()
-	var nextRecord func() ([]byte, error)
 	var liveDB *defBuilder
 
-	if *live {
-		loggy.AlsoLogToFile()
-		client, err := databento.Dial(*dataset, databento.MustLoadDefaultKey())
-		if err != nil {
-			log.Fatalf("dial: %v", err)
-		}
-		cleanup = func() { client.Close() }
-		liveDB = newDefBuilder()
-		parentSym := *symbol + ".OPT"
-		log.Printf("subscribing to %s on %s...", parentSym, *dataset)
-		err = client.Subscribe(databento.Subscription{
-			Schema:  databento.SchemaDefinition,
-			SType:   databento.STypeParent,
-			Symbols: []string{parentSym},
-		})
-		if err != nil {
-			log.Fatalf("subscribe definitions: %v", err)
-		}
-		err = client.Subscribe(databento.Subscription{
-			Schema:  databento.SchemaCMBP1,
-			SType:   databento.STypeParent,
-			Symbols: []string{parentSym},
-		})
-		if err != nil {
-			log.Fatalf("subscribe: %v", err)
-		}
-		meta, err := client.Start()
-		if err != nil {
-			log.Fatalf("start: %v", err)
-		}
-		log.Printf("streaming %s (dbn v%d)...", parentSym, meta.Version)
-		nextRecord = func() ([]byte, error) { return client.NextRecord() }
-	} else {
-		f, _ := os.Open(*dataPath)
-		cleanup = func() { f.Close() }
-		meta, _ := databento.DecodeMetadata(f)
-		br := bufio.NewReaderSize(f, 2<<20)
-		nextRecord = func() ([]byte, error) {
-			rec, err := databento.DecodeRecord(br)
-			if err != nil {
-				return nil, err
-			}
-			return databento.UpgradeRecord(meta.Version, rec)
-		}
-		df, _ := os.Open(*defsPath)
-		defer df.Close()
-		instruments, pairs, _, _ = loadDefinitions(df, *widthInt, queryDateInt)
-		for i := range pairs {
-			p := &pairs[i]
-			for _, id := range []uint32{p.callLoID, p.callHiID, p.putLoID, p.putHiID} {
-				pairsByInst[id] = append(pairsByInst[id], p)
-			}
-		}
+	client, err := databento.Dial(*dataset, databento.MustLoadDefaultKey())
+	if err != nil {
+		log.Fatalf("dial: %v", err)
 	}
-	defer cleanup()
+	defer client.Close()
+	liveDB = newDefBuilder()
+	parentSym := *symbol + ".OPT"
+	log.Printf("subscribing to %s on %s...", parentSym, *dataset)
+	err = client.Subscribe(databento.Subscription{
+		Schema:  databento.SchemaDefinition,
+		SType:   databento.STypeParent,
+		Symbols: []string{parentSym},
+	})
+	if err != nil {
+		log.Fatalf("subscribe definitions: %v", err)
+	}
+	err = client.Subscribe(databento.Subscription{
+		Schema:  databento.SchemaCMBP1,
+		SType:   databento.STypeParent,
+		Symbols: []string{parentSym},
+	})
+	if err != nil {
+		log.Fatalf("subscribe: %v", err)
+	}
+	meta, err := client.Start()
+	if err != nil {
+		log.Fatalf("start: %v", err)
+	}
+	log.Printf("streaming %s (dbn v%d)...", parentSym, meta.Version)
 
 	log.Printf("Starting main processing loop...")
 	records = 0
@@ -144,7 +100,7 @@ func main() {
 	var doneTrading bool
 
 	for {
-		rec, err := nextRecord()
+		rec, err := client.NextRecord()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -193,7 +149,7 @@ func main() {
 		}
 		cmbp1Tick := (*databento.CMBP1)(unsafe.Pointer(&rec[0]))
 
-		if *live && (records%100000 == 0 || clocky.Since(lastDefTS) > 10*clocky.Second) {
+		if records%100000 == 0 || clocky.Since(lastDefTS) > 10*clocky.Second {
 			var quotedPairs, qualifiedPairs int
 			if !doneTrading {
 				for i := range pairs {
@@ -214,7 +170,7 @@ func main() {
 					if bestObservedEdge.Cmp(decimal.FromInt(-900)) < 0 || edge.Cmp(bestObservedEdge) > 0 {
 						bestObservedEdge = edge
 					}
-					if legQualified(qCL, minBid, maxSpread) && legQualified(qCH, minBid, maxSpread) && legQualified(qPL, minBid, maxSpread) && legQualified(qPH, minBid, maxSpread) {
+					if legQualified(qCL) && legQualified(qCH) && legQualified(qPL) && legQualified(qPH) {
 						qualifiedPairs++
 					}
 				}
@@ -223,9 +179,6 @@ func main() {
 			bestObservedEdge, lastDefTS = decimal.FromInt(-999), clocky.Now()
 		}
 
-		if !*live {
-			clocky.SetNow(cmbp1Tick.TSRecv)
-		}
 		instID := cmbp1Tick.Header.InstrumentID
 		info, ok := instruments[instID]
 		if !ok {
@@ -286,9 +239,9 @@ func main() {
 					ab.filled++
 					book.recordFill(ts, instID, ord.side, fillPx)
 				} else {
-					greed := computeGreed(decimal.Parse(*greedFlag), clocky.Duration(ts-ab.startTS), *patienceFlag, ab.filled)
+					greed := computeGreed(*greedFlag, clocky.Duration(ts-ab.startTS), *patienceFlag, ab.filled)
 					newPx := greedyMid(q, ord.side, greed)
-					budget := budgetLimit(ab, i, width, minEdge, quotes)
+					budget := budgetLimit(ab, i, width, quotes)
 					newPx = clampLimit(ord.side, newPx, budget)
 					if !newPx.IsZero() && !newPx.IsNegative() && newPx.Cmp(ord.limitPx) != 0 {
 						brk.modifyOrder(ord, newPx, ts)
@@ -347,7 +300,7 @@ func main() {
 				if qCL == nil || qCH == nil || qPL == nil || qPH == nil {
 					continue
 				}
-				if !legQualified(qCL, minBid, maxSpread) || !legQualified(qCH, minBid, maxSpread) || !legQualified(qPL, minBid, maxSpread) || !legQualified(qPH, minBid, maxSpread) {
+				if !legQualified(qCL) || !legQualified(qCH) || !legQualified(qPL) || !legQualified(qPH) {
 					continue
 				}
 				lD := snapBid(qCL.bidPx).Add(snapBid(qPH.bidPx)).Sub(snapAsk(qCH.askPx)).Sub(snapAsk(qPL.askPx))
@@ -361,14 +314,14 @@ func main() {
 				} else {
 					edge, long, debit = sE, false, sC.Neg()
 				}
-				if (edge.Cmp(minEdge) >= 0 && edge.Cmp(maxEdge) <= 0) && (bestPair == nil || edge.Cmp(bestEdge) > 0) {
+				if (edge.Cmp(*edgeFlag) >= 0 && edge.Cmp(*maxEdgeFlag) <= 0) && (bestPair == nil || edge.Cmp(bestEdge) > 0) {
 					bestPair, bestLong, bestEdge, bestDebit = bp, long, edge, debit
-				} else if *verbose && edge.Cmp(minEdge) >= 0 {
-					log.Printf("DEBUG rejected edge=%s (min=%s max=%s) %d/%d", formatPnl(edge), formatPnl(minEdge), formatPnl(maxEdge), bp.loStrike.Int(), bp.hiStrike.Int())
+				} else if *verbose && edge.Cmp(*edgeFlag) >= 0 {
+					log.Printf("DEBUG rejected edge=%s (min=%s max=%s) %d/%d", formatPnl(edge), formatPnl(*edgeFlag), formatPnl(*maxEdgeFlag), bp.loStrike.Int(), bp.hiStrike.Int())
 				}
 			}
 			if bestPair != nil {
-				ab := startBox(brk, bestPair, bestLong, quotes, ts, decimal.Parse(*greedFlag), width, minEdge)
+				ab := startBox(brk, bestPair, bestLong, quotes, ts, width)
 				active = append(active, ab)
 				if *verbose {
 					log.Printf("  box #%d %d/%d  edge: %s", len(results)+len(active), bestPair.loStrike.Int(), bestPair.hiStrike.Int(), formatPnl(bestEdge))

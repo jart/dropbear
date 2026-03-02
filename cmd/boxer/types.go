@@ -40,6 +40,11 @@ type pendingOrder struct {
 	modifyTS  clocky.Time     // when modifyOrder was called
 }
 
+type legSpec struct {
+	instID uint32
+	side   byte
+}
+
 type boxLeg struct {
 	instID  uint32
 	class   byte // 'C' or 'P'
@@ -85,7 +90,7 @@ type ledger struct {
 }
 
 func (l *ledger) recordFill(ts clocky.Time, id uint32, side byte, px decimal.Decimal) {
-	cashFlow := px.MulInt(multiplier)
+	cashFlow := px.MulInt(*multFlag)
 	if side == 'B' {
 		cashFlow = cashFlow.Neg()
 		l.position[id]++
