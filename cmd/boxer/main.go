@@ -1,8 +1,9 @@
-// Command boxer simulates legging into 0DTE SPX box spreads using Databento
-// CMBP1 tick-level data. Places limit orders at the midpoint on individual
-// options and assembles risk-free box spreads from filled legs. Uses an
-// adversarial fill model: orders fill only when the NBBO moves against you
-// past the midpoint, after a configurable latency delay.
+// Command boxer simulates legging into 0DTE box spreads using Databento
+// CMBP1 tick-level data. Works with any optionable underlying (SPX, SPY,
+// TSLA, etc). Places limit orders at the midpoint on individual options
+// and assembles risk-free box spreads from filled legs. Uses an adversarial
+// fill model: orders fill only when the NBBO moves against you past the
+// midpoint, after a configurable latency delay.
 //
 // Usage:
 //
@@ -10,7 +11,13 @@
 //	    -date 2026-02-27 \
 //	    -defs ~/databento/SPX/2026-02-27.definition.dbn \
 //	    -data ~/databento/SPX/2026-02-27.0dte.cmbp1.dbn \
-//	    -v
+//	    -width 50 -tick 0.05 -v
+//
+//	go run ./cmd/boxer \
+//	    -date 2026-02-27 \
+//	    -defs ~/databento/SPY/2026-02-27.definition.dbn \
+//	    -data ~/databento/SPY/2026-02-27.cmbp1.dbn \
+//	    -width 5 -tick 0.01 -v
 package main
 
 import (
@@ -31,11 +38,10 @@ import (
 	"dropbear/netty"
 )
 
-// SPX options trade in $0.05 increments.
-// SPX multiplier is 100 (1 contract = 100 shares).
+// Set from flags in main().
 var (
-	nickel     = decimal.Parse("0.05")
-	multiplier = 100
+	tick       decimal.Decimal // minimum price increment
+	multiplier int             // contract multiplier (shares per contract)
 )
 
 type optionInfo struct {
@@ -250,26 +256,26 @@ func formatPnl(d decimal.Decimal) string {
 }
 
 func snapBid(px decimal.Decimal) decimal.Decimal {
-	return px.QuantizeTruncate(nickel)
+	return px.QuantizeTruncate(tick)
 }
 
 func snapAsk(px decimal.Decimal) decimal.Decimal {
-	return px.QuantizeAway(nickel)
+	return px.QuantizeAway(tick)
 }
 
 // greedyMid computes a greed-adjusted limit price. greed=0 returns mid,
 // greed=1 returns the favorable side of the spread (bid for buy, ask for sell).
-// The result is snapped to the nickel grid pessimistically for each side.
+// The result is snapped to the tick grid conservatively for each side.
 func greedyMid(q *quote, side byte, greed decimal.Decimal) decimal.Decimal {
 	mid := q.bidPx.Add(q.askPx).DivInt(2)
 	halfSpread := q.askPx.Sub(q.bidPx).DivInt(2)
 	offset := greed.Mul(halfSpread)
 	if side == 'B' {
 		// Greedy buy: pull limit below mid towards bid.
-		return mid.Sub(offset).QuantizeAway(nickel)
+		return mid.Sub(offset).QuantizeAway(tick)
 	}
 	// Greedy sell: push limit above mid towards ask.
-	return mid.Add(offset).QuantizeTruncate(nickel)
+	return mid.Add(offset).QuantizeTruncate(tick)
 }
 
 // computeGreed returns the effective greed level based on time elapsed since
@@ -479,12 +485,15 @@ func main() {
 	dateStr := flag.String("date", "2026-02-27", "trading date")
 	defsPath := flag.String("defs", "", "path to definitions .dbn")
 	dataPath := flag.String("data", "", "path to 0DTE CMBP1 .dbn")
-	widthInt := flag.Int("width", 25, "box width in SPX points")
+	widthInt := flag.Int("width", 50, "box width in strike points")
+	tickFlag := decimal.Flag("tick", "0.05", "minimum price increment")
+	mult := flag.Int("mult", 100, "contract multiplier (shares per contract)")
+	commStr := flag.String("comm", "1.22", "commission per contract per leg")
 	edgeStr := flag.String("edge", "0.10", "minimum edge per share")
 	maxEdgeStr := flag.String("maxedge", "2.00", "max edge per share")
 	maxSpreadStr := flag.String("maxspread", "1.00", "max bid-ask spread per leg")
 	minBidStr := flag.String("minbid", "0.05", "minimum bid on each leg")
-	maxOpen := flag.Int("maxopen", 1, "max active (incomplete) boxes at once")
+	maxOpen := flag.Int("maxopen", 4, "max active (incomplete) boxes at once")
 	latencyFlag := clocky.DurationFlag("latency", "70ms", "simulated order latency")
 	patienceFlag := clocky.DurationFlag("patience", "500ms", "time to decay from full greed to zero")
 	greedFlag := decimal.Flag("greed", "0", "initial greed: 0=mid, 1=favorable side of spread")
@@ -512,14 +521,16 @@ func main() {
 	}
 	queryDateInt := date.Year()*10000 + int(date.Month())*100 + date.Day()
 
+	multiplier = *mult
+
 	width := decimal.FromInt(*widthInt)
 	minEdge := decimal.Parse(*edgeStr)
 	maxEdge := decimal.Parse(*maxEdgeStr)
 	maxSpread := decimal.Parse(*maxSpreadStr)
 	minBid := decimal.Parse(*minBidStr)
-	commPerLeg := decimal.Parse("1.22")                 // $1.22 per contract per leg
-	commPerBox := commPerLeg.MulInt(4)                  // $4.88 per box
-	commPerSharePerBox := commPerBox.DivInt(multiplier) // $0.0488 per share
+	commPerLeg := decimal.Parse(*commStr)
+	commPerBox := commPerLeg.MulInt(4)
+	commPerSharePerBox := commPerBox.DivInt(multiplier)
 	startingCash := decimal.FromInt(*cashInt)
 
 	st, err := time.Parse("15:04:05", *startStr)
@@ -540,13 +551,18 @@ func main() {
 		16, 0, 0, 0, clocky.MTV).UnixNano())
 
 	// Phase 1: Load definitions and build box pairs.
-	instruments, pairs, err := loadDefinitions(*defsPath, queryDateInt, *widthInt)
+	instruments, pairs, minTick, err := loadDefinitions(*defsPath, queryDateInt, *widthInt)
 	if err != nil {
 		log.Fatalf("load definitions: %v", err)
 	}
+	if !minTick.IsZero() {
+		tick = minTick
+	} else {
+		tick = *tickFlag
+	}
 	if *verbose {
-		log.Printf("loaded %d instruments, %d box pairs (width=%d)",
-			len(instruments), len(pairs), *widthInt)
+		log.Printf("loaded %d instruments, %d box pairs (width=%d, tick=%s)",
+			len(instruments), len(pairs), *widthInt, tick)
 	}
 
 	pairsByInst := make(map[uint32][]*boxPair)
@@ -837,10 +853,12 @@ func main() {
 			continue
 		}
 
+		// Collect all qualifying candidates, pick the one with the best edge.
+		var bestPair *boxPair
+		var bestLong bool
+		var bestEdge decimal.Decimal
+		var bestDebit decimal.Decimal
 		for _, bp := range pairsByInst[instID] {
-			if len(active) >= *maxOpen {
-				break
-			}
 			if hasActivePair(active, bp) {
 				continue
 			}
@@ -869,27 +887,42 @@ func main() {
 				Sub(snapBid(qCH.bidPx)).Sub(snapBid(qPL.bidPx))
 			shortEdge := shortCredit.Sub(width)
 
-			if longEdge.Cmp(minEdge) >= 0 && longEdge.Cmp(maxEdge) <= 0 &&
-				longEdge.Cmp(shortEdge) >= 0 {
-				ab := startBox(brk, bp, true, quotes, ts, *greedFlag, width, minEdge)
-				active = append(active, ab)
-				if *verbose {
-					log.Printf("  box #%d LONG %d/%d  est.debit: $%s  est.edge: %s/share",
-						len(results)+len(active),
-						bp.loStrike.Int(), bp.hiStrike.Int(),
-						longDebit.Format(2), formatPnl(longEdge))
-					printLegQuotes(bp, quotes)
+			// Pick the better direction for this pair.
+			var edge decimal.Decimal
+			var long bool
+			var debit decimal.Decimal
+			if longEdge.Cmp(shortEdge) >= 0 {
+				edge = longEdge
+				long = true
+				debit = longDebit
+			} else {
+				edge = shortEdge
+				long = false
+				debit = shortCredit.Neg() // store as negative (credit)
+			}
+			if edge.Cmp(minEdge) < 0 || edge.Cmp(maxEdge) > 0 {
+				continue
+			}
+			if bestPair == nil || edge.Cmp(bestEdge) > 0 {
+				bestPair = bp
+				bestLong = long
+				bestEdge = edge
+				bestDebit = debit
+			}
+		}
+		if bestPair != nil && len(active) < *maxOpen {
+			ab := startBox(brk, bestPair, bestLong, quotes, ts, *greedFlag, width, minEdge)
+			active = append(active, ab)
+			if *verbose {
+				dir := "LONG"
+				if !bestLong {
+					dir = "SHORT"
 				}
-			} else if shortEdge.Cmp(minEdge) >= 0 && shortEdge.Cmp(maxEdge) <= 0 {
-				ab := startBox(brk, bp, false, quotes, ts, *greedFlag, width, minEdge)
-				active = append(active, ab)
-				if *verbose {
-					log.Printf("  box #%d SHORT %d/%d  est.credit: $%s  est.edge: %s/share",
-						len(results)+len(active),
-						bp.loStrike.Int(), bp.hiStrike.Int(),
-						shortCredit.Format(2), formatPnl(shortEdge))
-					printLegQuotes(bp, quotes)
-				}
+				log.Printf("  box #%d %s %d/%d  est.debit: $%s  est.edge: %s/share",
+					len(results)+len(active), dir,
+					bestPair.loStrike.Int(), bestPair.hiStrike.Int(),
+					bestDebit.Format(2), formatPnl(bestEdge))
+				printLegQuotes(bestPair, quotes)
 			}
 		}
 	}
@@ -969,8 +1002,8 @@ func main() {
 
 	// --- Print results ---
 	log.Printf("\n%s 0DTE box spread legging", *dateStr)
-	log.Printf("  parameters: width=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d  latency=%s  greed=%s  patience=%s",
-		*widthInt, minEdge, maxSpread, minBid, *maxOpen, *latencyFlag, *greedFlag, *patienceFlag)
+	log.Printf("  parameters: width=%d  tick=%s  mult=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d  latency=%s  greed=%s  patience=%s",
+		*widthInt, tick, multiplier, minEdge, maxSpread, minBid, *maxOpen, *latencyFlag, *greedFlag, *patienceFlag)
 	log.Printf("  commission: $%s/leg ($%s/box, $%s/share/box)",
 		commPerLeg.Format(2), commPerBox.Format(2), commPerSharePerBox.Format(4))
 	log.Printf("  starting cash: $%s", startingCash.Format(2))
@@ -1090,21 +1123,22 @@ func main() {
 // Definitions loader
 // -----------------------------------------------------------------------
 
-func loadDefinitions(path string, queryDateInt, widthInt int) (map[uint32]optionInfo, []boxPair, error) {
+func loadDefinitions(path string, queryDateInt, widthInt int) (map[uint32]optionInfo, []boxPair, decimal.Decimal, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, decimal.Zero, err
 	}
 	defer f.Close()
 
 	meta, err := databento.DecodeMetadata(f)
 	if err != nil {
-		return nil, nil, fmt.Errorf("decode metadata: %w", err)
+		return nil, nil, decimal.Zero, fmt.Errorf("decode metadata: %w", err)
 	}
 
 	instruments := make(map[uint32]optionInfo)
 	strikeMap := make(map[decimal.Decimal]*strikeLevel)
 	instSize := int(unsafe.Sizeof(databento.Instrument{}))
+	var minTick decimal.Decimal
 
 	for {
 		rec, err := databento.DecodeRecord(f)
@@ -1112,11 +1146,11 @@ func loadDefinitions(path string, queryDateInt, widthInt int) (map[uint32]option
 			if err == io.EOF {
 				break
 			}
-			return nil, nil, fmt.Errorf("decode record: %w", err)
+			return nil, nil, decimal.Zero, fmt.Errorf("decode record: %w", err)
 		}
 		rec, err = databento.UpgradeRecord(meta.Version, rec)
 		if err != nil {
-			return nil, nil, fmt.Errorf("upgrade record: %w", err)
+			return nil, nil, decimal.Zero, fmt.Errorf("upgrade record: %w", err)
 		}
 		if len(rec) < instSize {
 			continue
@@ -1141,6 +1175,13 @@ func loadDefinitions(path string, queryDateInt, widthInt int) (map[uint32]option
 
 		if inst.StrikePrice == databento.UndefPrice {
 			continue
+		}
+
+		if inst.MinPriceIncrement != 0 && inst.MinPriceIncrement != databento.UndefPrice {
+			t := dbnPrice(inst.MinPriceIncrement)
+			if minTick.IsZero() || t.Cmp(minTick) < 0 {
+				minTick = t
+			}
 		}
 
 		strike := dbnPrice(inst.StrikePrice)
@@ -1193,5 +1234,5 @@ func loadDefinitions(path string, queryDateInt, widthInt int) (map[uint32]option
 		}
 	}
 
-	return instruments, pairs, nil
+	return instruments, pairs, minTick, nil
 }
