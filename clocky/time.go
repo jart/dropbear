@@ -156,3 +156,7 @@ func (d *Time) Swap(v Time) Time {
 func (d *Time) CompareAndSwap(old, new Time) bool {
 	return atomic.CompareAndSwapInt64((*int64)(d), int64(old), int64(new))
 }
+
+func (d Time) Format(layout string) string {
+	return d.goTime().Format(layout)
+}

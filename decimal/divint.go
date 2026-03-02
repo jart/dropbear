@@ -6,6 +6,13 @@ import "math"
 // This uses Bankers' Rounding to break ties.
 // Panics on overflow (Min / -1) or division by zero.
 func (d Decimal) DivInt(n int) Decimal {
+	return d.DivInt64(int64(n))
+}
+
+// DivInt64 divides d by n.
+// This uses Bankers' Rounding to break ties.
+// Panics on overflow (Min / -1) or division by zero.
+func (d Decimal) DivInt64(n int64) Decimal {
 	x, y := int64(d), int64(n)
 
 	// check for overflow

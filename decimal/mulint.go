@@ -8,6 +8,12 @@ import (
 // MulInt multiplies d by n.
 // Panics on overflow.
 func (d Decimal) MulInt(n int) Decimal {
+	return d.MulInt64(int64(n))
+}
+
+// MulInt64 multiplies d by n.
+// Panics on overflow.
+func (d Decimal) MulInt64(n int64) Decimal {
 	x, y := int64(d), int64(n)
 
 	// get sign and absolute values

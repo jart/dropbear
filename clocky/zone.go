@@ -34,3 +34,7 @@ func init() {
 	}
 	MTV = mtv
 }
+
+func (t Time) In(loc *time.Location) Time {
+	return Time(t.goTime().In(loc).UnixNano())
+}
