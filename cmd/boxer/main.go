@@ -26,6 +26,8 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/loggy"
+	"dropbear/netty"
 )
 
 // SPX options trade in $0.05 increments.
@@ -70,7 +72,7 @@ type boxLeg struct {
 	instID  uint32
 	class   byte // 'C' or 'P'
 	strike  decimal.Decimal
-	side    byte // 'B' bought or 'S' sold
+	side    byte            // 'B' bought or 'S' sold
 	fillPx  decimal.Decimal // per share
 	fillTS  clocky.Time
 	orderTS clocky.Time
@@ -309,10 +311,10 @@ func printLegQuotes(bp *boxPair, quotes map[uint32]*quote) {
 	for _, l := range legs {
 		q := quotes[l.id]
 		if q == nil {
-			fmt.Printf("      %-8s no quote\n", l.name)
+			log.Printf("      %-8s no quote", l.name)
 			continue
 		}
-		fmt.Printf("      %-8s %s × %-4d / %s × %-4d  sprd %s\n",
+		log.Printf("      %-8s %s × %-4d / %s × %-4d  sprd %s",
 			l.name,
 			q.bidPx.Format(2), q.bidSz,
 			q.askPx.Format(2), q.askSz,
@@ -334,12 +336,18 @@ func main() {
 	maxSpreadStr := flag.String("maxspread", "1.00", "max bid-ask spread per leg")
 	minBidStr := flag.String("minbid", "1.00", "minimum bid on each leg")
 	maxOpen := flag.Int("maxopen", 5, "max active (incomplete) boxes at once")
-	patienceInt := flag.Int("patience", 120, "seconds before canceling 0-fill boxes")
+	patienceInt := flag.Int("patience", 60, "seconds before canceling 0-fill boxes")
 	startStr := flag.String("start", "09:30:05", "earliest time to start legging (HH:MM:SS ET)")
-	cutoffStr := flag.String("cutoff", "10:00:00", "stop opening new boxes after this time")
+	cutoffStr := flag.String("cutoff", "14:00:00", "stop opening new boxes after this time")
 	cashInt := flag.Int("cash", 100000, "starting cash in dollars")
 	verbose := flag.Bool("v", false, "verbose output")
+
+	loggy.Init()
 	flag.Parse()
+	netty.SetOffline()
+	clocky.Now = clocky.FakeNow
+	clocky.Sleep = clocky.FakeSleep
+	clocky.NewTicker = clocky.FakeNewTicker
 
 	if *defsPath == "" || *dataPath == "" {
 		flag.Usage()
@@ -357,10 +365,10 @@ func main() {
 	maxEdge := decimal.Parse(*maxEdgeStr)
 	maxSpread := decimal.Parse(*maxSpreadStr)
 	minBid := decimal.Parse(*minBidStr)
-	commPerLeg := decimal.Parse("1.22")                  // $1.22 per contract per leg
-	commPerBox := commPerLeg.MulInt(4)                    // $4.88 per box
-	commPerSharePerBox := commPerBox.DivInt(multiplier)   // $0.0488 per share
-	commPerSharePerLeg := commPerLeg.DivInt(multiplier)   // $0.0122 per share
+	commPerLeg := decimal.Parse("1.22")                 // $1.22 per contract per leg
+	commPerBox := commPerLeg.MulInt(4)                  // $4.88 per box
+	commPerSharePerBox := commPerBox.DivInt(multiplier) // $0.0488 per share
+	commPerSharePerLeg := commPerLeg.DivInt(multiplier) // $0.0122 per share
 	startingCash := decimal.FromInt(*cashInt)
 	patienceNs := int64(*patienceInt) * int64(time.Second)
 
@@ -387,7 +395,7 @@ func main() {
 		log.Fatalf("load definitions: %v", err)
 	}
 	if *verbose {
-		fmt.Printf("loaded %d instruments, %d box pairs (width=%d)\n",
+		log.Printf("loaded %d instruments, %d box pairs (width=%d)",
 			len(instruments), len(pairs), *widthInt)
 	}
 
@@ -451,6 +459,8 @@ func main() {
 		}
 		tick := (*databento.CMBP1)(unsafe.Pointer(&rec[0]))
 		records++
+
+		clocky.SetNow(tick.TSRecv)
 
 		instID := tick.Header.InstrumentID
 		if _, ok := instruments[instID]; !ok {
@@ -538,7 +548,7 @@ func main() {
 								side = "Sell"
 							}
 							fillDur := time.Duration(ts-ord.postTime) * time.Nanosecond
-							fmt.Printf("    %s %c%-5d %s @ %-8s  cash: $%s  (fill: %s)\n",
+							log.Printf("    %s %c%-5d %s @ %-8s  cash: $%s  (fill: %s)",
 								side, info.class, info.strike.Int(),
 								formatET(ts), ord.limitPx.Format(2),
 								book.cash.Format(2),
@@ -581,7 +591,7 @@ func main() {
 					if !ab.long {
 						dir = "SHORT"
 					}
-					fmt.Printf("  ** completed %s %d/%d  debit: $%s  pnl: %s/share  cash: $%s\n",
+					log.Printf("  ** completed %s %d/%d  debit: $%s  pnl: %s/share  cash: $%s",
 						dir, ab.pair.loStrike.Int(), ab.pair.hiStrike.Int(),
 						br.debit.Format(2), formatPnl(br.pnl), book.cash.Format(2))
 				}
@@ -600,7 +610,7 @@ func main() {
 				cancelBox(ab)
 				canceledCount++
 				if *verbose {
-					fmt.Printf("  canceled %d/%d (no fills after %ds)\n",
+					log.Printf("  canceled %d/%d (no fills after %ds)",
 						ab.pair.loStrike.Int(), ab.pair.hiStrike.Int(),
 						elapsed/int64(time.Second))
 				}
@@ -663,7 +673,7 @@ func main() {
 				ab := startBox(bp, true, quotes, ts)
 				active = append(active, ab)
 				if *verbose {
-					fmt.Printf("\n  box #%d LONG %d/%d  est.debit: $%s  est.edge: %s/share\n",
+					log.Printf("  box #%d LONG %d/%d  est.debit: $%s  est.edge: %s/share",
 						len(results)+len(active),
 						bp.loStrike.Int(), bp.hiStrike.Int(),
 						longDebit.Format(2), formatPnl(longEdge))
@@ -673,7 +683,7 @@ func main() {
 				ab := startBox(bp, false, quotes, ts)
 				active = append(active, ab)
 				if *verbose {
-					fmt.Printf("\n  box #%d SHORT %d/%d  est.credit: $%s  est.edge: %s/share\n",
+					log.Printf("  box #%d SHORT %d/%d  est.credit: $%s  est.edge: %s/share",
 						len(results)+len(active),
 						bp.loStrike.Int(), bp.hiStrike.Int(),
 						shortCredit.Format(2), formatPnl(shortEdge))
@@ -755,20 +765,21 @@ func main() {
 		settlementCash = settlementCash.Add(cf)
 		if *verbose && !cf.IsZero() {
 			info := instruments[instID]
-			fmt.Printf("  settle %c%-5d pos=%d @ mid $%s  cash: %s\n",
+			log.Printf("  settle %c%-5d pos=%d @ mid $%s  cash: %s",
 				info.class, info.strike.Int(), pos,
 				midPx.Format(2), formatPnl(cf))
 		}
 	}
 
 	// --- Print results ---
-	fmt.Printf("\n%s 0DTE box spread legging\n", *dateStr)
-	fmt.Printf("  parameters: width=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d  patience=%ds\n",
+	log.Printf("\n%s 0DTE box spread legging", *dateStr)
+	log.Printf("  parameters: width=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d  patience=%ds",
 		*widthInt, minEdge.String(), maxSpread.String(), minBid.String(), *maxOpen, *patienceInt)
-	fmt.Printf("  commission: $%s/leg ($%s/box, $%s/share/box)\n",
+	log.Printf("  commission: $%s/leg ($%s/box, $%s/share/box)",
+
 		commPerLeg.Format(2), commPerBox.Format(2), commPerSharePerBox.Format(4))
-	fmt.Printf("  starting cash: $%s\n", startingCash.Format(2))
-	fmt.Println()
+	log.Printf("  starting cash: $%s", startingCash.Format(2))
+	log.Println()
 
 	var totalPnl decimal.Decimal
 	var totalFillTime time.Duration
@@ -787,7 +798,7 @@ func main() {
 			label = fmt.Sprintf("box #%d (%d/4)", i+1, br.filled)
 			incompleteCount++
 		}
-		fmt.Printf("  %s %s %d/%d\n", label, dir,
+		log.Printf("  %s %s %d/%d", label, dir,
 			br.pair.loStrike.Int(), br.pair.hiStrike.Int())
 		for _, leg := range br.legs {
 			if leg.instID == 0 {
@@ -799,12 +810,12 @@ func main() {
 			}
 			if leg.fillTS == 0 {
 				// Unfilled leg.
-				fmt.Printf("    %s %c%-5d (unfilled, limit was $%s)\n",
+				log.Printf("    %s %c%-5d (unfilled, limit was $%s)",
 					side, leg.class, leg.strike.Int(),
 					leg.fillPx.Format(2))
 			} else {
 				fillDur := time.Duration(leg.fillTS-leg.orderTS) * time.Nanosecond
-				fmt.Printf("    %s %c%-5d %s @ $%-8s (fill: %s)\n",
+				log.Printf("    %s %c%-5d %s @ $%-8s (fill: %s)",
 					side, leg.class, leg.strike.Int(),
 					formatET(leg.fillTS), leg.fillPx.Format(2),
 					formatDuration(fillDur))
@@ -813,7 +824,7 @@ func main() {
 			}
 		}
 		if complete {
-			fmt.Printf("    debit: $%s  profit: %s/share (%s/contract)\n",
+			log.Printf("    debit: $%s  profit: %s/share (%s/contract)",
 				br.debit.Format(2), formatPnl(br.pnl),
 				formatPnl(br.pnl.MulInt(multiplier)))
 			if br.long {
@@ -823,14 +834,14 @@ func main() {
 			}
 			totalPnl = totalPnl.Add(br.pnl)
 		} else {
-			fmt.Printf("    partial debit: $%s  est. pnl: %s/share (unreliable)\n",
+			log.Printf("    partial debit: $%s  est. pnl: %s/share (unreliable)",
 				br.debit.Format(2), formatPnl(br.pnl))
 		}
 	}
 
 	// --- Reconciliation ---
-	fmt.Println()
-	fmt.Println("  --- holdings at expiry ---")
+	log.Println()
+	log.Println("  --- holdings at expiry ---")
 	openPositions := 0
 	for instID, pos := range book.position {
 		if pos == 0 {
@@ -845,40 +856,40 @@ func main() {
 		} else {
 			midStr = "?"
 		}
-		fmt.Printf("  %c%-5d  pos: %+d  cost: $%s  mid: $%s\n",
+		log.Printf("  %c%-5d  pos: %+d  cost: $%s  mid: $%s",
 			info.class, info.strike.Int(), pos,
 			book.cost[instID].Format(2), midStr)
 	}
 	if openPositions == 0 {
-		fmt.Println("  (no open positions)")
+		log.Println("  (no open positions)")
 	}
 
-	fmt.Println()
-	fmt.Println("  --- trade blotter ---")
-	fmt.Printf("  total fills: %d\n", len(book.fills))
-	fmt.Printf("  total commission: $%s\n", totalCommission.Format(2))
+	log.Println()
+	log.Println("  --- trade blotter ---")
+	log.Printf("  total fills: %d", len(book.fills))
+	log.Printf("  total commission: $%s", totalCommission.Format(2))
 	if !settlementCash.IsZero() {
-		fmt.Printf("  settlement cash flow: %s\n", formatPnl(settlementCash))
+		log.Printf("  settlement cash flow: %s", formatPnl(settlementCash))
 	}
 
-	fmt.Println()
-	fmt.Println("  --- summary ---")
-	fmt.Printf("  completed boxes: %d (%d long, %d short)\n",
+	log.Println()
+	log.Println("  --- summary ---")
+	log.Printf("  completed boxes: %d (%d long, %d short)",
 		completedCount, longCount, shortCount)
 	if incompleteCount > 0 {
-		fmt.Printf("  incomplete boxes: %d\n", incompleteCount)
+		log.Printf("  incomplete boxes: %d", incompleteCount)
 	}
 	if canceledCount > 0 {
-		fmt.Printf("  canceled (0-fill): %d\n", canceledCount)
+		log.Printf("  canceled (0-fill): %d", canceledCount)
 	}
 	if totalLegs > 0 {
 		avgFill := totalFillTime / time.Duration(totalLegs)
-		fmt.Printf("  avg fill time: %s per leg\n", formatDuration(avgFill))
+		log.Printf("  avg fill time: %s per leg", formatDuration(avgFill))
 	}
-	fmt.Printf("  completed P&L: %s/share (%s/contract)\n",
+	log.Printf("  completed P&L: %s/share (%s/contract)",
 		formatPnl(totalPnl), formatPnl(totalPnl.MulInt(multiplier)))
-	fmt.Printf("  ending cash (ledger): $%s\n", book.cash.Format(2))
-	fmt.Printf("  records: %d\n", records)
+	log.Printf("  ending cash (ledger): $%s", book.cash.Format(2))
+	log.Printf("  records: %d", records)
 }
 
 // -----------------------------------------------------------------------
