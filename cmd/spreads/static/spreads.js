@@ -11,12 +11,15 @@
     var PRICE_SCALE = 1e9;
     var BID_COLOR = '#4dabf7';
     var ASK_COLOR = '#ff922b';
+    var BUY_COLOR = '#51cf66';
+    var SELL_COLOR = '#ff6b6b';
     var GRID_COLOR = '#0f3460';
     var TEXT_COLOR = '#888';
     var CROSSHAIR_COLOR = '#444';
     var PAD = { top: 20, right: 80, bottom: 40, left: 20 };
 
     var data = null;
+    var tradeData = null;
     var dpr = window.devicePixelRatio || 1;
 
     // Load instruments
@@ -46,30 +49,37 @@
         var id = select.value;
         if (!id) {
             data = null;
+            tradeData = null;
             draw();
             return;
         }
-        loadingEl.textContent = 'Loading NBBO data...';
-        fetch('/api/nbbo?id=' + id)
-            .then(function (r) { return r.json(); })
-            .then(function (nbbo) {
-                loadingEl.textContent = '';
-                if (!nbbo || nbbo.length === 0) {
-                    statusEl.textContent = 'No data for this instrument';
-                    data = null;
-                    draw();
-                    return;
-                }
-                data = nbbo;
-                statusEl.textContent = nbbo.length + ' ticks';
-                resize();
+        loadingEl.textContent = 'Loading data...';
+        Promise.all([
+            fetch('/api/nbbo?id=' + id).then(function (r) { return r.json(); }),
+            fetch('/api/trades?id=' + id).then(function (r) { return r.json(); })
+        ]).then(function (results) {
+            var nbbo = results[0];
+            var trades = results[1];
+            loadingEl.textContent = '';
+            if (!nbbo || nbbo.length === 0) {
+                statusEl.textContent = 'No data for this instrument';
+                data = null;
+                tradeData = null;
                 draw();
-            })
-            .catch(function (err) {
-                loadingEl.textContent = '';
-                statusEl.textContent = 'Error loading data';
-                console.error(err);
-            });
+                return;
+            }
+            data = nbbo;
+            tradeData = trades || [];
+            var msg = nbbo.length + ' ticks';
+            if (tradeData.length > 0) msg += ', ' + tradeData.length + ' trades';
+            statusEl.textContent = msg;
+            resize();
+            draw();
+        }).catch(function (err) {
+            loadingEl.textContent = '';
+            statusEl.textContent = 'Error loading data';
+            console.error(err);
+        });
     });
 
     function resize() {
@@ -189,6 +199,21 @@
 
         // Draw ask step chart
         drawStepChart(ASK_COLOR, 'ask_px', pl, cw, pt, ch, minT, tRange, minP, pRange);
+
+        // Draw trades as circles
+        if (tradeData && tradeData.length > 0) {
+            var radius = 3 * dpr;
+            for (var i = 0; i < tradeData.length; i++) {
+                var tr = tradeData[i];
+                var tx = px(tr.ts);
+                var tp = parseFloat(tr.price);
+                var ty = py(tp);
+                ctx.fillStyle = tr.side === 'B' ? BUY_COLOR : SELL_COLOR;
+                ctx.beginPath();
+                ctx.arc(tx, ty, radius, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
     }
 
     function drawStepChart(color, field, pl, cw, pt, ch, minT, tRange, minP, pRange) {
@@ -214,6 +239,44 @@
         ctx.stroke();
     }
 
+    // Cached chart geometry for tooltip hit-testing
+    var chartGeom = null;
+
+    function computeGeom() {
+        if (!data || data.length === 0) return null;
+        var rect = canvas.getBoundingClientRect();
+        var w = rect.width, h = rect.height;
+        var pl = PAD.left, pr = PAD.right, pt = PAD.top, pb = PAD.bottom;
+        var cw = w - pl - pr, ch = h - pt - pb;
+        var minT = data[0].ts, maxT = data[data.length - 1].ts;
+        var tRange = maxT - minT; if (tRange === 0) tRange = 1;
+        var minP = Infinity, maxP = -Infinity;
+        for (var i = 0; i < data.length; i++) {
+            var bp = parseFloat(data[i].bid_px), ap = parseFloat(data[i].ask_px);
+            if (bp < minP) minP = bp; if (ap < minP) minP = ap;
+            if (bp > maxP) maxP = bp; if (ap > maxP) maxP = ap;
+        }
+        var pRange = maxP - minP; if (pRange === 0) pRange = 1;
+        minP -= pRange * 0.05; maxP += pRange * 0.05; pRange = maxP - minP;
+        return { w: w, h: h, pl: pl, pr: pr, pt: pt, pb: pb, cw: cw, ch: ch,
+                 minT: minT, maxT: maxT, tRange: tRange, minP: minP, maxP: maxP, pRange: pRange };
+    }
+
+    function findNearestTrade(mx, my, g) {
+        if (!tradeData || tradeData.length === 0 || !g) return null;
+        var best = null, bestDist = 10; // 10px hit radius
+        for (var i = 0; i < tradeData.length; i++) {
+            var tr = tradeData[i];
+            var tx = g.pl + ((tr.ts - g.minT) / g.tRange) * g.cw;
+            var tp = parseFloat(tr.price);
+            var ty = g.pt + g.ch - ((tp - g.minP) / g.pRange) * g.ch;
+            var dx = mx - tx, dy = my - ty;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < bestDist) { bestDist = dist; best = tr; }
+        }
+        return best;
+    }
+
     // Tooltip on mousemove
     canvas.addEventListener('mousemove', function (e) {
         if (!data || data.length === 0) {
@@ -224,35 +287,23 @@
         var rect = canvas.getBoundingClientRect();
         var mx = e.clientX - rect.left;
         var my = e.clientY - rect.top;
-        var w = rect.width;
-        var h = rect.height;
+        var g = computeGeom();
+        if (!g) return;
 
-        var pl = PAD.left;
-        var pr = PAD.right;
-        var pt = PAD.top;
-        var pb = PAD.bottom;
-        var cw = w - pl - pr;
-
-        if (mx < pl || mx > w - pr) {
+        if (mx < g.pl || mx > g.w - g.pr) {
             tooltip.style.display = 'none';
             return;
         }
 
-        var minT = data[0].ts;
-        var maxT = data[data.length - 1].ts;
-        var tRange = maxT - minT;
-        if (tRange === 0) tRange = 1;
+        var tsTarget = g.minT + ((mx - g.pl) / g.cw) * g.tRange;
 
-        var tsTarget = minT + ((mx - pl) / cw) * tRange;
-
-        // Binary search for nearest tick
+        // Binary search for nearest NBBO tick
         var lo = 0, hi = data.length - 1;
         while (lo < hi) {
             var mid = (lo + hi) >> 1;
             if (data[mid].ts < tsTarget) lo = mid + 1;
             else hi = mid;
         }
-        // Check neighbors
         if (lo > 0 && Math.abs(data[lo - 1].ts - tsTarget) < Math.abs(data[lo].ts - tsTarget)) {
             lo = lo - 1;
         }
@@ -267,17 +318,51 @@
         tooltip.querySelector('.ask').textContent = 'Ask: ' + ask.toFixed(4) + ' (' + d.ask_sz + ')';
         tooltip.querySelector('.spread').textContent = 'Spread: ' + spread.toFixed(4);
 
+        // Check for nearby trade
+        var tradeInfoEl = tooltip.querySelector('.trade-info');
+        var nearTrade = findNearestTrade(mx, my, g);
+        if (nearTrade) {
+            var tp = parseFloat(nearTrade.price);
+            var tb = parseFloat(nearTrade.bid_px);
+            var ta = parseFloat(nearTrade.ask_px);
+            var tspread = ta - tb;
+            var isBuy = nearTrade.side === 'B';
+            var sideName = isBuy ? 'BUY (buyer aggressor)' : 'SELL (seller aggressor)';
+            var sideClass = isBuy ? 'buy' : 'sell';
+
+            // Where in the spread did it execute?
+            var location;
+            if (tspread > 0) {
+                var pct = ((tp - tb) / tspread) * 100;
+                if (pct <= 0) location = 'at bid';
+                else if (pct >= 100) location = 'at ask';
+                else location = pct.toFixed(0) + '% through spread';
+            } else {
+                location = 'locked market';
+            }
+
+            tradeInfoEl.innerHTML =
+                '<div class="trade-header ' + sideClass + '">' + sideName + ' ' + nearTrade.size + ' @ ' + tp.toFixed(4) + '</div>' +
+                '<div class="trade-detail">Bid: ' + tb.toFixed(4) + ' (' + nearTrade.bid_sz + ') / Ask: ' + ta.toFixed(4) + ' (' + nearTrade.ask_sz + ')</div>' +
+                '<div class="trade-detail">Spread: ' + tspread.toFixed(4) + '</div>' +
+                '<div class="trade-location">' + location + '</div>' +
+                '<div class="trade-detail" style="color:#888">' + formatTime(nearTrade.ts) + '</div>';
+        } else {
+            tradeInfoEl.innerHTML = '';
+        }
+
         // Position tooltip
+        var tw = nearTrade ? 260 : 180;
         var tx = e.clientX - rect.left + 16;
         var ty = e.clientY - rect.top - 10;
-        if (tx + 180 > w) tx = e.clientX - rect.left - 196;
+        if (tx + tw > g.w) tx = e.clientX - rect.left - tw - 16;
         tooltip.style.left = tx + 'px';
         tooltip.style.top = ty + 'px';
         tooltip.style.display = 'block';
 
         // Draw crosshair
         draw();
-        var cx = (mx / w) * canvas.width;
+        var cx = (mx / g.w) * canvas.width;
         ctx.strokeStyle = CROSSHAIR_COLOR;
         ctx.lineWidth = dpr;
         ctx.setLineDash([4 * dpr, 4 * dpr]);
@@ -286,6 +371,20 @@
         ctx.lineTo(cx, canvas.height - PAD.bottom * dpr);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        // Highlight nearest trade dot
+        if (nearTrade) {
+            var htx = g.pl + ((nearTrade.ts - g.minT) / g.tRange) * g.cw;
+            var htp = parseFloat(nearTrade.price);
+            var hty = g.pt + g.ch - ((htp - g.minP) / g.pRange) * g.ch;
+            var hcx = (htx / g.w) * canvas.width;
+            var hcy = (hty / g.h) * canvas.height;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5 * dpr;
+            ctx.beginPath();
+            ctx.arc(hcx, hcy, 5 * dpr, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
     });
 
     canvas.addEventListener('mouseleave', function () {

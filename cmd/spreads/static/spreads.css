@@ -119,6 +119,37 @@ canvas {
     padding-top: 4px;
 }
 
+.tooltip .trade-info {
+    margin-top: 4px;
+    border-top: 1px solid #0f3460;
+    padding-top: 4px;
+}
+
+.tooltip .trade-info:empty {
+    display: none;
+}
+
+.tooltip .trade-info .trade-header {
+    font-weight: bold;
+    margin-bottom: 2px;
+}
+
+.tooltip .trade-info .trade-header.buy {
+    color: #51cf66;
+}
+
+.tooltip .trade-info .trade-header.sell {
+    color: #ff6b6b;
+}
+
+.tooltip .trade-info .trade-detail {
+    color: #ccc;
+}
+
+.tooltip .trade-info .trade-location {
+    color: #aaa;
+}
+
 .loading {
     color: #888;
     padding: 40px;

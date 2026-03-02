@@ -69,6 +69,20 @@ CREATE TABLE IF NOT EXISTS nbbo (
 );
 
 CREATE INDEX IF NOT EXISTS idx_nbbo_instrument ON nbbo(instrument_id, ts_event);
+
+CREATE TABLE IF NOT EXISTS trades (
+    ts_event INTEGER NOT NULL,
+    instrument_id INTEGER NOT NULL,
+    price INTEGER NOT NULL,
+    size INTEGER NOT NULL,
+    side TEXT NOT NULL,
+    bid_px INTEGER NOT NULL,
+    ask_px INTEGER NOT NULL,
+    bid_sz INTEGER NOT NULL,
+    ask_sz INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_trades_instrument ON trades(instrument_id, ts_event);
 `
 
 func main() {
@@ -144,8 +158,12 @@ func importData(conn *sql.DB) {
 	if err != nil {
 		log.Fatalf("prepare nbbo insert: %v", err)
 	}
+	tradeStmt, err := tx.Prepare("INSERT INTO trades (ts_event, instrument_id, price, size, side, bid_px, ask_px, bid_sz, ask_sz) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		log.Fatalf("prepare trade insert: %v", err)
+	}
 
-	var scanned, inserted int64
+	var scanned, inserted, trades int64
 	const batchSize = 50000
 
 	for {
@@ -198,8 +216,29 @@ func importData(conn *sql.DB) {
 		}
 		inserted++
 
+		if cmbp1.Action == databento.ActionTrade || cmbp1.Action == databento.ActionFill {
+			side := "A"
+			if cmbp1.Side == databento.SideBid {
+				side = "B"
+			}
+			if _, err := tradeStmt.Exec(
+				int64(ts),
+				cmbp1.Header.InstrumentID,
+				cmbp1.Price,
+				cmbp1.Size,
+				side,
+				bid, ask,
+				cmbp1.Levels[0].BidSz,
+				cmbp1.Levels[0].AskSz,
+			); err != nil {
+				log.Fatalf("insert trade: %v", err)
+			}
+			trades++
+		}
+
 		if inserted%batchSize == 0 {
 			nbboStmt.Close()
+			tradeStmt.Close()
 			if err := tx.Commit(); err != nil {
 				log.Fatalf("commit batch: %v", err)
 			}
@@ -211,15 +250,20 @@ func importData(conn *sql.DB) {
 			if err != nil {
 				log.Fatalf("prepare nbbo insert: %v", err)
 			}
+			tradeStmt, err = tx.Prepare("INSERT INTO trades (ts_event, instrument_id, price, size, side, bid_px, ask_px, bid_sz, ask_sz) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+			if err != nil {
+				log.Fatalf("prepare trade insert: %v", err)
+			}
 		}
 	}
 
 	nbboStmt.Close()
+	tradeStmt.Close()
 	if err := tx.Commit(); err != nil {
 		log.Fatalf("commit final batch: %v", err)
 	}
 
-	log.Printf("import complete: scanned %d records, inserted %d NBBO ticks", scanned, inserted)
+	log.Printf("import complete: scanned %d records, inserted %d NBBO ticks, %d trades", scanned, inserted, trades)
 }
 
 func loadDefinitions(path string) map[uint32]instrumentInfo {
@@ -303,6 +347,10 @@ func serve(conn *sql.DB) {
 		handleNBBO(w, r, conn)
 	})
 
+	http.HandleFunc("/api/trades", func(w http.ResponseWriter, r *http.Request) {
+		handleTrades(w, r, conn)
+	})
+
 	log.Printf("serving on %s", *flagAddr)
 	if err := http.ListenAndServe(*flagAddr, nil); err != nil {
 		log.Fatalf("listen: %v", err)
@@ -324,7 +372,7 @@ func handleInstruments(w http.ResponseWriter, r *http.Request, conn *sql.DB) {
 		FROM instruments i
 		JOIN nbbo n ON n.instrument_id = i.instrument_id
 		GROUP BY i.instrument_id
-		ORDER BY i.strike, i.class
+		ORDER BY COUNT(n.rowid) DESC, i.strike, i.class
 	`)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -407,6 +455,65 @@ func handleNBBO(w http.ResponseWriter, r *http.Request, conn *sql.DB) {
 			TS:    ts,
 			BidPx: fmt.Sprintf("%.4f", float64(bidPx)/float64(databento.FixedPriceScale)),
 			AskPx: fmt.Sprintf("%.4f", float64(askPx)/float64(databento.FixedPriceScale)),
+			BidSz: bidSz,
+			AskSz: askSz,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+type tradeJSON struct {
+	TS    int64  `json:"ts"`
+	Price string `json:"price"`
+	Size  uint32 `json:"size"`
+	Side  string `json:"side"`
+	BidPx string `json:"bid_px"`
+	AskPx string `json:"ask_px"`
+	BidSz uint32 `json:"bid_sz"`
+	AskSz uint32 `json:"ask_sz"`
+}
+
+func handleTrades(w http.ResponseWriter, r *http.Request, conn *sql.DB) {
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		http.Error(w, "missing id parameter", http.StatusBadRequest)
+		return
+	}
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		http.Error(w, "invalid id parameter", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := conn.Query(
+		"SELECT ts_event, price, size, side, bid_px, ask_px, bid_sz, ask_sz FROM trades WHERE instrument_id = ? ORDER BY ts_event",
+		id,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	scale := float64(databento.FixedPriceScale)
+	var result []tradeJSON
+	for rows.Next() {
+		var ts, price, bidPx, askPx int64
+		var size, bidSz, askSz uint32
+		var side string
+		if err := rows.Scan(&ts, &price, &size, &side, &bidPx, &askPx, &bidSz, &askSz); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result = append(result, tradeJSON{
+			TS:    ts,
+			Price: fmt.Sprintf("%.4f", float64(price)/scale),
+			Size:  size,
+			Side:  side,
+			BidPx: fmt.Sprintf("%.4f", float64(bidPx)/scale),
+			AskPx: fmt.Sprintf("%.4f", float64(askPx)/scale),
 			BidSz: bidSz,
 			AskSz: askSz,
 		})
