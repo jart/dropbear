@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OPRA Spread Viewer</title>
+    <link rel="stylesheet" href="/spreads.css">
+</head>
+<body>
+    <h1>OPRA Spread Viewer</h1>
+    <div class="controls">
+        <select id="instrument">
+            <option value="">Loading instruments...</option>
+        </select>
+        <span id="status" class="info"></span>
+    </div>
+    <div class="chart-container">
+        <canvas id="chart"></canvas>
+        <div id="tooltip" class="tooltip">
+            <div class="time"></div>
+            <div class="bid"></div>
+            <div class="ask"></div>
+            <div class="spread"></div>
+        </div>
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-swatch" style="background: #4dabf7;"></div>
+                <span>Bid</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-swatch" style="background: #ff922b;"></div>
+                <span>Ask</span>
+            </div>
+        </div>
+    </div>
+    <div id="loading" class="loading"></div>
+    <script src="/spreads.js"></script>
+</body>
+</html>
