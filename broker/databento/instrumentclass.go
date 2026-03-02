@@ -5,15 +5,15 @@ import "fmt"
 type InstrumentClass byte
 
 const (
-	InstrumentClassBond          InstrumentClass = 'B'
-	InstrumentClassCall          InstrumentClass = 'C'
-	InstrumentClassFuture        InstrumentClass = 'F'
-	InstrumentClassStock         InstrumentClass = 'K'
-	InstrumentClassMixedSpread   InstrumentClass = 'M'
 	InstrumentClassPut           InstrumentClass = 'P'
+	InstrumentClassCall          InstrumentClass = 'C'
+	InstrumentClassBond          InstrumentClass = 'B'
+	InstrumentClassStock         InstrumentClass = 'K'
+	InstrumentClassFuture        InstrumentClass = 'F'
+	InstrumentClassFXSpot        InstrumentClass = 'X'
+	InstrumentClassMixedSpread   InstrumentClass = 'M'
 	InstrumentClassFutureSpread  InstrumentClass = 'S'
 	InstrumentClassOptionSpread  InstrumentClass = 'T'
-	InstrumentClassFXSpot        InstrumentClass = 'X'
 	InstrumentClassCommoditySpot InstrumentClass = 'Y'
 )
 

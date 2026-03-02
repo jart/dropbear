@@ -4,22 +4,26 @@
 package databento
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"unsafe"
+
+	"dropbear/clocky"
 )
 
 const historicalGateway = "https://hist.databento.com"
 
 // HistoricalClient accesses Databento's historical market data API.
 type HistoricalClient struct {
-	apiKey string
+	apiKey ApiKey
 }
 
 // NewHistoricalClient creates a new historical API client.
-func NewHistoricalClient(apiKey string) *HistoricalClient {
+func NewHistoricalClient(apiKey ApiKey) *HistoricalClient {
 	return &HistoricalClient{apiKey: apiKey}
 }
 
@@ -47,7 +51,7 @@ func (c *HistoricalClient) GetRange(dataset string, schema Schema, stypeIn SType
 		return Metadata{}, nil, fmt.Errorf("databento: create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(c.apiKey, "")
+	req.SetBasicAuth(string(c.apiKey), "")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -60,14 +64,15 @@ func (c *HistoricalClient) GetRange(dataset string, schema Schema, stypeIn SType
 		return Metadata{}, nil, fmt.Errorf("databento: http %d: %s", resp.StatusCode, body)
 	}
 
-	meta, err := DecodeMetadata(resp.Body)
+	body := bufio.NewReaderSize(resp.Body, 256*1024)
+	meta, err := DecodeMetadata(body)
 	if err != nil {
 		return Metadata{}, nil, err
 	}
 
 	var records [][]byte
 	for {
-		rec, err := DecodeRecord(resp.Body)
+		rec, err := DecodeRecord(body)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -82,4 +87,42 @@ func (c *HistoricalClient) GetRange(dataset string, schema Schema, stypeIn SType
 	}
 
 	return meta, records, nil
+}
+
+// GetInstruments fetches instrument definitions for a parent symbol on a given
+// date via the historical API. Returns a slice of InstrumentRef backed by the
+// raw record bytes.
+func GetInstruments(apiKey ApiKey, dataset, symbol string, date clocky.Time) ([]InstrumentRef, error) {
+	y, m, d := date.Date()
+	next := date.Add(clocky.Day)
+	ny, nm, nd := next.Date()
+	start := fmt.Sprintf("%04d-%02d-%02dT00:00:00Z", y, m, d)
+	end := fmt.Sprintf("%04d-%02d-%02dT00:00:00Z", ny, nm, nd)
+	client := NewHistoricalClient(apiKey)
+	_, records, err := client.GetRange(dataset, SchemaDefinition,
+		STypeParent, []string{symbol}, start, end)
+	if err != nil {
+		return nil, err
+	}
+	instSize := int(unsafe.Sizeof(Instrument{}))
+	var result []InstrumentRef
+	for _, rec := range records {
+		if len(rec) < instSize {
+			continue
+		}
+		if RType(rec[1]) != RTypeInstrumentDef {
+			continue
+		}
+		result = append(result, InstrumentRef{
+			Instrument: (*Instrument)(unsafe.Pointer(&rec[0])),
+			raw:        rec,
+		})
+	}
+	return result, nil
+}
+
+// InstrumentRef holds an Instrument pointer and the backing raw bytes.
+type InstrumentRef struct {
+	*Instrument
+	raw []byte // prevents GC of the backing record
 }

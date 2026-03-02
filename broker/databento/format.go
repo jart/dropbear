@@ -2,67 +2,14 @@ package databento
 
 import (
 	"fmt"
-	"go/format"
 	"strconv"
 	"strings"
 
 	"dropbear/clocky"
 )
 
-// PrettyPrint formats a GoStringer's output using go/format for column alignment.
-// This is slow (~44μs for CBBO, ~148μs for Instrument) so use Indent for bulk output.
-func PrettyPrint(v fmt.GoStringer) string {
-	s := v.GoString()
-	src := "package p\nvar _ = " + s + "\n"
-	formatted, err := format.Source([]byte(src))
-	if err != nil {
-		return s
-	}
-	result := string(formatted)
-	const prefix = "package p\n\nvar _ = "
-	result = strings.TrimPrefix(result, prefix)
-	result = strings.TrimSuffix(result, "\n")
-	return result
-}
-
-// Indent adds tab indentation to a GoString() output based on brace nesting.
-func Indent(v fmt.GoStringer) string {
-	s := v.GoString()
-	var b strings.Builder
-	b.Grow(len(s) + len(s)/4)
-	depth := 0
-	for len(s) > 0 {
-		nl := strings.IndexByte(s, '\n')
-		var line string
-		if nl >= 0 {
-			line = s[:nl]
-			s = s[nl+1:]
-		} else {
-			line = s
-			s = ""
-		}
-		// Closing braces reduce depth before indenting.
-		for i := 0; i < len(line) && line[i] == '}'; i++ {
-			depth--
-		}
-		for i := 0; i < depth; i++ {
-			b.WriteByte('\t')
-		}
-		b.WriteString(line)
-		if nl >= 0 {
-			b.WriteByte('\n')
-		}
-		// Opening braces increase depth after writing.
-		for i := 0; i < len(line); i++ {
-			if line[i] == '{' {
-				depth++
-			}
-		}
-	}
-	return b.String()
-}
-
 func appendName(b *strings.Builder, name string) {
+	b.WriteByte('\t')
 	b.WriteString(name)
 	b.WriteString(": ")
 }

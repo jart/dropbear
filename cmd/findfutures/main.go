@@ -702,13 +702,8 @@ func formatPrice(price float64) string {
 // ============================================================================
 
 func syncData() error {
-	apiKey, err := databento.GetKey()
-	if err != nil {
-		return fmt.Errorf("get API key: %w (create ~/.databento.key)", err)
-	}
-
 	conn := db.Get()
-	_, err = conn.Exec(`
+	_, err := conn.Exec(`
 		CREATE TABLE IF NOT EXISTS futures_contracts (
 			symbol TEXT PRIMARY KEY,
 			asset TEXT NOT NULL,
@@ -760,7 +755,7 @@ func syncData() error {
 		go func() {
 			defer wg.Done()
 			for sym := range symbolChan {
-				data, err := fetchSymbolPrice(apiKey, sym, yesterday, today)
+				data, err := fetchSymbolPrice(sym, yesterday, today)
 				resultsChan <- symbolResult{symbol: sym, data: data, err: err}
 			}
 		}()
@@ -842,7 +837,7 @@ type symbolData struct {
 	Volume uint64
 }
 
-func fetchSymbolPrice(apiKey, symbol, startDate, endDate string) (symbolData, error) {
+func fetchSymbolPrice(symbol, startDate, endDate string) (symbolData, error) {
 	url := fmt.Sprintf(
 		"https://hist.databento.com/v0/timeseries.get_range?dataset=GLBX.MDP3&symbols=%s&schema=ohlcv-1d&start=%sT00:00:00&end=%sT00:00:00&encoding=json",
 		symbol, startDate, endDate,
@@ -853,7 +848,7 @@ func fetchSymbolPrice(apiKey, symbol, startDate, endDate string) (symbolData, er
 		log.Printf("GET %s -> error: %v", url, err)
 		return symbolData{}, err
 	}
-	req.SetBasicAuth(apiKey, "")
+	req.SetBasicAuth(string(databento.MustLoadDefaultKey()), "")
 
 	resp, err := netty.BulkHttpClient.Do(req)
 	if err != nil {

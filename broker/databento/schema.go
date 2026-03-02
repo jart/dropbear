@@ -32,21 +32,21 @@ func (rt Schema) String() string {
 	case SchemaMBO:
 		return "mbo"
 	case SchemaMBP1:
-		return "mbp1"
+		return "mbp-1"
 	case SchemaMBP10:
-		return "mbp10"
+		return "mbp-10"
 	case SchemaTBBO:
 		return "tbbo"
 	case SchemaTrades:
 		return "trades"
 	case SchemaOHLCV1S:
-		return "ohlcv1s"
+		return "ohlcv-1s"
 	case SchemaOHLCV1M:
-		return "ohlcv1m"
+		return "ohlcv-1m"
 	case SchemaOHLCV1H:
-		return "ohlcv1h"
+		return "ohlcv-1h"
 	case SchemaOHLCV1D:
-		return "ohlcv1d"
+		return "ohlcv-1d"
 	case SchemaDefinition:
 		return "definition"
 	case SchemaStatistics:
@@ -56,19 +56,19 @@ func (rt Schema) String() string {
 	case SchemaImbalance:
 		return "imbalance"
 	case SchemaOHLCVEOD:
-		return "ohlcveod"
+		return "ohlcv-eod"
 	case SchemaCMBP1:
-		return "cmbp1"
+		return "cmbp-1"
 	case SchemaCMBP1S:
-		return "cmbp1s"
+		return "cbbo-1s"
 	case SchemaCMBP1M:
-		return "cmbp1m"
+		return "cbbo-1m"
 	case SchemaTCBBO:
 		return "tcbbo"
 	case SchemaBBO1S:
-		return "bbo1s"
+		return "bbo-1s"
 	case SchemaBBO1M:
-		return "bbo1m"
+		return "bbo-1m"
 	default:
 		return fmt.Sprintf("%d", rt)
 	}

@@ -46,7 +46,7 @@ type CBBO struct {
 	Price  int64        // last event price in units of 1e-9
 	Size   uint32       // last event size
 	_pad1  byte
-	Side   Side  // side of the last event
+	Side   Side    // side of the last event
 	Flags  FlagSet // event flags
 	_pad2  byte
 	TSRecv clocky.Time // capture-server-received timestamp (nanoseconds since UNIX epoch)

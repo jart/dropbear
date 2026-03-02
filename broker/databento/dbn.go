@@ -13,6 +13,44 @@ import (
 	"dropbear/clocky"
 )
 
+// CastRecord interprets raw record bytes as a typed struct pointer based on
+// the RType byte. Returns nil for unknown record types.
+func CastRecord(rec []byte) any {
+	if len(rec) < 2 {
+		return nil
+	}
+	rtype := RType(rec[1])
+	switch rtype {
+	case RTypeCMBP1, RTypeTCBBO:
+		if len(rec) < int(unsafe.Sizeof(CMBP1{})) {
+			return nil
+		}
+		return (*CMBP1)(unsafe.Pointer(&rec[0]))
+	case RTypeCMBP1S, RTypeCMBP1M, RTypeBBO1S, RTypeBBO1M:
+		if len(rec) < int(unsafe.Sizeof(CBBO{})) {
+			return nil
+		}
+		return (*CBBO)(unsafe.Pointer(&rec[0]))
+	case RTypeInstrumentDef:
+		if len(rec) < int(unsafe.Sizeof(Instrument{})) {
+			return nil
+		}
+		return (*Instrument)(unsafe.Pointer(&rec[0]))
+	case RTypeError:
+		return ErrorMsg{
+			Header: *(*RecordHeader)(unsafe.Pointer(&rec[0])),
+			Err:    convertBytesToString(rec[16:]),
+		}
+	case RTypeSystem:
+		return SystemMsg{
+			Header: *(*RecordHeader)(unsafe.Pointer(&rec[0])),
+			Msg:    convertBytesToString(rec[16:]),
+		}
+	default:
+		return nil
+	}
+}
+
 // DecodeMetadata reads the DBN prelude and metadata from the given reader.
 //
 // DBN binary format:

@@ -37,12 +37,7 @@ func main() {
 	// Query date as YYYYMMDD integer for filtering 0DTE
 	queryDateInt := date.Year()*10000 + int(date.Month())*100 + date.Day()
 
-	apiKey, err := databento.GetKey()
-	if err != nil {
-		log.Fatalf("read API key: %v", err)
-	}
-
-	client := databento.NewHistoricalClient(apiKey)
+	client := databento.NewHistoricalClient(databento.MustLoadDefaultKey())
 	fmt.Printf("fetching definitions: dataset=%s symbol=%s start=%s end=%s\n", *dataset, *symbol, start, end)
 
 	meta, records, err := client.GetRange(*dataset, databento.SchemaDefinition,
@@ -50,9 +45,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("GetRange: %v", err)
 	}
-
-	fmt.Println(databento.Indent(&meta))
-	fmt.Printf("total records: %d\n", len(records))
+	fmt.Printf("%#v\n", meta)
 
 	// Filter for 0DTE instruments and print all fields
 	printed := 0
@@ -72,7 +65,7 @@ func main() {
 		}
 
 		printed++
-		fmt.Println(databento.Indent(inst))
+		fmt.Printf("%#v\n", inst)
 	}
 	fmt.Printf("\n0DTE instruments: %d (of %d total)\n", printed, len(records))
 }
