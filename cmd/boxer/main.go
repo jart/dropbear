@@ -64,7 +64,7 @@ type pendingOrder struct {
 	instID   uint32
 	side     byte            // 'B' buy or 'S' sell
 	limitPx  decimal.Decimal // on $0.05 grid (per share)
-	cumFill  float64         // pro-rata fill accumulation (backtest only)
+	cumFill  decimal.Decimal // pro-rata fill accumulation (backtest only)
 	postTime clocky.Time
 }
 
@@ -335,10 +335,10 @@ func main() {
 	maxEdgeStr := flag.String("maxedge", "2.00", "max edge per share (filter garbage)")
 	maxSpreadStr := flag.String("maxspread", "1.00", "max bid-ask spread per leg")
 	minBidStr := flag.String("minbid", "1.00", "minimum bid on each leg")
-	maxOpen := flag.Int("maxopen", 5, "max active (incomplete) boxes at once")
-	patienceInt := flag.Int("patience", 60, "seconds before canceling 0-fill boxes")
+	maxOpen := flag.Int("maxopen", 1, "max active (incomplete) boxes at once")
+	patienceFlag := clocky.DurationFlag("patience", "10s", "time before canceling 0-fill boxes")
 	startStr := flag.String("start", "09:30:05", "earliest time to start legging (HH:MM:SS ET)")
-	cutoffStr := flag.String("cutoff", "14:00:00", "stop opening new boxes after this time")
+	cutoffStr := flag.String("cutoff", "10:00:00", "stop opening new boxes after this time")
 	cashInt := flag.Int("cash", 100000, "starting cash in dollars")
 	verbose := flag.Bool("v", false, "verbose output")
 
@@ -368,9 +368,7 @@ func main() {
 	commPerLeg := decimal.Parse("1.22")                 // $1.22 per contract per leg
 	commPerBox := commPerLeg.MulInt(4)                  // $4.88 per box
 	commPerSharePerBox := commPerBox.DivInt(multiplier) // $0.0488 per share
-	commPerSharePerLeg := commPerLeg.DivInt(multiplier) // $0.0122 per share
 	startingCash := decimal.FromInt(*cashInt)
-	patienceNs := int64(*patienceInt) * int64(time.Second)
 
 	st, err := time.Parse("15:04:05", *startStr)
 	if err != nil {
@@ -506,24 +504,49 @@ func main() {
 					if ord == nil || ord.instID != instID {
 						continue
 					}
-					if tradePx.Cmp(ord.limitPx) != 0 {
-						continue
+
+					// Check if our order improves the NBBO (aggressive).
+					improving := false
+					if ord.side == 'B' && !q.bidPx.IsZero() &&
+						ord.limitPx.Cmp(snapBid(q.bidPx)) > 0 {
+						improving = true
+					} else if ord.side == 'S' && !q.askPx.IsZero() &&
+						ord.limitPx.Cmp(snapAsk(q.askPx)) < 0 {
+						improving = true
 					}
-					var queueSz uint32
-					if ord.side == 'B' {
-						if q.bidPb == databento.PublisherOpraPillarXcbo {
-							queueSz = q.bidSz
+
+					if improving {
+						// We're the best price — any trade crossing our
+						// limit fills us instantly (no pro-rata queue).
+						if ord.side == 'B' && tradePx.Cmp(ord.limitPx) > 0 {
+							continue
 						}
+						if ord.side == 'S' && tradePx.Cmp(ord.limitPx) < 0 {
+							continue
+						}
+						ord.cumFill = decimal.One
 					} else {
-						if q.askPb == databento.PublisherOpraPillarXcbo {
-							queueSz = q.askSz
+						// Passive: pro-rata fill model at the NBBO.
+						if tradePx.Cmp(ord.limitPx) != 0 {
+							continue
 						}
+						var queueSz uint32
+						if ord.side == 'B' {
+							if q.bidPb == databento.PublisherOpraPillarXcbo {
+								queueSz = q.bidSz
+							}
+						} else {
+							if q.askPb == databento.PublisherOpraPillarXcbo {
+								queueSz = q.askSz
+							}
+						}
+						if queueSz == 0 {
+							continue
+						}
+						ord.cumFill = ord.cumFill.Add(decimal.FromInt(int(tradeSz)).DivInt(int(queueSz)))
 					}
-					if queueSz == 0 {
-						continue
-					}
-					ord.cumFill += float64(tradeSz) / float64(queueSz)
-					if ord.cumFill >= 1.0 {
+
+					if ord.cumFill.Cmp(decimal.One) >= 0 {
 						info := instruments[instID]
 						ab.legs[i] = &boxLeg{
 							instID:  instID,
@@ -548,13 +571,58 @@ func main() {
 								side = "Sell"
 							}
 							fillDur := time.Duration(ts-ord.postTime) * time.Nanosecond
-							log.Printf("    %s %c%-5d %s @ %-8s  cash: $%s  (fill: %s)",
+							mid := q.bidPx.Add(q.askPx).DivInt(2)
+							var improv decimal.Decimal
+							if ord.side == 'B' {
+								improv = mid.Sub(ord.limitPx)
+							} else {
+								improv = ord.limitPx.Sub(mid)
+							}
+							log.Printf("    %s %c%-5d %s @ %-8s  mid %s  improv %s  (fill: %s)",
 								side, info.class, info.strike.Int(),
 								formatET(ts), ord.limitPx.Format(2),
-								book.cash.Format(2),
+								mid.Format(2), formatPnl(improv),
 								formatDuration(fillDur))
 						}
 					}
+				}
+			}
+		}
+
+		// --- Reprice unfilled orders ---
+		// Track the NBBO passively, or improve it by one tick after patience.
+		for _, ab := range active {
+			aggressive := ts.Sub(ab.startTS) > *patienceFlag
+			for _, ord := range ab.orders {
+				if ord == nil || ord.instID != instID {
+					continue
+				}
+				var newPx decimal.Decimal
+				if ord.side == 'B' {
+					if q.bidPx.IsZero() {
+						continue
+					}
+					if aggressive {
+						newPx = snapBid(q.bidPx).Add(nickel)
+					} else {
+						newPx = snapBid(q.bidPx)
+					}
+				} else {
+					if q.askPx.IsZero() {
+						continue
+					}
+					if aggressive {
+						newPx = snapAsk(q.askPx).Sub(nickel)
+					} else {
+						newPx = snapAsk(q.askPx)
+					}
+				}
+				if newPx.IsZero() || newPx.IsNegative() {
+					continue
+				}
+				if newPx.Cmp(ord.limitPx) != 0 {
+					ord.limitPx = newPx
+					ord.cumFill = decimal.Zero
 				}
 			}
 		}
@@ -580,9 +648,9 @@ func main() {
 				}
 				br.debit = netOutflow
 				if ab.long {
-					br.pnl = width.Sub(netOutflow).Sub(commPerSharePerBox)
+					br.pnl = width.Sub(netOutflow)
 				} else {
-					br.pnl = netOutflow.Neg().Sub(width).Sub(commPerSharePerBox)
+					br.pnl = netOutflow.Neg().Sub(width)
 				}
 				results = append(results, br)
 				completedCount++
@@ -594,25 +662,6 @@ func main() {
 					log.Printf("  ** completed %s %d/%d  debit: $%s  pnl: %s/share  cash: $%s",
 						dir, ab.pair.loStrike.Int(), ab.pair.hiStrike.Int(),
 						br.debit.Format(2), formatPnl(br.pnl), book.cash.Format(2))
-				}
-				continue
-			}
-			active[j] = ab
-			j++
-		}
-		active = active[:j]
-
-		// --- Cancel 0-fill boxes after patience timeout ---
-		j = 0
-		for _, ab := range active {
-			elapsed := int64(ts) - int64(ab.startTS)
-			if elapsed > patienceNs && ab.filled == 0 {
-				cancelBox(ab)
-				canceledCount++
-				if *verbose {
-					log.Printf("  canceled %d/%d (no fills after %ds)",
-						ab.pair.loStrike.Int(), ab.pair.hiStrike.Int(),
-						elapsed/int64(time.Second))
 				}
 				continue
 			}
@@ -661,12 +710,12 @@ func main() {
 			// Long box: provide liquidity → buy at bids, sell at asks.
 			longDebit := snapBid(qCL.bidPx).Add(snapBid(qPH.bidPx)).
 				Sub(snapAsk(qCH.askPx)).Sub(snapAsk(qPL.askPx))
-			longEdge := width.Sub(longDebit).Sub(commPerSharePerBox)
+			longEdge := width.Sub(longDebit)
 
 			// Short box: provide liquidity → sell at asks, buy at bids.
 			shortCredit := snapAsk(qCL.askPx).Add(snapAsk(qPH.askPx)).
 				Sub(snapBid(qCH.bidPx)).Sub(snapBid(qPL.bidPx))
-			shortEdge := shortCredit.Sub(width).Sub(commPerSharePerBox)
+			shortEdge := shortCredit.Sub(width)
 
 			if longEdge.Cmp(minEdge) >= 0 && longEdge.Cmp(maxEdge) <= 0 &&
 				longEdge.Cmp(shortEdge) >= 0 {
@@ -731,17 +780,12 @@ func main() {
 					class:   info.class,
 					strike:  info.strike,
 					side:    ord.side,
+					fillPx:  ord.limitPx, // unfilled: store limit for display
 					orderTS: ord.postTime,
 				}
 			}
 		}
 		br.debit = netOutflow
-		comm := commPerSharePerLeg.MulInt(ab.filled)
-		if ab.long {
-			br.pnl = width.Sub(netOutflow).Sub(comm)
-		} else {
-			br.pnl = netOutflow.Neg().Sub(width).Sub(comm)
-		}
 		results = append(results, br)
 		cancelBox(ab)
 	}
@@ -773,10 +817,9 @@ func main() {
 
 	// --- Print results ---
 	log.Printf("\n%s 0DTE box spread legging", *dateStr)
-	log.Printf("  parameters: width=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d  patience=%ds",
-		*widthInt, minEdge.String(), maxSpread.String(), minBid.String(), *maxOpen, *patienceInt)
+	log.Printf("  parameters: width=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d  patience=%s",
+		*widthInt, minEdge, maxSpread, minBid, *maxOpen, *patienceFlag)
 	log.Printf("  commission: $%s/leg ($%s/box, $%s/share/box)",
-
 		commPerLeg.Format(2), commPerBox.Format(2), commPerSharePerBox.Format(4))
 	log.Printf("  starting cash: $%s", startingCash.Format(2))
 	log.Println()
@@ -811,8 +854,7 @@ func main() {
 			if leg.fillTS == 0 {
 				// Unfilled leg.
 				log.Printf("    %s %c%-5d (unfilled, limit was $%s)",
-					side, leg.class, leg.strike.Int(),
-					leg.fillPx.Format(2))
+					side, leg.class, leg.strike.Int(), leg.fillPx.Format(2))
 			} else {
 				fillDur := time.Duration(leg.fillTS-leg.orderTS) * time.Nanosecond
 				log.Printf("    %s %c%-5d %s @ $%-8s (fill: %s)",
@@ -834,8 +876,8 @@ func main() {
 			}
 			totalPnl = totalPnl.Add(br.pnl)
 		} else {
-			log.Printf("    partial debit: $%s  est. pnl: %s/share (unreliable)",
-				br.debit.Format(2), formatPnl(br.pnl))
+			log.Printf("    filled legs debit: $%s  (settled in ledger)",
+				br.debit.Format(2))
 		}
 	}
 
