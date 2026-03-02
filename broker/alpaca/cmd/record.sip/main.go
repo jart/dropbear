@@ -82,11 +82,11 @@ func (d *recordDaemon) impl() error {
 	defer conn.Close()
 
 	// authenticate
-	key, secret := alpaca.GetKey()
+	key := alpaca.GetKey()
 	auth := map[string]any{
 		"action": "auth",
-		"key":    key,
-		"secret": secret,
+		"key":    key.Key,
+		"secret": key.Secret,
 	}
 	if err := conn.WriteJSON(auth); err != nil {
 		return err

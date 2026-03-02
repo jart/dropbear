@@ -412,11 +412,11 @@ func watchSIP(symbol string) {
 	}()
 
 	// authenticate
-	key, secret := alpaca.GetKey()
+	key := alpaca.GetKey()
 	auth := map[string]any{
 		"action": "auth",
-		"key":    key,
-		"secret": secret,
+		"key":    key.Key,
+		"secret": key.Secret,
 	}
 	if err := conn.WriteJSON(auth); err != nil {
 		loggy.Fatalf("auth failed: %v", err)
@@ -482,11 +482,11 @@ func monitorSIP(ctx context.Context, symbol string, out chan<- SIPMessage) {
 	}()
 
 	// authenticate
-	key, secret := alpaca.GetKey()
+	key := alpaca.GetKey()
 	auth := map[string]any{
 		"action": "auth",
-		"key":    key,
-		"secret": secret,
+		"key":    key.Key,
+		"secret": key.Secret,
 	}
 	if err := conn.WriteJSON(auth); err != nil {
 		log.Printf("SIP auth failed: %v", err)

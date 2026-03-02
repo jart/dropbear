@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	APIHost  = "api.alpaca.markets"
 	DataHost = "data.alpaca.markets"
 )
 
@@ -109,6 +108,7 @@ func (c *Client) RequestJSON(client *http.Client, method, url string, requestBod
 func (c *Client) Request(client *http.Client, method, urlString string, body []byte) (*http.Response, error) {
 
 	// interpret url
+	key := GetKey()
 	u, err := url.Parse(urlString)
 	if err != nil {
 		return nil, err
@@ -117,7 +117,7 @@ func (c *Client) Request(client *http.Client, method, urlString string, body []b
 		u.Scheme = "https"
 	}
 	if u.Host == "" {
-		u.Host = APIHost
+		u.Host = key.Host
 	}
 	urlString = u.String()
 
@@ -134,9 +134,8 @@ func (c *Client) Request(client *http.Client, method, urlString string, body []b
 		if err != nil {
 			return nil, fmt.Errorf("creating request: %w", err)
 		}
-		key, secret := GetKey()
-		req.Header.Set("APCA-API-KEY-ID", key)
-		req.Header.Set("APCA-API-SECRET-KEY", secret)
+		req.Header.Set("APCA-API-KEY-ID", key.Key)
+		req.Header.Set("APCA-API-SECRET-KEY", key.Secret)
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := client.Do(req)
 

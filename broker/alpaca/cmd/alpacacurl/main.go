@@ -64,14 +64,14 @@ func main() {
 		bodyReader = strings.NewReader(body)
 	}
 
-	key, secret := alpaca.GetKey()
+	key := alpaca.GetKey()
 	req, err := http.NewRequest(method, url, bodyReader)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	req.Header.Set("APCA-API-KEY-ID", key)
-	req.Header.Set("APCA-API-SECRET-KEY", secret)
+	req.Header.Set("APCA-API-KEY-ID", key.Key)
+	req.Header.Set("APCA-API-SECRET-KEY", key.Secret)
 
 	if jsonData != "" {
 		req.Header.Set("Content-Type", "application/json")

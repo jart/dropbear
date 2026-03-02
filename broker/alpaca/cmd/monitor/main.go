@@ -85,11 +85,11 @@ func (d *monitorDaemon) impl() error {
 	log.Printf("connected to alpaca sip")
 
 	// authenticate
-	key, secret := alpaca.GetKey()
+	key := alpaca.GetKey()
 	auth := map[string]any{
 		"action": "auth",
-		"key":    key,
-		"secret": secret,
+		"key":    key.Key,
+		"secret": key.Secret,
 	}
 	if err := conn.WriteJSON(auth); err != nil {
 		return fmt.Errorf("sending auth: %w", err)

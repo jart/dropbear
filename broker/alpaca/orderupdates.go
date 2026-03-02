@@ -59,17 +59,17 @@ func (d *orderUpdatesDaemon) impl() error {
 	defer conn.Close()
 
 	// authenticate
-	key, secret := GetKey()
+	key := GetKey()
 	auth := map[string]any{
 		"action": "auth",
-		"key":    key,
-		"secret": secret,
+		"key":    key.Key,
+		"secret": key.Secret,
 	}
 	if err := conn.WriteJSON(auth); err != nil {
 		return err
 	}
 
-	// nead auth response
+	// need auth response
 	_, msg, err := conn.ReadMessage()
 	if err != nil {
 		return err

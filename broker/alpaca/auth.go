@@ -12,27 +12,28 @@ var (
 	flagKey = flag.String("alpaca-key", os.ExpandEnv("$HOME/.alpaca.key"), "path to alpaca key json file")
 )
 
+type ApiKey struct {
+	Host   string `json:"host"`
+	Key    string `json:"key"`
+	Secret string `json:"secret"`
+}
+
 var (
-	keyOnce       sync.Once
-	keySaveKey    string
-	keySaveSecret string
+	keyOnce sync.Once
+	keySave *ApiKey
 )
 
-func GetKey() (string, string) {
+func GetKey() *ApiKey {
 	keyOnce.Do(func() {
 		data, err := os.ReadFile(*flagKey)
 		if err != nil {
 			loggy.Fatalf("reading coinbase key file: %v", err)
 		}
-		var config struct {
-			Key    string `json:"key"`
-			Secret string `json:"secret"`
-		}
-		if err := json.Unmarshal(data, &config); err != nil {
+		var key *ApiKey
+		if err := json.Unmarshal(data, &key); err != nil {
 			loggy.Fatalf("parsing coinbase key file: %v", err)
 		}
-		keySaveKey = config.Key
-		keySaveSecret = config.Secret
+		keySave = key
 	})
-	return keySaveKey, keySaveSecret
+	return keySave
 }
