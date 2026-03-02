@@ -208,7 +208,7 @@
                 var tx = px(tr.ts);
                 var tp = parseFloat(tr.price);
                 var ty = py(tp);
-                ctx.fillStyle = tr.side === 'B' ? BUY_COLOR : SELL_COLOR;
+                ctx.fillStyle = tr.side === 'B' ? BUY_COLOR : tr.side === 'A' ? SELL_COLOR : '#aaa';
                 ctx.beginPath();
                 ctx.arc(tx, ty, radius, 0, 2 * Math.PI);
                 ctx.fill();
@@ -326,9 +326,10 @@
             var tb = parseFloat(nearTrade.bid_px);
             var ta = parseFloat(nearTrade.ask_px);
             var tspread = ta - tb;
-            var isBuy = nearTrade.side === 'B';
-            var sideName = isBuy ? 'BUY (buyer aggressor)' : 'SELL (seller aggressor)';
-            var sideClass = isBuy ? 'buy' : 'sell';
+            var sideName, sideClass;
+            if (nearTrade.side === 'B') { sideName = 'BUY (buyer aggressor)'; sideClass = 'buy'; }
+            else if (nearTrade.side === 'A') { sideName = 'SELL (seller aggressor)'; sideClass = 'sell'; }
+            else { sideName = 'TRADE (side: ' + nearTrade.side + ')'; sideClass = 'sell'; }
 
             // Where in the spread did it execute?
             var location;

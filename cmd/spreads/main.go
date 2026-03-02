@@ -217,10 +217,7 @@ func importData(conn *sql.DB) {
 		inserted++
 
 		if cmbp1.Action == databento.ActionTrade || cmbp1.Action == databento.ActionFill {
-			side := "A"
-			if cmbp1.Side == databento.SideBid {
-				side = "B"
-			}
+			side := string(rune(cmbp1.Side))
 			if _, err := tradeStmt.Exec(
 				int64(ts),
 				cmbp1.Header.InstrumentID,

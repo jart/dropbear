@@ -1,7 +1,8 @@
 // Command boxer simulates legging into 0DTE SPX box spreads using Databento
-// CMBP1 tick-level data. Places passive limit orders at the NBBO on individual
-// options and assembles risk-free box spreads from legs filled via CBOE's
-// pro-rata matching model. All fills are passive (no spread crossing).
+// CMBP1 tick-level data. Places limit orders at the midpoint on individual
+// options and assembles risk-free box spreads from filled legs. Uses an
+// adversarial fill model: orders fill only when the NBBO moves against you
+// past the midpoint, after a configurable latency delay.
 //
 // Usage:
 //
@@ -64,7 +65,6 @@ type pendingOrder struct {
 	instID   uint32
 	side     byte            // 'B' buy or 'S' sell
 	limitPx  decimal.Decimal // on $0.05 grid (per share)
-	cumFill  decimal.Decimal // pro-rata fill accumulation (backtest only)
 	postTime clocky.Time
 }
 
@@ -272,11 +272,12 @@ func startBox(bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time) 
 	specs := legSpecs(bp, long)
 	for i, s := range specs {
 		q := quotes[s.instID]
+		mid := q.bidPx.Add(q.askPx).DivInt(2)
 		var px decimal.Decimal
 		if s.side == 'B' {
-			px = snapBid(q.bidPx)
+			px = mid.QuantizeAway(nickel) // pessimistic: round up for buyer
 		} else {
-			px = snapAsk(q.askPx)
+			px = mid.QuantizeTruncate(nickel) // pessimistic: round down for seller
 		}
 		ab.orders[i] = limitOrder(s.instID, s.side, px, ts)
 	}
@@ -331,12 +332,12 @@ func main() {
 	defsPath := flag.String("defs", "", "path to definitions .dbn")
 	dataPath := flag.String("data", "", "path to 0DTE CMBP1 .dbn")
 	widthInt := flag.Int("width", 50, "box width in SPX points")
-	edgeStr := flag.String("edge", "0.10", "minimum edge per share after commission")
-	maxEdgeStr := flag.String("maxedge", "2.00", "max edge per share (filter garbage)")
+	edgeStr := flag.String("edge", "0.10", "minimum edge per share")
+	maxEdgeStr := flag.String("maxedge", "2.00", "max edge per share")
 	maxSpreadStr := flag.String("maxspread", "1.00", "max bid-ask spread per leg")
 	minBidStr := flag.String("minbid", "1.00", "minimum bid on each leg")
 	maxOpen := flag.Int("maxopen", 1, "max active (incomplete) boxes at once")
-	patienceFlag := clocky.DurationFlag("patience", "10s", "time before canceling 0-fill boxes")
+	latencyFlag := clocky.DurationFlag("latency", "70ms", "simulate order placing latency")
 	startStr := flag.String("start", "09:30:05", "earliest time to start legging (HH:MM:SS ET)")
 	cutoffStr := flag.String("cutoff", "10:00:00", "stop opening new boxes after this time")
 	cashInt := flag.Int("cash", 100000, "starting cash in dollars")
@@ -495,134 +496,92 @@ func main() {
 			continue
 		}
 
-		// --- Process fills on active boxes ---
-		if tick.Action == databento.ActionTrade && tick.Size > 0 {
-			tradePx := dbnPrice(tick.Price)
-			tradeSz := tick.Size
-			for _, ab := range active {
-				for i, ord := range ab.orders {
-					if ord == nil || ord.instID != instID {
-						continue
-					}
-
-					// Check if our order improves the NBBO (aggressive).
-					improving := false
-					if ord.side == 'B' && !q.bidPx.IsZero() &&
-						ord.limitPx.Cmp(snapBid(q.bidPx)) > 0 {
-						improving = true
-					} else if ord.side == 'S' && !q.askPx.IsZero() &&
-						ord.limitPx.Cmp(snapAsk(q.askPx)) < 0 {
-						improving = true
-					}
-
-					if improving {
-						// We're the best price — any trade crossing our
-						// limit fills us instantly (no pro-rata queue).
-						if ord.side == 'B' && tradePx.Cmp(ord.limitPx) > 0 {
-							continue
-						}
-						if ord.side == 'S' && tradePx.Cmp(ord.limitPx) < 0 {
-							continue
-						}
-						ord.cumFill = decimal.One
-					} else {
-						// Passive: pro-rata fill model at the NBBO.
-						if tradePx.Cmp(ord.limitPx) != 0 {
-							continue
-						}
-						var queueSz uint32
-						if ord.side == 'B' {
-							if q.bidPb == databento.PublisherOpraPillarXcbo {
-								queueSz = q.bidSz
-							}
-						} else {
-							if q.askPb == databento.PublisherOpraPillarXcbo {
-								queueSz = q.askSz
-							}
-						}
-						if queueSz == 0 {
-							continue
-						}
-						ord.cumFill = ord.cumFill.Add(decimal.FromInt(int(tradeSz)).DivInt(int(queueSz)))
-					}
-
-					if ord.cumFill.Cmp(decimal.One) >= 0 {
-						info := instruments[instID]
-						ab.legs[i] = &boxLeg{
-							instID:  instID,
-							class:   info.class,
-							strike:  info.strike,
-							side:    ord.side,
-							fillPx:  ord.limitPx,
-							fillTS:  ts,
-							orderTS: ord.postTime,
-						}
-						ab.orders[i] = nil
-						ab.filled++
-
-						// Book the fill and commission.
-						book.recordFill(ts, instID, ord.side, ord.limitPx)
-						book.payCommission(commPerLeg)
-						totalCommission = totalCommission.Add(commPerLeg)
-
-						if *verbose {
-							side := "Buy "
-							if ord.side == 'S' {
-								side = "Sell"
-							}
-							fillDur := time.Duration(ts-ord.postTime) * time.Nanosecond
-							mid := q.bidPx.Add(q.askPx).DivInt(2)
-							var improv decimal.Decimal
-							if ord.side == 'B' {
-								improv = mid.Sub(ord.limitPx)
-							} else {
-								improv = ord.limitPx.Sub(mid)
-							}
-							log.Printf("    %s %c%-5d %s @ %-8s  mid %s  improv %s  (fill: %s)",
-								side, info.class, info.strike.Int(),
-								formatET(ts), ord.limitPx.Format(2),
-								mid.Format(2), formatPnl(improv),
-								formatDuration(fillDur))
-						}
-					}
-				}
-			}
-		}
-
-		// --- Reprice unfilled orders ---
-		// Track the NBBO passively, or improve it by one tick after patience.
+		// --- Process fills on active boxes (adversarial midpoint model) ---
+		// After latency, check if our limit has crossed the current midpoint.
+		// Fill only when the NBBO moved against us (adversarial). If still
+		// favorable, reprice to the new midpoint and restart the latency timer.
 		for _, ab := range active {
-			aggressive := ts.Sub(ab.startTS) > *patienceFlag
-			for _, ord := range ab.orders {
+			for i, ord := range ab.orders {
 				if ord == nil || ord.instID != instID {
 					continue
 				}
-				var newPx decimal.Decimal
-				if ord.side == 'B' {
-					if q.bidPx.IsZero() {
-						continue
-					}
-					if aggressive {
-						newPx = snapBid(q.bidPx).Add(nickel)
-					} else {
-						newPx = snapBid(q.bidPx)
-					}
-				} else {
-					if q.askPx.IsZero() {
-						continue
-					}
-					if aggressive {
-						newPx = snapAsk(q.askPx).Sub(nickel)
-					} else {
-						newPx = snapAsk(q.askPx)
-					}
-				}
-				if newPx.IsZero() || newPx.IsNegative() {
+				if q.bidPx.IsZero() || q.askPx.IsZero() || q.askPx.Cmp(q.bidPx) <= 0 {
 					continue
 				}
-				if newPx.Cmp(ord.limitPx) != 0 {
+
+				// Wait for latency before order becomes fill-eligible.
+				if clocky.Duration(ts-ord.postTime) < *latencyFlag {
+					continue
+				}
+
+				mid := q.bidPx.Add(q.askPx).DivInt(2)
+
+				// Check if our limit has crossed the midpoint.
+				// BUY: limit >= mid means we've crossed (bad for us).
+				// SELL: limit <= mid means we've crossed (bad for us).
+				var crossed bool
+				var fillPx decimal.Decimal
+				if ord.side == 'B' {
+					if ord.limitPx.Cmp(mid) >= 0 {
+						crossed = true
+						fillPx = ord.limitPx.Min(snapAsk(q.askPx))
+					}
+				} else {
+					if ord.limitPx.Cmp(mid) <= 0 {
+						crossed = true
+						fillPx = ord.limitPx.Max(snapBid(q.bidPx))
+					}
+				}
+
+				if crossed {
+					info := instruments[instID]
+					ab.legs[i] = &boxLeg{
+						instID:  instID,
+						class:   info.class,
+						strike:  info.strike,
+						side:    ord.side,
+						fillPx:  fillPx,
+						fillTS:  ts,
+						orderTS: ord.postTime,
+					}
+					ab.orders[i] = nil
+					ab.filled++
+
+					book.recordFill(ts, instID, ord.side, fillPx)
+					book.payCommission(commPerLeg)
+					totalCommission = totalCommission.Add(commPerLeg)
+
+					if *verbose {
+						side := "Buy "
+						if ord.side == 'S' {
+							side = "Sell"
+						}
+						fillDur := time.Duration(ts-ord.postTime) * time.Nanosecond
+						var improv decimal.Decimal
+						if ord.side == 'B' {
+							improv = mid.Sub(fillPx)
+						} else {
+							improv = fillPx.Sub(mid)
+						}
+						log.Printf("    %s %c%-5d %s @ %-8s  mid %s  improv %s  (fill: %s)",
+							side, info.class, info.strike.Int(),
+							formatET(ts), fillPx.Format(2),
+							mid.Format(2), formatPnl(improv),
+							formatDuration(fillDur))
+					}
+					continue
+				}
+
+				// Not filled: reprice to new midpoint, restart latency.
+				var newPx decimal.Decimal
+				if ord.side == 'B' {
+					newPx = mid.QuantizeAway(nickel)
+				} else {
+					newPx = mid.QuantizeTruncate(nickel)
+				}
+				if !newPx.IsZero() && !newPx.IsNegative() && newPx.Cmp(ord.limitPx) != 0 {
 					ord.limitPx = newPx
-					ord.cumFill = decimal.Zero
+					ord.postTime = ts
 				}
 			}
 		}
@@ -817,8 +776,8 @@ func main() {
 
 	// --- Print results ---
 	log.Printf("\n%s 0DTE box spread legging", *dateStr)
-	log.Printf("  parameters: width=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d  patience=%s",
-		*widthInt, minEdge, maxSpread, minBid, *maxOpen, *patienceFlag)
+	log.Printf("  parameters: width=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d  latency=%s",
+		*widthInt, minEdge, maxSpread, minBid, *maxOpen, *latencyFlag)
 	log.Printf("  commission: $%s/leg ($%s/box, $%s/share/box)",
 		commPerLeg.Format(2), commPerBox.Format(2), commPerSharePerBox.Format(4))
 	log.Printf("  starting cash: $%s", startingCash.Format(2))
