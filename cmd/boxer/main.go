@@ -213,6 +213,108 @@ func snapAsk(px decimal.Decimal) decimal.Decimal {
 	return px.QuantizeAway(nickel)
 }
 
+// greedyMid computes a greed-adjusted limit price. greed=0 returns mid,
+// greed=1 returns the favorable side of the spread (bid for buy, ask for sell).
+// The result is snapped to the nickel grid pessimistically for each side.
+func greedyMid(q *quote, side byte, greed decimal.Decimal) decimal.Decimal {
+	mid := q.bidPx.Add(q.askPx).DivInt(2)
+	halfSpread := q.askPx.Sub(q.bidPx).DivInt(2)
+	offset := greed.Mul(halfSpread)
+	if side == 'B' {
+		// Greedy buy: pull limit below mid towards bid.
+		return mid.Sub(offset).QuantizeAway(nickel)
+	}
+	// Greedy sell: push limit above mid towards ask.
+	return mid.Add(offset).QuantizeTruncate(nickel)
+}
+
+// computeGreed returns the effective greed level based on time elapsed since
+// the box was opened and how many legs have already filled.
+// Greed decays linearly over patience, and is scaled by unfilled legs.
+func computeGreed(initialGreed decimal.Decimal, elapsed, patience clocky.Duration, legsFilled int) decimal.Decimal {
+	if patience <= 0 {
+		return decimal.Zero
+	}
+	if elapsed >= patience {
+		return decimal.Zero
+	}
+	// timeDecay = (patience - elapsed) / patience, using milliseconds to avoid overflow.
+	remainMs := int((patience - elapsed) / clocky.Millisecond)
+	totalMs := int(patience / clocky.Millisecond)
+	if totalMs <= 0 {
+		return decimal.Zero
+	}
+	timeDecay := decimal.FromInt(remainMs).DivInt(totalMs)
+	// legDecay = (4 - filled) / 4
+	legDecay := decimal.FromInt(4 - legsFilled).DivInt(4)
+	return initialGreed.Mul(timeDecay).Mul(legDecay)
+}
+
+// budgetLimit computes the worst acceptable limit price for a single leg,
+// given already-filled legs and assuming other unfilled legs fill at mid.
+// Returns the max buy price or min sell price that keeps the box profitable
+// by at least minEdge per share.
+func budgetLimit(ab *activeBox, legIdx int, width, minEdge decimal.Decimal, quotes map[uint32]*quote) decimal.Decimal {
+	// Sum debit from already-filled legs.
+	var debit decimal.Decimal
+	for _, leg := range ab.legs {
+		if leg == nil {
+			continue
+		}
+		if leg.side == 'B' {
+			debit = debit.Add(leg.fillPx)
+		} else {
+			debit = debit.Sub(leg.fillPx)
+		}
+	}
+
+	// Assume other unfilled legs fill at their current mid (zero improvement).
+	for i, ord := range ab.orders {
+		if ord == nil || i == legIdx {
+			continue
+		}
+		q := quotes[ord.instID]
+		if q == nil || q.bidPx.IsZero() || q.askPx.IsZero() {
+			continue
+		}
+		mid := q.bidPx.Add(q.askPx).DivInt(2)
+		if ord.side == 'B' {
+			debit = debit.Add(mid)
+		} else {
+			debit = debit.Sub(mid)
+		}
+	}
+
+	// For LONG: totalDebit <= width - minEdge
+	//   BUY leg adds +px → px <= width - minEdge - debit
+	//   SELL leg adds -px → -px <= width - minEdge - debit → px >= debit - width + minEdge
+	// For SHORT: totalDebit <= -(width + minEdge)
+	//   BUY leg adds +px → px <= -(width + minEdge) - debit
+	//   SELL leg adds -px → px >= debit + width + minEdge
+	ord := ab.orders[legIdx]
+	if ab.long {
+		room := width.Sub(minEdge).Sub(debit)
+		if ord.side == 'B' {
+			return snapBid(room) // max buy price
+		}
+		return snapAsk(room.Neg()) // min sell price (room is what we can afford to add)
+	}
+	room := width.Add(minEdge).Neg().Sub(debit)
+	if ord.side == 'B' {
+		return snapBid(room) // max buy price
+	}
+	return snapAsk(room.Neg()) // min sell price
+}
+
+// clampLimit restricts a greedy limit price to the budget limit.
+// For buys: limit = min(greedy, budget). For sells: limit = max(greedy, budget).
+func clampLimit(side byte, greedy, budget decimal.Decimal) decimal.Decimal {
+	if side == 'B' {
+		return greedy.Min(budget)
+	}
+	return greedy.Max(budget)
+}
+
 func legQualified(q *quote, minBid, maxSpread decimal.Decimal) bool {
 	if q.bidPx.Cmp(minBid) < 0 {
 		return false
@@ -263,7 +365,7 @@ func legSpecs(bp *boxPair, long bool) [4]struct {
 	}
 }
 
-func startBox(bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time) *activeBox {
+func startBox(bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time, greed, width, minEdge decimal.Decimal) *activeBox {
 	ab := &activeBox{
 		pair:    bp,
 		long:    long,
@@ -272,14 +374,16 @@ func startBox(bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time) 
 	specs := legSpecs(bp, long)
 	for i, s := range specs {
 		q := quotes[s.instID]
-		mid := q.bidPx.Add(q.askPx).DivInt(2)
-		var px decimal.Decimal
-		if s.side == 'B' {
-			px = mid.QuantizeAway(nickel) // pessimistic: round up for buyer
-		} else {
-			px = mid.QuantizeTruncate(nickel) // pessimistic: round down for seller
-		}
+		px := greedyMid(q, s.side, greed)
 		ab.orders[i] = limitOrder(s.instID, s.side, px, ts)
+	}
+	// Clamp each limit to the budget so no fill can make the box unprofitable.
+	for i, ord := range ab.orders {
+		if ord == nil {
+			continue
+		}
+		budget := budgetLimit(ab, i, width, minEdge, quotes)
+		ord.limitPx = clampLimit(ord.side, ord.limitPx, budget)
 	}
 	return ab
 }
@@ -337,7 +441,9 @@ func main() {
 	maxSpreadStr := flag.String("maxspread", "1.00", "max bid-ask spread per leg")
 	minBidStr := flag.String("minbid", "1.00", "minimum bid on each leg")
 	maxOpen := flag.Int("maxopen", 1, "max active (incomplete) boxes at once")
-	latencyFlag := clocky.DurationFlag("latency", "70ms", "simulate order placing latency")
+	latencyFlag := clocky.DurationFlag("latency", "70ms", "simulated order latency")
+	patienceFlag := clocky.DurationFlag("patience", "30s", "time to decay from full greed to zero")
+	greedFlag := decimal.Flag("greed", "0.50", "initial greed: 0=mid, 1=favorable side of spread")
 	startStr := flag.String("start", "09:30:05", "earliest time to start legging (HH:MM:SS ET)")
 	cutoffStr := flag.String("cutoff", "10:00:00", "stop opening new boxes after this time")
 	cashInt := flag.Int("cash", 100000, "starting cash in dollars")
@@ -499,8 +605,11 @@ func main() {
 		// --- Process fills on active boxes (adversarial midpoint model) ---
 		// After latency, check if our limit has crossed the current midpoint.
 		// Fill only when the NBBO moved against us (adversarial). If still
-		// favorable, reprice to the new midpoint and restart the latency timer.
+		// favorable, reprice with decayed greed and restart latency.
+		// Greed decays linearly over patience and as legs fill, so early
+		// legs capture the most spread and later legs accept worse prices.
 		for _, ab := range active {
+			elapsed := clocky.Duration(ts - ab.startTS)
 			for i, ord := range ab.orders {
 				if ord == nil || ord.instID != instID {
 					continue
@@ -563,22 +672,22 @@ func main() {
 						} else {
 							improv = fillPx.Sub(mid)
 						}
-						log.Printf("    %s %c%-5d %s @ %-8s  mid %s  improv %s  (fill: %s)",
+						greed := computeGreed(*greedFlag, elapsed, *patienceFlag, ab.filled)
+						log.Printf("    %s %c%-5d %s @ %-8s  mid %s  improv %s  greed %.0f%%  (fill: %s)",
 							side, info.class, info.strike.Int(),
 							formatET(ts), fillPx.Format(2),
 							mid.Format(2), formatPnl(improv),
+							float64(greed.MulInt(100).Int64()),
 							formatDuration(fillDur))
 					}
 					continue
 				}
 
-				// Not filled: reprice to new midpoint, restart latency.
-				var newPx decimal.Decimal
-				if ord.side == 'B' {
-					newPx = mid.QuantizeAway(nickel)
-				} else {
-					newPx = mid.QuantizeTruncate(nickel)
-				}
+				// Not filled: reprice with decayed greed, clamped to budget.
+				greed := computeGreed(*greedFlag, elapsed, *patienceFlag, ab.filled)
+				newPx := greedyMid(q, ord.side, greed)
+				budget := budgetLimit(ab, i, width, minEdge, quotes)
+				newPx = clampLimit(ord.side, newPx, budget)
 				if !newPx.IsZero() && !newPx.IsNegative() && newPx.Cmp(ord.limitPx) != 0 {
 					ord.limitPx = newPx
 					ord.postTime = ts
@@ -678,7 +787,7 @@ func main() {
 
 			if longEdge.Cmp(minEdge) >= 0 && longEdge.Cmp(maxEdge) <= 0 &&
 				longEdge.Cmp(shortEdge) >= 0 {
-				ab := startBox(bp, true, quotes, ts)
+				ab := startBox(bp, true, quotes, ts, *greedFlag, width, minEdge)
 				active = append(active, ab)
 				if *verbose {
 					log.Printf("  box #%d LONG %d/%d  est.debit: $%s  est.edge: %s/share",
@@ -688,7 +797,7 @@ func main() {
 					printLegQuotes(bp, quotes)
 				}
 			} else if shortEdge.Cmp(minEdge) >= 0 && shortEdge.Cmp(maxEdge) <= 0 {
-				ab := startBox(bp, false, quotes, ts)
+				ab := startBox(bp, false, quotes, ts, *greedFlag, width, minEdge)
 				active = append(active, ab)
 				if *verbose {
 					log.Printf("  box #%d SHORT %d/%d  est.credit: $%s  est.edge: %s/share",
@@ -776,8 +885,8 @@ func main() {
 
 	// --- Print results ---
 	log.Printf("\n%s 0DTE box spread legging", *dateStr)
-	log.Printf("  parameters: width=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d  latency=%s",
-		*widthInt, minEdge, maxSpread, minBid, *maxOpen, *latencyFlag)
+	log.Printf("  parameters: width=%d  edge=%s  maxspread=%s  minbid=%s  maxopen=%d  latency=%s  greed=%s  patience=%s",
+		*widthInt, minEdge, maxSpread, minBid, *maxOpen, *latencyFlag, *greedFlag, *patienceFlag)
 	log.Printf("  commission: $%s/leg ($%s/box, $%s/share/box)",
 		commPerLeg.Format(2), commPerBox.Format(2), commPerSharePerBox.Format(4))
 	log.Printf("  starting cash: $%s", startingCash.Format(2))
