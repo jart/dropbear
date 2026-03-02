@@ -516,6 +516,7 @@ func main() {
 	book := newLedger(startingCash)
 	quotes := make(map[uint32]*quote)
 	var active []*activeBox
+	doneTrading := false
 	completedCount := 0
 	canceledCount := 0
 	totalCommission := decimal.Zero
@@ -572,6 +573,29 @@ func main() {
 			continue
 		}
 
+		ts := tick.Header.TSEvent
+
+		// Once done trading, only update quotes for instruments we hold
+		// positions in (needed for settlement). Skip everything else.
+		if doneTrading {
+			if book.position[instID] == 0 {
+				continue
+			}
+			q := quotes[instID]
+			if q == nil {
+				continue
+			}
+			bidPx := tick.Levels[0].BidPx
+			askPx := tick.Levels[0].AskPx
+			if bidPx != databento.UndefPrice {
+				q.bidPx = dbnPrice(bidPx)
+			}
+			if askPx != databento.UndefPrice {
+				q.askPx = dbnPrice(askPx)
+			}
+			continue
+		}
+
 		// Update quote. UndefPrice → zero (clears stale quotes).
 		q, ok := quotes[instID]
 		if !ok {
@@ -597,7 +621,6 @@ func main() {
 			q.askSz = 0
 		}
 
-		ts := tick.Header.TSEvent
 		if ts.Before(startET) {
 			continue
 		}
@@ -745,6 +768,9 @@ func main() {
 
 		// --- Past cutoff: don't open new boxes ---
 		if !ts.Before(cutoffET) {
+			if len(active) == 0 {
+				doneTrading = true
+			}
 			continue
 		}
 
