@@ -55,3 +55,18 @@ func TestCMBP1_Size(t *testing.T) {
 		t.Errorf("expected CMBP1 alignment to be 8 bytes, got %d", align)
 	}
 }
+
+func TestSymbolMappingMsg_Size(t *testing.T) {
+	if size := unsafe.Sizeof(SymbolMappingMsgV3{}); size != 176 {
+		t.Errorf("expected SymbolMappingMsgV3 size to be 176 bytes, got %d", size)
+	}
+	if align := unsafe.Alignof(SymbolMappingMsgV3{}); align != 8 {
+		t.Errorf("expected SymbolMappingMsgV3 alignment to be 8 bytes, got %d", align)
+	}
+	if size := unsafe.Sizeof(SymbolMappingMsgV1{}); size != 80 {
+		t.Errorf("expected SymbolMappingMsgV1 size to be 80 bytes, got %d", size)
+	}
+	if align := unsafe.Alignof(SymbolMappingMsgV1{}); align != 8 {
+		t.Errorf("expected SymbolMappingMsgV1 alignment to be 8 bytes, got %d", align)
+	}
+}

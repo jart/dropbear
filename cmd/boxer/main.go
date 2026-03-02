@@ -1,23 +1,18 @@
-// Command boxer simulates legging into 0DTE box spreads using Databento
-// CMBP1 tick-level data. Works with any optionable underlying (SPX, SPY,
-// TSLA, etc). Places limit orders at the midpoint on individual options
-// and assembles risk-free box spreads from filled legs. Uses an adversarial
-// fill model: orders fill only when the NBBO moves against you past the
-// midpoint, after a configurable latency delay.
+// Command boxer legs into 0DTE box spreads using Databento CMBP1 tick data.
+// Works with any optionable underlying (SPX, SPY, TSLA, etc). Supports both
+// backtesting from DBN files and live paper trading via Databento's LSG.
 //
-// Usage:
+// Backtest:
 //
 //	go run ./cmd/boxer \
-//	    -date 2026-02-27 \
 //	    -defs ~/databento/SPX/2026-02-27.definition.dbn \
 //	    -data ~/databento/SPX/2026-02-27.0dte.cmbp1.dbn \
-//	    -width 50 -tick 0.05 -v
+//	    -width 50 -v
 //
-//	go run ./cmd/boxer \
-//	    -date 2026-02-27 \
-//	    -defs ~/databento/SPY/2026-02-27.definition.dbn \
-//	    -data ~/databento/SPY/2026-02-27.cmbp1.dbn \
-//	    -width 5 -tick 0.01 -v
+// Live (paper trade):
+//
+//	go run ./cmd/boxer -live -symbol SPXW -width 50 -v
+//	go run ./cmd/boxer -live -symbol SPY -width 5 -tick 0.01 -v
 package main
 
 import (
@@ -28,6 +23,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"time"
 	"unsafe"
 
@@ -42,6 +38,8 @@ import (
 var (
 	tick       decimal.Decimal // minimum price increment
 	multiplier int             // contract multiplier (shares per contract)
+	records    int             // total records seen
+	lastDefTS  clocky.Time     // for throttling addInstrument logging
 )
 
 type optionInfo struct {
@@ -482,9 +480,12 @@ func printLegQuotes(bp *boxPair, quotes map[uint32]*quote) {
 // -----------------------------------------------------------------------
 
 func main() {
-	dateStr := flag.String("date", "2026-02-27", "trading date")
-	defsPath := flag.String("defs", "", "path to definitions .dbn")
-	dataPath := flag.String("data", "", "path to 0DTE CMBP1 .dbn")
+	live := flag.Bool("live", false, "live paper trading mode (streams from Databento LSG)")
+	symbol := flag.String("symbol", "", "parent symbol for live mode (e.g. SPXW, SPY, TSLA)")
+	dataset := flag.String("dataset", "OPRA.PILLAR", "Databento dataset for live mode")
+	dateStr := flag.String("date", "", "trading date (default: today)")
+	defsPath := flag.String("defs", "", "path to definitions .dbn (backtest)")
+	dataPath := flag.String("data", "", "path to 0DTE CMBP1 .dbn (backtest)")
 	widthInt := flag.Int("width", 50, "box width in strike points")
 	tickFlag := decimal.Flag("tick", "0.05", "minimum price increment")
 	mult := flag.Int("mult", 100, "contract multiplier (shares per contract)")
@@ -498,26 +499,37 @@ func main() {
 	patienceFlag := clocky.DurationFlag("patience", "500ms", "time to decay from full greed to zero")
 	greedFlag := decimal.Flag("greed", "0", "initial greed: 0=mid, 1=favorable side of spread")
 	rateLimit := flag.Int("ratelimit", 200, "max broker API requests per minute")
-	startStr := flag.String("start", "06:30:05", "earliest time to start legging (HH:MM:SS ET)")
-	cutoffStr := flag.String("cutoff", "07:30:00", "stop opening new boxes after this time")
+	startStr := flag.String("start", "06:30:05", "earliest time to start legging (HH:MM:SS PT)")
+	cutoffStr := flag.String("cutoff", "07:30:00", "stop opening new boxes after this time (HH:MM:SS PT)")
 	cashInt := flag.Int("cash", 100000, "starting cash in dollars")
 	verbose := flag.Bool("v", false, "verbose output")
 
 	loggy.Init()
 	flag.Parse()
-	netty.SetOffline()
-	clocky.Now = clocky.FakeNow
-	clocky.Sleep = clocky.FakeSleep
-	clocky.NewTicker = clocky.FakeNewTicker
 
-	if *defsPath == "" || *dataPath == "" {
-		flag.Usage()
-		os.Exit(1)
+	if !*live {
+		netty.SetOffline()
+		clocky.Now = clocky.FakeNow
+		clocky.Sleep = clocky.FakeSleep
+		clocky.NewTicker = clocky.FakeNewTicker
+		if *defsPath == "" || *dataPath == "" {
+			log.Fatalf("backtest mode requires -defs and -data flags")
+		}
+	} else {
+		if *symbol == "" {
+			log.Fatalf("live mode requires -symbol flag (e.g. -symbol SPXW)")
+		}
 	}
 
-	date, err := time.Parse("2006-01-02", *dateStr)
-	if err != nil {
-		log.Fatalf("bad date %q: %v", *dateStr, err)
+	var date time.Time
+	if *dateStr != "" {
+		var err error
+		date, err = time.Parse("2006-01-02", *dateStr)
+		if err != nil {
+			log.Fatalf("bad date %q: %v", *dateStr, err)
+		}
+	} else {
+		date = time.Now().In(clocky.MTV)
 	}
 	queryDateInt := date.Year()*10000 + int(date.Month())*100 + date.Day()
 
@@ -537,39 +549,52 @@ func main() {
 	if err != nil {
 		log.Fatalf("bad start time %q: %v", *startStr, err)
 	}
-	startET := clocky.Time(time.Date(date.Year(), date.Month(), date.Day(),
+	startMTV := clocky.Time(time.Date(date.Year(), date.Month(), date.Day(),
 		st.Hour(), st.Minute(), st.Second(), 0, clocky.MTV).UnixNano())
 
 	ct, err := time.Parse("15:04:05", *cutoffStr)
 	if err != nil {
 		log.Fatalf("bad cutoff time %q: %v", *cutoffStr, err)
 	}
-	cutoffET := clocky.Time(time.Date(date.Year(), date.Month(), date.Day(),
+	cutoffMTV := clocky.Time(time.Date(date.Year(), date.Month(), date.Day(),
 		ct.Hour(), ct.Minute(), ct.Second(), 0, clocky.MTV).UnixNano())
 
-	expiryET := clocky.Time(time.Date(date.Year(), date.Month(), date.Day(),
-		16, 0, 0, 0, clocky.MTV).UnixNano())
+	expiryMTV := clocky.Time(time.Date(date.Year(), date.Month(), date.Day(),
+		13, 0, 0, 0, clocky.MTV).UnixNano())
 
 	// Phase 1: Load definitions and build box pairs.
-	instruments, pairs, minTick, err := loadDefinitions(*defsPath, queryDateInt, *widthInt)
-	if err != nil {
-		log.Fatalf("load definitions: %v", err)
-	}
-	if !minTick.IsZero() {
-		tick = minTick
-	} else {
-		tick = *tickFlag
-	}
-	if *verbose {
-		log.Printf("loaded %d instruments, %d box pairs (width=%d, tick=%s)",
-			len(instruments), len(pairs), *widthInt, tick)
-	}
-
+	var instruments map[uint32]optionInfo
+	var pairs []boxPair
 	pairsByInst := make(map[uint32][]*boxPair)
-	for i := range pairs {
-		p := &pairs[i]
-		for _, id := range []uint32{p.callLoID, p.callHiID, p.putLoID, p.putHiID} {
-			pairsByInst[id] = append(pairsByInst[id], p)
+	var liveDB *defBuilder // non-nil in live mode until pairs are built
+	lastPairCount := 0 // for logging new pairs in live mode
+
+	if *live {
+		tick = *tickFlag
+		instruments = make(map[uint32]optionInfo)
+		liveDB = newDefBuilder()
+	} else {
+		var minTick decimal.Decimal
+		var err error
+		instruments, pairs, minTick, err = loadDefinitions(*defsPath, queryDateInt, *widthInt)
+		if err != nil {
+			log.Fatalf("load definitions: %v", err)
+		}
+		if !minTick.IsZero() {
+			tick = minTick
+		} else {
+			tick = *tickFlag
+		}
+		lastPairCount = len(pairs)
+		for i := range pairs {
+			p := &pairs[i]
+			for _, id := range []uint32{p.callLoID, p.callHiID, p.putLoID, p.putHiID} {
+				pairsByInst[id] = append(pairsByInst[id], p)
+			}
+		}
+		if *verbose {
+			log.Printf("loaded %d instruments, %d box pairs (width=%d, tick=%s)",
+				len(instruments), len(pairs), *widthInt, tick)
 		}
 	}
 
@@ -595,47 +620,209 @@ func main() {
 	}
 	var results []boxResult
 
-	f, err := os.Open(*dataPath)
-	if err != nil {
-		log.Fatalf("open data: %v", err)
-	}
-	defer f.Close()
+	// Set up record source: file (backtest) or live stream.
+	var nextRecord func() ([]byte, error)
+	var cleanup func()
 
-	meta, err := databento.DecodeMetadata(f)
-	if err != nil {
-		log.Fatalf("decode metadata: %v", err)
+	if *live {
+		apiKey := databento.MustLoadDefaultKey()
+		client, err := databento.Dial(*dataset, apiKey)
+		if err != nil {
+			log.Fatalf("dial %s: %v", *dataset, err)
+		}
+		cleanup = func() { client.Close() }
+		parentSym := *symbol + ".OPT"
+		log.Printf("subscribing to %s on %s...", parentSym, *dataset)
+		err = client.Subscribe(databento.Subscription{
+			Schema:  databento.SchemaDefinition,
+			SType:   databento.STypeParent,
+			Symbols: []string{parentSym},
+		})
+		if err != nil {
+			log.Fatalf("subscribe definitions: %v", err)
+		}
+		err = client.Subscribe(databento.Subscription{
+			Schema:  databento.SchemaCMBP1,
+			SType:   databento.STypeParent,
+			Symbols: []string{parentSym},
+		})
+		if err != nil {
+			log.Fatalf("subscribe: %v", err)
+		}
+		meta, err := client.Start()
+		if err != nil {
+			log.Fatalf("start session: %v", err)
+		}
+		log.Printf("streaming %s (dbn v%d)...", parentSym, meta.Version)
+		nextRecord = func() ([]byte, error) { return client.NextRecord() }
+	} else {
+		f, err := os.Open(*dataPath)
+		if err != nil {
+			log.Fatalf("open data: %v", err)
+		}
+		cleanup = func() { f.Close() }
+		meta, err := databento.DecodeMetadata(f)
+		if err != nil {
+			log.Fatalf("decode metadata: %v", err)
+		}
+		br := bufio.NewReaderSize(f, 2<<20)
+		nextRecord = func() ([]byte, error) {
+			rec, err := databento.DecodeRecord(br)
+			if err != nil {
+				return nil, err
+			}
+			return databento.UpgradeRecord(meta.Version, rec)
+		}
 	}
+	defer cleanup()
 
-	br := bufio.NewReaderSize(f, 2<<20)
-	records := 0
+	records = 0
 	cmbp1Size := int(unsafe.Sizeof(databento.CMBP1{}))
+	instSize := int(unsafe.Sizeof(databento.Instrument{}))
 
+	expSeen := make(map[int]bool)
+	var defsSeen int
 	for {
-		rec, err := databento.DecodeRecord(br)
+		rec, err := nextRecord()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			log.Fatalf("decode record: %v", err)
 		}
-		rec, err = databento.UpgradeRecord(meta.Version, rec)
-		if err != nil {
-			log.Fatalf("upgrade record: %v", err)
+		records++
+
+		if *live && records < 100 {
+			rtype := databento.RType(rec[1])
+			log.Printf("live: record[%d] rtype=%s len=%d", records, rtype, len(rec))
 		}
+
+		// Dispatch non-CMBP1 record types.
+		if len(rec) >= 2 {
+			rtype := databento.RType(rec[1])
+			switch rtype {
+			case databento.RTypeInstrumentDef:
+				defsSeen++
+				inst := (*databento.Instrument)(unsafe.Pointer(&rec[0]))
+				expUTC := time.Unix(int64(inst.Expiration)/1e9, int64(inst.Expiration)%1e9).UTC()
+				expDateInt := expUTC.Year()*10000 + int(expUTC.Month())*100 + expUTC.Day()
+				if !expSeen[expDateInt] {
+					log.Printf("live: saw expiration %d", expDateInt)
+					expSeen[expDateInt] = true
+				}
+				if *verbose && defsSeen%100 == 1 {
+					log.Printf("live: saw def %s (exp %d, want %d)", 
+						inst.GetRawSymbol(), expDateInt, queryDateInt)
+				}
+				if liveDB != nil && len(rec) >= instSize {
+					if liveDB.addInstrument(inst, queryDateInt) {
+						// Rebuild instruments and pairs as definitions arrive.
+						instruments = liveDB.instruments
+						pairs = liveDB.buildPairs(*widthInt)
+						pairsByInst = make(map[uint32][]*boxPair)
+						for i := range pairs {
+							p := &pairs[i]
+							for _, id := range []uint32{p.callLoID, p.callHiID, p.putLoID, p.putHiID} {
+								pairsByInst[id] = append(pairsByInst[id], p)
+							}
+						}
+						if !liveDB.minTick.IsZero() {
+							tick = liveDB.minTick
+						}
+						if *verbose && len(pairs) != lastPairCount {
+							log.Printf("live: %d instruments, %d box pairs (width=%d, tick=%s)",
+								len(instruments), len(pairs), *widthInt, tick)
+							lastPairCount = len(pairs)
+						}
+					}
+				}
+				continue
+			case databento.RTypeSymbolMapping:
+				if liveDB != nil {
+					data := databento.CastRecord(rec)
+					var id uint32
+					var osi string
+					if m, ok := data.(*databento.SymbolMappingMsg); ok {
+						id = m.Header.InstrumentID
+						osi = m.GetSTypeOutSymbol()
+					}
+					if id != 0 && osi != "" {
+						if *verbose && records < 500 {
+							log.Printf("live: mapping id=%d osi=%q", id, osi)
+						}
+						_, _, exp, err := parseOSI(osi)
+						if err == nil && !expSeen[exp] {
+							log.Printf("live: saw expiration %d (mapping: %s)", exp, osi)
+							expSeen[exp] = true
+						}
+						if liveDB.addInstrumentFromOSI(id, osi, queryDateInt) {
+							instruments = liveDB.instruments
+							pairs = liveDB.buildPairs(*widthInt)
+							pairsByInst = make(map[uint32][]*boxPair)
+							for i := range pairs {
+								p := &pairs[i]
+								for _, id := range []uint32{p.callLoID, p.callHiID, p.putLoID, p.putHiID} {
+									pairsByInst[id] = append(pairsByInst[id], p)
+								}
+							}
+							log.Printf("live: registered %s id=%d (%d instruments, %d box pairs)",
+								osi, id, len(instruments), len(pairs))
+							lastPairCount = len(pairs)
+						}
+					}
+				}
+				continue
+			case databento.RTypeError:
+				msg := databento.CastRecord(rec).(databento.ErrorMsg)
+				log.Printf("gateway error: %s", msg.Err)
+				continue
+			case databento.RTypeSystem:
+				msg := databento.CastRecord(rec).(databento.SystemMsg)
+				if *verbose && !msg.IsHeartbeat() {
+					log.Printf("gateway: %s", msg.Msg)
+				}
+				continue
+			case databento.RTypeCMBP1:
+				break
+			default:
+				if *verbose && records < 1000 {
+					log.Printf("live: unknown rtype=0x%02x len=%d", rec[1], len(rec))
+				}
+				continue
+			}
+		}
+
 		if len(rec) < cmbp1Size {
 			continue
 		}
-		tick := (*databento.CMBP1)(unsafe.Pointer(&rec[0]))
+		cmbp1Tick := (*databento.CMBP1)(unsafe.Pointer(&rec[0]))
 		records++
 
-		clocky.SetNow(tick.TSRecv)
+		if *live && (records%100000 == 0 || clocky.Since(lastDefTS) > 10*clocky.Second) {
+			log.Printf("live: records=%d instruments=%d pairs=%d active=%d (ts=%s)",
+				records, len(instruments), len(pairs), len(active), formatET(cmbp1Tick.Header.TSEvent))
+			lastDefTS = clocky.Now()
+		}
 
-		instID := tick.Header.InstrumentID
-		if _, ok := instruments[instID]; !ok {
+		if *live {
+			// Live mode: use real wall clock, not simulated.
+		} else {
+			clocky.SetNow(cmbp1Tick.TSRecv)
+		}
+
+		instID := cmbp1Tick.Header.InstrumentID
+		info, ok := instruments[instID]
+		if !ok {
 			continue
 		}
 
-		ts := tick.Header.TSEvent
+		if *live && records < 100000 && records%10000 == 0 {
+			log.Printf("live: quote for %s id=%d bid=%s ask=%s",
+				info.symbol, instID, dbnPrice(cmbp1Tick.Levels[0].BidPx).Format(2),
+				dbnPrice(cmbp1Tick.Levels[0].AskPx).Format(2))
+		}
+
+		ts := cmbp1Tick.Header.TSEvent
 
 		// Once done trading, only update quotes for instruments we hold
 		// positions in (needed for settlement). Skip everything else.
@@ -647,8 +834,8 @@ func main() {
 			if q == nil {
 				continue
 			}
-			bidPx := tick.Levels[0].BidPx
-			askPx := tick.Levels[0].AskPx
+			bidPx := cmbp1Tick.Levels[0].BidPx
+			askPx := cmbp1Tick.Levels[0].AskPx
 			if bidPx != databento.UndefPrice {
 				q.bidPx = dbnPrice(bidPx)
 			}
@@ -664,26 +851,26 @@ func main() {
 			q = &quote{}
 			quotes[instID] = q
 		}
-		bidPx := tick.Levels[0].BidPx
-		askPx := tick.Levels[0].AskPx
+		bidPx := cmbp1Tick.Levels[0].BidPx
+		askPx := cmbp1Tick.Levels[0].AskPx
 		if bidPx != databento.UndefPrice {
 			q.bidPx = dbnPrice(bidPx)
-			q.bidSz = tick.Levels[0].BidSz
-			q.bidPb = tick.Levels[0].BidPb
+			q.bidSz = cmbp1Tick.Levels[0].BidSz
+			q.bidPb = cmbp1Tick.Levels[0].BidPb
 		} else {
 			q.bidPx = decimal.Zero
 			q.bidSz = 0
 		}
 		if askPx != databento.UndefPrice {
 			q.askPx = dbnPrice(askPx)
-			q.askSz = tick.Levels[0].AskSz
-			q.askPb = tick.Levels[0].AskPb
+			q.askSz = cmbp1Tick.Levels[0].AskSz
+			q.askPb = cmbp1Tick.Levels[0].AskPb
 		} else {
 			q.askPx = decimal.Zero
 			q.askSz = 0
 		}
 
-		if ts.Before(startET) {
+		if ts.Before(startMTV) {
 			continue
 		}
 
@@ -833,12 +1020,12 @@ func main() {
 		active = active[:j]
 
 		// --- Past expiry: settle everything ---
-		if !ts.Before(expiryET) {
+		if !ts.Before(expiryMTV) {
 			break
 		}
 
 		// --- Past cutoff: don't open new boxes ---
-		if !ts.Before(cutoffET) {
+		if !ts.Before(cutoffMTV) {
 			if len(active) == 0 {
 				doneTrading = true
 			}
@@ -1123,89 +1310,107 @@ func main() {
 // Definitions loader
 // -----------------------------------------------------------------------
 
-func loadDefinitions(path string, queryDateInt, widthInt int) (map[uint32]optionInfo, []boxPair, decimal.Decimal, error) {
-	f, err := os.Open(path)
+type defBuilder struct {
+	instruments map[uint32]optionInfo
+	strikeMap   map[decimal.Decimal]*strikeLevel
+	minTick     decimal.Decimal
+}
+
+func (db *defBuilder) addInstrumentFromOSI(id uint32, osi string, queryDateInt int) bool {
+	strike, class, expDateInt, err := parseOSI(osi)
 	if err != nil {
-		return nil, nil, decimal.Zero, err
+		return false
 	}
-	defer f.Close()
+	if expDateInt != queryDateInt {
+		return false
+	}
+	db.instruments[id] = optionInfo{
+		strike: strike,
+		class:  class,
+		symbol: osi,
+	}
+	sl, ok := db.strikeMap[strike]
+	if !ok {
+		sl = &strikeLevel{strike: strike}
+		db.strikeMap[strike] = sl
+	}
+	if class == 'C' {
+		sl.callID = id
+	} else {
+		sl.putID = id
+	}
+	return true
+}
 
-	meta, err := databento.DecodeMetadata(f)
-	if err != nil {
-		return nil, nil, decimal.Zero, fmt.Errorf("decode metadata: %w", err)
+func newDefBuilder() *defBuilder {
+	return &defBuilder{
+		instruments: make(map[uint32]optionInfo),
+		strikeMap:   make(map[decimal.Decimal]*strikeLevel),
+	}
+}
+
+// addInstrument processes a single instrument definition. Returns true if
+// it was a 0DTE option matching queryDateInt.
+func (db *defBuilder) addInstrument(inst *databento.Instrument, queryDateInt int) bool {
+	var class byte
+	switch inst.InstrumentClass {
+	case databento.InstrumentClassCall:
+		class = 'C'
+	case databento.InstrumentClassPut:
+		class = 'P'
+	default:
+		return false
 	}
 
-	instruments := make(map[uint32]optionInfo)
-	strikeMap := make(map[decimal.Decimal]*strikeLevel)
-	instSize := int(unsafe.Sizeof(databento.Instrument{}))
-	var minTick decimal.Decimal
+	expUTC := time.Unix(int64(inst.Expiration)/1e9, int64(inst.Expiration)%1e9).UTC()
+	expDateInt := expUTC.Year()*10000 + int(expUTC.Month())*100 + expUTC.Day()
 
-	for {
-		rec, err := databento.DecodeRecord(f)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, nil, decimal.Zero, fmt.Errorf("decode record: %w", err)
+	// databento stores expiration as UTC midnight of the expiry day.
+	// queryDateInt is also YYYYMMDD in UTC/NY terms for this program.
+	if expDateInt != queryDateInt {
+		if clocky.Since(lastDefTS) > 10*clocky.Second {
+			log.Printf("debug: ignoring %s (exp %d, want %d)", inst.GetRawSymbol(), expDateInt, queryDateInt)
+			lastDefTS = clocky.Now()
 		}
-		rec, err = databento.UpgradeRecord(meta.Version, rec)
-		if err != nil {
-			return nil, nil, decimal.Zero, fmt.Errorf("upgrade record: %w", err)
-		}
-		if len(rec) < instSize {
-			continue
-		}
-		inst := (*databento.Instrument)(unsafe.Pointer(&rec[0]))
+		return false
+	}
 
-		var class byte
-		switch inst.InstrumentClass {
-		case databento.InstrumentClassCall:
-			class = 'C'
-		case databento.InstrumentClassPut:
-			class = 'P'
-		default:
-			continue
-		}
+	if inst.StrikePrice == databento.UndefPrice {
+		return false
+	}
 
-		expUTC := time.Unix(int64(inst.Expiration)/1e9, int64(inst.Expiration)%1e9).UTC()
-		expDateInt := expUTC.Year()*10000 + int(expUTC.Month())*100 + expUTC.Day()
-		if expDateInt != queryDateInt {
-			continue
-		}
-
-		if inst.StrikePrice == databento.UndefPrice {
-			continue
-		}
-
-		if inst.MinPriceIncrement != 0 && inst.MinPriceIncrement != databento.UndefPrice {
-			t := dbnPrice(inst.MinPriceIncrement)
-			if minTick.IsZero() || t.Cmp(minTick) < 0 {
-				minTick = t
-			}
-		}
-
-		strike := dbnPrice(inst.StrikePrice)
-		id := inst.Header.InstrumentID
-		instruments[id] = optionInfo{
-			strike: strike,
-			class:  class,
-			symbol: inst.GetRawSymbol(),
-		}
-
-		sl, ok := strikeMap[strike]
-		if !ok {
-			sl = &strikeLevel{strike: strike}
-			strikeMap[strike] = sl
-		}
-		if class == 'C' {
-			sl.callID = id
-		} else {
-			sl.putID = id
+	if inst.MinPriceIncrement != 0 && inst.MinPriceIncrement != databento.UndefPrice {
+		t := dbnPrice(inst.MinPriceIncrement)
+		if db.minTick.IsZero() || t.Cmp(db.minTick) < 0 {
+			db.minTick = t
 		}
 	}
 
-	strikes := make([]strikeLevel, 0, len(strikeMap))
-	for _, sl := range strikeMap {
+	strike := dbnPrice(inst.StrikePrice)
+	id := inst.Header.InstrumentID
+	db.instruments[id] = optionInfo{
+		strike: strike,
+		class:  class,
+		symbol: inst.GetRawSymbol(),
+	}
+
+	sl, ok := db.strikeMap[strike]
+	if !ok {
+		sl = &strikeLevel{strike: strike}
+		db.strikeMap[strike] = sl
+	}
+	if class == 'C' {
+		sl.callID = id
+	} else {
+		sl.putID = id
+	}
+	return true
+}
+
+// buildPairs constructs box pairs from accumulated strikes.
+func (db *defBuilder) buildPairs(widthInt int) []boxPair {
+	strikes := make([]strikeLevel, 0, len(db.strikeMap))
+	for _, sl := range db.strikeMap {
 		if sl.callID != 0 && sl.putID != 0 {
 			strikes = append(strikes, *sl)
 		}
@@ -1233,6 +1438,69 @@ func loadDefinitions(path string, queryDateInt, widthInt int) (map[uint32]option
 			})
 		}
 	}
-
-	return instruments, pairs, minTick, nil
+	return pairs
 }
+
+// loadDefinitions reads instrument definitions from a DBN file.
+func loadDefinitions(path string, queryDateInt, widthInt int) (map[uint32]optionInfo, []boxPair, decimal.Decimal, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, nil, decimal.Zero, err
+	}
+	defer f.Close()
+
+	meta, err := databento.DecodeMetadata(f)
+	if err != nil {
+		return nil, nil, decimal.Zero, fmt.Errorf("decode metadata: %w", err)
+	}
+
+	db := newDefBuilder()
+	instSize := int(unsafe.Sizeof(databento.Instrument{}))
+
+	for {
+		rec, err := databento.DecodeRecord(f)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, nil, decimal.Zero, fmt.Errorf("decode record: %w", err)
+		}
+		rec, err = databento.UpgradeRecord(meta.Version, rec)
+		if err != nil {
+			return nil, nil, decimal.Zero, fmt.Errorf("upgrade record: %w", err)
+		}
+		if len(rec) < instSize {
+			continue
+		}
+		inst := (*databento.Instrument)(unsafe.Pointer(&rec[0]))
+		db.addInstrument(inst, queryDateInt)
+	}
+
+	pairs := db.buildPairs(widthInt)
+	return db.instruments, pairs, db.minTick, nil
+}
+
+// parseOSI parses an OSI symbol like "SPY   261218C00710000".
+func parseOSI(osi string) (strike decimal.Decimal, class byte, expDateInt int, err error) {
+	if len(osi) < 21 {
+		return decimal.Zero, 0, 0, fmt.Errorf("osi too short: %q", osi)
+	}
+	// Strike is at the end: 13-21 (8 chars)
+	strikeStr := osi[13:21]
+	// 5 digits + 3 decimals: 00710000 -> 710.000
+	strikeVal, err := strconv.ParseInt(strikeStr, 10, 64)
+	if err != nil {
+		return decimal.Zero, 0, 0, fmt.Errorf("bad strike %q: %w", strikeStr, err)
+	}
+	strike = decimal.FromInt(int(strikeVal)).DivInt(1000)
+	class = osi[12] // 'C' or 'P'
+	// Expiry YYMMDD at 6-12
+	expStr := osi[6:12]
+	var expVal int
+	expVal, err = strconv.Atoi("20" + expStr) // assume 20xx
+	if err != nil {
+		return decimal.Zero, 0, 0, fmt.Errorf("bad expiry %q: %w", expStr, err)
+	}
+	return strike, class, expVal, nil
+}
+

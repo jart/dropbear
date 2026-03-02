@@ -36,6 +36,14 @@ func CastRecord(rec []byte) any {
 			return nil
 		}
 		return (*Instrument)(unsafe.Pointer(&rec[0]))
+	case RTypeSymbolMapping:
+		if len(rec) >= int(unsafe.Sizeof(SymbolMappingMsg{})) {
+			return (*SymbolMappingMsg)(unsafe.Pointer(&rec[0]))
+		}
+		if len(rec) >= int(unsafe.Sizeof(SymbolMappingMsgV1{})) {
+			return (*SymbolMappingMsgV1)(unsafe.Pointer(&rec[0]))
+		}
+		return nil
 	case RTypeError:
 		return ErrorMsg{
 			Header: *(*RecordHeader)(unsafe.Pointer(&rec[0])),
@@ -296,23 +304,30 @@ func UpgradeRecord(version uint8, rec []byte) ([]byte, error) {
 		return rec, nil
 	}
 	rtype := RType(rec[1])
-	if rtype != RTypeInstrumentDef {
-		return rec, nil
+	switch rtype {
+	case RTypeInstrumentDef:
+		switch {
+		case version == 1 && len(rec) >= 360:
+			v1 := (*InstrumentV1)(unsafe.Pointer(&rec[0]))
+			v3 := v1.ToV3()
+			out := make([]byte, unsafe.Sizeof(v3))
+			copy(out, (*[520]byte)(unsafe.Pointer(&v3))[:])
+			return out, nil
+		case version == 2 && len(rec) >= 400:
+			v2 := (*InstrumentV2)(unsafe.Pointer(&rec[0]))
+			v3 := v2.ToV3()
+			out := make([]byte, unsafe.Sizeof(v3))
+			copy(out, (*[520]byte)(unsafe.Pointer(&v3))[:])
+			return out, nil
+		}
+	case RTypeSymbolMapping:
+		if version == 1 && len(rec) >= 80 {
+			v1 := (*SymbolMappingMsgV1)(unsafe.Pointer(&rec[0]))
+			v3 := v1.ToV3()
+			out := make([]byte, unsafe.Sizeof(v3))
+			copy(out, (*[176]byte)(unsafe.Pointer(&v3))[:])
+			return out, nil
+		}
 	}
-	switch {
-	case version == 1 && len(rec) >= 360:
-		v1 := (*InstrumentV1)(unsafe.Pointer(&rec[0]))
-		v3 := v1.ToV3()
-		out := make([]byte, unsafe.Sizeof(v3))
-		copy(out, (*[520]byte)(unsafe.Pointer(&v3))[:])
-		return out, nil
-	case version == 2 && len(rec) >= 400:
-		v2 := (*InstrumentV2)(unsafe.Pointer(&rec[0]))
-		v3 := v2.ToV3()
-		out := make([]byte, unsafe.Sizeof(v3))
-		copy(out, (*[520]byte)(unsafe.Pointer(&v3))[:])
-		return out, nil
-	default:
-		return nil, fmt.Errorf("dbn: cannot upgrade version %d InstrumentDef (%d bytes)", version, len(rec))
-	}
+	return rec, nil
 }

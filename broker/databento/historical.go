@@ -94,10 +94,10 @@ func (c *HistoricalClient) GetRange(dataset string, schema Schema, stypeIn SType
 // raw record bytes.
 func GetInstruments(apiKey ApiKey, dataset, symbol string, date clocky.Time) ([]InstrumentRef, error) {
 	y, m, d := date.Date()
-	next := date.Add(clocky.Day)
-	ny, nm, nd := next.Date()
 	start := fmt.Sprintf("%04d-%02d-%02dT00:00:00Z", y, m, d)
-	end := fmt.Sprintf("%04d-%02d-%02dT00:00:00Z", ny, nm, nd)
+	// Use end of trading session (17:30 UTC) rather than next day midnight,
+	// since the historical API rejects end times past available data.
+	end := fmt.Sprintf("%04d-%02d-%02dT17:30:00Z", y, m, d)
 	client := NewHistoricalClient(apiKey)
 	_, records, err := client.GetRange(dataset, SchemaDefinition,
 		STypeParent, []string{symbol}, start, end)
