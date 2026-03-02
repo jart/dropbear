@@ -164,8 +164,39 @@ func (l *ledger) payCommission(amount decimal.Decimal) {
 // Broker interface — replace these for live trading.
 // -----------------------------------------------------------------------
 
+// broker tracks rate limiting for the broker API using a sliding window
+// of call timestamps. Works with simulated time for backtesting.
+type broker struct {
+	calls []clocky.Time // circular buffer of timestamps
+	head  int           // next write position
+	limit int           // max calls per minute
+}
+
+func newBroker(limitPerMinute int) *broker {
+	return &broker{
+		calls: make([]clocky.Time, limitPerMinute),
+		limit: limitPerMinute,
+	}
+}
+
+// canCall returns true if n broker API calls are allowed at time ts
+// without exceeding the per-minute rate limit.
+func (b *broker) canCall(ts clocky.Time, n int) bool {
+	// Check the n-th oldest call (the one that would be evicted last).
+	idx := (b.head + n - 1) % b.limit
+	oldest := b.calls[idx]
+	return oldest == 0 || clocky.Duration(ts-oldest) >= clocky.Minute
+}
+
+// recordCall records a broker API call at time ts.
+func (b *broker) recordCall(ts clocky.Time) {
+	b.calls[b.head] = ts
+	b.head = (b.head + 1) % b.limit
+}
+
 // limitOrder places a passive limit order at the specified price.
-func limitOrder(instID uint32, side byte, px decimal.Decimal, ts clocky.Time) *pendingOrder {
+func (b *broker) limitOrder(instID uint32, side byte, px decimal.Decimal, ts clocky.Time) *pendingOrder {
+	b.recordCall(ts)
 	return &pendingOrder{
 		instID:   instID,
 		side:     side,
@@ -177,13 +208,16 @@ func limitOrder(instID uint32, side byte, px decimal.Decimal, ts clocky.Time) *p
 // modifyOrder requests a limit price change. The old price remains live
 // until the modify arrives (after latency). During that window the order
 // can still fill at the old price.
-func modifyOrder(ord *pendingOrder, newPx decimal.Decimal, ts clocky.Time) {
+func (b *broker) modifyOrder(ord *pendingOrder, newPx decimal.Decimal, ts clocky.Time) {
+	b.recordCall(ts)
 	ord.pendingPx = newPx
 	ord.modifyTS = ts
 }
 
 // cancelOrder cancels a pending limit order. No-op in backtest.
-func cancelOrder(_ *pendingOrder) {}
+func (b *broker) cancelOrder(_ *pendingOrder) {
+	// In live trading this would call the broker API and consume a rate limit token.
+}
 
 // -----------------------------------------------------------------------
 // Helpers
@@ -375,7 +409,7 @@ func legSpecs(bp *boxPair, long bool) [4]struct {
 	}
 }
 
-func startBox(bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time, greed, width, minEdge decimal.Decimal) *activeBox {
+func startBox(b *broker, bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time, greed, width, minEdge decimal.Decimal) *activeBox {
 	ab := &activeBox{
 		pair:    bp,
 		long:    long,
@@ -385,7 +419,7 @@ func startBox(bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time, 
 	for i, s := range specs {
 		q := quotes[s.instID]
 		px := greedyMid(q, s.side, greed)
-		ab.orders[i] = limitOrder(s.instID, s.side, px, ts)
+		ab.orders[i] = b.limitOrder(s.instID, s.side, px, ts)
 	}
 	// Clamp each limit to the budget so no fill can make the box unprofitable.
 	for i, ord := range ab.orders {
@@ -399,10 +433,10 @@ func startBox(bp *boxPair, long bool, quotes map[uint32]*quote, ts clocky.Time, 
 }
 
 // cancelBox cancels all pending orders on a box.
-func cancelBox(ab *activeBox) {
+func cancelBox(b *broker, ab *activeBox) {
 	for i, ord := range ab.orders {
 		if ord != nil {
-			cancelOrder(ord)
+			b.cancelOrder(ord)
 			ab.orders[i] = nil
 		}
 	}
@@ -445,15 +479,16 @@ func main() {
 	dateStr := flag.String("date", "2026-02-27", "trading date")
 	defsPath := flag.String("defs", "", "path to definitions .dbn")
 	dataPath := flag.String("data", "", "path to 0DTE CMBP1 .dbn")
-	widthInt := flag.Int("width", 50, "box width in SPX points")
+	widthInt := flag.Int("width", 25, "box width in SPX points")
 	edgeStr := flag.String("edge", "0.10", "minimum edge per share")
 	maxEdgeStr := flag.String("maxedge", "2.00", "max edge per share")
 	maxSpreadStr := flag.String("maxspread", "1.00", "max bid-ask spread per leg")
 	minBidStr := flag.String("minbid", "0.05", "minimum bid on each leg")
-	maxOpen := flag.Int("maxopen", 4, "max active (incomplete) boxes at once")
+	maxOpen := flag.Int("maxopen", 1, "max active (incomplete) boxes at once")
 	latencyFlag := clocky.DurationFlag("latency", "70ms", "simulated order latency")
-	patienceFlag := clocky.DurationFlag("patience", "30s", "time to decay from full greed to zero")
-	greedFlag := decimal.Flag("greed", "0.50", "initial greed: 0=mid, 1=favorable side of spread")
+	patienceFlag := clocky.DurationFlag("patience", "500ms", "time to decay from full greed to zero")
+	greedFlag := decimal.Flag("greed", "0", "initial greed: 0=mid, 1=favorable side of spread")
+	rateLimit := flag.Int("ratelimit", 200, "max broker API requests per minute")
 	startStr := flag.String("start", "06:30:05", "earliest time to start legging (HH:MM:SS ET)")
 	cutoffStr := flag.String("cutoff", "07:30:00", "stop opening new boxes after this time")
 	cashInt := flag.Int("cash", 100000, "starting cash in dollars")
@@ -523,6 +558,7 @@ func main() {
 	}
 
 	// Phase 2: Stream CMBP1 and simulate legging.
+	brk := newBroker(*rateLimit)
 	book := newLedger(startingCash)
 	quotes := make(map[uint32]*quote)
 	var active []*activeBox
@@ -724,14 +760,14 @@ func main() {
 				}
 
 				// Not filled and no modify in flight: reprice with decayed
-				// greed, clamped to budget.
-				if ord.pendingPx.IsZero() {
+				// greed, clamped to budget. Skip if rate limited.
+				if ord.pendingPx.IsZero() && brk.canCall(ts, 1) {
 					greed := computeGreed(*greedFlag, elapsed, *patienceFlag, ab.filled)
 					newPx := greedyMid(q, ord.side, greed)
 					budget := budgetLimit(ab, i, width, minEdge, quotes)
 					newPx = clampLimit(ord.side, newPx, budget)
 					if !newPx.IsZero() && !newPx.IsNegative() && newPx.Cmp(ord.limitPx) != 0 {
-						modifyOrder(ord, newPx, ts)
+						brk.modifyOrder(ord, newPx, ts)
 					}
 				}
 			}
@@ -797,6 +833,9 @@ func main() {
 		if len(active) >= *maxOpen {
 			continue
 		}
+		if !brk.canCall(ts, 4) { // startBox places 4 limit orders
+			continue
+		}
 
 		for _, bp := range pairsByInst[instID] {
 			if len(active) >= *maxOpen {
@@ -832,7 +871,7 @@ func main() {
 
 			if longEdge.Cmp(minEdge) >= 0 && longEdge.Cmp(maxEdge) <= 0 &&
 				longEdge.Cmp(shortEdge) >= 0 {
-				ab := startBox(bp, true, quotes, ts, *greedFlag, width, minEdge)
+				ab := startBox(brk, bp, true, quotes, ts, *greedFlag, width, minEdge)
 				active = append(active, ab)
 				if *verbose {
 					log.Printf("  box #%d LONG %d/%d  est.debit: $%s  est.edge: %s/share",
@@ -842,7 +881,7 @@ func main() {
 					printLegQuotes(bp, quotes)
 				}
 			} else if shortEdge.Cmp(minEdge) >= 0 && shortEdge.Cmp(maxEdge) <= 0 {
-				ab := startBox(bp, false, quotes, ts, *greedFlag, width, minEdge)
+				ab := startBox(brk, bp, false, quotes, ts, *greedFlag, width, minEdge)
 				active = append(active, ab)
 				if *verbose {
 					log.Printf("  box #%d SHORT %d/%d  est.credit: $%s  est.edge: %s/share",
@@ -866,7 +905,7 @@ func main() {
 	// Record incomplete boxes first.
 	for _, ab := range active {
 		if ab.filled == 0 {
-			cancelBox(ab)
+			cancelBox(brk, ab)
 			canceledCount++
 			continue
 		}
@@ -900,7 +939,7 @@ func main() {
 		}
 		br.debit = netOutflow
 		results = append(results, br)
-		cancelBox(ab)
+		cancelBox(brk, ab)
 	}
 
 	// Settle all positions in the ledger at last mid.
