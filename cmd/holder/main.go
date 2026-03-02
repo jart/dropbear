@@ -374,7 +374,6 @@ func updateWeights() {
 	}
 }
 
-
 // reduceForOvernight places limit-on-close orders to reduce to overnight margin.
 // Places a single aggressive order with loc-slip to ensure execution before close.
 func (h *Holding) reduceForOvernight(bar *ds.Bar) {
