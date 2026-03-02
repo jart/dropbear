@@ -62,10 +62,12 @@ type boxPair struct {
 }
 
 type pendingOrder struct {
-	instID   uint32
-	side     byte            // 'B' buy or 'S' sell
-	limitPx  decimal.Decimal // on $0.05 grid (per share)
-	postTime clocky.Time
+	instID    uint32
+	side      byte            // 'B' buy or 'S' sell
+	limitPx   decimal.Decimal // live limit price on $0.05 grid (per share)
+	postTime  clocky.Time     // when limitPx became effective
+	pendingPx decimal.Decimal // new price from modifyOrder (zero = no pending modify)
+	modifyTS  clocky.Time     // when modifyOrder was called
 }
 
 type boxLeg struct {
@@ -172,6 +174,14 @@ func limitOrder(instID uint32, side byte, px decimal.Decimal, ts clocky.Time) *p
 	}
 }
 
+// modifyOrder requests a limit price change. The old price remains live
+// until the modify arrives (after latency). During that window the order
+// can still fill at the old price.
+func modifyOrder(ord *pendingOrder, newPx decimal.Decimal, ts clocky.Time) {
+	ord.pendingPx = newPx
+	ord.modifyTS = ts
+}
+
 // cancelOrder cancels a pending limit order. No-op in backtest.
 func cancelOrder(_ *pendingOrder) {}
 
@@ -184,7 +194,7 @@ func dbnPrice(p int64) decimal.Decimal {
 }
 
 func formatET(t clocky.Time) string {
-	u := time.Unix(int64(t)/1e9, int64(t)%1e9).In(clocky.NYC)
+	u := time.Unix(int64(t)/1e9, int64(t)%1e9).In(clocky.MTV)
 	return u.Format("15:04:05.000")
 }
 
@@ -439,13 +449,13 @@ func main() {
 	edgeStr := flag.String("edge", "0.10", "minimum edge per share")
 	maxEdgeStr := flag.String("maxedge", "2.00", "max edge per share")
 	maxSpreadStr := flag.String("maxspread", "1.00", "max bid-ask spread per leg")
-	minBidStr := flag.String("minbid", "1.00", "minimum bid on each leg")
-	maxOpen := flag.Int("maxopen", 1, "max active (incomplete) boxes at once")
+	minBidStr := flag.String("minbid", "0.05", "minimum bid on each leg")
+	maxOpen := flag.Int("maxopen", 4, "max active (incomplete) boxes at once")
 	latencyFlag := clocky.DurationFlag("latency", "70ms", "simulated order latency")
 	patienceFlag := clocky.DurationFlag("patience", "30s", "time to decay from full greed to zero")
 	greedFlag := decimal.Flag("greed", "0.50", "initial greed: 0=mid, 1=favorable side of spread")
-	startStr := flag.String("start", "09:30:05", "earliest time to start legging (HH:MM:SS ET)")
-	cutoffStr := flag.String("cutoff", "10:00:00", "stop opening new boxes after this time")
+	startStr := flag.String("start", "06:30:05", "earliest time to start legging (HH:MM:SS ET)")
+	cutoffStr := flag.String("cutoff", "07:30:00", "stop opening new boxes after this time")
 	cashInt := flag.Int("cash", 100000, "starting cash in dollars")
 	verbose := flag.Bool("v", false, "verbose output")
 
@@ -482,17 +492,17 @@ func main() {
 		log.Fatalf("bad start time %q: %v", *startStr, err)
 	}
 	startET := clocky.Time(time.Date(date.Year(), date.Month(), date.Day(),
-		st.Hour(), st.Minute(), st.Second(), 0, clocky.NYC).UnixNano())
+		st.Hour(), st.Minute(), st.Second(), 0, clocky.MTV).UnixNano())
 
 	ct, err := time.Parse("15:04:05", *cutoffStr)
 	if err != nil {
 		log.Fatalf("bad cutoff time %q: %v", *cutoffStr, err)
 	}
 	cutoffET := clocky.Time(time.Date(date.Year(), date.Month(), date.Day(),
-		ct.Hour(), ct.Minute(), ct.Second(), 0, clocky.NYC).UnixNano())
+		ct.Hour(), ct.Minute(), ct.Second(), 0, clocky.MTV).UnixNano())
 
 	expiryET := clocky.Time(time.Date(date.Year(), date.Month(), date.Day(),
-		16, 0, 0, 0, clocky.NYC).UnixNano())
+		16, 0, 0, 0, clocky.MTV).UnixNano())
 
 	// Phase 1: Load definitions and build box pairs.
 	instruments, pairs, err := loadDefinitions(*defsPath, queryDateInt, *widthInt)
@@ -641,7 +651,14 @@ func main() {
 					continue
 				}
 
-				// Wait for latency before order becomes fill-eligible.
+				// Apply pending modify once its latency has elapsed.
+				if !ord.pendingPx.IsZero() && clocky.Duration(ts-ord.modifyTS) >= *latencyFlag {
+					ord.limitPx = ord.pendingPx
+					ord.postTime = ord.modifyTS
+					ord.pendingPx = decimal.Zero
+				}
+
+				// New orders wait for initial latency before becoming live.
 				if clocky.Duration(ts-ord.postTime) < *latencyFlag {
 					continue
 				}
@@ -706,14 +723,16 @@ func main() {
 					continue
 				}
 
-				// Not filled: reprice with decayed greed, clamped to budget.
-				greed := computeGreed(*greedFlag, elapsed, *patienceFlag, ab.filled)
-				newPx := greedyMid(q, ord.side, greed)
-				budget := budgetLimit(ab, i, width, minEdge, quotes)
-				newPx = clampLimit(ord.side, newPx, budget)
-				if !newPx.IsZero() && !newPx.IsNegative() && newPx.Cmp(ord.limitPx) != 0 {
-					ord.limitPx = newPx
-					ord.postTime = ts
+				// Not filled and no modify in flight: reprice with decayed
+				// greed, clamped to budget.
+				if ord.pendingPx.IsZero() {
+					greed := computeGreed(*greedFlag, elapsed, *patienceFlag, ab.filled)
+					newPx := greedyMid(q, ord.side, greed)
+					budget := budgetLimit(ab, i, width, minEdge, quotes)
+					newPx = clampLimit(ord.side, newPx, budget)
+					if !newPx.IsZero() && !newPx.IsNegative() && newPx.Cmp(ord.limitPx) != 0 {
+						modifyOrder(ord, newPx, ts)
+					}
 				}
 			}
 		}
