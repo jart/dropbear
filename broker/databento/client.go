@@ -78,6 +78,87 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// Subscribe sends a subscription request to the gateway. Symbols are chunked
+// into groups of 128 per message (LSG maximum is 500).
+func (c *Client) Subscribe(sub Subscription) error {
+	const maxSymbolsPerMsg = 128
+	snapshot := "0"
+	if sub.Snapshot {
+		snapshot = "1"
+	}
+	for i := 0; i < len(sub.Symbols); i += maxSymbolsPerMsg {
+		end := min(i+maxSymbolsPerMsg, len(sub.Symbols))
+		chunk := sub.Symbols[i:end]
+		c.subID++
+		isLast := "0"
+		if end == len(sub.Symbols) {
+			isLast = "1"
+		}
+		msg := fmt.Sprintf("schema=%s|stype_in=%s|id=%d|symbols=%s|snapshot=%s|is_last=%s",
+			sub.Schema.String(),
+			sub.SType.String(),
+			c.subID,
+			strings.Join(chunk, " "),
+			snapshot,
+			isLast,
+		)
+		if !sub.Start.IsZero() {
+			msg += "|start=" + strconv.FormatInt(sub.Start.UnixNano(), 10)
+		}
+		msg += "\n"
+		if _, err := c.conn.Write([]byte(msg)); err != nil {
+			return fmt.Errorf("databento: send subscribe: %w", err)
+		}
+	}
+	return nil
+}
+
+// Start sends the start_session command, reads the DBN metadata header, and
+// begins streaming. After Start returns, call NextRecord to read records.
+func (c *Client) Start() (*Metadata, error) {
+	if _, err := c.conn.Write([]byte("start_session\n")); err != nil {
+		return nil, fmt.Errorf("databento: send start_session: %w", err)
+	}
+	// Clear read deadline for streaming
+	c.conn.SetReadDeadline(time.Time{})
+	err := decodeMetadata(c.reader, &c.metadata)
+	if err != nil {
+		return nil, fmt.Errorf("databento: read metadata: %w", err)
+	}
+	return &c.metadata, nil
+}
+
+// Read reads the next record from the stream.
+func (c *Client) Read() (any, error) {
+	rec, err := decodeRecord(c.reader)
+	if err != nil {
+		return nil, err
+	}
+	obj, err := castRecord(c.metadata.Version, rec)
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+// readControlMessage reads a pipe-delimited control message.
+// Format: "key1=value1|key2=value2|...\n"
+func (c *Client) readControlMessage() (map[string]string, error) {
+	c.conn.SetReadDeadline(time.Now().Add(DefaultTimeout))
+	line, err := c.reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	line = strings.TrimSuffix(line, "\n")
+	result := make(map[string]string)
+	for _, part := range strings.Split(line, "|") {
+		if idx := strings.Index(part, "="); idx > 0 {
+			result[part[:idx]] = part[idx+1:]
+		}
+	}
+	return result, nil
+}
+
 // authenticate performs CRAM-SHA256 authentication with the gateway.
 func (c *Client) authenticate() error {
 	// Read greeting: lsg_version=...\n
@@ -126,87 +207,4 @@ func (c *Client) authenticate() error {
 		return fmt.Errorf("%w: %s", ErrAuth, errMsg)
 	}
 	return nil
-}
-
-// Subscribe sends a subscription request to the gateway. Symbols are chunked
-// into groups of 128 per message (LSG maximum is 500).
-func (c *Client) Subscribe(sub Subscription) error {
-	const maxSymbolsPerMsg = 128
-	snapshot := "0"
-	if sub.Snapshot {
-		snapshot = "1"
-	}
-	for i := 0; i < len(sub.Symbols); i += maxSymbolsPerMsg {
-		end := min(i+maxSymbolsPerMsg, len(sub.Symbols))
-		chunk := sub.Symbols[i:end]
-		c.subID++
-		isLast := "0"
-		if end == len(sub.Symbols) {
-			isLast = "1"
-		}
-		msg := fmt.Sprintf("schema=%s|stype_in=%s|id=%d|symbols=%s|snapshot=%s|is_last=%s",
-			sub.Schema.String(),
-			sub.SType.String(),
-			c.subID,
-			strings.Join(chunk, " "),
-			snapshot,
-			isLast,
-		)
-		if !sub.Start.IsZero() {
-			msg += "|start=" + strconv.FormatInt(sub.Start.UnixNano(), 10)
-		}
-		msg += "\n"
-		if _, err := c.conn.Write([]byte(msg)); err != nil {
-			return fmt.Errorf("databento: send subscribe: %w", err)
-		}
-	}
-	return nil
-}
-
-// Start sends the start_session command, reads the DBN metadata header, and
-// begins streaming. After Start returns, call NextRecord to read records.
-func (c *Client) Start() (Metadata, error) {
-	if _, err := c.conn.Write([]byte("start_session\n")); err != nil {
-		return Metadata{}, fmt.Errorf("databento: send start_session: %w", err)
-	}
-	// Clear read deadline for streaming
-	c.conn.SetReadDeadline(time.Time{})
-	meta, err := DecodeMetadata(c.reader)
-	if err != nil {
-		return Metadata{}, fmt.Errorf("databento: read metadata: %w", err)
-	}
-	c.metadata = meta
-	return meta, nil
-}
-
-// NextRecord reads the next record from the stream. Returns the raw bytes
-// which can be cast using CastRecord. Returns nil, io.EOF at end of stream.
-func (c *Client) NextRecord() ([]byte, error) {
-	rec, err := DecodeRecord(c.reader)
-	if err != nil {
-		return nil, err
-	}
-	rec, err = UpgradeRecord(c.metadata.Version, rec)
-	if err != nil {
-		return nil, err
-	}
-	return rec, nil
-}
-
-// readControlMessage reads a pipe-delimited control message.
-// Format: "key1=value1|key2=value2|...\n"
-func (c *Client) readControlMessage() (map[string]string, error) {
-	c.conn.SetReadDeadline(time.Now().Add(DefaultTimeout))
-	line, err := c.reader.ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-	line = strings.TrimSuffix(line, "\n")
-	result := make(map[string]string)
-	for part := range strings.SplitSeq(line, "|") {
-		if idx := strings.Index(part, "="); idx > 0 {
-			result[part[:idx]] = part[idx+1:]
-		}
-	}
-	return result, nil
 }

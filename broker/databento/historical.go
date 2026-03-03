@@ -10,9 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"unsafe"
-
-	"dropbear/clocky"
 )
 
 const historicalGateway = "https://hist.databento.com"
@@ -31,7 +28,7 @@ func NewHistoricalClient(apiKey ApiKey) *HistoricalClient {
 // Returns the parsed metadata and a slice of raw record byte slices.
 // Each record slice contains the full record bytes including the header.
 func (c *HistoricalClient) GetRange(dataset string, schema Schema, stypeIn SType,
-	symbols []string, start, end string) (Metadata, [][]byte, error) {
+	symbols []string, start, end string) (*Metadata, []any, error) {
 
 	params := url.Values{
 		"dataset":     {dataset},
@@ -48,81 +45,43 @@ func (c *HistoricalClient) GetRange(dataset string, schema Schema, stypeIn SType
 	req, err := http.NewRequest("POST", historicalGateway+"/v0/timeseries.get_range",
 		strings.NewReader(params.Encode()))
 	if err != nil {
-		return Metadata{}, nil, fmt.Errorf("databento: create request: %w", err)
+		return nil, nil, fmt.Errorf("databento: create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(string(c.apiKey), "")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return Metadata{}, nil, fmt.Errorf("databento: http post: %w", err)
+		return nil, nil, fmt.Errorf("databento: http post: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return Metadata{}, nil, fmt.Errorf("databento: http %d: %s", resp.StatusCode, body)
+		return nil, nil, fmt.Errorf("databento: http %d: %s", resp.StatusCode, body)
 	}
 
 	body := bufio.NewReaderSize(resp.Body, 256*1024)
-	meta, err := DecodeMetadata(body)
+	var meta Metadata
+	err = decodeMetadata(body, &meta)
 	if err != nil {
-		return Metadata{}, nil, err
+		return nil, nil, err
 	}
 
-	var records [][]byte
+	var records []any
 	for {
-		rec, err := DecodeRecord(body)
+		rec, err := decodeRecord(body)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			return meta, records, err
+			return &meta, records, err
 		}
-		rec, err = UpgradeRecord(meta.Version, rec)
+		obj, err := castRecord(meta.Version, rec)
 		if err != nil {
-			return meta, records, err
+			return &meta, records, err
 		}
-		records = append(records, rec)
+		records = append(records, obj)
 	}
-
-	return meta, records, nil
-}
-
-// GetInstruments fetches instrument definitions for a parent symbol on a given
-// date via the historical API. Returns a slice of InstrumentRef backed by the
-// raw record bytes.
-func GetInstruments(apiKey ApiKey, dataset, symbol string, date clocky.Time) ([]InstrumentRef, error) {
-	y, m, d := date.Date()
-	start := fmt.Sprintf("%04d-%02d-%02dT00:00:00Z", y, m, d)
-	// Use end of trading session (17:30 UTC) rather than next day midnight,
-	// since the historical API rejects end times past available data.
-	end := fmt.Sprintf("%04d-%02d-%02dT17:30:00Z", y, m, d)
-	client := NewHistoricalClient(apiKey)
-	_, records, err := client.GetRange(dataset, SchemaDefinition,
-		STypeParent, []string{symbol}, start, end)
-	if err != nil {
-		return nil, err
-	}
-	instSize := int(unsafe.Sizeof(Instrument{}))
-	var result []InstrumentRef
-	for _, rec := range records {
-		if len(rec) < instSize {
-			continue
-		}
-		if RType(rec[1]) != RTypeInstrumentDef {
-			continue
-		}
-		result = append(result, InstrumentRef{
-			Instrument: (*Instrument)(unsafe.Pointer(&rec[0])),
-			raw:        rec,
-		})
-	}
-	return result, nil
-}
-
-// InstrumentRef holds an Instrument pointer and the backing raw bytes.
-type InstrumentRef struct {
-	*Instrument
-	raw []byte // prevents GC of the backing record
+	return &meta, records, nil
 }

@@ -1,10 +1,8 @@
-// InstrumentV2 is a definition of an instrument in DBN version 2 (400 bytes).
-// Source: ~/vendor/databento-cpp/include/databento/v2.hpp lines 35-119
 package databento
 
 import "dropbear/clocky"
 
-type InstrumentV2 struct {
+type instrumentV2 struct {
 	Header                  RecordHeader          // 16 bytes
 	TSRecv                  clocky.Time           // 8
 	MinPriceIncrement       int64                 // 8
@@ -69,9 +67,7 @@ type InstrumentV2 struct {
 	reserved                [10]byte              // 10
 } // total: 400
 
-// ToV3 upgrades a v2 instrument definition to v3 layout.
-// Source: ~/vendor/databento-cpp/src/v2.cpp lines 8-94
-func (m *InstrumentV2) ToV3() Instrument {
+func (m *instrumentV2) ToV3() Instrument {
 	var inst Instrument
 	inst.Header = m.Header
 	inst.Header.Length = uint8(520 / 4)

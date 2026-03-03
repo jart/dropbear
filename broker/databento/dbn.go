@@ -5,6 +5,7 @@ package databento
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -13,211 +14,205 @@ import (
 	"dropbear/clocky"
 )
 
-// CastRecord interprets raw record bytes as a typed struct pointer based on
-// the RType byte. Returns nil for unknown record types.
-func CastRecord(rec []byte) any {
+func castRecord(version uint8, rec []byte) (any, error) {
 	if len(rec) < 2 {
-		return nil
+		return nil, errors.New("record too short")
 	}
 	rtype := RType(rec[1])
 	switch rtype {
 	case RTypeCMBP1, RTypeTCBBO:
-		if len(rec) < int(unsafe.Sizeof(CMBP1{})) {
-			return nil
+		if len(rec) != int(unsafe.Sizeof(CMBP1{})) {
+			return nil, errors.New("record size mismatch for CMBP1/TCBBO")
 		}
-		return (*CMBP1)(unsafe.Pointer(&rec[0]))
+		return (*CMBP1)(unsafe.Pointer(&rec[0])), nil
 	case RTypeCMBP1S, RTypeCMBP1M, RTypeBBO1S, RTypeBBO1M:
-		if len(rec) < int(unsafe.Sizeof(CBBO{})) {
-			return nil
+		if len(rec) != int(unsafe.Sizeof(CBBO{})) {
+			return nil, errors.New("record size mismatch for CMBP1S/CMBP1M/BBO1S/BBO1M")
 		}
-		return (*CBBO)(unsafe.Pointer(&rec[0]))
+		return (*CBBO)(unsafe.Pointer(&rec[0])), nil
 	case RTypeInstrumentDef:
-		if len(rec) < int(unsafe.Sizeof(Instrument{})) {
-			return nil
+		if version == 1 {
+			if len(rec) != int(unsafe.Sizeof(instrumentV1{})) {
+				return nil, errors.New("record size mismatch for instrumentV1")
+			}
+			v1 := (*instrumentV1)(unsafe.Pointer(&rec[0]))
+			return v1.ToV3(), nil
+		} else {
+			if len(rec) != int(unsafe.Sizeof(Instrument{})) {
+				return nil, errors.New("record size mismatch for Instrument")
+			}
+			return (*Instrument)(unsafe.Pointer(&rec[0])), nil
 		}
-		return (*Instrument)(unsafe.Pointer(&rec[0]))
 	case RTypeSymbolMapping:
-		if len(rec) >= int(unsafe.Sizeof(SymbolMappingMsg{})) {
-			return (*SymbolMappingMsg)(unsafe.Pointer(&rec[0]))
+		if version == 1 {
+			if len(rec) != int(unsafe.Sizeof(symbolMappingMsgV1{})) {
+				return nil, errors.New("record size mismatch for symbolMappingMsgV1")
+			}
+			v1 := (*symbolMappingMsgV1)(unsafe.Pointer(&rec[0]))
+			return v1.ToV3(), nil
+		} else {
+			if len(rec) != int(unsafe.Sizeof(SymbolMappingMsg{})) {
+				return nil, errors.New("record size mismatch for SymbolMappingMsg")
+			}
+			return (*SymbolMappingMsg)(unsafe.Pointer(&rec[0])), nil
 		}
-		if len(rec) >= int(unsafe.Sizeof(SymbolMappingMsgV1{})) {
-			return (*SymbolMappingMsgV1)(unsafe.Pointer(&rec[0]))
-		}
-		return nil
 	case RTypeError:
-		return ErrorMsg{
+		return &ErrorMsg{
 			Header: *(*RecordHeader)(unsafe.Pointer(&rec[0])),
 			Err:    convertBytesToString(rec[16:]),
-		}
+		}, nil
 	case RTypeSystem:
-		return SystemMsg{
+		return &SystemMsg{
 			Header: *(*RecordHeader)(unsafe.Pointer(&rec[0])),
 			Msg:    convertBytesToString(rec[16:]),
-		}
+		}, nil
 	default:
-		return nil
+		return nil, errors.New("unknown record type")
 	}
 }
 
-// DecodeMetadata reads the DBN prelude and metadata from the given reader.
-//
-// DBN binary format:
-//   - Prelude (8 bytes): "DBN" (3 bytes) + version (1 byte) + frame_size (4 bytes)
-//   - Fixed metadata (frame_size bytes): dataset, schema, timestamps, etc.
-//   - Variable metadata: symbols, partial, not_found, mappings
-func DecodeMetadata(r io.Reader) (Metadata, error) {
-	// Read prelude: "DBN" + version + frame_size
+func decodeMetadata(r io.Reader, m *Metadata) error {
 	var prelude [MetadataPreludeSize]byte
 	if _, err := io.ReadFull(r, prelude[:]); err != nil {
-		return Metadata{}, fmt.Errorf("dbn: read prelude: %w", err)
+		return err
 	}
-	if string(prelude[:3]) != DBNMagic {
-		return Metadata{}, fmt.Errorf("dbn: bad magic: %q", prelude[:3])
+	if string(prelude[:3]) != "DBN" {
+		return errors.New("dbn magic invalid")
 	}
-	version := prelude[3]
+	m.Version = prelude[3]
+	if m.Version > 3 {
+		return errors.New("dbn version unsupported")
+	}
 	frameSize := binary.LittleEndian.Uint32(prelude[4:8])
 	if frameSize < FixedMetadataLen {
-		return Metadata{}, fmt.Errorf("dbn: frame_size %d < fixed metadata len %d", frameSize, FixedMetadataLen)
+		return errors.New("dbn metadata frame too small")
 	}
-
-	// Read the frame
 	frame := make([]byte, frameSize)
 	if _, err := io.ReadFull(r, frame); err != nil {
-		return Metadata{}, fmt.Errorf("dbn: read metadata frame: %w", err)
+		return err
 	}
-
-	return decodeMetadataFields(version, frame)
-}
-
-func decodeMetadataFields(version uint8, buf []byte) (Metadata, error) {
-	if version > DBNVersion {
-		return Metadata{}, fmt.Errorf("dbn: version %d > supported %d", version, DBNVersion)
-	}
-
-	var m Metadata
-	m.Version = version
 	off := 0
 
 	// dataset (16 bytes, null-terminated)
-	m.Dataset = convertBytesToString(buf[off : off+DatasetLen])
+	m.Dataset = convertBytesToString(frame[off : off+DatasetLen])
 	off += DatasetLen
 
 	// schema (uint16)
-	rawSchema := binary.LittleEndian.Uint16(buf[off:])
+	rawSchema := binary.LittleEndian.Uint16(frame[off:])
 	off += 2
 	if rawSchema != NullSchema {
 		m.Schema = Schema(rawSchema)
 	}
 
 	// start (uint64 nanoseconds)
-	m.Start = clocky.Time(binary.LittleEndian.Uint64(buf[off:]))
+	m.Start = clocky.Time(binary.LittleEndian.Uint64(frame[off:]))
 	off += 8
 
 	// end (uint64 nanoseconds)
-	m.End = clocky.Time(binary.LittleEndian.Uint64(buf[off:]))
+	m.End = clocky.Time(binary.LittleEndian.Uint64(frame[off:]))
 	off += 8
 
 	// limit (uint64)
-	m.Limit = binary.LittleEndian.Uint64(buf[off:])
+	m.Limit = binary.LittleEndian.Uint64(frame[off:])
 	off += 8
 
 	// v1 has deprecated record_count here
-	if version == 1 {
+	if m.Version == 1 {
 		off += 8
 	}
 
 	// stype_in (uint8)
-	rawSTypeIn := buf[off]
+	rawSTypeIn := frame[off]
 	off++
 	if rawSTypeIn != NullSType {
 		m.STypeIn = SType(rawSTypeIn)
 	}
 
 	// stype_out (uint8)
-	m.STypeOut = SType(buf[off])
+	m.STypeOut = SType(frame[off])
 	off++
 
 	// ts_out (uint8)
-	m.TSOut = buf[off] != 0
+	m.TSOut = frame[off] != 0
 	off++
 
 	// symbol_cstr_len (uint16) - only in v2+
-	if version > 1 {
-		m.SymbolCstrLen = binary.LittleEndian.Uint16(buf[off:])
+	if m.Version > 1 {
+		m.SymbolCstrLen = binary.LittleEndian.Uint16(frame[off:])
 		off += 2
 	} else {
 		m.SymbolCstrLen = 22 // kSymbolCstrLenV1
 	}
 
 	// skip reserved
-	if version == 1 {
+	if m.Version == 1 {
 		off += 47 // kMetadataReservedLenV1
 	} else {
 		off += 53 // kMetadataReservedLen
 	}
 
 	// schema_definition_length (uint32)
-	schemaDefLen := binary.LittleEndian.Uint32(buf[off:])
+	schemaDefLen := binary.LittleEndian.Uint32(frame[off:])
 	off += 4
 	if schemaDefLen != 0 {
-		return Metadata{}, fmt.Errorf("dbn: schema definitions not supported (len=%d)", schemaDefLen)
+		return fmt.Errorf("dbn: schema definitions not supported (len=%d)", schemaDefLen)
 	}
 
 	// Variable-length sections
 	var err error
 	symLen := int(m.SymbolCstrLen)
 
-	m.Symbols, off, err = decodeRepeatedSymbol(buf, off, symLen)
+	m.Symbols, off, err = decodeRepeatedSymbol(frame, off, symLen)
 	if err != nil {
-		return Metadata{}, fmt.Errorf("dbn: decode symbols: %w", err)
+		return fmt.Errorf("dbn: decode symbols: %w", err)
 	}
 
-	m.Partial, off, err = decodeRepeatedSymbol(buf, off, symLen)
+	m.Partial, off, err = decodeRepeatedSymbol(frame, off, symLen)
 	if err != nil {
-		return Metadata{}, fmt.Errorf("dbn: decode partial: %w", err)
+		return fmt.Errorf("dbn: decode partial: %w", err)
 	}
 
-	m.NotFound, off, err = decodeRepeatedSymbol(buf, off, symLen)
+	m.NotFound, off, err = decodeRepeatedSymbol(frame, off, symLen)
 	if err != nil {
-		return Metadata{}, fmt.Errorf("dbn: decode not_found: %w", err)
+		return fmt.Errorf("dbn: decode not_found: %w", err)
 	}
 
-	m.Mappings, _, err = decodeSymbolMappings(buf, off, symLen)
+	m.Mappings, _, err = decodeSymbolMappings(frame, off, symLen)
 	if err != nil {
-		return Metadata{}, fmt.Errorf("dbn: decode mappings: %w", err)
+		return fmt.Errorf("dbn: decode mappings: %w", err)
 	}
 
-	return m, nil
+	return nil
 }
 
-func decodeRepeatedSymbol(buf []byte, off, symLen int) ([]string, int, error) {
-	if off+4 > len(buf) {
+func decodeRepeatedSymbol(frame []byte, off, symLen int) ([]string, int, error) {
+	if off+4 > len(frame) {
 		return nil, off, fmt.Errorf("unexpected end of buffer reading symbol count")
 	}
-	count := int(binary.LittleEndian.Uint32(buf[off:]))
+	count := int(binary.LittleEndian.Uint32(frame[off:]))
 	off += 4
 	need := count * symLen
-	if off+need > len(buf) {
+	if off+need > len(frame) {
 		return nil, off, fmt.Errorf("unexpected end of buffer reading %d symbols", count)
 	}
 	result := make([]string, count)
 	for i := range count {
-		result[i] = convertBytesToString(buf[off : off+symLen])
+		result[i] = convertBytesToString(frame[off : off+symLen])
 		off += symLen
 	}
 	return result, off, nil
 }
 
-func decodeSymbolMappings(buf []byte, off, symLen int) ([]SymbolMapping, int, error) {
-	if off+4 > len(buf) {
+func decodeSymbolMappings(frame []byte, off, symLen int) ([]SymbolMapping, int, error) {
+	if off+4 > len(frame) {
 		return nil, off, fmt.Errorf("unexpected end of buffer reading mapping count")
 	}
-	count := int(binary.LittleEndian.Uint32(buf[off:]))
+	count := int(binary.LittleEndian.Uint32(frame[off:]))
 	off += 4
 	result := make([]SymbolMapping, count)
 	for i := range count {
 		var err error
-		result[i], off, err = decodeSymbolMapping(buf, off, symLen)
+		result[i], off, err = decodeSymbolMapping(frame, off, symLen)
 		if err != nil {
 			return nil, off, err
 		}
@@ -225,31 +220,28 @@ func decodeSymbolMappings(buf []byte, off, symLen int) ([]SymbolMapping, int, er
 	return result, off, nil
 }
 
-func decodeSymbolMapping(buf []byte, off, symLen int) (SymbolMapping, int, error) {
-	if off+symLen+4 > len(buf) {
+func decodeSymbolMapping(frame []byte, off, symLen int) (SymbolMapping, int, error) {
+	if off+symLen+4 > len(frame) {
 		return SymbolMapping{}, off, fmt.Errorf("unexpected end of buffer reading symbol mapping")
 	}
 	var sm SymbolMapping
-	sm.RawSymbol = convertBytesToString(buf[off : off+symLen])
+	sm.RawSymbol = convertBytesToString(frame[off : off+symLen])
 	off += symLen
-
-	intervalCount := int(binary.LittleEndian.Uint32(buf[off:]))
+	intervalCount := int(binary.LittleEndian.Uint32(frame[off:]))
 	off += 4
-
 	// Each interval: start_date(4) + end_date(4) + symbol(symLen)
 	intervalSize := 4 + 4 + symLen
 	need := intervalCount * intervalSize
-	if off+need > len(buf) {
+	if off+need > len(frame) {
 		return SymbolMapping{}, off, fmt.Errorf("unexpected end of buffer reading %d mapping intervals", intervalCount)
 	}
-
 	sm.Intervals = make([]MappingInterval, intervalCount)
 	for i := range intervalCount {
-		startDate := binary.LittleEndian.Uint32(buf[off:])
+		startDate := binary.LittleEndian.Uint32(frame[off:])
 		off += 4
-		endDate := binary.LittleEndian.Uint32(buf[off:])
+		endDate := binary.LittleEndian.Uint32(frame[off:])
 		off += 4
-		symbol := convertBytesToString(buf[off : off+symLen])
+		symbol := convertBytesToString(frame[off : off+symLen])
 		off += symLen
 		sm.Intervals[i] = MappingInterval{
 			StartDate: decodeISO8601Date(startDate),
@@ -260,22 +252,9 @@ func decodeSymbolMapping(buf []byte, off, symLen int) (SymbolMapping, int, error
 	return sm, off, nil
 }
 
-// decodeISO8601Date converts a YYYYMMDD integer to a clocky.Time at midnight UTC.
-func decodeISO8601Date(yyyymmdd uint32) clocky.Time {
-	if yyyymmdd == 0 {
-		return 0
-	}
-	year := int(yyyymmdd / 10000)
-	remaining := yyyymmdd % 10000
-	month := int(remaining / 100)
-	day := int(remaining % 100)
-	t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
-	return clocky.Time(t.UnixNano())
-}
-
-// DecodeRecord reads one record from the reader. Returns the raw bytes of the
+// decodeRecord reads one record from the reader. Returns the raw bytes of the
 // full record (including header). Returns nil, io.EOF at end of stream.
-func DecodeRecord(r io.Reader) ([]byte, error) {
+func decodeRecord(r io.Reader) ([]byte, error) {
 	// Read the first byte: record length in 32-bit words
 	var lengthByte [1]byte
 	if _, err := io.ReadFull(r, lengthByte[:]); err != nil {
@@ -293,41 +272,15 @@ func DecodeRecord(r io.Reader) ([]byte, error) {
 	return record, nil
 }
 
-// UpgradeRecord upgrades a record from an older DBN version to v3 in place.
-// Only InstrumentDef records need upgrading; other record types are unchanged
-// across versions. Returns the (possibly new) record bytes.
-func UpgradeRecord(version uint8, rec []byte) ([]byte, error) {
-	if version >= DBNVersion {
-		return rec, nil
+// decodeISO8601Date converts a YYYYMMDD integer to a clocky.Time at midnight UTC.
+func decodeISO8601Date(yyyymmdd uint32) clocky.Time {
+	if yyyymmdd == 0 {
+		return 0
 	}
-	if len(rec) < 2 {
-		return rec, nil
-	}
-	rtype := RType(rec[1])
-	switch rtype {
-	case RTypeInstrumentDef:
-		switch {
-		case version == 1 && len(rec) >= 360:
-			v1 := (*InstrumentV1)(unsafe.Pointer(&rec[0]))
-			v3 := v1.ToV3()
-			out := make([]byte, unsafe.Sizeof(v3))
-			copy(out, (*[520]byte)(unsafe.Pointer(&v3))[:])
-			return out, nil
-		case version == 2 && len(rec) >= 400:
-			v2 := (*InstrumentV2)(unsafe.Pointer(&rec[0]))
-			v3 := v2.ToV3()
-			out := make([]byte, unsafe.Sizeof(v3))
-			copy(out, (*[520]byte)(unsafe.Pointer(&v3))[:])
-			return out, nil
-		}
-	case RTypeSymbolMapping:
-		if version == 1 && len(rec) >= 80 {
-			v1 := (*SymbolMappingMsgV1)(unsafe.Pointer(&rec[0]))
-			v3 := v1.ToV3()
-			out := make([]byte, unsafe.Sizeof(v3))
-			copy(out, (*[176]byte)(unsafe.Pointer(&v3))[:])
-			return out, nil
-		}
-	}
-	return rec, nil
+	year := int(yyyymmdd / 10000)
+	remaining := yyyymmdd % 10000
+	month := int(remaining / 100)
+	day := int(remaining % 100)
+	t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	return clocky.Time(t.UnixNano())
 }

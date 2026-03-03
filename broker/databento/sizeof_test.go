@@ -15,19 +15,19 @@ func TestInstrument_Size(t *testing.T) {
 }
 
 func TestInstrumentV2_Size(t *testing.T) {
-	if size := unsafe.Sizeof(InstrumentV2{}); size != 400 {
+	if size := unsafe.Sizeof(instrumentV2{}); size != 400 {
 		t.Errorf("expected InstrumentV2 size to be 400 bytes, got %d", size)
 	}
-	if align := unsafe.Alignof(InstrumentV2{}); align != 8 {
+	if align := unsafe.Alignof(instrumentV2{}); align != 8 {
 		t.Errorf("expected InstrumentV2 alignment to be 8 bytes, got %d", align)
 	}
 }
 
 func TestInstrumentV1_Size(t *testing.T) {
-	if size := unsafe.Sizeof(InstrumentV1{}); size != 360 {
+	if size := unsafe.Sizeof(instrumentV1{}); size != 360 {
 		t.Errorf("expected InstrumentV1 size to be 360 bytes, got %d", size)
 	}
-	if align := unsafe.Alignof(InstrumentV1{}); align != 8 {
+	if align := unsafe.Alignof(instrumentV1{}); align != 8 {
 		t.Errorf("expected InstrumentV1 alignment to be 8 bytes, got %d", align)
 	}
 }
@@ -57,16 +57,16 @@ func TestCMBP1_Size(t *testing.T) {
 }
 
 func TestSymbolMappingMsg_Size(t *testing.T) {
-	if size := unsafe.Sizeof(SymbolMappingMsgV3{}); size != 176 {
+	if size := unsafe.Sizeof(SymbolMappingMsg{}); size != 176 {
 		t.Errorf("expected SymbolMappingMsgV3 size to be 176 bytes, got %d", size)
 	}
-	if align := unsafe.Alignof(SymbolMappingMsgV3{}); align != 8 {
+	if align := unsafe.Alignof(SymbolMappingMsg{}); align != 8 {
 		t.Errorf("expected SymbolMappingMsgV3 alignment to be 8 bytes, got %d", align)
 	}
-	if size := unsafe.Sizeof(SymbolMappingMsgV1{}); size != 80 {
+	if size := unsafe.Sizeof(symbolMappingMsgV1{}); size != 80 {
 		t.Errorf("expected SymbolMappingMsgV1 size to be 80 bytes, got %d", size)
 	}
-	if align := unsafe.Alignof(SymbolMappingMsgV1{}); align != 8 {
+	if align := unsafe.Alignof(symbolMappingMsgV1{}); align != 8 {
 		t.Errorf("expected SymbolMappingMsgV1 alignment to be 8 bytes, got %d", align)
 	}
 }

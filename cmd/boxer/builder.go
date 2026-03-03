@@ -76,8 +76,7 @@ func (db *defBuilder) addInstrumentFromOSI(id uint32, osi string, queryDateInt i
 	return true
 }
 
-func (db *defBuilder) buildPairs(widthInt int) []boxPair {
-	width := decimal.FromInt(widthInt)
+func (db *defBuilder) buildPairs(width decimal.Decimal) []boxPair {
 	var strikes []decimal.Decimal
 	for s := range db.strikeMap {
 		strikes = append(strikes, s)

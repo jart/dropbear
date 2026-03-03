@@ -10,7 +10,10 @@ import (
 )
 
 func dbnPrice(p int64) decimal.Decimal {
-	return decimal.FromInt64(p).DivInt64(databento.FixedPriceScale)
+	if p == databento.UndefPrice {
+		return decimal.Zero
+	}
+	return decimal.Decimal(p / 1000)
 }
 
 func formatET(ts clocky.Time) string {
@@ -33,7 +36,7 @@ func snapAsk(px decimal.Decimal) decimal.Decimal {
 }
 
 func greedyMid(q *quote, side byte, greed decimal.Decimal) decimal.Decimal {
-	mid := q.bidPx.Add(q.askPx).DivInt(2)
+	mid := q.bid.Add(q.ask).DivInt(2)
 	if greed.IsZero() {
 		if side == 'B' {
 			return snapBid(mid)
@@ -41,10 +44,10 @@ func greedyMid(q *quote, side byte, greed decimal.Decimal) decimal.Decimal {
 		return snapAsk(mid)
 	}
 	if side == 'B' {
-		target := mid.Sub(mid.Sub(q.bidPx).Mul(greed))
+		target := mid.Sub(mid.Sub(q.bid).Mul(greed))
 		return snapBid(target)
 	} else {
-		target := mid.Add(q.askPx.Sub(mid).Mul(greed))
+		target := mid.Add(q.ask.Sub(mid).Mul(greed))
 		return snapAsk(target)
 	}
 }
@@ -75,11 +78,11 @@ func budgetLimit(ab *activeBox, legIdx int, width decimal.Decimal, quotes map[ui
 			}
 		} else {
 			q := quotes[ab.pairLeg(i)]
-			if q == nil || q.bidPx.IsZero() || q.askPx.IsZero() {
+			if q == nil || q.bid.IsZero() || q.ask.IsZero() {
 				currentNet = currentNet.Add(decimal.FromInt(500))
 				continue
 			}
-			mid := q.bidPx.Add(q.askPx).DivInt(2)
+			mid := q.bid.Add(q.ask).DivInt(2)
 			if ab.pairSide(i) == 'B' {
 				currentNet = currentNet.Add(mid)
 			} else {
@@ -102,10 +105,10 @@ func clampLimit(side byte, px, budget decimal.Decimal) decimal.Decimal {
 }
 
 func legQualified(q *quote) bool {
-	if q.bidPx.Cmp(*minBidFlag) < 0 {
+	if q.bid.Cmp(*minBidFlag) < 0 {
 		return false
 	}
-	spread := q.askPx.Sub(q.bidPx)
+	spread := q.ask.Sub(q.bid)
 	return spread.Cmp(*maxSpreadFlag) <= 0
 }
 
@@ -159,8 +162,8 @@ func startBox(b *broker, bp *boxPair, long bool, quotes map[uint32]*quote, ts cl
 
 func printLegQuotes(bp *boxPair, quotes map[uint32]*quote) {
 	qCL, qCH, qPL, qPH := quotes[bp.callLoID], quotes[bp.callHiID], quotes[bp.putLoID], quotes[bp.putHiID]
-	fmt.Printf("    C_K1(%s): %s / %s\n", bp.loStrike.Format(2), qCL.bidPx.Format(2), qCL.askPx.Format(2))
-	fmt.Printf("    C_K2(%s): %s / %s\n", bp.hiStrike.Format(2), qCH.bidPx.Format(2), qCH.askPx.Format(2))
-	fmt.Printf("    P_K1(%s): %s / %s\n", bp.loStrike.Format(2), qPL.bidPx.Format(2), qPL.askPx.Format(2))
-	fmt.Printf("    P_K2(%s): %s / %s\n", bp.hiStrike.Format(2), qPH.bidPx.Format(2), qPH.askPx.Format(2))
+	fmt.Printf("    C_K1(%s): %s / %s\n", bp.loStrike.Format(2), qCL.bid.Format(2), qCL.ask.Format(2))
+	fmt.Printf("    C_K2(%s): %s / %s\n", bp.hiStrike.Format(2), qCH.bid.Format(2), qCH.ask.Format(2))
+	fmt.Printf("    P_K1(%s): %s / %s\n", bp.loStrike.Format(2), qPL.bid.Format(2), qPL.ask.Format(2))
+	fmt.Printf("    P_K2(%s): %s / %s\n", bp.hiStrike.Format(2), qPH.bid.Format(2), qPH.ask.Format(2))
 }

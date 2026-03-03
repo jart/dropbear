@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"dropbear/clocky"
+	"dropbear/decimal"
 )
 
 func appendName(b *strings.Builder, name string) {
@@ -40,21 +41,7 @@ func appendPublisher(b *strings.Builder, p Publisher) {
 }
 
 func formatPrice(p int64) string {
-	whole := p / FixedPriceScale
-	frac := p % FixedPriceScale
-	if frac < 0 {
-		frac = -frac
-	}
-	var buf [9]byte
-	for i := 8; i >= 0; i-- {
-		buf[i] = byte(frac%10) + '0'
-		frac /= 10
-	}
-	end := 9
-	for end > 1 && buf[end-1] == '0' {
-		end--
-	}
-	return strconv.FormatInt(whole, 10) + "." + string(buf[:end])
+	return decimal.Decimal(p / 1000).String()
 }
 
 func appendInt32(b *strings.Builder, v int32) {

@@ -16,16 +16,6 @@ type SymbolMappingMsg struct {
 	EndTS          clocky.Time
 }
 
-// SymbolMappingMsgV1 maps a symbol from one SType to another (v1).
-type SymbolMappingMsgV1 struct {
-	Header         RecordHeader
-	STypeInSymbol  [22]byte
-	STypeOutSymbol [22]byte
-	_              [4]byte // padding
-	StartTS        clocky.Time
-	EndTS          clocky.Time
-}
-
 func (sm *SymbolMappingMsg) GetSTypeInSymbol() string {
 	return convertBytesToString(sm.STypeInSymbol[:])
 }
@@ -34,15 +24,25 @@ func (sm *SymbolMappingMsg) GetSTypeOutSymbol() string {
 	return convertBytesToString(sm.STypeOutSymbol[:])
 }
 
-func (sm *SymbolMappingMsgV1) GetSTypeInSymbol() string {
+// SymbolMappingMsgV1 maps a symbol from one SType to another (v1).
+type symbolMappingMsgV1 struct {
+	Header         RecordHeader
+	STypeInSymbol  [22]byte
+	STypeOutSymbol [22]byte
+	_              [4]byte // padding
+	StartTS        clocky.Time
+	EndTS          clocky.Time
+}
+
+func (sm *symbolMappingMsgV1) GetSTypeInSymbol() string {
 	return convertBytesToString(sm.STypeInSymbol[:])
 }
 
-func (sm *SymbolMappingMsgV1) GetSTypeOutSymbol() string {
+func (sm *symbolMappingMsgV1) GetSTypeOutSymbol() string {
 	return convertBytesToString(sm.STypeOutSymbol[:])
 }
 
-func (sm *SymbolMappingMsgV1) ToV3() SymbolMappingMsg {
+func (sm *symbolMappingMsgV1) ToV3() *SymbolMappingMsg {
 	var out SymbolMappingMsg
 	out.Header = sm.Header
 	out.Header.Length = uint8(unsafe.Sizeof(SymbolMappingMsg{}) / 4)
@@ -50,8 +50,5 @@ func (sm *SymbolMappingMsgV1) ToV3() SymbolMappingMsg {
 	copy(out.STypeOutSymbol[:], sm.STypeOutSymbol[:])
 	out.StartTS = sm.StartTS
 	out.EndTS = sm.EndTS
-	return out
+	return &out
 }
-
-const sizeofSymbolMappingMsgV1 = unsafe.Sizeof(SymbolMappingMsgV1{})
-const sizeofSymbolMappingMsg = unsafe.Sizeof(SymbolMappingMsg{})

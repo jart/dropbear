@@ -2,7 +2,6 @@ package databento
 
 import (
 	"testing"
-	"unsafe"
 )
 
 func TestStream_OPRA(t *testing.T) {
@@ -35,20 +34,16 @@ func TestStream_OPRA(t *testing.T) {
 	const wantRecords = 10
 	got := 0
 	for got < wantRecords {
-		rec, err := client.NextRecord()
+		rec, err := client.Read()
 		if err != nil {
 			t.Fatalf("NextRecord after %d records: %v", got, err)
 		}
-
-		switch r := CastRecord(rec).(type) {
+		switch r := rec.(type) {
 		case *CMBP1:
 			t.Logf("CMBP1 instrument=%d bid=%d ask=%d bid_sz=%d ask_sz=%d",
 				r.Header.InstrumentID,
 				r.Levels[0].BidPx, r.Levels[0].AskPx,
 				r.Levels[0].BidSz, r.Levels[0].AskSz)
-			if len(rec) != int(unsafe.Sizeof(CMBP1{})) {
-				t.Errorf("CMBP1 record size = %d, want %d", len(rec), unsafe.Sizeof(CMBP1{}))
-			}
 			got++
 		case *Instrument:
 			t.Logf("Instrument id=%d symbol=%s class=%v strike=%d expiry=%s",
@@ -67,8 +62,7 @@ func TestStream_OPRA(t *testing.T) {
 		case SystemMsg:
 			t.Logf("system: %s", r.Msg)
 		default:
-			rtype := RType(rec[1])
-			t.Logf("skipping record type %s (%d bytes)", rtype, len(rec))
+			t.Logf("skipping record")
 		}
 	}
 	t.Logf("successfully read %d CMBP1/CBBO records", got)

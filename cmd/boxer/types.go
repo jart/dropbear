@@ -3,7 +3,6 @@ package main
 import (
 	"time"
 
-	"dropbear/broker/databento"
 	"dropbear/clocky"
 	"dropbear/decimal"
 )
@@ -15,14 +14,14 @@ type optionInfo struct {
 }
 
 type quote struct {
-	bidPx, askPx decimal.Decimal
-	bidSz, askSz uint32
-	bidPb, askPb databento.Publisher
+	bid decimal.Decimal
+	ask decimal.Decimal
 }
 
 type strikeLevel struct {
-	strike        decimal.Decimal
-	callID, putID uint32
+	strike decimal.Decimal
+	callID uint32
+	putID  uint32
 }
 
 type boxPair struct {

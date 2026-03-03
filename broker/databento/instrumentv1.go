@@ -1,5 +1,3 @@
-// InstrumentV1 is a definition of an instrument in DBN version 1 (360 bytes).
-// Source: ~/vendor/databento-cpp/include/databento/v1.hpp lines 63-154
 package databento
 
 import "dropbear/clocky"
@@ -8,7 +6,7 @@ const (
 	SymbolCstrLenV1 = 22
 )
 
-type InstrumentV1 struct {
+type instrumentV1 struct {
 	Header                  RecordHeader          // 16 bytes
 	TSRecv                  clocky.Time           // 8
 	MinPriceIncrement       int64                 // 8
@@ -77,9 +75,7 @@ type InstrumentV1 struct {
 	dummy                   [3]byte               // 3
 } // total: 360
 
-// ToV3 upgrades a v1 instrument definition to v3 layout.
-// Source: ~/vendor/databento-cpp/src/v1.cpp lines 100-186
-func (m *InstrumentV1) ToV3() Instrument {
+func (m *instrumentV1) ToV3() Instrument {
 	var inst Instrument
 	inst.Header = m.Header
 	inst.Header.Length = uint8(520 / 4) // update length to v3 size
@@ -143,28 +139,4 @@ func (m *InstrumentV1) ToV3() Instrument {
 	inst.TickRule = m.TickRule
 	inst.LegSide = SideNone
 	return inst
-}
-
-func (m *InstrumentV1) GetRawSymbol() string {
-	return convertBytesToString(m.RawSymbol[:])
-}
-
-func (m *InstrumentV1) GetAsset() string {
-	return convertBytesToString(m.Asset[:])
-}
-
-func (m *InstrumentV1) GetExchange() string {
-	return convertBytesToString(m.Exchange[:])
-}
-
-func (m *InstrumentV1) GetCurrency() string {
-	return convertBytesToString(m.Currency[:])
-}
-
-func (m *InstrumentV1) GetSecurityType() string {
-	return convertBytesToString(m.SecurityType[:])
-}
-
-func (m *InstrumentV1) GetGroup() string {
-	return convertBytesToString(m.Group[:])
 }
