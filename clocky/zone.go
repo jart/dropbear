@@ -8,6 +8,7 @@ import (
 var TZ *time.Location
 var NYC *time.Location
 var MTV *time.Location
+var UTC *time.Location
 
 func init() {
 	s := os.Getenv("TZ")
@@ -33,6 +34,9 @@ func init() {
 		panic("failed to load America/Los_Angeles: " + err.Error())
 	}
 	MTV = mtv
+
+	// coordinated universal time
+	UTC = time.UTC
 }
 
 func (t Time) In(loc *time.Location) Time {
