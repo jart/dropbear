@@ -28,7 +28,7 @@ func NewHistoricalClient(apiKey ApiKey) *HistoricalClient {
 // Returns the parsed metadata and a slice of raw record byte slices.
 // Each record slice contains the full record bytes including the header.
 func (c *HistoricalClient) GetRange(dataset string, schema Schema, stypeIn SType,
-	symbols []string, start, end string) (*Metadata, []any, error) {
+	symbols []string, start, end string, limit int) (*Metadata, []any, error) {
 
 	params := url.Values{
 		"dataset":     {dataset},
@@ -40,6 +40,9 @@ func (c *HistoricalClient) GetRange(dataset string, schema Schema, stypeIn SType
 		"end":         {end},
 		"encoding":    {"dbn"},
 		"compression": {"none"},
+	}
+	if limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", limit))
 	}
 
 	req, err := http.NewRequest("POST", historicalGateway+"/v0/timeseries.get_range",

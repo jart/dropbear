@@ -30,6 +30,16 @@ func castRecord(version uint8, rec []byte) (any, error) {
 			return nil, errors.New("record size mismatch for CMBP1S/CMBP1M/BBO1S/BBO1M")
 		}
 		return (*CBBO)(unsafe.Pointer(&rec[0])), nil
+	case RTypeMBP1:
+		if len(rec) != int(unsafe.Sizeof(MBP1{})) {
+			return nil, errors.New("record size mismatch for MBP1")
+		}
+		return (*MBP1)(unsafe.Pointer(&rec[0])), nil
+	case RTypeMBP10:
+		if len(rec) != int(unsafe.Sizeof(MBP10{})) {
+			return nil, errors.New("record size mismatch for MBP10")
+		}
+		return (*MBP10)(unsafe.Pointer(&rec[0])), nil
 	case RTypeInstrumentDef:
 		if version == 1 {
 			if len(rec) != int(unsafe.Sizeof(instrumentV1{})) {

@@ -39,6 +39,6 @@ func init() {
 	UTC = time.UTC
 }
 
-func (t Time) In(loc *time.Location) Time {
-	return Time(t.goTime().In(loc).UnixNano())
+func (t Time) In(loc *time.Location) time.Time {
+	return t.goTime().In(loc)
 }

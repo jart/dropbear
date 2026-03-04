@@ -47,6 +47,24 @@ func TestConsolidatedBidAskPair_Size(t *testing.T) {
 	}
 }
 
+func TestBidAskPair_Size(t *testing.T) {
+	if size := unsafe.Sizeof(BidAskPair{}); size != 32 {
+		t.Errorf("expected BidAskPair size to be 32 bytes, got %d", size)
+	}
+}
+
+func TestMBP1_Size(t *testing.T) {
+	if size := unsafe.Sizeof(MBP1{}); size != 80 {
+		t.Errorf("expected MBP1 size to be 80 bytes, got %d", size)
+	}
+}
+
+func TestMBP10_Size(t *testing.T) {
+	if size := unsafe.Sizeof(MBP10{}); size != 368 {
+		t.Errorf("expected MBP10 size to be 368 bytes, got %d", size)
+	}
+}
+
 func TestCMBP1_Size(t *testing.T) {
 	if size := unsafe.Sizeof(CMBP1{}); size != 80 {
 		t.Errorf("expected CMBP1 size to be 80 bytes, got %d", size)

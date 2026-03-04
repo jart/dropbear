@@ -5,7 +5,7 @@ import "strconv"
 type FlagSet uint8
 
 const (
-	FlagSetLast              FlagSet = 1 << 7 // indicates last message in the event from the venue for a given instrument id
+	FlagSetLast              FlagSet = 1 << 7 // indicates last message in event from venue for a given instrument id
 	FlagSetTob               FlagSet = 1 << 6 // indicates a top-of-book message, not an individual order
 	FlagSetSnapshot          FlagSet = 1 << 5 // indicates the message was sourced from a replay, such as a snapshot server
 	FlagSetMBP               FlagSet = 1 << 4 // indicates aggregated price level message, not an individual order

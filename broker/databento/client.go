@@ -56,11 +56,13 @@ func Dial(dataset string, apiKey ApiKey) (*Client, error) {
 		apiKey:  apiKey,
 		dataset: dataset,
 	}
-	addr := fmt.Sprintf("%s.lsg.databento.com:%d", strings.ToLower(strings.ReplaceAll(dataset, ".", "-")), DefaultPort)
+	host := strings.ToLower(strings.ReplaceAll(dataset, ".", "-"))
+	addr := fmt.Sprintf("%s.lsg.databento.com:%d", host, DefaultPort)
 	conn, err := net.DialTimeout("tcp", addr, DefaultTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("databento: connect to %s: %w", addr, err)
 	}
+	(conn.(*net.TCPConn)).SetNoDelay(true)
 	c.conn = conn
 	c.reader = bufio.NewReader(conn)
 	if err := c.authenticate(); err != nil {
@@ -72,10 +74,10 @@ func Dial(dataset string, apiKey ApiKey) (*Client, error) {
 
 // Close closes the connection.
 func (c *Client) Close() error {
-	if c.conn != nil {
-		return c.conn.Close()
-	}
-	return nil
+	err := c.conn.Close()
+	c.reader = nil
+	c.conn = nil
+	return err
 }
 
 // Subscribe sends a subscription request to the gateway. Symbols are chunked
@@ -98,7 +100,7 @@ func (c *Client) Subscribe(sub Subscription) error {
 			sub.Schema.String(),
 			sub.SType.String(),
 			c.subID,
-			strings.Join(chunk, " "),
+			strings.Join(chunk, ","),
 			snapshot,
 			isLast,
 		)
