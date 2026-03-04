@@ -115,9 +115,9 @@ type LinkedAccount struct {
 	HashValue     string `json:"hashValue"`
 }
 
-// GetLinkedAccounts returns account numbers and their hash values.
+// GetAccountNumbers returns account numbers and their hash values.
 // The hash values must be used in all API URL paths instead of plain account numbers.
-func (c *Client) GetLinkedAccounts() ([]LinkedAccount, error) {
+func (c *Client) GetAccountNumbers() ([]LinkedAccount, error) {
 	var result []LinkedAccount
 	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/accounts/accountNumbers", nil, &result)
 	if err != nil {
@@ -144,7 +144,7 @@ func (c *Client) SetAccount() (string, error) {
 	if t != nil && t.AccountHash != "" {
 		return t.AccountHash, nil
 	}
-	accounts, err := c.GetLinkedAccounts()
+	accounts, err := c.GetAccountNumbers()
 	if err != nil {
 		return "", err
 	}

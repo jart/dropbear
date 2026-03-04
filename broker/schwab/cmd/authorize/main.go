@@ -39,7 +39,7 @@ func main() {
 	fmt.Println()
 	fmt.Println("waiting for callback on " + *flagAddr + " ...")
 	fmt.Println()
-	http.HandleFunc("/", handleCallback)
+	http.HandleFunc("/api/schwab", handleCallback)
 	if err := http.ListenAndServe(*flagAddr, nil); err != nil {
 		log.Fatal(err)
 	}
@@ -61,11 +61,20 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("received authorization code, exchanging for tokens...")
 
+	// exchange code for tokens (code expires in 30 seconds and is single-use)
 	token, err := schwab.ExchangeCode(code)
 	if err != nil {
 		msg := fmt.Sprintf("token exchange failed: %v", err)
-		http.Error(w, msg, http.StatusInternalServerError)
-		log.Fatal(msg)
+		fmt.Fprintln(w, "token exchange failed — click the authorize link again to get a fresh code (they expire in 30 seconds)")
+		fmt.Println()
+		fmt.Println(msg)
+		fmt.Println()
+		fmt.Println("the authorization code is single-use and expires in 30 seconds.")
+		fmt.Println("click the authorize link again:")
+		fmt.Println()
+		fmt.Println("  " + schwab.AuthorizeURL())
+		fmt.Println()
+		return
 	}
 
 	fmt.Println("tokens saved successfully")
@@ -75,33 +84,16 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	// discover account hash
 	c := schwab.NewClient()
-	hash, err := c.SetAccount()
+	_, err = c.SetAccount()
 	if err != nil {
+		// tokens are saved, this isn't fatal — user can retry
 		msg := fmt.Sprintf("failed to discover account: %v", err)
-		http.Error(w, msg, http.StatusInternalServerError)
-		log.Fatal(msg)
+		fmt.Fprintln(w, "tokens saved but account discovery failed — try running again")
+		fmt.Println(msg)
+		fmt.Println("tokens are saved. try running the command again to retry account discovery.")
+		return
 	}
-	fmt.Printf("account hash: %s\n", hash)
-
-	// hello world: fetch accounts
-	accounts, err := c.GetAccounts()
-	if err != nil {
-		msg := fmt.Sprintf("GetAccounts failed: %v", err)
-		http.Error(w, msg, http.StatusInternalServerError)
-		log.Fatal(msg)
-	}
-	fmt.Printf("found %d account(s)\n", len(accounts))
-	for _, a := range accounts {
-		acct := a.SecuritiesAccount
-		fmt.Printf("  account %s: equity=%s buying_power=%s\n",
-			acct.AccountNumber,
-			acct.CurrentBalances.Equity,
-			acct.CurrentBalances.BuyingPower)
-	}
-
-	fmt.Fprintln(w, "authorization successful, you can close this tab")
-	fmt.Println()
-	fmt.Println("done! you're good for 7 days.")
+	fmt.Println("authorization token saved to disk; you're good for 7 days")
 
 	// exit cleanly after responding
 	go func() { os.Exit(0) }()

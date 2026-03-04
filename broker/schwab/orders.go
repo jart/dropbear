@@ -2,74 +2,53 @@ package schwab
 
 import (
 	"dropbear/clocky"
-	"dropbear/decimal"
+	"dropbear/ds"
 	"dropbear/netty"
 	"fmt"
 )
-
-// NewOptionLimitOrder builds a single-leg option limit order request.
-//
-// Example symbol: "AAPL  260620C00200000" (6-char underlying, YYMMDD, C/P, 5+3 strike)
-// instruction: InstructionBuyToOpen, InstructionSellToClose, etc.
-// quantity: number of contracts
-// limitPrice: limit price per contract
-func NewOptionLimitOrder(symbol string, instruction Instruction, quantity int64, limitPrice decimal.Decimal) *Order {
-	return &Order{
-		ComplexOrderStrategyType: ComplexStrategyNone,
-		OrderType:                OrderTypeLimit,
-		Session:                  SessionNormal,
-		Price:                    limitPrice,
-		Duration:                 DurationDay,
-		OrderStrategyType:        OrderStrategyTypeSingle,
-		OrderLegCollection: []OrderLeg{
-			{
-				Instruction: instruction,
-				Quantity:    decimal.FromInt64(quantity),
-				Instrument: Instrument{
-					Symbol: symbol,
-					Type:   AssetTypeOption,
-				},
-			},
-		},
-	}
-}
 
 // CreateOrder places a new order.
 // The accountHash parameter must be the hash value from GetLinkedAccounts, not the plain number.
 // Returns nil on success. The Schwab API returns 201 Created with an empty body.
 func (c *Client) CreateOrder(accountHash string, order *Order) error {
-	c.TokenBucket.Get()
+	if !c.TokenBucket.Try() {
+		return ds.ErrTooManyRequests
+	}
+	token := getToken()
 	return c.RequestJSON(netty.FastHTTPClient, "POST",
-		fmt.Sprintf("/accounts/%s/orders", accountHash),
+		fmt.Sprintf("/accounts/%s/orders", token.AccountHash),
 		order, nil)
 }
 
 // ReplaceOrder replaces an existing order with a new order.
 // The accountHash parameter must be the hash value from GetLinkedAccounts, not the plain number.
 // Returns nil on success. The Schwab API returns 201 Created with an empty body.
-func (c *Client) ReplaceOrder(accountHash string, orderID int64, order *Order) error {
+func (c *Client) ReplaceOrder(orderID int64, order *Order) error {
 	c.TokenBucket.Get()
+	token := getToken()
 	return c.RequestJSON(netty.FastHTTPClient, "PUT",
-		fmt.Sprintf("/accounts/%s/orders/%d", accountHash, orderID),
+		fmt.Sprintf("/accounts/%s/orders/%d", token.AccountHash, orderID),
 		order, nil)
 }
 
 // CancelOrder cancels an existing order.
 // The accountHash parameter must be the hash value from GetLinkedAccounts, not the plain number.
 // Returns nil on success. The Schwab API returns 200 OK with an empty body.
-func (c *Client) CancelOrder(accountHash string, orderID int64) error {
+func (c *Client) CancelOrder(orderID int64) error {
 	c.TokenBucket.Get()
+	token := getToken()
 	return c.RequestJSON(netty.FastHTTPClient, "DELETE",
-		fmt.Sprintf("/accounts/%s/orders/%d", accountHash, orderID),
+		fmt.Sprintf("/accounts/%s/orders/%d", token.AccountHash, orderID),
 		nil, nil)
 }
 
 // GetOrder retrieves a single order by ID.
 // The accountHash parameter must be the hash value from GetLinkedAccounts, not the plain number.
-func (c *Client) GetOrder(accountHash string, orderID int64) (*Order, error) {
+func (c *Client) GetOrder(orderID int64) (*Order, error) {
+	token := getToken()
 	var result Order
 	err := c.RequestJSON(netty.BulkHttpClient, "GET",
-		fmt.Sprintf("/accounts/%s/orders/%d", accountHash, orderID),
+		fmt.Sprintf("/accounts/%s/orders/%d", token.AccountHash, orderID),
 		nil, &result)
 	if err != nil {
 		return nil, err
@@ -88,8 +67,9 @@ type GetOrdersRequest struct {
 // GetOrders retrieves orders for an account with optional filtering.
 // The accountHash parameter must be the hash value from GetLinkedAccounts, not the plain number.
 // fromEnteredTime and toEnteredTime are required by the Schwab API.
-func (c *Client) GetOrders(accountHash string, req *GetOrdersRequest) ([]Order, error) {
-	path := fmt.Sprintf("/accounts/%s/orders", accountHash)
+func (c *Client) GetOrders(req *GetOrdersRequest) ([]Order, error) {
+	token := getToken()
+	path := fmt.Sprintf("/accounts/%s/orders", token.AccountHash)
 	if req != nil {
 		sep := "?"
 		if req.FromEnteredTime != 0 {

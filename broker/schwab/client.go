@@ -78,12 +78,11 @@ func (c *Client) RequestJSON(client *http.Client, method, path string, requestBo
 		case http.StatusNotFound:
 			return ds.ErrNotFound
 		default:
-			var apiErr Error
 			body, _ := io.ReadAll(resp.Body)
-			if len(body) > 0 {
-				if json.Unmarshal(body, &apiErr) == nil && apiErr.Message != "" {
-					return &apiErr
-				}
+			log.Printf("schwab: %s %s returned %d: %s", method, path, resp.StatusCode, body)
+			var apiErr Error
+			if len(body) > 0 && json.Unmarshal(body, &apiErr) == nil && apiErr.HasContent() {
+				return &apiErr
 			}
 			return fmt.Errorf("schwab: %s %s returned %d: %s", method, path, resp.StatusCode, body)
 		}
@@ -118,8 +117,9 @@ func (c *Client) Request(client *http.Client, method, path string, body []byte) 
 			return nil, fmt.Errorf("schwab: creating request: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
 		resp, err := client.Do(req)
 
 		// handle network errors

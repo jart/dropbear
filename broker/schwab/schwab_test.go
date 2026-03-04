@@ -179,15 +179,34 @@ func TestNewOptionLimitOrderJSON(t *testing.T) {
 	}
 }
 
-func TestErrorFormat(t *testing.T) {
-	e := &Error{
-		Message: "validation failed",
-		Errors:  []string{"price must be > 0", "quantity required"},
+func TestErrorFormatStringErrors(t *testing.T) {
+	// the simpler format from the docs
+	data := `{"message": "validation failed", "errors": ["price must be > 0", "quantity required"]}`
+	var e Error
+	if err := json.Unmarshal([]byte(data), &e); err != nil {
+		t.Fatal(err)
 	}
 	got := e.Error()
-	want := "validation failed: price must be > 0; quantity required"
+	want := "validation failed: price must be > 0: quantity required"
 	if got != want {
 		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+}
+
+func TestErrorFormatObjectErrors(t *testing.T) {
+	// the real format from the API
+	data := `{"errors": [{"id": "abc-123", "status": 500, "title": "Internal Server Error"}]}`
+	var e Error
+	if err := json.Unmarshal([]byte(data), &e); err != nil {
+		t.Fatal(err)
+	}
+	got := e.Error()
+	want := "Internal Server Error"
+	if got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+	if !e.HasContent() {
+		t.Fatal("should have content")
 	}
 }
 
