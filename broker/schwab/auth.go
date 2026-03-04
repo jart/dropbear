@@ -27,11 +27,11 @@ func GetKey() *ApiKey {
 	keyOnce.Do(func() {
 		data, err := os.ReadFile(*flagKey)
 		if err != nil {
-			loggy.Fatalf("reading coinbase key file: %v", err)
+			loggy.Fatalf("reading schwab key file: %v", err)
 		}
 		var key *ApiKey
 		if err := json.Unmarshal(data, &key); err != nil {
-			loggy.Fatalf("parsing coinbase key file: %v", err)
+			loggy.Fatalf("parsing schwab key file: %v", err)
 		}
 		keySave = key
 	})
