@@ -108,6 +108,24 @@ type CurrentBalances struct {
 	OptionBuyingPower                decimal.Decimal `json:"optionBuyingPower"`
 }
 
+// LinkedAccount maps a plain account number to its hash value.
+// Schwab requires the hash value (not the plain number) in all URL paths.
+type LinkedAccount struct {
+	AccountNumber string `json:"accountNumber"`
+	HashValue     string `json:"hashValue"`
+}
+
+// GetLinkedAccounts returns account numbers and their hash values.
+// The hash values must be used in all API URL paths instead of plain account numbers.
+func (c *Client) GetLinkedAccounts() ([]LinkedAccount, error) {
+	var result []LinkedAccount
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/accounts/accountNumbers", nil, &result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // GetAccounts retrieves all accounts linked to the authenticated user.
 func (c *Client) GetAccounts() ([]AccountResponse, error) {
 	var result []AccountResponse
@@ -118,24 +136,26 @@ func (c *Client) GetAccounts() ([]AccountResponse, error) {
 	return result, nil
 }
 
-// SetAccount discovers accounts and caches the first account number.
-// This must be called before placing orders if the account number is not already known.
+// SetAccount discovers the first linked account and caches its hash value.
+// Returns the account hash which is needed for all order and account-specific API calls.
+// This must be called before placing orders if the account hash is not already known.
 func (c *Client) SetAccount() (string, error) {
 	t := getToken()
-	if t != nil && t.AccountNumber != "" {
-		return t.AccountNumber, nil
+	if t != nil && t.AccountHash != "" {
+		return t.AccountHash, nil
 	}
-	accounts, err := c.GetAccounts()
+	accounts, err := c.GetLinkedAccounts()
 	if err != nil {
 		return "", err
 	}
 	if len(accounts) == 0 {
-		return "", fmt.Errorf("schwab: no accounts found")
+		return "", fmt.Errorf("schwab: no linked accounts found")
 	}
-	acctNum := accounts[0].SecuritiesAccount.AccountNumber
-	if t != nil {
-		t.AccountNumber = acctNum
-		setToken(t)
+	if t == nil {
+		return "", fmt.Errorf("schwab: no token found; authorize first")
 	}
-	return acctNum, nil
+	t.AccountHash = accounts[0].HashValue
+	t.AccountNumber = accounts[0].AccountNumber
+	setToken(t)
+	return t.AccountHash, nil
 }

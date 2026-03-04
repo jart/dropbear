@@ -2,12 +2,12 @@ package schwab
 
 import (
 	"dropbear/clocky"
-	"log"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -29,6 +29,7 @@ type Token struct {
 	RefreshToken     string      `json:"refresh_token"`
 	ExpiresAt        clocky.Time `json:"expires_at"`         // when access token expires
 	RefreshExpiresAt clocky.Time `json:"refresh_expires_at"` // when refresh token expires
+	AccountHash      string      `json:"account_hash,omitempty"`
 	AccountNumber    string      `json:"account_number,omitempty"`
 }
 
@@ -156,8 +157,9 @@ func postToken(form url.Values) (*Token, error) {
 		ExpiresAt:        now + clocky.Time(clocky.Duration(tr.ExpiresIn)*clocky.Second),
 		RefreshExpiresAt: now + clocky.Time(7*24*clocky.Hour),
 	}
-	// preserve account number from previous token
+	// preserve account info from previous token
 	if old := getToken(); old != nil {
+		t.AccountHash = old.AccountHash
 		t.AccountNumber = old.AccountNumber
 	}
 	setToken(t)
