@@ -2,6 +2,7 @@ package schwab
 
 import (
 	"dropbear/clocky"
+	"dropbear/netty"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -134,7 +135,7 @@ func postToken(form url.Values) (*Token, error) {
 	}
 	req.Header.Set("Authorization", "Basic "+basicAuth())
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netty.FastHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("schwab: token request failed: %w", err)
 	}

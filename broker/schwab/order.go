@@ -7,7 +7,7 @@ import (
 
 // Instrument identifies a tradeable security.
 type Instrument struct {
-	Cusip        string          `json:"cusip,omitempty"`
+	CUSIP        string          `json:"cusip,omitempty"`
 	Symbol       string          `json:"symbol"`
 	Description  string          `json:"description,omitempty"`
 	InstrumentID int64           `json:"instrumentId,omitempty"`

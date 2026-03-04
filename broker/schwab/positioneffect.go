@@ -5,19 +5,19 @@ import "fmt"
 type PositionEffect uint8
 
 const (
-	PositionEffectOpening   PositionEffect = iota // opening a new position
+	PositionEffectAutomatic PositionEffect = iota // automatically determined
+	PositionEffectOpening                         // opening a new position
 	PositionEffectClosing                         // closing an existing position
-	PositionEffectAutomatic                       // automatically determined
 )
 
 func ParsePositionEffect(s string) (PositionEffect, error) {
 	switch s {
+	case "AUTOMATIC":
+		return PositionEffectAutomatic, nil
 	case "OPENING":
 		return PositionEffectOpening, nil
 	case "CLOSING":
 		return PositionEffectClosing, nil
-	case "AUTOMATIC":
-		return PositionEffectAutomatic, nil
 	default:
 		return 0, fmt.Errorf("unknown position effect: %s", s)
 	}
@@ -25,12 +25,12 @@ func ParsePositionEffect(s string) (PositionEffect, error) {
 
 func (p PositionEffect) String() string {
 	switch p {
+	case PositionEffectAutomatic:
+		return "AUTOMATIC"
 	case PositionEffectOpening:
 		return "OPENING"
 	case PositionEffectClosing:
 		return "CLOSING"
-	case PositionEffectAutomatic:
-		return "AUTOMATIC"
 	default:
 		panic("unknown position effect")
 	}

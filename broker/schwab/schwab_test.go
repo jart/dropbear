@@ -1,7 +1,6 @@
 package schwab
 
 import (
-	"dropbear/decimal"
 	"dropbear/netty"
 	"encoding/json"
 	"testing"
@@ -98,84 +97,6 @@ func TestOrderStatusHelpers(t *testing.T) {
 	}
 	if OrderStatusFilled.IsOpen() {
 		t.Fatal("FILLED should not be open")
-	}
-}
-
-func TestNewOptionLimitOrder(t *testing.T) {
-	order := NewOptionLimitOrder(
-		"AAPL  260620C00200000",
-		InstructionBuyToOpen,
-		10,
-		decimal.Parse("6.45"),
-	)
-	data, err := json.Marshal(order)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	// verify it round-trips
-	var got Order
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if got.OrderType != OrderTypeLimit {
-		t.Fatalf("orderType = %v, want LIMIT", got.OrderType)
-	}
-	if got.Session != SessionNormal {
-		t.Fatalf("session = %v, want NORMAL", got.Session)
-	}
-	if got.Duration != DurationDay {
-		t.Fatalf("duration = %v, want DAY", got.Duration)
-	}
-	if got.OrderStrategyType != OrderStrategyTypeSingle {
-		t.Fatalf("orderStrategyType = %v, want SINGLE", got.OrderStrategyType)
-	}
-	if got.Price.Cmp(decimal.Parse("6.45")) != 0 {
-		t.Fatalf("price = %v, want 6.45", got.Price)
-	}
-	if len(got.OrderLegCollection) != 1 {
-		t.Fatalf("legs = %d, want 1", len(got.OrderLegCollection))
-	}
-	leg := got.OrderLegCollection[0]
-	if leg.Instruction != InstructionBuyToOpen {
-		t.Fatalf("instruction = %v, want BUY_TO_OPEN", leg.Instruction)
-	}
-	if leg.Quantity.Cmp(decimal.FromInt(10)) != 0 {
-		t.Fatalf("quantity = %v, want 10", leg.Quantity)
-	}
-	if leg.Instrument.Symbol != "AAPL  260620C00200000" {
-		t.Fatalf("symbol = %q, want AAPL  260620C00200000", leg.Instrument.Symbol)
-	}
-	if leg.Instrument.Type != AssetTypeOption {
-		t.Fatalf("assetType = %v, want OPTION", leg.Instrument.Type)
-	}
-}
-
-func TestNewOptionLimitOrderJSON(t *testing.T) {
-	// verify the JSON matches what Schwab expects
-	order := NewOptionLimitOrder(
-		"XYZ   240315C00500000",
-		InstructionBuyToOpen,
-		10,
-		decimal.Parse("6.45"),
-	)
-	data, err := json.MarshalIndent(order, "", "  ")
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	t.Logf("option limit order JSON:\n%s", data)
-	// parse it back and check key fields are present
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("unmarshal raw: %v", err)
-	}
-	if raw["orderType"] != "LIMIT" {
-		t.Fatalf("orderType = %v", raw["orderType"])
-	}
-	if raw["session"] != "NORMAL" {
-		t.Fatalf("session = %v", raw["session"])
-	}
-	if raw["orderStrategyType"] != "SINGLE" {
-		t.Fatalf("orderStrategyType = %v", raw["orderStrategyType"])
 	}
 }
 

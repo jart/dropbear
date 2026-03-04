@@ -5,30 +5,51 @@ import (
 	"dropbear/ds"
 	"dropbear/netty"
 	"fmt"
+	"path"
+	"strconv"
 )
 
 // CreateOrder places a new order.
-// The accountHash parameter must be the hash value from GetLinkedAccounts, not the plain number.
-// Returns nil on success. The Schwab API returns 201 Created with an empty body.
-func (c *Client) CreateOrder(accountHash string, order *Order) error {
+// Returns the order ID from the Location response header.
+// If the order fills immediately, Schwab may not return an order ID (returns 0).
+func (c *Client) CreateOrder(order *Order) (int64, error) {
 	if !c.TokenBucket.Try() {
-		return ds.ErrTooManyRequests
+		return 0, ds.ErrTooManyRequests
 	}
 	token := getToken()
-	return c.RequestJSON(netty.FastHTTPClient, "POST",
+	resp, err := c.RequestJSONRaw(netty.FastHTTPClient, "POST",
 		fmt.Sprintf("/accounts/%s/orders", token.AccountHash),
-		order, nil)
+		order)
+	if err != nil {
+		return 0, err
+	}
+	resp.Body.Close()
+	return parseOrderIDFromLocation(resp.Header.Get("Location")), nil
+}
+
+// parseOrderIDFromLocation extracts the order ID from a Location header value
+// like "/trader/v1/accounts/{hash}/orders/12345".
+func parseOrderIDFromLocation(location string) int64 {
+	if location == "" {
+		return 0
+	}
+	id, _ := strconv.ParseInt(path.Base(location), 10, 64)
+	return id
 }
 
 // ReplaceOrder replaces an existing order with a new order.
-// The accountHash parameter must be the hash value from GetLinkedAccounts, not the plain number.
-// Returns nil on success. The Schwab API returns 201 Created with an empty body.
-func (c *Client) ReplaceOrder(orderID int64, order *Order) error {
+// Returns the new order ID from the Location response header.
+func (c *Client) ReplaceOrder(orderID int64, order *Order) (int64, error) {
 	c.TokenBucket.Get()
 	token := getToken()
-	return c.RequestJSON(netty.FastHTTPClient, "PUT",
+	resp, err := c.RequestJSONRaw(netty.FastHTTPClient, "PUT",
 		fmt.Sprintf("/accounts/%s/orders/%d", token.AccountHash, orderID),
-		order, nil)
+		order)
+	if err != nil {
+		return 0, err
+	}
+	resp.Body.Close()
+	return parseOrderIDFromLocation(resp.Header.Get("Location")), nil
 }
 
 // CancelOrder cancels an existing order.

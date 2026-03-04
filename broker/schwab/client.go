@@ -94,6 +94,40 @@ func (c *Client) RequestJSON(client *http.Client, method, path string, requestBo
 	}
 }
 
+// RequestJSONRaw is like RequestJSON but returns the raw *http.Response on success (2xx).
+// The caller is responsible for closing the response body.
+// Use this when you need access to response headers (e.g. Location header for order IDs).
+func (c *Client) RequestJSONRaw(client *http.Client, method, path string, requestBody any) (*http.Response, error) {
+	var requestBodyBytes []byte
+	if requestBody != nil {
+		var err error
+		requestBodyBytes, err = json.Marshal(requestBody)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling request body: %w", err)
+		}
+	}
+	resp, err := c.Request(client, method, path, requestBodyBytes)
+	if err != nil {
+		return nil, err
+	}
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
+		return resp, nil
+	case http.StatusNotFound:
+		resp.Body.Close()
+		return nil, ds.ErrNotFound
+	default:
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		log.Printf("schwab: %s %s returned %d: %s", method, path, resp.StatusCode, body)
+		var apiErr Error
+		if len(body) > 0 && json.Unmarshal(body, &apiErr) == nil && apiErr.HasContent() {
+			return nil, &apiErr
+		}
+		return nil, fmt.Errorf("schwab: %s %s returned %d: %s", method, path, resp.StatusCode, body)
+	}
+}
+
 // Request makes an authenticated API request with exponential backoff retry on 429/5xx.
 func (c *Client) Request(client *http.Client, method, path string, body []byte) (*http.Response, error) {
 	urlString := apiBaseURL + path

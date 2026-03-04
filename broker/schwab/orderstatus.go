@@ -5,7 +5,8 @@ import "fmt"
 type OrderStatus uint8
 
 const (
-	OrderStatusAwaitingParentOrder    OrderStatus = iota // waiting for parent order to fill
+	OrderStatusAwaitingNone           OrderStatus = iota // empty value, not sent in JSON
+	OrderStatusAwaitingParentOrder                       // waiting for parent order to fill
 	OrderStatusAwaitingCondition                         // waiting for condition to be met
 	OrderStatusAwaitingStopCondition                     // waiting for stop condition to be met
 	OrderStatusAwaitingManualReview                      // order is under manual review
@@ -79,6 +80,8 @@ func ParseOrderStatus(s string) (OrderStatus, error) {
 
 func (o OrderStatus) String() string {
 	switch o {
+	case OrderStatusAwaitingNone:
+		return "NONE"
 	case OrderStatusAwaitingParentOrder:
 		return "AWAITING_PARENT_ORDER"
 	case OrderStatusAwaitingCondition:
@@ -128,6 +131,8 @@ func (o OrderStatus) String() string {
 
 func (o OrderStatus) GoString() string {
 	switch o {
+	case OrderStatusAwaitingNone:
+		return "OrderStatusAwaitingNone"
 	case OrderStatusAwaitingParentOrder:
 		return "OrderStatusAwaitingParentOrder"
 	case OrderStatusAwaitingCondition:

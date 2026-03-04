@@ -20,7 +20,7 @@
   "taxLotMethod": "can be FIFO, LIFO, HIGH_COST, LOW_COST, AVERAGE_COST, SPECIFIC_LOT, LOSS_HARVESTER",
   "orderLegCollection": [
     {
-      "orderLegType": "EQUITY",
+      "orderLegType": "can be EQUITY, OPTION, INDEX, MUTUAL_FUND, CASH_EQUIVALENT, FIXED_INCOME, CURRENCY, COLLECTIVE_INVESTMENT",
       "legId": 0,
       "instrument": {
         "cusip": "string",
@@ -28,13 +28,13 @@
         "description": "string",
         "instrumentId": 0,
         "netChange": 0,
-        "type": "SWEEP_VEHICLE"
+        "type": "can be SWEEP_VEHICLE, SAVINGS, MONEY_MARKET_FUND, UNKNOWN (for cash/equity), or VANILLA, BINARY, BARRIER, UNKNOWN (for account option)"
       },
-      "instruction": "BUY",
-      "positionEffect": "OPENING",
+      "instruction": "can be BUY, SELL, BUY_TO_COVER, SELL_SHORT, BUY_TO_OPEN, BUY_TO_CLOSE, SELL_TO_OPEN, SELL_TO_CLOSE, EXCHANGE, SELL_SHORT_EXEMPT",
+      "positionEffect": "can be OPENING, CLOSING, AUTOMATIC",
       "quantity": 0,
-      "quantityType": "ALL_SHARES",
-      "divCapGains": "REINVEST",
+      "quantityType": "can be ALL_SHARES, DOLLARS, SHARES",
+      "divCapGains": "can be REINVEST, PAYOUT",
       "toSymbol": "string"
     }
   ],

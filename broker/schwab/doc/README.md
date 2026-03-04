@@ -330,22 +330,22 @@ Options symbols are broken down as:
 - Call/Put (1 character)
 - Strike Price (5+3=8 characters)
 
-Option Symbol: XYZ 210115C00050000  
-Stock Symbol: XYZ  
-Expiration: 2021/01/15  
-Type: Call  
+Option Symbol: XYZ 210115C00050000
+Stock Symbol: XYZ
+Expiration: 2021/01/15
+Type: Call
 Strike Price: $50.00
 
-Option Symbol: XYZ 210115C00055000  
-Stock Symbol: XYZ  
-Expiration: 2021/01/15  
-Type: Call  
+Option Symbol: XYZ 210115C00055000
+Stock Symbol: XYZ
+Expiration: 2021/01/15
+Type: Call
 Strike Price: $55.00
 
-Option Symbol: XYZ 210115C00062500  
-Stock Symbol: XYZ  
-Expiration: 2021/01/15  
-Type: Call  
+Option Symbol: XYZ 210115C00062500
+Stock Symbol: XYZ
+Expiration: 2021/01/15
+Type: Call
 Strike Price: $62.50
 
 ## Instruction for EQUITY and OPTION
@@ -364,7 +364,6 @@ Strike Price: $62.50
 ## Buy Market: Stock
 
 Buy 15 shares of XYZ at the Market good for the Day.
-
 
 ```json
 {
