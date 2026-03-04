@@ -1,0 +1,76 @@
+{
+  "session": "can be NORMAL, AM, PM, SEAMLESS",
+  "duration": "can be DAY, GOOD_TILL_CANCEL, FILL_OR_KILL, IMMEDIATE_OR_CANCEL, END_OF_WEEK, END_OF_MONTH, NEXT_END_OF_MONTH, UNKNOWN",
+  "orderType": "can be MARKET, LIMIT, STOP, STOP_LIMIT, TRAILING_STOP, CABINET, NON_MARKETABLE, MARKET_ON_CLOSE, EXERCISE, TRAILING_STOP_LIMIT, NET_DEBIT, NET_CREDIT, NET_ZERO, LIMIT_ON_CLOSE, UNKNOWN",
+  "cancelTime": "2026-03-04T08:45:52.542Z",
+  "complexOrderStrategyType": "can be NONE, COVERED, VERTICAL, BACK_RATIO, CALENDAR, DIAGONAL, STRADDLE, STRANGLE, COLLAR_SYNTHETIC, BUTTERFLY, CONDOR, IRON_CONDOR, VERTICAL_ROLL, COLLAR_WITH_STOCK, DOUBLE_DIAGONAL, UNBALANCED_BUTTERFLY, UNBALANCED_CONDOR, UNBALANCED_IRON_CONDOR, UNBALANCED_VERTICAL_ROLL, MUTUAL_FUND_SWAP, CUSTOM",
+  "quantity": 0,
+  "filledQuantity": 0,
+  "remainingQuantity": 0,
+  "destinationLinkName": "can be INET, ECN_ARCA, CBOE, AMEX, PHLX, ISE, BOX, NYSE, NASDAQ, BATS, C2, AUTO",
+  "releaseTime": "2026-03-04T08:45:52.542Z",
+  "stopPrice": 0,
+  "stopPriceLinkBasis": "can be MANUAL, BASE, TRIGGER, LAST, BID, ASK, ASK_BID, MARK, AVERAGE",
+  "stopPriceLinkType": "can be VALUE, PERCENT, TICK",
+  "stopPriceOffset": 0,
+  "stopType": "can be STANDARD, BID, ASK, LAST, MARK",
+  "priceLinkBasis": "can be MANUAL, BASE, TRIGGER, LAST, BID, ASK, ASK_BID, MARK, AVERAGE",
+  "priceLinkType": "can be VALUE, PERCENT, TICK",
+  "price": 0,
+  "taxLotMethod": "can be FIFO, LIFO, HIGH_COST, LOW_COST, AVERAGE_COST, SPECIFIC_LOT, LOSS_HARVESTER",
+  "orderLegCollection": [
+    {
+      "orderLegType": "EQUITY",
+      "legId": 0,
+      "instrument": {
+        "cusip": "string",
+        "symbol": "string",
+        "description": "string",
+        "instrumentId": 0,
+        "netChange": 0,
+        "type": "SWEEP_VEHICLE"
+      },
+      "instruction": "BUY",
+      "positionEffect": "OPENING",
+      "quantity": 0,
+      "quantityType": "ALL_SHARES",
+      "divCapGains": "REINVEST",
+      "toSymbol": "string"
+    }
+  ],
+  "activationPrice": 0,
+  "specialInstruction": "can be ALL_OR_NONE, DO_NOT_REDUCE, ALL_OR_NONE_DO_NOT_REDUCE",
+  "orderStrategyType": "can be SINGLE, CANCEL, RECALL, PAIR, FLATTEN, TWO_DAY_SWAP, BLAST_ALL, OCO, TRIGGER",
+  "orderId": 0,
+  "cancelable": false,
+  "editable": false,
+  "status": "can be AWAITING_PARENT_ORDER, AWAITING_CONDITION, AWAITING_STOP_CONDITION, AWAITING_MANUAL_REVIEW, ACCEPTED, AWAITING_UR_OUT, PENDING_ACTIVATION, QUEUED, WORKING, REJECTED, PENDING_CANCEL, CANCELED, PENDING_REPLACE, REPLACED, FILLED, EXPIRED, NEW, AWAITING_RELEASE_TIME, PENDING_ACKNOWLEDGEMENT, PENDING_RECALL, UNKNOWN",
+  "enteredTime": "2026-03-04T08:45:52.542Z",
+  "closeTime": "2026-03-04T08:45:52.542Z",
+  "accountNumber": 0,
+  "orderActivityCollection": [
+    {
+      "activityType": "can be EXECUTION, ORDER_ACTION",
+      "executionType": "FILL",
+      "quantity": 0,
+      "orderRemainingQuantity": 0,
+      "executionLegs": [
+        {
+          "legId": 0,
+          "price": 0,
+          "quantity": 0,
+          "mismarkedQuantity": 0,
+          "instrumentId": 0,
+          "time": "2026-03-04T08:45:52.542Z"
+        }
+      ]
+    }
+  ],
+  "replacingOrderCollection": [
+    "string"
+  ],
+  "childOrderStrategies": [
+    "string"
+  ],
+  "statusDescription": "string"
+}
