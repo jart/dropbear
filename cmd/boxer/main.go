@@ -10,9 +10,6 @@ import (
 )
 
 var (
-	dataset       = flag.String("dataset", "OPRA.PILLAR", "dataset")
-	dataPath      = flag.String("data", "", "path to data")
-	defsPath      = flag.String("defs", "", "path to defs")
 	widthFlag     = decimal.Flag("width", "50", "box width")
 	multFlag      = flag.Int("mult", 100, "multiplier")
 	edgeFlag      = decimal.Flag("edge", "0.10", "min edge")
