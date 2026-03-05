@@ -19,17 +19,18 @@ func main() {
 	time.Sleep(1 * time.Second) // wait for streamer connection to establish
 
 	orderID, err := client.CreateOrder(&schwab.Order{
-		OrderType: schwab.OrderTypeLimit,
-		Price:     decimal.Parse("28.47"),
-		Duration:  schwab.DurationDay,
-		Session:   schwab.SessionSeamless,
+		OrderType:         schwab.OrderTypeLimit,
+		Price:             decimal.Parse("0.50"),
+		Duration:          schwab.DurationDay,
+		Session:           schwab.SessionNormal,
+		OrderStrategyType: schwab.OrderStrategyTypeSingle,
 		OrderLegCollection: []schwab.OrderLeg{
 			{
-				Instruction: schwab.InstructionBuy,
+				Instruction: schwab.InstructionBuyToOpen,
 				Quantity:    decimal.FromInt(1),
 				Instrument: schwab.Instrument{
-					Symbol: "T",
-					Type:   schwab.AssetTypeEquity,
+					Symbol: "SPXW  260305P06720000",
+					Type:   schwab.AssetTypeOption,
 				},
 			},
 		},

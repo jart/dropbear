@@ -5,8 +5,8 @@ import "fmt"
 type Instruction uint8
 
 const (
-	InstructionBuy         Instruction = iota // buy instrument
-	InstructionSell                           // sell instrument
+	InstructionBuy         Instruction = iota // buy instrument (not possible with options, use BuyToOpen, etc. instead)
+	InstructionSell                           // sell instrument (not possible with options, use SellToClose, etc. instead)
 	InstructionBuyToCover                     // buy to cover short equity position
 	InstructionSellShort                      // sell short equity
 	InstructionBuyToOpen                      // buy to open option position
