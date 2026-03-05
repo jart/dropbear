@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 
@@ -25,7 +26,9 @@ var (
 	greedFlag     = decimal.Flag("greed", "0.00", "greed factor for spread placement")
 	patienceFlag  = clocky.DurationFlag("patience", "500ms", "patience")
 	cashFlag      = decimal.Flag("cash", "100000", "starting cash")
+	demandFlag    = decimal.Flag("demand", "60", "min profit to pounce")
 	verbose       = flag.Bool("v", false, "verbose")
+	dry           = flag.Bool("dry", false, "dry run (don't send orders)")
 )
 
 var (
@@ -152,7 +155,8 @@ func onOptionTick(t OptionTick) {
 }
 
 func onOrderUpdate(event *schwab.OrderEvent) {
-	log.Printf("order %s: %s", event.SchwabOrderID, event.BaseEvent.EventType)
+	pretty, _ := json.MarshalIndent(json.RawMessage(event.RawData), "  ", "  ")
+	log.Printf("order %s: %s\n  %s", event.SchwabOrderID, event.BaseEvent.EventType, pretty)
 	fill := event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo
 	if fill == nil {
 		return

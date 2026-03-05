@@ -14,7 +14,6 @@ var (
 	tick10  = decimal.Parse("0.10")
 	three   = decimal.FromInt(3)
 	traded  bool
-	minPnl  = decimal.FromInt(35)
 	tradeMu sync.Mutex
 )
 
@@ -150,6 +149,19 @@ func makeDecisions() {
 				bs.edge = sellEdge
 			}
 
+			// skip boxes that would clobber existing positions
+			if bs.buying {
+				if !canOpen(spLow.call, true) || !canOpen(spHigh.call, false) ||
+					!canOpen(spHigh.put, true) || !canOpen(spLow.put, false) {
+					continue
+				}
+			} else {
+				if !canOpen(spLow.call, false) || !canOpen(spHigh.call, true) ||
+					!canOpen(spHigh.put, false) || !canOpen(spLow.put, true) {
+					continue
+				}
+			}
+
 			if bs.profit.IsPositive() && (best == nil || bs.profit.Cmp(best.profit) > 0) {
 				clone := bs
 				best = &clone
@@ -166,6 +178,10 @@ func makeDecisions() {
 		side = "SELL"
 	}
 	dollars := best.profit.MulInt(100)
+	if dollars.Cmp(*demandFlag) < 0 {
+		return
+	}
+
 	log.Printf("best box: %s %s/%s w=%s price=%s profit=%s edge=%s ($%s/contract)",
 		side, best.low.Format(0), best.high.Format(0), best.width.Format(0),
 		best.price.Format(2), best.profit.Format(2), best.edge.Format(2),
@@ -183,8 +199,9 @@ func makeDecisions() {
 		logLeg("BUY ", "P", best.putLow)
 	}
 
-	// pounce if profitable enough (once only)
-	if dollars.Cmp(minPnl) < 0 {
+	if *dry {
+		log.Printf("DRY RUN: would pounce on %s box %s/%s for $%s profit",
+			side, best.low.Format(0), best.high.Format(0), dollars.Format(2))
 		return
 	}
 	tradeMu.Lock()
@@ -259,6 +276,17 @@ func makeDecisions() {
 		}(l)
 	}
 	wg.Wait()
+}
+
+// canOpen returns true if opening this leg won't reduce an existing position.
+// Buying requires qty >= 0 (no existing short to clobber).
+// Selling requires qty <= 0 (no existing long to clobber).
+func canOpen(opt *Option, buying bool) bool {
+	qty := holdings[opt.OSI()]
+	if buying {
+		return qty >= 0
+	}
+	return qty <= 0
 }
 
 func logLeg(action, class string, opt *Option) {

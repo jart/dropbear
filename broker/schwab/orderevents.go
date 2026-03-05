@@ -7,9 +7,10 @@ import (
 
 // OrderEvent is the top-level JSON envelope for ACCT_ACTIVITY messages.
 type OrderEvent struct {
-	SchwabOrderID string    `json:"SchwabOrderID"` // e.g. "1005609024296"
-	AccountNumber string    `json:"AccountNumber"` // e.g. "40595135"
-	BaseEvent     BaseEvent `json:"BaseEvent"`
+	SchwabOrderID string          `json:"SchwabOrderID"` // e.g. "1005609024296"
+	AccountNumber string          `json:"AccountNumber"` // e.g. "40595135"
+	BaseEvent     BaseEvent       `json:"BaseEvent"`
+	RawData       json.RawMessage `json:"-"` // original JSON (not marshaled back out)
 }
 
 // BaseEvent contains the event type and the event-specific payload.
@@ -118,5 +119,6 @@ func ParseOrderEvent(data json.RawMessage) *OrderEvent {
 	if json.Unmarshal(data, &event) != nil {
 		return nil
 	}
+	event.RawData = data
 	return &event
 }
