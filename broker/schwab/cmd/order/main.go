@@ -1,12 +1,13 @@
 package main
 
 import (
-	"dropbear/broker/schwab"
-	"dropbear/decimal"
-	"dropbear/loggy"
 	"encoding/json"
 	"log"
 	"time"
+
+	"dropbear/broker/schwab"
+	"dropbear/decimal"
+	"dropbear/loggy"
 )
 
 func main() {
@@ -40,8 +41,8 @@ func main() {
 	}
 	log.Printf("created order %d", orderID)
 
-	for update := range updates {
-		pretty, _ := json.MarshalIndent(json.RawMessage(update.RawData), "  ", "  ")
-		log.Printf("order %s: %s\n  %s", update.SchwabOrderID, update.Event, pretty)
+	for event := range updates {
+		pretty, _ := json.MarshalIndent(event, "  ", "  ")
+		log.Printf("order %s: %s\n  %s", event.SchwabOrderID, event.BaseEvent.EventType, pretty)
 	}
 }

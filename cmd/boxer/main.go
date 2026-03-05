@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"log"
 
@@ -133,7 +132,6 @@ func onOptionTick(t OptionTick) {
 	// log.Printf("tick %s bid %s ask %s", option, t.Bid, t.Ask)
 }
 
-func onOrderUpdate(update schwab.OrderUpdate) {
-	pretty, _ := json.MarshalIndent(json.RawMessage(update.RawData), "  ", "  ")
-	log.Printf("order %s: %s\n  %s", update.SchwabOrderID, update.Event, pretty)
+func onOrderUpdate(event *schwab.OrderEvent) {
+	log.Printf("order %s: %s", event.SchwabOrderID, event.BaseEvent.EventType)
 }

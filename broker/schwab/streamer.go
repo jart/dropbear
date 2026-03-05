@@ -34,21 +34,11 @@ func (c *Client) GetStreamerInfo() (*StreamerInfo, error) {
 	return &pref.StreamerInfo[0], nil
 }
 
-// OrderUpdate represents an account activity event from the Schwab streamer WebSocket.
-type OrderUpdate struct {
-	Event         string          // e.g. "OrderCreated", "OrderFillCompleted", "CancelAccepted"
-	SchwabOrderID string          // Schwab's internal order ID
-	AccountNumber string          // account number
-	Seq           int             // sequence number within the stream
-	Timestamp     int64           // stream message timestamp (millis since epoch)
-	RawData       json.RawMessage // the full JSON from field "3" (deeply nested order event data)
-}
-
 // OrderUpdates returns a channel that receives order update events via the Schwab streamer WebSocket.
-// Subscribes to the ACCT_ACTIVITY service and emits an OrderUpdate for each event.
+// Subscribes to the ACCT_ACTIVITY service and emits an *OrderEvent for each event.
 // Reconnects automatically with exponential backoff on disconnection.
-func (c *Client) OrderUpdates() <-chan OrderUpdate {
-	ch := make(chan OrderUpdate, 64)
+func (c *Client) OrderUpdates() <-chan *OrderEvent {
+	ch := make(chan *OrderEvent, 64)
 	d := &orderUpdatesDaemon{client: c, ch: ch}
 	go d.run()
 	return ch
@@ -56,7 +46,7 @@ func (c *Client) OrderUpdates() <-chan OrderUpdate {
 
 type orderUpdatesDaemon struct {
 	client *Client
-	ch     chan<- OrderUpdate
+	ch     chan<- *OrderEvent
 }
 
 func (d *orderUpdatesDaemon) run() {
@@ -173,23 +163,13 @@ func (d *orderUpdatesDaemon) impl() error {
 				continue
 			}
 			for _, content := range data.Content {
-				update := OrderUpdate{
-					Event:     content.MessageType,
-					Seq:       content.Seq,
-					Timestamp: data.Timestamp,
+				if content.MessageData == "" {
+					continue
 				}
-				if content.MessageData != "" {
-					update.RawData = json.RawMessage(content.MessageData)
-					// extract SchwabOrderID and AccountNumber from the nested JSON
-					var base struct {
-						SchwabOrderID string `json:"SchwabOrderID"`
-						AccountNumber string `json:"AccountNumber"`
-					}
-					json.Unmarshal([]byte(content.MessageData), &base)
-					update.SchwabOrderID = base.SchwabOrderID
-					update.AccountNumber = base.AccountNumber
+				event := ParseOrderEvent(json.RawMessage(content.MessageData))
+				if event != nil {
+					d.ch <- event
 				}
-				d.ch <- update
 			}
 		}
 	}

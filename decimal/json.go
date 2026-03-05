@@ -2,11 +2,14 @@ package decimal
 
 // UnmarshalJSON implements json.Unmarshaler.
 // Accepts JSON strings ("123.45"), numbers (123.45), null, and "".
-// We assume the input is well-formed JSON. Don't use directly.
+// Also accepts Schwab's protobuf object format (see unmarshalSchwabProto).
 func (d *Decimal) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || (len(data) == 4 && data[0] == 'n') { // null
 		*d = Zero
 		return nil
+	}
+	if data[0] == '{' {
+		return unmarshalSchwabProto(d, data)
 	}
 	if data[0] == '"' {
 		if len(data) == 2 || data[1] == '"' { // "" or empty

@@ -89,6 +89,34 @@ func TestDecimalJSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDecimalUnmarshalJSONSchwabProto(t *testing.T) {
+	tests := []struct {
+		input string
+		want  Decimal
+	}{
+		// Schwab protobuf format: lo is raw int64 (value * 10^6)
+		{`{"lo": "18500000", "signScale": 12}`, Parse("18.5")},
+		{`{"lo": "19000000", "signScale": 12}`, Parse("19")},
+		{`{"lo": "1000000", "signScale": 12}`, Parse("1")},
+		{`{"lo": "650000", "signScale": 12}`, Parse("0.65")},
+		{`{"lo": "50000000", "signScale": 12}`, Parse("50")},
+		{`{"signScale": 12}`, Zero}, // no lo field = zero
+		{`{"lo": "-18500000", "signScale": 12}`, Parse("-18.5")},
+		{`{"lo": "18600000", "signScale": 13}`, Parse("18.6")}, // signScale ignored
+	}
+
+	for _, tt := range tests {
+		var d Decimal
+		if err := json.Unmarshal([]byte(tt.input), &d); err != nil {
+			t.Errorf("Unmarshal(%s) error: %v", tt.input, err)
+			continue
+		}
+		if d != tt.want {
+			t.Errorf("Unmarshal(%s) = %v, want %v", tt.input, d, tt.want)
+		}
+	}
+}
+
 func TestDecimalUnmarshalJSONNullAndEmpty(t *testing.T) {
 	// null and "" should parse as zero (for Alpaca API compatibility)
 	tests := []struct {
