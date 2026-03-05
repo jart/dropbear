@@ -126,14 +126,27 @@ func (c *Client) GetAccountNumbers() ([]LinkedAccount, error) {
 	return result, nil
 }
 
-// GetAccounts retrieves all accounts linked to the authenticated user.
+// GetAccounts retrieves all accounts linked to the authenticated user, including positions.
 func (c *Client) GetAccounts() ([]AccountResponse, error) {
 	var result []AccountResponse
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/accounts", nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/accounts?fields=positions", nil, &result)
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+// GetAccount retrieves a single account by hash, including positions.
+func (c *Client) GetAccount() (*AccountResponse, error) {
+	token := getToken()
+	var result AccountResponse
+	err := c.RequestJSON(netty.BulkHttpClient, "GET",
+		fmt.Sprintf("/accounts/%s?fields=positions", token.AccountHash),
+		nil, &result)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // SetAccount discovers the first linked account and caches its hash value.

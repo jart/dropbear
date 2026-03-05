@@ -1,6 +1,7 @@
 {
   "securitiesAccount": {
     "accountNumber": "string",
+    "type": "MARGIN",
     "roundTrips": 0,
     "isDayTrader": false,
     "isClosingOnlyRestricted": false,
@@ -21,7 +22,9 @@
           "description": "string",
           "instrumentId": 0,
           "netChange": 0,
-          "type": "SWEEP_VEHICLE"
+          "type": "VANILLA or EXCHANGE_TRADED_FUND or SWEEP_VEHICLE",
+          "putCall" : "PUT or CALL",
+          "assetType": "EQUITY or OPTION or COLLECTIVE_INVESTMENT"
         },
         "marketValue": 0,
         "maintenanceRequirement": 0,
@@ -34,7 +37,83 @@
         "previousSessionLongQuantity": 0,
         "previousSessionShortQuantity": 0,
         "currentDayCost": 0
+      },
+
+      {
+        "shortQuantity": 100.0,
+        "averagePrice": 93.6632,
+        "currentDayProfitLoss": 21.0,
+        "currentDayProfitLossPercentage": 0.21,
+        "longQuantity": 0.0,
+        "settledLongQuantity": 0.0,
+        "settledShortQuantity": -100.0,
+        "instrument": {
+          "assetType": "EQUITY",
+          "cusip": "64110L106",
+          "symbol": "NFLX",
+          "netChange": -0.205
+        },
+        "marketValue": -9845.0,
+        "maintenanceRequirement": 0.0,
+        "averageShortPrice": 93.0,
+        "taxLotAverageShortPrice": 93.6632,
+        "shortOpenProfitLoss": -478.68,
+        "previousSessionShortQuantity": 100.0,
+        "currentDayCost": 0.0
+      },
+
+      {
+        "shortQuantity": 0.0,
+        "averagePrice": 76.031111111111,
+        "currentDayProfitLoss": -1116.0,
+        "currentDayProfitLossPercentage": -1.65,
+        "longQuantity": 900.0,
+        "settledLongQuantity": 900.0,
+        "settledShortQuantity": 0.0,
+        "instrument": {
+          "assetType": "COLLECTIVE_INVESTMENT",
+          "cusip": "46428Q109",
+          "symbol": "SLV",
+          "description": "iShares Silver Trust",
+          "type": "EXCHANGE_TRADED_FUND"
+        },
+        "marketValue": 66690.0,
+        "maintenanceRequirement": 0.0,
+        "averageLongPrice": 76.031111111111,
+        "taxLotAverageLongPrice": 76.031111111111,
+        "longOpenProfitLoss": -1737.999999999907,
+        "previousSessionLongQuantity": 900.0,
+        "currentDayCost": 0.0
+      },
+
+
+      {
+        "shortQuantity": 1.0,
+        "averagePrice": 19.0,
+        "currentDayProfitLoss": 270.0,
+        "currentDayProfitLossPercentage": 14.21,
+        "longQuantity": 0.0,
+        "settledLongQuantity": 0.0,
+        "settledShortQuantity": 0.0,
+        "instrument": {
+          "assetType": "OPTION",
+          "cusip": "0SPXW.C566775000",
+          "symbol": "SPXW  260305C06775000",
+          "description": "S & P 500 INDEX 03/05/2026 $6775 Call",
+          "netChange": -78.71,
+          "type": "VANILLA",
+          "putCall": "CALL",
+          "underlyingSymbol": "$SPX"
+        },
+        "marketValue": -1630.0,
+        "maintenanceRequirement": 0.0,
+        "averageShortPrice": 19.0,
+        "taxLotAverageShortPrice": 19.0,
+        "shortOpenProfitLoss": 270.0,
+        "previousSessionShortQuantity": 0.0,
+        "currentDayCost": -1900.0
       }
+
     ],
     "initialBalances": {
       "accruedInterest": 0,
@@ -112,6 +191,10 @@
       "isInCall": 0,
       "stockBuyingPower": 0,
       "optionBuyingPower": 0
+    },
+    "aggregatedBalance": {
+      "currentLiquidationValue": 0,
+      "liquidationValue": 0
     }
   }
 }

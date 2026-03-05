@@ -7,12 +7,15 @@ import (
 
 // Instrument identifies a tradeable security.
 type Instrument struct {
-	CUSIP        string          `json:"cusip,omitempty"`
-	Symbol       string          `json:"symbol"`
-	Description  string          `json:"description,omitempty"`
-	InstrumentID int64           `json:"instrumentId,omitempty"`
-	NetChange    decimal.Decimal `json:"netChange,omitempty"`
-	Type         AssetType       `json:"assetType"`
+	CUSIP            string          `json:"cusip,omitempty"`
+	Symbol           string          `json:"symbol"`
+	Description      string          `json:"description,omitempty"`
+	InstrumentID     int64           `json:"instrumentId,omitempty"`
+	NetChange        decimal.Decimal `json:"netChange,omitempty"`
+	Type             AssetType       `json:"assetType"`
+	InstrumentType   string          `json:"type,omitempty"`             // e.g. "VANILLA", "EXCHANGE_TRADED_FUND", "SWEEP_VEHICLE"
+	PutCall          string          `json:"putCall,omitempty"`          // "PUT" or "CALL" (options only)
+	UnderlyingSymbol string          `json:"underlyingSymbol,omitempty"` // e.g. "$SPX" (options only)
 }
 
 // OrderLeg represents a single leg in an order.
