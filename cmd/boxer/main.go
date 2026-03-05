@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 
@@ -16,7 +17,6 @@ import (
 
 var (
 	widthFlag     = decimal.Flag("width", "50", "box width")
-	multFlag      = flag.Int("mult", 100, "multiplier")
 	edgeFlag      = decimal.Flag("edge", "0.10", "min edge")
 	maxEdgeFlag   = decimal.Flag("maxedge", "10.00", "max edge")
 	maxSpreadFlag = decimal.Flag("maxspread", "1.00", "max spread")
@@ -115,7 +115,7 @@ func onFutureTick(t FutureTick) {
 	future.Bid = t.Bid
 	future.Ask = t.Ask
 	future.Price = t.Bid.Add(t.Ask).DivInt(2)
-	log.Printf("tick %s mid %s bid %s ask %s", future.Sym, future.Price, t.Bid, t.Ask)
+	// log.Printf("tick %s mid %s bid %s ask %s", future.Sym, future.Price, t.Bid, t.Ask)
 }
 
 func onOptionDef(o *Option) {
@@ -130,9 +130,10 @@ func onOptionTick(t OptionTick) {
 	}
 	option.Bid = t.Bid
 	option.Ask = t.Ask
-	log.Printf("tick %s bid %s ask %s", option, t.Bid, t.Ask)
+	// log.Printf("tick %s bid %s ask %s", option, t.Bid, t.Ask)
 }
 
 func onOrderUpdate(update schwab.OrderUpdate) {
-	log.Printf("order %s: %s", update.SchwabOrderID, update.Event)
+	pretty, _ := json.MarshalIndent(json.RawMessage(update.RawData), "  ", "  ")
+	log.Printf("order %s: %s\n  %s", update.SchwabOrderID, update.Event, pretty)
 }

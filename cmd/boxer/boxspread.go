@@ -2,12 +2,30 @@ package main
 
 import (
 	"dropbear/broker/databento"
+	"dropbear/broker/schwab"
 	"dropbear/decimal"
 	"log"
 	"sort"
+	"sync"
 )
 
-var tick = decimal.Parse("0.05")
+var (
+	tick05  = decimal.Parse("0.05")
+	tick10  = decimal.Parse("0.10")
+	three   = decimal.FromInt(3)
+	traded  bool
+	minPnl  = decimal.FromInt(35)
+	tradeMu sync.Mutex
+)
+
+// optionTick returns the minimum tick size for a Penny Pilot option.
+// Options priced under $3 tick in $0.05; $3 and over tick in $0.10.
+func optionTick(price decimal.Decimal) decimal.Decimal {
+	if price.Cmp(three) < 0 {
+		return tick05
+	}
+	return tick10
+}
 
 type strikePair struct {
 	call *Option
@@ -30,6 +48,9 @@ type boxSpread struct {
 }
 
 func makeDecisions() {
+	if traded {
+		return
+	}
 
 	// group options by strike into call/put pairs
 	minSpread := decimal.Parse("0.10")
@@ -83,18 +104,28 @@ func makeDecisions() {
 			midPL := spLow.put.Bid.Add(spLow.put.Ask).DivInt(2)
 			midPH := spHigh.put.Bid.Add(spHigh.put.Ask).DivInt(2)
 
-			// box midpoint = net cost to buy the box at midpoint
-			// Buy C(low) + Sell C(high) + Buy P(high) + Sell P(low)
-			boxMid := midCL.Sub(midCH).Add(midPH).Sub(midPL)
+			// round each leg's midpoint to its tick, then compute box price
+			// buying: buy at truncated mid (pay less), sell at truncated mid (receive less)
+			// selling: buy at away mid (pay more), sell at away mid (receive more)
+			buyCL := midCL.QuantizeTruncate(optionTick(midCL))
+			buyCH := midCH.QuantizeTruncate(optionTick(midCH))
+			buyPL := midPL.QuantizeTruncate(optionTick(midPL))
+			buyPH := midPH.QuantizeTruncate(optionTick(midPH))
+			sellCL := midCL.QuantizeAway(optionTick(midCL))
+			sellCH := midCH.QuantizeAway(optionTick(midCH))
+			sellPL := midPL.QuantizeAway(optionTick(midPL))
+			sellPH := midPH.QuantizeAway(optionTick(midPH))
 
-			// evaluate buying: round price down, profit = width - price
-			buyPrice := boxMid.QuantizeTruncate(tick)
+			// Buy box: Buy C(low) + Sell C(high) + Buy P(high) + Sell P(low)
+			buyPrice := buyCL.Sub(buyCH).Add(buyPH).Sub(buyPL)
 			buyProfit := width.Sub(buyPrice)
-			buyEdge := boxMid.Sub(buyPrice)
 
-			// evaluate selling: round price up, profit = price - width
-			sellPrice := boxMid.QuantizeAway(tick)
+			// Sell box: Sell C(low) + Buy C(high) + Sell P(high) + Buy P(low)
+			sellPrice := sellCL.Sub(sellCH).Add(sellPH).Sub(sellPL)
 			sellProfit := sellPrice.Sub(width)
+
+			boxMid := midCL.Sub(midCH).Add(midPH).Sub(midPL)
+			buyEdge := boxMid.Sub(buyPrice)
 			sellEdge := sellPrice.Sub(boxMid)
 
 			var bs boxSpread
@@ -134,7 +165,7 @@ func makeDecisions() {
 	if !best.buying {
 		side = "SELL"
 	}
-	dollars := best.profit.MulInt(int(*multFlag))
+	dollars := best.profit.MulInt(100)
 	log.Printf("best box: %s %s/%s w=%s price=%s profit=%s edge=%s ($%s/contract)",
 		side, best.low.Format(0), best.high.Format(0), best.width.Format(0),
 		best.price.Format(2), best.profit.Format(2), best.edge.Format(2),
@@ -151,6 +182,83 @@ func makeDecisions() {
 		logLeg("SELL", "P", best.putHigh)
 		logLeg("BUY ", "P", best.putLow)
 	}
+
+	// pounce if profitable enough (once only)
+	if dollars.Cmp(minPnl) < 0 {
+		return
+	}
+	tradeMu.Lock()
+	if traded {
+		tradeMu.Unlock()
+		return
+	}
+	traded = true
+	tradeMu.Unlock()
+
+	log.Printf("POUNCING on %s box %s/%s for $%s profit", side,
+		best.low.Format(0), best.high.Format(0), dollars.Format(2))
+
+	type leg struct {
+		opt         *Option
+		instruction schwab.Instruction
+	}
+	var legs []leg
+	if best.buying {
+		legs = []leg{
+			{best.callLow, schwab.InstructionBuyToOpen},
+			{best.callHigh, schwab.InstructionSellToOpen},
+			{best.putHigh, schwab.InstructionBuyToOpen},
+			{best.putLow, schwab.InstructionSellToOpen},
+		}
+	} else {
+		legs = []leg{
+			{best.callLow, schwab.InstructionSellToOpen},
+			{best.callHigh, schwab.InstructionBuyToOpen},
+			{best.putHigh, schwab.InstructionSellToOpen},
+			{best.putLow, schwab.InstructionBuyToOpen},
+		}
+	}
+
+	var wg sync.WaitGroup
+	for _, l := range legs {
+		wg.Add(1)
+		go func(l leg) {
+			defer wg.Done()
+			mid := l.opt.Bid.Add(l.opt.Ask).DivInt(2)
+			t := optionTick(mid)
+			var price decimal.Decimal
+			if l.instruction == schwab.InstructionBuyToOpen {
+				price = mid.QuantizeTruncate(t)
+			} else {
+				price = mid.QuantizeAway(t)
+			}
+			orderID, err := schwabClient.CreateOrder(&schwab.Order{
+				OrderType:         schwab.OrderTypeLimit,
+				Price:             price,
+				Duration:          schwab.DurationDay,
+				Session:           schwab.SessionNormal,
+				OrderStrategyType: schwab.OrderStrategyTypeSingle,
+				OrderLegCollection: []schwab.OrderLeg{
+					{
+						Instruction: l.instruction,
+						Quantity:    decimal.FromInt(1),
+						Instrument: schwab.Instrument{
+							Symbol: l.opt.OSI(),
+							Type:   schwab.AssetTypeOption,
+						},
+					},
+				},
+			})
+			if err != nil {
+				log.Printf("order FAILED %s %s %s @ %s: %v",
+					l.instruction, l.opt.Class, l.opt.Strike.Format(0), price.Format(2), err)
+				return
+			}
+			log.Printf("order SENT %s %s %s @ %s (id=%d)",
+				l.instruction, l.opt.Class, l.opt.Strike.Format(0), price.Format(2), orderID)
+		}(l)
+	}
+	wg.Wait()
 }
 
 func logLeg(action, class string, opt *Option) {
