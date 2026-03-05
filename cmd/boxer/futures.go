@@ -3,20 +3,19 @@ package main
 import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
-	"dropbear/ds/symbol"
+	"dropbear/decimal"
 	"io"
 	"log"
-	"sync"
 )
 
-var (
-	futuresLock sync.RWMutex
-	futuresByID = make(map[uint32]*Future)
-	es          *Future
-	sr1         *Future
-)
+// FutureTick is a price update for a future.
+type FutureTick struct {
+	ID  uint32
+	Bid decimal.Decimal
+	Ask decimal.Decimal
+}
 
-func monitorFuturesLive(key databento.ApiKey) {
+func streamFutures(key databento.ApiKey, defs chan<- *Future, ticks chan<- FutureTick) {
 	client, err := databento.Dial("GLBX.MDP3", key)
 	if err != nil {
 		log.Fatalf("dial: %v", err)
@@ -41,7 +40,7 @@ func monitorFuturesLive(key databento.ApiKey) {
 		rec, err := client.Read()
 		if err != nil {
 			if err == io.EOF {
-				break
+				return
 			}
 			log.Fatalf("decode: %v", err)
 		}
@@ -51,63 +50,33 @@ func monitorFuturesLive(key databento.ApiKey) {
 		case *databento.SystemMsg:
 			log.Printf("future system message: %s", m.Msg)
 		case *databento.SymbolMappingMsg:
-			onFutureMap(key, m.Header.InstrumentID, m.GetSTypeOutSymbol())
+			id := m.Header.InstrumentID
+			str := m.GetSTypeOutSymbol()
+			log.Printf("map %d -> %s", id, str)
+			sym, year, month, err := parseCME(str)
+			if err != nil {
+				log.Printf("failed to parse cme symbol: %v", err)
+				continue
+			}
+			defs <- &Future{
+				ID:    id,
+				Sym:   sym,
+				Year:  year,
+				Month: month,
+			}
 		case *databento.MBP1:
-			onFutureTick(m)
+			ticks <- FutureTick{
+				ID:  m.Header.InstrumentID,
+				Bid: dbnPrice(m.Levels[0].BidPx),
+				Ask: dbnPrice(m.Levels[0].AskPx),
+			}
 		default:
 			log.Printf("unknown record type: %T", m)
 		}
 	}
 }
 
-func onFutureMap(key databento.ApiKey, id uint32, str string) {
-	log.Printf("map %d -> %s", id, str)
-	sym, year, month, err := parseCME(str)
-	if err != nil {
-		log.Printf("failed to parse cme symbol: %v", err)
-		return
-	}
-	future := &Future{
-		ID:    id,
-		Sym:   sym,
-		Year:  year,
-		Month: month,
-	}
-	futuresByID[id] = future
-	futuresLock.Lock()
-	defer futuresLock.Unlock()
-	if sym == symbol.Symbol('E'|'S'<<8) {
-		es = future
-	} else if sym == symbol.Symbol('S'|'R'<<8|'1'<<16) {
-		sr1 = future
-		// sr1 updates very infrequently, so initialize price from historical api
-		go fetchFuturePrice(key, sr1)
-	} else {
-		log.Fatalf("unknown future symbol: %s", sym)
-	}
-}
-
-func onFutureTick(m *databento.MBP1) {
-	futuresLock.Lock()
-	defer futuresLock.Unlock()
-	future := futuresByID[m.Header.InstrumentID]
-	if future == nil {
-		return
-	}
-	updateFuturePrice(m, future)
-}
-
-func updateFuturePrice(m *databento.MBP1, future *Future) {
-	bid := dbnPrice(m.Levels[0].BidPx)
-	ask := dbnPrice(m.Levels[0].AskPx)
-	mid := bid.Add(ask).DivInt(2)
-	future.Bid = bid
-	future.Ask = ask
-	future.Price = mid
-	log.Printf("tick %s mid %s bid %s ask %s", future.Sym, mid, bid, ask)
-}
-
-func fetchFuturePrice(key databento.ApiKey, future *Future) {
+func fetchFuturePrice(key databento.ApiKey, future *Future, ticks chan<- FutureTick) {
 	client := databento.NewHistoricalClient(key)
 	start := clocky.Now().Add(-clocky.Day).In(clocky.UTC)
 	end := clocky.Now().In(clocky.UTC)
@@ -122,7 +91,9 @@ func fetchFuturePrice(key databento.ApiKey, future *Future) {
 		log.Fatalf("no historical mbp1 records found for %s", future)
 	}
 	rec := recs[0].(*databento.MBP1)
-	futuresLock.Lock()
-	defer futuresLock.Unlock()
-	updateFuturePrice(rec, future)
+	ticks <- FutureTick{
+		ID:  future.ID,
+		Bid: dbnPrice(rec.Levels[0].BidPx),
+		Ask: dbnPrice(rec.Levels[0].AskPx),
+	}
 }

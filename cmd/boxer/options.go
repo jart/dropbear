@@ -7,16 +7,17 @@ import (
 	"io"
 	"log"
 	"time"
-
-	"github.com/emirpasic/gods/v2/sets/treeset"
 )
 
-var (
-	optionsByID     = make(map[uint32]*Option)
-	optionsByStrike = treeset.NewWith(compareOptionByStrike)
-)
+// OptionTick is a price update for an option.
+type OptionTick struct {
+	ID  uint32
+	Bid decimal.Decimal
+	Ask decimal.Decimal
+	TS  clocky.Time
+}
 
-func tradeOptionsLive(key databento.ApiKey) {
+func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- OptionTick) {
 	client, err := databento.Dial("OPRA.PILLAR", key)
 	if err != nil {
 		log.Fatalf("dial: %v", err)
@@ -41,7 +42,7 @@ func tradeOptionsLive(key databento.ApiKey) {
 		rec, err := client.Read()
 		if err != nil {
 			if err == io.EOF {
-				break
+				return
 			}
 			log.Fatalf("decode: %v", err)
 		}
@@ -51,48 +52,44 @@ func tradeOptionsLive(key databento.ApiKey) {
 		case *databento.SystemMsg:
 			log.Printf("option system message: %s", m.Msg)
 		case *databento.SymbolMappingMsg:
-			onOptionMap(m.Header.InstrumentID, m.GetSTypeOutSymbol())
+			id := m.Header.InstrumentID
+			str := m.GetSTypeOutSymbol()
+			log.Printf("map %d -> %s", id, str)
+			sym, strike, class, year, month, day, err := parseOSI(str)
+			if err != nil {
+				log.Printf("failed to parse OSI: %v", err)
+				continue
+			}
+			now := clocky.Now().In(clocky.UTC)
+			todayYear, todayMonth, todayDay := now.Date()
+			if year != todayYear || time.Month(month) != todayMonth || day != todayDay {
+				continue
+			}
+			defs <- &Option{
+				ID:     id,
+				Class:  class,
+				Sym:    sym,
+				Strike: strike,
+				Year:   year,
+				Month:  month,
+				Day:    day,
+			}
 		case *databento.CBBO:
-			onOptionTick(m.TSRecv, m.Header.InstrumentID, dbnPrice(m.Levels[0].BidPx), dbnPrice(m.Levels[0].AskPx))
+			ticks <- OptionTick{
+				ID:  m.Header.InstrumentID,
+				Bid: dbnPrice(m.Levels[0].BidPx),
+				Ask: dbnPrice(m.Levels[0].AskPx),
+				TS:  m.TSRecv,
+			}
 		case *databento.CMBP1:
-			onOptionTick(m.TSRecv, m.Header.InstrumentID, dbnPrice(m.Levels[0].BidPx), dbnPrice(m.Levels[0].AskPx))
+			ticks <- OptionTick{
+				ID:  m.Header.InstrumentID,
+				Bid: dbnPrice(m.Levels[0].BidPx),
+				Ask: dbnPrice(m.Levels[0].AskPx),
+				TS:  m.TSRecv,
+			}
 		default:
 			log.Printf("unknown record type: %T", m)
 		}
 	}
-}
-
-func onOptionMap(id uint32, str string) {
-	log.Printf("map %d -> %s", id, str)
-	sym, strike, class, year, month, day, err := parseOSI(str)
-	if err != nil {
-		log.Printf("failed to parse OSI: %v", err)
-		return
-	}
-	now := clocky.Now().In(clocky.UTC)
-	todayYear, todayMonth, todayDay := now.Date()
-	if year != todayYear || time.Month(month) != todayMonth || day != todayDay {
-		return
-	}
-	option := &Option{
-		ID:     id,
-		Class:  class,
-		Sym:    sym,
-		Strike: strike,
-		Year:   year,
-		Month:  month,
-		Day:    day,
-	}
-	optionsByID[id] = option
-	optionsByStrike.Add(option)
-}
-
-func onOptionTick(ts clocky.Time, instID uint32, bid, ask decimal.Decimal) {
-	ops := optionsByID[instID]
-	if ops == nil {
-		return
-	}
-	ops.Bid = bid
-	ops.Ask = ask
-	log.Printf("tick %s bid %s ask %s", ops, bid, ask)
 }
