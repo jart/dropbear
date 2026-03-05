@@ -11,6 +11,14 @@ func (d *Decimal) UnmarshalJSON(data []byte) error {
 	if data[0] == '{' {
 		return unmarshalSchwabProto(d, data)
 	}
+	if data[0] == 't' { // true
+		*d = FromInt(1)
+		return nil
+	}
+	if data[0] == 'f' { // false
+		*d = Zero
+		return nil
+	}
 	if data[0] == '"' {
 		if len(data) == 2 || data[1] == '"' { // "" or empty
 			*d = Zero

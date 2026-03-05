@@ -36,6 +36,7 @@ var (
 	optionsByID     = make(map[uint32]*Option)
 	optionsByStrike = treeset.NewWith(compareOptionByStrike)
 	schwabClient    *schwab.Client
+	holdings        = make(map[string]int)
 )
 
 func main() {
@@ -46,6 +47,20 @@ func main() {
 
 	key := databento.MustLoadDefaultKey()
 	schwabClient = schwab.NewClient()
+
+	// fetch account positions to populate option holdings
+	acct, err := schwabClient.GetAccount()
+	if err != nil {
+		log.Printf("warning: failed to fetch positions: %v", err)
+	} else {
+		for _, pos := range acct.SecuritiesAccount.Positions {
+			qty := pos.LongQuantity.Sub(pos.ShortQuantity).Int()
+			if qty != 0 {
+				holdings[pos.Instrument.Symbol] = qty
+				log.Printf("holding %s qty %d", pos.Instrument.Symbol, qty)
+			}
+		}
+	}
 
 	futureDefs := make(chan *Future, 64)
 	futureTicks := make(chan FutureTick, 512)
@@ -120,6 +135,10 @@ func onFutureTick(t FutureTick) {
 func onOptionDef(o *Option) {
 	optionsByID[o.ID] = o
 	optionsByStrike.Add(o)
+	if qty, ok := holdings[o.OSI()]; ok {
+		log.Printf("position %s qty %d", o, qty)
+		_ = qty
+	}
 }
 
 func onOptionTick(t OptionTick) {
@@ -134,4 +153,15 @@ func onOptionTick(t OptionTick) {
 
 func onOrderUpdate(event *schwab.OrderEvent) {
 	log.Printf("order %s: %s", event.SchwabOrderID, event.BaseEvent.EventType)
+	fill := event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo
+	if fill == nil {
+		return
+	}
+	osi := fill.OrderInfoForTransactionPosting.Symbol
+	qty := fill.ExecutionInfo.ExecutionQuantity.Int()
+	if fill.OrderInfoForTransactionPosting.BuySellCode == "Sell" {
+		qty = -qty
+	}
+	holdings[osi] += qty
+	log.Printf("fill %s qty now %d", osi, holdings[osi])
 }

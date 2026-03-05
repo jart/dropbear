@@ -18,7 +18,6 @@ type Option struct {
 	Day    int                       // option expiration day
 	Bid    decimal.Decimal           // bid price, e.g. 0.10 (or zero if undefined)
 	Ask    decimal.Decimal           // ask price, e.g. 0.15 (or zero if undefined)
-	Qty    int                       // contracts owned (positive for long, negative for short)
 }
 
 func (o *Option) String() string {
