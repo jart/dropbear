@@ -136,6 +136,3 @@ func onOptionTick(t OptionTick) {
 func onOrderUpdate(update schwab.OrderUpdate) {
 	log.Printf("order %s: %s", update.SchwabOrderID, update.Event)
 }
-
-func makeDecisions() {
-}
