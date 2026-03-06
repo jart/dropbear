@@ -5,6 +5,7 @@ import (
 	"dropbear/broker/schwab"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"fmt"
 	"log"
 	"sort"
 )
@@ -35,6 +36,9 @@ func boxer() {
 	// group options by strike into call/put pairs
 	strikes := make(map[decimal.Decimal]*Strike)
 	for _, opt := range optionsByID {
+		if opt.Bid.IsZero() {
+			continue
+		}
 		spread := opt.Ask.Sub(opt.Bid)
 		if spread.Cmp(*minSpread) < 0 {
 			continue
@@ -162,21 +166,22 @@ func boxer() {
 		return
 	}
 
-	log.Printf("best box: %s %s/%s w=%s price=%s profit=%s edge=%s ($%s/box)",
-		side, best.low.Format(0), best.high.Format(0), best.width.Format(0),
-		best.price.Format(2), best.profit.Format(2), best.edge.Format(2),
-		dollars.Format(2))
-
 	if best.buying {
-		logLeg("BUY ", "C", best.callLow, esMid)
-		logLeg("SELL", "C", best.callHigh, esMid)
-		logLeg("BUY ", "P", best.putHigh, esMid)
-		logLeg("SELL", "P", best.putLow, esMid)
+		log.Printf("best box: %s %s/%s w=%s price=%s profit=%s edge=%s ($%s/box)\n%s\n%s\n%s\n%s",
+			side, best.low.Format(0), best.high.Format(0), best.width.Format(0),
+			best.price.Format(2), best.profit.Format(2), best.edge.Format(2), dollars.Format(2),
+			formatLeg(1, "BUY ", "C", best.callLow, esMid),
+			formatLeg(2, "SELL", "C", best.callHigh, esMid),
+			formatLeg(3, "BUY ", "P", best.putHigh, esMid),
+			formatLeg(4, "SELL", "P", best.putLow, esMid))
 	} else {
-		logLeg("SELL", "C", best.callLow, esMid)
-		logLeg("BUY ", "C", best.callHigh, esMid)
-		logLeg("SELL", "P", best.putHigh, esMid)
-		logLeg("BUY ", "P", best.putLow, esMid)
+		log.Printf("best box: %s %s/%s w=%s price=%s profit=%s edge=%s ($%s/box)\n%s\n%s\n%s\n%s",
+			side, best.low.Format(0), best.high.Format(0), best.width.Format(0),
+			best.price.Format(2), best.profit.Format(2), best.edge.Format(2), dollars.Format(2),
+			formatLeg(1, "SELL", "C", best.callLow, esMid),
+			formatLeg(2, "BUY ", "C", best.callHigh, esMid),
+			formatLeg(3, "SELL", "P", best.putHigh, esMid),
+			formatLeg(4, "BUY ", "P", best.putLow, esMid))
 	}
 
 	if *dry {
@@ -190,17 +195,17 @@ func boxer() {
 
 	if best.buying {
 		best.legs = []*Leg{
-			NewLeg(best.callLow, schwab.InstructionBuyToOpen, legPrice(best.callLow, true, esMid)),
-			NewLeg(best.callHigh, schwab.InstructionSellToOpen, legPrice(best.callHigh, false, esMid)),
-			NewLeg(best.putHigh, schwab.InstructionBuyToOpen, legPrice(best.putHigh, true, esMid)),
-			NewLeg(best.putLow, schwab.InstructionSellToOpen, legPrice(best.putLow, false, esMid)),
+			NewLeg("#1", best.callLow, schwab.InstructionBuyToOpen, legPrice(best.callLow, true, esMid)),
+			NewLeg("#2", best.callHigh, schwab.InstructionSellToOpen, legPrice(best.callHigh, false, esMid)),
+			NewLeg("#3", best.putHigh, schwab.InstructionBuyToOpen, legPrice(best.putHigh, true, esMid)),
+			NewLeg("#4", best.putLow, schwab.InstructionSellToOpen, legPrice(best.putLow, false, esMid)),
 		}
 	} else {
 		best.legs = []*Leg{
-			NewLeg(best.callLow, schwab.InstructionSellToOpen, legPrice(best.callLow, false, esMid)),
-			NewLeg(best.callHigh, schwab.InstructionBuyToOpen, legPrice(best.callHigh, true, esMid)),
-			NewLeg(best.putHigh, schwab.InstructionSellToOpen, legPrice(best.putHigh, false, esMid)),
-			NewLeg(best.putLow, schwab.InstructionBuyToOpen, legPrice(best.putLow, true, esMid)),
+			NewLeg("#1", best.callLow, schwab.InstructionSellToOpen, legPrice(best.callLow, false, esMid)),
+			NewLeg("#2", best.callHigh, schwab.InstructionBuyToOpen, legPrice(best.callHigh, true, esMid)),
+			NewLeg("#3", best.putHigh, schwab.InstructionSellToOpen, legPrice(best.putHigh, false, esMid)),
+			NewLeg("#4", best.putLow, schwab.InstructionBuyToOpen, legPrice(best.putLow, true, esMid)),
 		}
 	}
 
@@ -221,14 +226,14 @@ func canOpen(opt *Option, buying bool) bool {
 	return qty <= 0
 }
 
-func logLeg(action, class string, opt *Option, esMid decimal.Decimal) {
+func formatLeg(num int, action, class string, opt *Option, esMid decimal.Decimal) string {
 	mid := opt.Bid.Add(opt.Ask).DivInt(2)
 	drift := esMid.Sub(opt.ES)
 	fresh := "STALE"
 	if isFresh(opt, esMid) {
 		fresh = "fresh"
 	}
-	log.Printf("  %s %s %s mid=%s bid=%s ask=%s ES%+.2f age=%s [%s]",
-		action, class, opt.Strike.Format(0), mid.Format(2), opt.Bid.Format(2),
+	return fmt.Sprintf("  #%d %s %s %s mid=%s bid=%s ask=%s ES%+.2f age=%s [%s]",
+		num, action, class, opt.Strike.Format(0), mid.Format(2), opt.Bid.Format(2),
 		opt.Ask.Format(2), drift.Float64(), clocky.Since(opt.TS), fresh)
 }

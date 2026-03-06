@@ -153,6 +153,10 @@ func onOptionTick(t OptionTick) {
 	if option == nil {
 		return
 	}
+	if option.Bid == t.Bid && option.Ask == t.Ask {
+		// no price change, ignore tick
+		return
+	}
 	option.Bid = t.Bid
 	option.Ask = t.Ask
 	option.TS = t.TS
@@ -163,6 +167,22 @@ func onOptionTick(t OptionTick) {
 	}
 	if *timeTestFlag {
 		log.Printf("tick %s bid %s ask %s (%s stale)", option, t.Bid, t.Ask, clocky.Since(option.TS))
+	}
+	// log ticks for options associated with unfilled box legs
+	for _, box := range boxes {
+		for _, leg := range box.legs {
+			if leg.opt == option {
+				leg.lock.RLock()
+				filled := leg.filled
+				leg.lock.RUnlock()
+				if !filled {
+					log.Printf("tick %s %s %s %s bid=%s ask=%s spread=%s",
+						leg.name, leg.instruction, option.Class, option.Strike.Format(0),
+						option.Bid.Format(2), option.Ask.Format(2),
+						option.Ask.Sub(option.Bid).Format(2))
+				}
+			}
+		}
 	}
 }
 
@@ -198,6 +218,29 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 		}
 	}
 
+	// log market maker routing
+	if route := event.BaseEvent.ExecutionRequestedEventRoutedInfo; route != nil {
+		if route.RouteInfo.RouteRequestedType == "New" {
+			routeOrderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
+			if err == nil {
+				for _, box := range boxes {
+					for _, leg := range box.legs {
+						leg.lock.RLock()
+						match := leg.orderID == routeOrderID
+						leg.lock.RUnlock()
+						if match {
+							log.Printf("route %s %s %s %s -> %s @ %s",
+								leg.name, leg.instruction, leg.opt.Class,
+								leg.opt.Strike.Format(0),
+								route.RouteInfo.RouteName,
+								route.RouteInfo.RoutedPrice.Format(2))
+						}
+					}
+				}
+			}
+		}
+	}
+
 	fill := event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo
 	if fill == nil {
 		return
@@ -208,19 +251,20 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 		qty = -qty
 	}
 	holdings[osi] += qty
-	log.Printf("fill %s qty now %d", osi, holdings[osi])
 
 	// match fill to box leg and check for box completion
 	orderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
 	if err != nil {
 		return
 	}
+	legName := ""
 	remaining := boxes[:0]
 	for _, box := range boxes {
 		for _, leg := range box.legs {
 			leg.lock.Lock()
 			if leg.orderID == orderID {
 				leg.filled = true
+				legName = leg.name
 			}
 			leg.lock.Unlock()
 		}
@@ -237,4 +281,13 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 		}
 	}
 	boxes = remaining
+	routeName := fill.ExecutionInfo.RouteName
+	fillPrice := fill.ExecutionInfo.ExecutionPrice
+	if legName != "" {
+		log.Printf("fill %s %s via %s @ %s qty now %d",
+			legName, osi, routeName, fillPrice.Format(2), holdings[osi])
+	} else {
+		log.Printf("fill %s via %s @ %s qty now %d",
+			osi, routeName, fillPrice.Format(2), holdings[osi])
+	}
 }

@@ -132,6 +132,13 @@ func (c *Client) RequestJSONRaw(client *http.Client, method, path string, reques
 func (c *Client) Request(client *http.Client, method, path string, body []byte) (*http.Response, error) {
 	urlString := apiBaseURL + path
 
+	// log request JSON for debugging
+	if body != nil {
+		var pretty bytes.Buffer
+		json.Indent(&pretty, body, "", "  ")
+		log.Printf("schwab: %s %s\n%s", method, path, pretty.String())
+	}
+
 	// retry loop
 	tries := 0
 	for {
