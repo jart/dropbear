@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
+	"os"
+	"strconv"
 
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
@@ -165,4 +167,29 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 	}
 	holdings[osi] += qty
 	log.Printf("fill %s qty now %d", osi, holdings[osi])
+
+	// match fill to box leg and check for box completion
+	orderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
+	if err != nil {
+		return
+	}
+	for _, box := range boxes {
+		for _, leg := range box.legs {
+			leg.lock.Lock()
+			if leg.orderID == orderID {
+				leg.filled = true
+			}
+			leg.lock.Unlock()
+		}
+		if box.AllFilled() {
+			side := "BUY"
+			if !box.buying {
+				side = "SELL"
+			}
+			log.Printf("BOX FILLED: %s %s/%s profit=%s ($%s/box)",
+				side, box.low.Format(0), box.high.Format(0),
+				box.profit.Format(2), box.profit.MulInt(100).Format(2))
+			os.Exit(0)
+		}
+	}
 }

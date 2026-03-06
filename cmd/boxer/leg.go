@@ -13,7 +13,8 @@ type Leg struct {
 	price       decimal.Decimal // actual order price
 	lock        sync.RWMutex    // protects orderID
 	orderID     int64           // schwab order ID, or 0 if not yet placed, or canceled
-	finished    bool            // true if order filled or cancelled
+	finished    bool            // true if order submission completed (success or failure)
+	filled      bool            // true if order was filled (confirmed by schwab websocket)
 }
 
 func NewLeg(opt *Option, instruction schwab.Instruction) *Leg {

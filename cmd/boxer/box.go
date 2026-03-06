@@ -18,6 +18,15 @@ type Box struct {
 	legs     []*Leg
 }
 
+func (b *Box) AllFilled() bool {
+	for _, l := range b.legs {
+		if !l.filled {
+			return false
+		}
+	}
+	return len(b.legs) == 4
+}
+
 func (b *Box) Order() {
 	for _, l := range b.legs {
 		go l.Order()
