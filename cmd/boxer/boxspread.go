@@ -182,7 +182,7 @@ func makeDecisions() {
 		return
 	}
 
-	log.Printf("best box: %s %s/%s w=%s price=%s profit=%s edge=%s ($%s/contract)",
+	log.Printf("best box: %s %s/%s w=%s price=%s profit=%s edge=%s ($%s/box)",
 		side, best.low.Format(0), best.high.Format(0), best.width.Format(0),
 		best.price.Format(2), best.profit.Format(2), best.edge.Format(2),
 		dollars.Format(2))

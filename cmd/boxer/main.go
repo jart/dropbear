@@ -60,7 +60,6 @@ func main() {
 			qty := pos.LongQuantity.Sub(pos.ShortQuantity).Int()
 			if qty != 0 {
 				holdings[pos.Instrument.Symbol] = qty
-				log.Printf("holding %s qty %d", pos.Instrument.Symbol, qty)
 			}
 		}
 	}
