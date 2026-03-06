@@ -77,23 +77,23 @@ func boxer() {
 			spLow := strikes[low]
 			spHigh := strikes[high]
 
-			// midpoints
+			// compute per-leg prices based on quote freshness
+			// fresh (<150ms, ES drift <= 0.25): demand midpoint
+			// stale: cross the spread (buy at ask, sell at bid)
+			buyCL := legPrice(spLow.call, true, esMid)
+			buyCH := legPrice(spHigh.call, true, esMid)
+			buyPL := legPrice(spLow.put, true, esMid)
+			buyPH := legPrice(spHigh.put, true, esMid)
+			sellCL := legPrice(spLow.call, false, esMid)
+			sellCH := legPrice(spHigh.call, false, esMid)
+			sellPL := legPrice(spLow.put, false, esMid)
+			sellPH := legPrice(spHigh.put, false, esMid)
+
+			// midpoints (for edge reference)
 			midCL := spLow.call.Bid.Add(spLow.call.Ask).DivInt(2)
 			midCH := spHigh.call.Bid.Add(spHigh.call.Ask).DivInt(2)
 			midPL := spLow.put.Bid.Add(spLow.put.Ask).DivInt(2)
 			midPH := spHigh.put.Bid.Add(spHigh.put.Ask).DivInt(2)
-
-			// round each leg's midpoint to its tick, then compute box price
-			// buying: buy at truncated mid (pay less), sell at truncated mid (receive less)
-			// selling: buy at away mid (pay more), sell at away mid (receive more)
-			buyCL := midCL.QuantizeTruncate(optionTick(midCL))
-			buyCH := midCH.QuantizeTruncate(optionTick(midCH))
-			buyPL := midPL.QuantizeTruncate(optionTick(midPL))
-			buyPH := midPH.QuantizeTruncate(optionTick(midPH))
-			sellCL := midCL.QuantizeAway(optionTick(midCL))
-			sellCH := midCH.QuantizeAway(optionTick(midCH))
-			sellPL := midPL.QuantizeAway(optionTick(midPL))
-			sellPH := midPH.QuantizeAway(optionTick(midPH))
 
 			// Buy box: Buy C(low) + Sell C(high) + Buy P(high) + Sell P(low)
 			buyPrice := buyCL.Sub(buyCH).Add(buyPH).Sub(buyPL)
@@ -190,17 +190,17 @@ func boxer() {
 
 	if best.buying {
 		best.legs = []*Leg{
-			NewLeg(best.callLow, schwab.InstructionBuyToOpen),
-			NewLeg(best.callHigh, schwab.InstructionSellToOpen),
-			NewLeg(best.putHigh, schwab.InstructionBuyToOpen),
-			NewLeg(best.putLow, schwab.InstructionSellToOpen),
+			NewLeg(best.callLow, schwab.InstructionBuyToOpen, legPrice(best.callLow, true, esMid)),
+			NewLeg(best.callHigh, schwab.InstructionSellToOpen, legPrice(best.callHigh, false, esMid)),
+			NewLeg(best.putHigh, schwab.InstructionBuyToOpen, legPrice(best.putHigh, true, esMid)),
+			NewLeg(best.putLow, schwab.InstructionSellToOpen, legPrice(best.putLow, false, esMid)),
 		}
 	} else {
 		best.legs = []*Leg{
-			NewLeg(best.callLow, schwab.InstructionSellToOpen),
-			NewLeg(best.callHigh, schwab.InstructionBuyToOpen),
-			NewLeg(best.putHigh, schwab.InstructionSellToOpen),
-			NewLeg(best.putLow, schwab.InstructionBuyToOpen),
+			NewLeg(best.callLow, schwab.InstructionSellToOpen, legPrice(best.callLow, false, esMid)),
+			NewLeg(best.callHigh, schwab.InstructionBuyToOpen, legPrice(best.callHigh, true, esMid)),
+			NewLeg(best.putHigh, schwab.InstructionSellToOpen, legPrice(best.putHigh, false, esMid)),
+			NewLeg(best.putLow, schwab.InstructionBuyToOpen, legPrice(best.putLow, true, esMid)),
 		}
 	}
 
@@ -224,7 +224,11 @@ func canOpen(opt *Option, buying bool) bool {
 func logLeg(action, class string, opt *Option, esMid decimal.Decimal) {
 	mid := opt.Bid.Add(opt.Ask).DivInt(2)
 	drift := esMid.Sub(opt.ES)
-	log.Printf("  %s %s %s mid=%s bid=%s ask=%s ES%+.2f age=%s",
+	fresh := "STALE"
+	if isFresh(opt, esMid) {
+		fresh = "fresh"
+	}
+	log.Printf("  %s %s %s mid=%s bid=%s ask=%s ES%+.2f age=%s [%s]",
 		action, class, opt.Strike.Format(0), mid.Format(2), opt.Bid.Format(2),
-		opt.Ask.Format(2), drift.Float64(), clocky.Since(opt.TS))
+		opt.Ask.Format(2), drift.Float64(), clocky.Since(opt.TS), fresh)
 }

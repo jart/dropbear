@@ -17,19 +17,12 @@ type Leg struct {
 	filled      bool            // true if order was filled (confirmed by schwab websocket)
 }
 
-func NewLeg(opt *Option, instruction schwab.Instruction) *Leg {
-	l := &Leg{
+func NewLeg(opt *Option, instruction schwab.Instruction, price decimal.Decimal) *Leg {
+	return &Leg{
 		opt:         opt,
 		instruction: instruction,
+		price:       price,
 	}
-	mid := opt.Bid.Add(opt.Ask).DivInt(2)
-	t := optionTick(mid)
-	if l.instruction == schwab.InstructionBuyToOpen {
-		l.price = mid.QuantizeTruncate(t)
-	} else {
-		l.price = mid.QuantizeAway(t)
-	}
-	return l
 }
 
 func (l *Leg) Order() {
