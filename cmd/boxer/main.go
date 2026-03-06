@@ -94,7 +94,7 @@ func main() {
 		default:
 			// all channels empty
 		}
-		makeDecisions()
+		boxer()
 		// block until next event
 		select {
 		case f := <-futureDefs:

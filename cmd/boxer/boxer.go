@@ -46,7 +46,7 @@ type boxSpread struct {
 	buying   bool
 }
 
-func makeDecisions() {
+func boxer() {
 	if traded {
 		return
 	}
