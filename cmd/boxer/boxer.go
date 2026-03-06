@@ -6,62 +6,29 @@ import (
 	"dropbear/decimal"
 	"log"
 	"sort"
-	"sync"
 )
 
 var (
-	tick05  = decimal.Parse("0.05")
-	tick10  = decimal.Parse("0.10")
-	three   = decimal.FromInt(3)
-	traded  bool
-	tradeMu sync.Mutex
+	boxes []*Box
 )
 
-// optionTick returns the minimum tick size for a Penny Pilot option.
-// Options priced under $3 tick in $0.05; $3 and over tick in $0.10.
-func optionTick(price decimal.Decimal) decimal.Decimal {
-	if price.Cmp(three) < 0 {
-		return tick05
-	}
-	return tick10
-}
-
-type strikePair struct {
-	call *Option
-	put  *Option
-}
-
-type boxSpread struct {
-	low      decimal.Decimal
-	high     decimal.Decimal
-	width    decimal.Decimal
-	callLow  *Option
-	callHigh *Option
-	putLow   *Option
-	putHigh  *Option
-	mid      decimal.Decimal // unrounded box midpoint price
-	price    decimal.Decimal // rounded limit price (what we'd pay or receive)
-	profit   decimal.Decimal // guaranteed profit per point at expiration
-	edge     decimal.Decimal // how much better than midpoint we're demanding
-	buying   bool
-}
-
 func boxer() {
-	if traded {
+
+	// make boxes one at a time
+	if len(boxes) > 0 {
 		return
 	}
 
 	// group options by strike into call/put pairs
-	minSpread := decimal.Parse("0.10")
-	strikes := make(map[decimal.Decimal]*strikePair)
+	strikes := make(map[decimal.Decimal]*Strike)
 	for _, opt := range optionsByID {
 		spread := opt.Ask.Sub(opt.Bid)
-		if spread.Cmp(minSpread) < 0 {
+		if spread.Cmp(*minSpread) < 0 {
 			continue
 		}
 		sp, ok := strikes[opt.Strike]
 		if !ok {
-			sp = &strikePair{}
+			sp = &Strike{}
 			strikes[opt.Strike] = sp
 		}
 		switch opt.Class {
@@ -84,7 +51,7 @@ func boxer() {
 	})
 
 	// evaluate all box spread combinations
-	var best *boxSpread
+	var best *Box
 	for i := 0; i < len(valid); i++ {
 		for j := i + 1; j < len(valid); j++ {
 			low := valid[i]
@@ -127,15 +94,16 @@ func boxer() {
 			buyEdge := boxMid.Sub(buyPrice)
 			sellEdge := sellPrice.Sub(boxMid)
 
-			var bs boxSpread
-			bs.low = low
-			bs.high = high
-			bs.width = width
-			bs.callLow = spLow.call
-			bs.callHigh = spHigh.call
-			bs.putLow = spLow.put
-			bs.putHigh = spHigh.put
-			bs.mid = boxMid
+			bs := &Box{
+				low:      low,
+				high:     high,
+				width:    width,
+				callLow:  spLow.call,
+				callHigh: spHigh.call,
+				putLow:   spLow.put,
+				putHigh:  spHigh.put,
+				mid:      boxMid,
+			}
 
 			if buyProfit.Cmp(sellProfit) >= 0 {
 				bs.buying = true
@@ -163,8 +131,7 @@ func boxer() {
 			}
 
 			if bs.profit.IsPositive() && (best == nil || bs.profit.Cmp(best.profit) > 0) {
-				clone := bs
-				best = &clone
+				best = bs
 			}
 		}
 	}
@@ -204,78 +171,29 @@ func boxer() {
 			side, best.low.Format(0), best.high.Format(0), dollars.Format(2))
 		return
 	}
-	tradeMu.Lock()
-	if traded {
-		tradeMu.Unlock()
-		return
-	}
-	traded = true
-	tradeMu.Unlock()
 
 	log.Printf("POUNCING on %s box %s/%s for $%s profit", side,
 		best.low.Format(0), best.high.Format(0), dollars.Format(2))
 
-	type leg struct {
-		opt         *Option
-		instruction schwab.Instruction
-	}
-	var legs []leg
 	if best.buying {
-		legs = []leg{
-			{best.callLow, schwab.InstructionBuyToOpen},
-			{best.callHigh, schwab.InstructionSellToOpen},
-			{best.putHigh, schwab.InstructionBuyToOpen},
-			{best.putLow, schwab.InstructionSellToOpen},
+		best.legs = []*Leg{
+			NewLeg(best.callLow, schwab.InstructionBuyToOpen),
+			NewLeg(best.callHigh, schwab.InstructionSellToOpen),
+			NewLeg(best.putHigh, schwab.InstructionBuyToOpen),
+			NewLeg(best.putLow, schwab.InstructionSellToOpen),
 		}
 	} else {
-		legs = []leg{
-			{best.callLow, schwab.InstructionSellToOpen},
-			{best.callHigh, schwab.InstructionBuyToOpen},
-			{best.putHigh, schwab.InstructionSellToOpen},
-			{best.putLow, schwab.InstructionBuyToOpen},
+		best.legs = []*Leg{
+			NewLeg(best.callLow, schwab.InstructionSellToOpen),
+			NewLeg(best.callHigh, schwab.InstructionBuyToOpen),
+			NewLeg(best.putHigh, schwab.InstructionSellToOpen),
+			NewLeg(best.putLow, schwab.InstructionBuyToOpen),
 		}
 	}
 
-	var wg sync.WaitGroup
-	for _, l := range legs {
-		wg.Add(1)
-		go func(l leg) {
-			defer wg.Done()
-			mid := l.opt.Bid.Add(l.opt.Ask).DivInt(2)
-			t := optionTick(mid)
-			var price decimal.Decimal
-			if l.instruction == schwab.InstructionBuyToOpen {
-				price = mid.QuantizeTruncate(t)
-			} else {
-				price = mid.QuantizeAway(t)
-			}
-			orderID, err := schwabClient.CreateOrder(&schwab.Order{
-				OrderType:         schwab.OrderTypeLimit,
-				Price:             price,
-				Duration:          schwab.DurationDay,
-				Session:           schwab.SessionNormal,
-				OrderStrategyType: schwab.OrderStrategyTypeSingle,
-				OrderLegCollection: []schwab.OrderLeg{
-					{
-						Instruction: l.instruction,
-						Quantity:    decimal.FromInt(1),
-						Instrument: schwab.Instrument{
-							Symbol: l.opt.OSI(),
-							Type:   schwab.AssetTypeOption,
-						},
-					},
-				},
-			})
-			if err != nil {
-				log.Printf("order FAILED %s %s %s @ %s: %v",
-					l.instruction, l.opt.Class, l.opt.Strike.Format(0), price.Format(2), err)
-				return
-			}
-			log.Printf("order SENT %s %s %s @ %s (id=%d)",
-				l.instruction, l.opt.Class, l.opt.Strike.Format(0), price.Format(2), orderID)
-		}(l)
-	}
-	wg.Wait()
+	// start manufacturing box
+	boxes = append(boxes, best)
+	best.Order()
 }
 
 // canOpen returns true if opening this leg won't reduce an existing position.

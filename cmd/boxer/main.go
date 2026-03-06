@@ -18,6 +18,7 @@ import (
 var (
 	widthFlag     = decimal.Flag("width", "50", "box width")
 	edgeFlag      = decimal.Flag("edge", "0.10", "min edge")
+	minSpread     = decimal.Flag("minspread", "0.10", "min spread")
 	maxEdgeFlag   = decimal.Flag("maxedge", "10.00", "max edge")
 	maxSpreadFlag = decimal.Flag("maxspread", "1.00", "max spread")
 	minBidFlag    = decimal.Flag("minbid", "0.05", "min bid")
@@ -25,14 +26,12 @@ var (
 	latencyFlag   = clocky.DurationFlag("latency", "70ms", "latency")
 	greedFlag     = decimal.Flag("greed", "0.00", "greed factor for spread placement")
 	patienceFlag  = clocky.DurationFlag("patience", "500ms", "patience")
-	cashFlag      = decimal.Flag("cash", "100000", "starting cash")
-	demandFlag    = decimal.Flag("demand", "60", "min profit to pounce")
+	demandFlag    = decimal.Flag("demand", "35", "min profit to pounce")
 	verbose       = flag.Bool("v", false, "verbose")
 	dry           = flag.Bool("dry", false, "dry run (don't send orders)")
 )
 
 var (
-	cash            decimal.Decimal
 	futuresByID     = make(map[uint32]*Future)
 	es              *Future
 	sr1             *Future
@@ -46,7 +45,6 @@ func main() {
 	loggy.Init()
 	flag.Parse()
 	loggy.AlsoLogToFile()
-	cash = *cashFlag
 
 	key := databento.MustLoadDefaultKey()
 	schwabClient = schwab.NewClient()
