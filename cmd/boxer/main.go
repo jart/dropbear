@@ -155,6 +155,35 @@ func onOptionTick(t OptionTick) {
 func onOrderUpdate(event *schwab.OrderEvent) {
 	pretty, _ := json.MarshalIndent(json.RawMessage(event.RawData), "  ", "  ")
 	log.Printf("order %s: %s\n  %s", event.SchwabOrderID, event.BaseEvent.EventType, pretty)
+
+	// when an order is edited in thinkorswim, schwab cancels the old order
+	// and creates a new one. update the leg's order ID so we can track the fill.
+	if cancel := event.BaseEvent.CancelAcceptedEvent; cancel != nil {
+		for _, info := range cancel.LegCancelRequestInfoList {
+			if info.ChangedNewSchwabOrderId == "" {
+				continue
+			}
+			oldID, err := strconv.ParseInt(info.LegID, 10, 64)
+			if err != nil {
+				continue
+			}
+			newID, err := strconv.ParseInt(info.ChangedNewSchwabOrderId, 10, 64)
+			if err != nil {
+				continue
+			}
+			for _, box := range boxes {
+				for _, leg := range box.legs {
+					leg.lock.Lock()
+					if leg.orderID == oldID {
+						log.Printf("leg order ID updated %d -> %d", oldID, newID)
+						leg.orderID = newID
+					}
+					leg.lock.Unlock()
+				}
+			}
+		}
+	}
+
 	fill := event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo
 	if fill == nil {
 		return

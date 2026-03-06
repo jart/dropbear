@@ -88,11 +88,12 @@ type CancelEvent struct {
 	LifecycleSchwabOrderID   string `json:"LifecycleSchwabOrderID"` // e.g. "1005588594936"
 	CancelRequestType        string `json:"CancelRequestType"`      // e.g. "ClientCancel"
 	LegCancelRequestInfoList []struct {
-		LegID                 string          `json:"LegID"`                 // e.g. "1005588594936"
-		IntendedOrderQuantity decimal.Decimal `json:"IntendedOrderQuantity"` // original order quantity, e.g. 1
-		RequestedAmount       decimal.Decimal `json:"RequestedAmount"`       // quantity requested to cancel, e.g. 1
-		LegStatus             string          `json:"LegStatus"`             // e.g. "LegOpen"
-		LegSubStatus          string          `json:"LegSubStatus"`          // e.g. "LegSubStatusCancelled"
+		LegID                   string          `json:"LegID"`                   // e.g. "1005588594936"
+		IntendedOrderQuantity   decimal.Decimal `json:"IntendedOrderQuantity"`   // original order quantity, e.g. 1
+		RequestedAmount         decimal.Decimal `json:"RequestedAmount"`         // quantity requested to cancel, e.g. 1
+		LegStatus               string          `json:"LegStatus"`               // e.g. "LegOpen"
+		LegSubStatus            string          `json:"LegSubStatus"`            // e.g. "LegSubStatusCancelled"
+		ChangedNewSchwabOrderId string          `json:"ChangedNewSchwabOrderId"` // new order ID when order was edited (not just cancelled)
 	} `json:"LegCancelRequestInfoList"`
 }
 

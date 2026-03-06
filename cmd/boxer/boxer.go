@@ -22,7 +22,7 @@ func boxer() {
 	}
 
 	// cooldown between boxes
-	if clocky.Now().Sub(lastBoxTime) < 15*clocky.Second {
+	if clocky.Now().Sub(lastBoxTime) < 10*clocky.Second {
 		return
 	}
 

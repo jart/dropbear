@@ -9,5 +9,6 @@ const (
 	OrderEventExecutionCreated          = "ExecutionCreated"
 	OrderEventFillCompleted             = "OrderFillCompleted"
 	OrderEventCancelAccepted            = "CancelAccepted"
+	OrderEventChangeAccepted            = "ChangeAccepted"
 	OrderEventUROutCompleted            = "OrderUROutCompleted"
 )
