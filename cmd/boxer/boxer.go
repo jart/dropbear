@@ -3,19 +3,26 @@ package main
 import (
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
+	"dropbear/clocky"
 	"dropbear/decimal"
 	"log"
 	"sort"
 )
 
 var (
-	boxes []*Box
+	boxes       []*Box
+	lastBoxTime clocky.Time
 )
 
 func boxer() {
 
 	// make boxes one at a time
 	if len(boxes) > 0 {
+		return
+	}
+
+	// cooldown between boxes
+	if clocky.Now().Sub(lastBoxTime) < 15*clocky.Second {
 		return
 	}
 
@@ -192,6 +199,7 @@ func boxer() {
 	}
 
 	// start manufacturing box
+	lastBoxTime = clocky.Now()
 	boxes = append(boxes, best)
 	best.Order()
 }

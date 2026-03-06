@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
-	"os"
 	"strconv"
 
 	"dropbear/broker/databento"
@@ -173,6 +172,7 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 	if err != nil {
 		return
 	}
+	remaining := boxes[:0]
 	for _, box := range boxes {
 		for _, leg := range box.legs {
 			leg.lock.Lock()
@@ -189,7 +189,9 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 			log.Printf("BOX FILLED: %s %s/%s profit=%s ($%s/box)",
 				side, box.low.Format(0), box.high.Format(0),
 				box.profit.Format(2), box.profit.MulInt(100).Format(2))
-			os.Exit(0)
+		} else {
+			remaining = append(remaining, box)
 		}
 	}
+	boxes = remaining
 }
