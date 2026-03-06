@@ -15,6 +15,7 @@ type Future struct {
 	Price decimal.Decimal // current market midpoint or zero if undefined
 	Bid   decimal.Decimal // current best bid price or zero if undefined
 	Ask   decimal.Decimal // current best ask price or zero if undefined
+	TS    clocky.Time     // timestamp of last tick
 }
 
 func (f *Future) String() string {

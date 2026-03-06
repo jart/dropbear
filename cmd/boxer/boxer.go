@@ -26,6 +26,12 @@ func boxer() {
 		return
 	}
 
+	// ES midpoint for drift logging
+	var esMid decimal.Decimal
+	if es != nil {
+		esMid = es.Price
+	}
+
 	// group options by strike into call/put pairs
 	strikes := make(map[decimal.Decimal]*Strike)
 	for _, opt := range optionsByID {
@@ -162,15 +168,15 @@ func boxer() {
 		dollars.Format(2))
 
 	if best.buying {
-		logLeg("BUY ", "C", best.callLow)
-		logLeg("SELL", "C", best.callHigh)
-		logLeg("BUY ", "P", best.putHigh)
-		logLeg("SELL", "P", best.putLow)
+		logLeg("BUY ", "C", best.callLow, esMid)
+		logLeg("SELL", "C", best.callHigh, esMid)
+		logLeg("BUY ", "P", best.putHigh, esMid)
+		logLeg("SELL", "P", best.putLow, esMid)
 	} else {
-		logLeg("SELL", "C", best.callLow)
-		logLeg("BUY ", "C", best.callHigh)
-		logLeg("SELL", "P", best.putHigh)
-		logLeg("BUY ", "P", best.putLow)
+		logLeg("SELL", "C", best.callLow, esMid)
+		logLeg("BUY ", "C", best.callHigh, esMid)
+		logLeg("SELL", "P", best.putHigh, esMid)
+		logLeg("BUY ", "P", best.putLow, esMid)
 	}
 
 	if *dry {
@@ -215,8 +221,10 @@ func canOpen(opt *Option, buying bool) bool {
 	return qty <= 0
 }
 
-func logLeg(action, class string, opt *Option) {
+func logLeg(action, class string, opt *Option, esMid decimal.Decimal) {
 	mid := opt.Bid.Add(opt.Ask).DivInt(2)
-	log.Printf("  %s %s %s mid=%s bid=%s ask=%s",
-		action, class, opt.Strike.Format(0), mid.Format(2), opt.Bid.Format(2), opt.Ask.Format(2))
+	drift := esMid.Sub(opt.ES)
+	log.Printf("  %s %s %s mid=%s bid=%s ask=%s ES%+.2f age=%s",
+		action, class, opt.Strike.Format(0), mid.Format(2), opt.Bid.Format(2),
+		opt.Ask.Format(2), drift.Float64(), clocky.Since(opt.TS))
 }

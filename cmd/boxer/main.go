@@ -30,6 +30,7 @@ var (
 	demandFlag    = decimal.Flag("demand", "35", "min profit to pounce")
 	verbose       = flag.Bool("v", false, "verbose")
 	dry           = flag.Bool("dry", false, "dry run (don't send orders)")
+	timeTestFlag  = flag.Bool("timetest", false, "enable time test mode")
 )
 
 var (
@@ -93,7 +94,9 @@ func main() {
 		default:
 			// all channels empty
 		}
-		boxer()
+		if !*timeTestFlag {
+			boxer()
+		}
 		// block until next event
 		select {
 		case f := <-futureDefs:
@@ -127,10 +130,13 @@ func onFutureTick(t FutureTick) {
 	if future == nil {
 		return
 	}
+	future.TS = t.TS
 	future.Bid = t.Bid
 	future.Ask = t.Ask
 	future.Price = t.Bid.Add(t.Ask).DivInt(2)
-	// log.Printf("tick %s mid %s bid %s ask %s", future.Sym, future.Price, t.Bid, t.Ask)
+	if *timeTestFlag {
+		log.Printf("tick %s mid %s bid %s ask %s (%s stale)", future.Sym, future.Price, t.Bid, t.Ask, clocky.Since(future.TS))
+	}
 }
 
 func onOptionDef(o *Option) {
@@ -149,7 +155,15 @@ func onOptionTick(t OptionTick) {
 	}
 	option.Bid = t.Bid
 	option.Ask = t.Ask
-	// log.Printf("tick %s bid %s ask %s", option, t.Bid, t.Ask)
+	option.TS = t.TS
+	if es != nil {
+		option.ES = es.Price
+	} else {
+		option.ES = decimal.Zero
+	}
+	if *timeTestFlag {
+		log.Printf("tick %s bid %s ask %s (%s stale)", option, t.Bid, t.Ask, clocky.Since(option.TS))
+	}
 }
 
 func onOrderUpdate(event *schwab.OrderEvent) {

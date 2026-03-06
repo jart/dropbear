@@ -13,6 +13,7 @@ type FutureTick struct {
 	ID  uint32
 	Bid decimal.Decimal
 	Ask decimal.Decimal
+	TS  clocky.Time
 }
 
 func streamFutures(key databento.ApiKey, defs chan<- *Future, ticks chan<- FutureTick) {
@@ -69,6 +70,7 @@ func streamFutures(key databento.ApiKey, defs chan<- *Future, ticks chan<- Futur
 				ID:  m.Header.InstrumentID,
 				Bid: dbnPrice(m.Levels[0].BidPx),
 				Ask: dbnPrice(m.Levels[0].AskPx),
+				TS:  m.TSRecv,
 			}
 		default:
 			log.Printf("unknown record type: %T", m)
@@ -95,5 +97,6 @@ func fetchFuturePrice(key databento.ApiKey, future *Future, ticks chan<- FutureT
 		ID:  future.ID,
 		Bid: dbnPrice(rec.Levels[0].BidPx),
 		Ask: dbnPrice(rec.Levels[0].AskPx),
+		TS:  rec.TSRecv,
 	}
 }

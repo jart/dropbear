@@ -18,6 +18,8 @@ type Option struct {
 	Day    int                       // option expiration day
 	Bid    decimal.Decimal           // bid price, e.g. 0.10 (or zero if undefined)
 	Ask    decimal.Decimal           // ask price, e.g. 0.15 (or zero if undefined)
+	TS     clocky.Time               // timestamp of when Bid / Ask was last updated
+	ES     decimal.Decimal           // price of ES futures at time last tick was received
 }
 
 func (o *Option) String() string {
