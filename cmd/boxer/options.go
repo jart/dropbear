@@ -59,7 +59,6 @@ func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- Optio
 		case *databento.SymbolMappingMsg:
 			id := m.Header.InstrumentID
 			str := m.GetSTypeOutSymbol()
-			log.Printf("map %d -> %s", id, str)
 			sym, strike, class, year, month, day, err := parseOSI(str)
 			if err != nil {
 				log.Printf("failed to parse OSI: %v", err)
