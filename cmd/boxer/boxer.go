@@ -100,11 +100,11 @@ func boxer() {
 			midPH := spHigh.put.Bid.Add(spHigh.put.Ask).DivInt(2)
 
 			// Buy box: Buy C(low) + Sell C(high) + Buy P(high) + Sell P(low)
-			buyPrice := buyCL.Sub(buyCH).Add(buyPH).Sub(buyPL)
+			buyPrice := buyCL.Sub(sellCH).Add(buyPH).Sub(sellPL)
 			buyProfit := width.Sub(buyPrice)
 
 			// Sell box: Sell C(low) + Buy C(high) + Sell P(high) + Buy P(low)
-			sellPrice := sellCL.Sub(sellCH).Add(sellPH).Sub(sellPL)
+			sellPrice := sellCL.Sub(buyCH).Add(sellPH).Sub(buyPL)
 			sellProfit := sellPrice.Sub(width)
 
 			boxMid := midCL.Sub(midCH).Add(midPH).Sub(midPL)
