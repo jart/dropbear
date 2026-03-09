@@ -7,9 +7,10 @@ import (
 )
 
 var (
-	tick05 = decimal.Parse("0.05")
-	tick10 = decimal.Parse("0.10")
-	three  = decimal.FromInt(3)
+	tick05  = decimal.Parse("0.05")
+	tick10  = decimal.Parse("0.10")
+	three   = decimal.FromInt(3)
+	fifteen = decimal.FromInt(15)
 )
 
 // optionTick returns the minimum tick size for a Penny Pilot option.
@@ -33,9 +34,16 @@ func isFresh(opt *Option, esMid decimal.Decimal) bool {
 		esMid.Sub(opt.ES).Abs().Cmp(quarter) <= 0
 }
 
+// staleBuffer returns an additional amount to cross through the NBBO on
+// stale legs, to survive another arb bot picking off the top of book first.
+// It's floor(price / 15) * $0.10, e.g. $0.20 for a $30 option.
+func staleBuffer(price decimal.Decimal) decimal.Decimal {
+	return price.Abs().Div(fifteen).QuantizeTruncate(decimal.FromInt(1)).Mul(tick10)
+}
+
 // legPrice returns the limit price for a leg based on quote freshness.
 // Fresh legs get midpoint pricing (demand edge from market makers).
-// Stale legs cross the spread (pick off stale quotes via Reg NMS).
+// Stale legs cross the spread plus a buffer (pick off stale quotes via Reg NMS).
 func legPrice(opt *Option, buying bool, esMid decimal.Decimal) decimal.Decimal {
 	if isFresh(opt, esMid) {
 		mid := opt.Bid.Add(opt.Ask).DivInt(2)
@@ -45,11 +53,13 @@ func legPrice(opt *Option, buying bool, esMid decimal.Decimal) decimal.Decimal {
 		}
 		return mid.QuantizeAway(t)
 	}
-	// stale: cross the spread
+	// stale: cross the spread plus buffer to snag next price level
+	mid := opt.Bid.Add(opt.Ask).DivInt(2)
+	buf := staleBuffer(mid)
 	if buying {
-		return opt.Ask
+		return opt.Ask.Add(buf)
 	}
-	return opt.Bid
+	return opt.Bid.Sub(buf)
 }
 
 func dbnPrice(p int64) decimal.Decimal {
