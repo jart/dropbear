@@ -195,17 +195,17 @@ func boxer() {
 
 	if best.buying {
 		best.legs = []*Leg{
-			NewLeg("#1", best.callLow, schwab.InstructionBuyToOpen, legPrice(best.callLow, true, esMid)),
-			NewLeg("#2", best.callHigh, schwab.InstructionSellToOpen, legPrice(best.callHigh, false, esMid)),
-			NewLeg("#3", best.putHigh, schwab.InstructionBuyToOpen, legPrice(best.putHigh, true, esMid)),
-			NewLeg("#4", best.putLow, schwab.InstructionSellToOpen, legPrice(best.putLow, false, esMid)),
+			NewLeg("#1", best.callLow, schwab.InstructionBuyToOpen, legPrice(best.callLow, true, esMid), !isFresh(best.callLow, esMid)),
+			NewLeg("#2", best.callHigh, schwab.InstructionSellToOpen, legPrice(best.callHigh, false, esMid), !isFresh(best.callHigh, esMid)),
+			NewLeg("#3", best.putHigh, schwab.InstructionBuyToOpen, legPrice(best.putHigh, true, esMid), !isFresh(best.putHigh, esMid)),
+			NewLeg("#4", best.putLow, schwab.InstructionSellToOpen, legPrice(best.putLow, false, esMid), !isFresh(best.putLow, esMid)),
 		}
 	} else {
 		best.legs = []*Leg{
-			NewLeg("#1", best.callLow, schwab.InstructionSellToOpen, legPrice(best.callLow, false, esMid)),
-			NewLeg("#2", best.callHigh, schwab.InstructionBuyToOpen, legPrice(best.callHigh, true, esMid)),
-			NewLeg("#3", best.putHigh, schwab.InstructionSellToOpen, legPrice(best.putHigh, false, esMid)),
-			NewLeg("#4", best.putLow, schwab.InstructionBuyToOpen, legPrice(best.putLow, true, esMid)),
+			NewLeg("#1", best.callLow, schwab.InstructionSellToOpen, legPrice(best.callLow, false, esMid), !isFresh(best.callLow, esMid)),
+			NewLeg("#2", best.callHigh, schwab.InstructionBuyToOpen, legPrice(best.callHigh, true, esMid), !isFresh(best.callHigh, esMid)),
+			NewLeg("#3", best.putHigh, schwab.InstructionSellToOpen, legPrice(best.putHigh, false, esMid), !isFresh(best.putHigh, esMid)),
+			NewLeg("#4", best.putLow, schwab.InstructionBuyToOpen, legPrice(best.putLow, true, esMid), !isFresh(best.putLow, esMid)),
 		}
 	}
 
