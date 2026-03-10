@@ -42,16 +42,14 @@ func staleBuffer(price decimal.Decimal) decimal.Decimal {
 }
 
 // legPrice returns the limit price for a leg based on quote freshness.
-// Fresh legs get midpoint pricing (demand edge from market makers).
+// Fresh legs cross the spread (don't rely on PFOF midpoint fills).
 // Stale legs cross the spread plus a buffer (pick off stale quotes via Reg NMS).
 func legPrice(opt *Option, buying bool, esMid decimal.Decimal) decimal.Decimal {
 	if isFresh(opt, esMid) {
-		mid := opt.Bid.Add(opt.Ask).DivInt(2)
-		t := optionTick(mid)
 		if buying {
-			return mid.QuantizeTruncate(t)
+			return opt.Ask
 		}
-		return mid.QuantizeAway(t)
+		return opt.Bid
 	}
 	// stale: cross the spread plus buffer to snag next price level
 	mid := opt.Bid.Add(opt.Ask).DivInt(2)
