@@ -1,0 +1,28 @@
+[Unit]
+Description=CME Margin Watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nobody
+WorkingDirectory=/var/lib/cme-margin-watcher
+ExecStart=/usr/local/bin/cme-margin-watcher
+
+# Set your keys here
+Environment=PUSHOVER_TOKEN=REPLACE_ME
+Environment=PUSHOVER_USER=REPLACE_ME
+Environment=STATE_FILE=/var/lib/cme-margin-watcher/state.json
+
+# Optional overrides
+#Environment=ADVISORY_INTERVAL=2m
+#Environment=SPAN_INTERVAL=15m
+#Environment=MARGINS_INTERVAL=5m
+
+Restart=on-failure
+RestartSec=30s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
