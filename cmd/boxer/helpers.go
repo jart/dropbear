@@ -38,7 +38,7 @@ func isFresh(opt *Option, esMid decimal.Decimal) bool {
 // stale legs, to survive another arb bot picking off the top of book first.
 // It's floor(price / 15) * $0.10, e.g. $0.20 for a $30 option.
 func staleBuffer(price decimal.Decimal) decimal.Decimal {
-	return price.Abs().Div(fifteen).QuantizeTruncate(decimal.FromInt(1)).Mul(tick10)
+	return price.Abs().Div(fifteen).QuantizeTruncate(decimal.One).Mul(tick10)
 }
 
 // legPrice returns the limit price for a leg based on quote freshness.

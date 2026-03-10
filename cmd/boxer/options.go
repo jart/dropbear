@@ -33,11 +33,6 @@ func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- Optio
 		SType:   databento.STypeParent,
 		Symbols: []string{"SPXW.OPT"},
 	})
-	client.Subscribe(databento.Subscription{
-		Schema:  databento.SchemaCMBP1S,
-		SType:   databento.STypeParent,
-		Symbols: []string{"SPXW.OPT"},
-	})
 	meta, err := client.Start()
 	if err != nil {
 		log.Fatalf("start: %v", err)
