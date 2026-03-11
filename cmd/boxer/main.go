@@ -26,6 +26,7 @@ var (
 	maxOpen       = flag.Int("maxopen", 4, "max open")
 	latencyFlag   = clocky.DurationFlag("latency", "70ms", "latency")
 	greedFlag     = decimal.Flag("greed", "0.00", "greed factor for spread placement")
+	biasFlag      = decimal.Flag("bias", "0.00", "extra greed on bull (+) or bear (-) legs")
 	patienceFlag  = clocky.DurationFlag("patience", "500ms", "patience")
 	demandFlag    = decimal.Flag("demand", "35", "min profit to pounce")
 	verbose       = flag.Bool("v", false, "verbose")

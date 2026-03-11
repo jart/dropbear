@@ -93,6 +93,21 @@ func boxer() {
 			sellPL := legPrice(spLow.put, false, esMid)
 			sellPH := legPrice(spHigh.put, false, esMid)
 
+			// apply directional bias: positive = greed on bull legs,
+			// negative = greed on bear legs
+			// bull legs: buy call (long call), sell put (short put)
+			// bear legs: sell call (short call), buy put (long put)
+			bullBias := (*biasFlag).Max(decimal.Zero)
+			bearBias := (*biasFlag).Neg().Max(decimal.Zero)
+			buyCL = buyCL.Sub(bullBias)   // long call = bull
+			buyCH = buyCH.Sub(bullBias)   // long call = bull
+			sellPL = sellPL.Add(bullBias) // short put = bull
+			sellPH = sellPH.Add(bullBias) // short put = bull
+			sellCL = sellCL.Add(bearBias) // short call = bear
+			sellCH = sellCH.Add(bearBias) // short call = bear
+			buyPL = buyPL.Sub(bearBias)   // long put = bear
+			buyPH = buyPH.Sub(bearBias)   // long put = bear
+
 			// midpoints (for edge reference)
 			midCL := spLow.call.Bid.Add(spLow.call.Ask).DivInt(2)
 			midCH := spHigh.call.Bid.Add(spHigh.call.Ask).DivInt(2)
