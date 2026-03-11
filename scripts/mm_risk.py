@@ -33,10 +33,18 @@ MM_NAMES = {
 
 # fill #1 SPXW  260310C06820000 via CES_OPT_F1_J1 @ 13.50 qty now 1
 FILL_RE = re.compile(
-    r"fill #\d+ "
-    r"SPXW\s+(\d{6})([CP])(\d{8})"  # expiry, put/call, strike*1000
+    r"fill #(\d+) "
+    r"SPXW\s+(\d{6})([CP])(\d{8})"  # leg#, expiry, put/call, strike*1000
     r" via (\S+)"                     # route name
     r" @ (\S+)"                       # fill price
+)
+
+# order SENT #1 BUY_TO_OPEN call 6820 @ 13.80 (id=1005654201334)
+ORDER_RE = re.compile(
+    r"order SENT #(\d+) "
+    r"(BUY_TO_OPEN|SELL_TO_OPEN) "
+    r"\S+ \S+ "                       # class and strike (ignored, matched by leg#)
+    r"@ (\S+)"                        # limit price
 )
 
 
@@ -108,14 +116,23 @@ def main():
 
     # Track running qty per OSI to infer buy/sell direction from qty changes
     qty = defaultdict(int)
-    fills = []  # (mm, pc, strike, fill_price, we_bought)
+    fills = []  # (mm, pc, strike, fill_price, we_bought, price_improvement)
+    pending_orders = {}  # leg# -> (limit_price, is_buy)
 
     with open(logfile) as f:
         for line in f:
+            # Track order SENT lines to get limit prices
+            om = ORDER_RE.search(line)
+            if om:
+                leg_num, instruction, limit_str = om.groups()
+                is_buy = instruction == "BUY_TO_OPEN"
+                pending_orders[leg_num] = (float(limit_str), is_buy)
+                continue
+
             m = FILL_RE.search(line)
             if not m:
                 continue
-            expiry, pc, strike_str, route, price_str = m.groups()
+            leg_num, expiry, pc, strike_str, route, price_str = m.groups()
             strike = parse_osi_strike(strike_str)
             price = float(price_str)
             mm = parse_route(route)
@@ -129,7 +146,15 @@ def main():
             we_bought = new_qty > old_qty
             qty[osi] = new_qty
 
-            fills.append((mm, pc, strike, price, we_bought))
+            # Compute price improvement from limit vs fill
+            pi = 0.0
+            if leg_num in pending_orders:
+                limit_price, is_buy = pending_orders[leg_num]
+                if is_buy:
+                    pi = limit_price - price  # bought cheaper than limit
+                else:
+                    pi = price - limit_price  # sold higher than limit
+            fills.append((mm, pc, strike, price, we_bought, pi))
 
     if not fills:
         print("no fills found")
@@ -138,12 +163,14 @@ def main():
     # Build market maker positions
     # When we buy, the MM sells (short). When we sell, the MM buys (long).
     mm_positions = defaultdict(list)
-    for mm, pc, strike, price, we_bought in fills:
+    mm_pi = defaultdict(float)  # total price improvement per MM (* 100)
+    for mm, pc, strike, price, we_bought, pi in fills:
         mm_qty = -1 if we_bought else +1
         mm_positions[mm].append((pc, strike, mm_qty, price))
+        mm_pi[mm] += pi * MULTIPLIER
 
     # Test prices for best/worst case within +-100 of current range
-    all_strikes = sorted(set(strike for _, _, strike, _, _ in fills))
+    all_strikes = sorted(set(strike for _, _, strike, _, _, _ in fills))
     mid = (min(all_strikes) + max(all_strikes)) / 2
     if settle is not None:
         mid = settle
@@ -202,19 +229,28 @@ def main():
         print()
 
     # Summary table in CP437 box-drawing style
+    total_pi = sum(mm_pi.values())
     rows = []
     for mm in sorted(mm_stats.keys()):
         st = mm_stats[mm]
         name = MM_NAMES.get(mm, mm)
-        rows.append((name, st["fills"], st["best_pnl"], st["worst_pnl"], st.get("settle_pnl")))
-    rows.append(("Justine Street", len(fills), our_best, our_worst, our_settle_pnl))
+        lo_pnl = compute_pnl(st["net"], lo)
+        hi_pnl = compute_pnl(st["net"], hi)
+        rows.append((name, st["fills"], lo_pnl, hi_pnl, st.get("settle_pnl"), mm_pi[mm]))
+    our_lo_pnl = compute_pnl(our_net, lo)
+    our_hi_pnl = compute_pnl(our_net, hi)
+    rows.append(("Justine Street", len(fills), our_lo_pnl, our_hi_pnl, our_settle_pnl, total_pi))
 
     has_settle = settle is not None
-    cols = ["Party", "Fills", "Best Case", "Worst Case"]
+    lo_label = f"SPX -100"
+    hi_label = f"SPX +100"
+    cols = ["Party", "Fills", lo_label, hi_label]
     widths = [14, 7, 14, 14]
     if has_settle:
         cols.append(f"@ {int(settle)}")
         widths.append(14)
+    cols.append("Price Impr")
+    widths.append(14)
 
     # CP437 box chars
     TL, TR, BL, BR = "\u250c", "\u2510", "\u2514", "\u2518"
@@ -242,12 +278,13 @@ def main():
     print(hline(TL, TT, TR))
     print(row_str(cols))
     print(hline(LT, CR, RT))
-    for i, (name, n, best, worst, spnl) in enumerate(rows):
-        if i == len(rows) - 1:  # separator before YOU
+    for i, (name, n, lo_pnl, hi_pnl, spnl, pi) in enumerate(rows):
+        if i == len(rows) - 1:  # separator before Justine Street
             print(hline(LT, CR, RT))
-        vals = [name, str(n), fmt_money(best), fmt_money(worst)]
+        vals = [name, str(n), fmt_money(lo_pnl), fmt_money(hi_pnl)]
         if has_settle:
             vals.append(fmt_money(spnl))
+        vals.append(fmt_money(pi))
         print(row_str(vals))
     print(hline(BL, BT, BR))
 
