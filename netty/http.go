@@ -60,7 +60,7 @@ var FastHTTPClient = &http.Client{
 		ResponseHeaderTimeout: 5 * time.Second,
 		ExpectContinueTimeout: 0,
 		ForceAttemptHTTP2:     true,
-		DisableCompression:    true,
+		DisableCompression:    false, // Schwab sends gzip even when not asked
 	},
 	Timeout: 20 * time.Second,
 }
