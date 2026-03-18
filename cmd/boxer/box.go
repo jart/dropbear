@@ -19,7 +19,7 @@ func (b *Box) String() string {
 		direction = "buy"
 	}
 	return fmt.Sprintf("%s %sw box @ %s (market=%s profit=%s)\n\t%s\n\t%s\n\t%s\n\t%s",
-		direction, b.Width(), b.LimitPrice().Abs(), b.MarketPrice(), b.LimitProfit(),
+		direction, b.Width(), b.LimitPrice(), b.MarketPrice(), b.LimitProfit(),
 		b.CallLeg1, b.CallLeg2, b.PutLeg1, b.PutLeg2)
 }
 

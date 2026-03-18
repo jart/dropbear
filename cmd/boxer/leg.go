@@ -51,28 +51,25 @@ func (l *Leg) Filled() bool {
 }
 
 func (l *Leg) ApplyGreed() {
-	bullCount := unfilledBulls.Size()
-	bearCount := unfilledBears.Size()
-	bullImbalance := bullCount - bearCount
-	bearImbalance := bearCount - bullCount
-	if l.IsBull() {
-		if bearImbalance > 0 {
-			// we have too many bear options in flight and this leg reduces our risk
-			// therefore be generous with our limit price in accordance with our pain
-			l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, max(bearImbalance, 1))
-		} else if bullImbalance > 0 && !l.IsSafe() {
-			// we have too many bull options in flight and this fill would worsen it
-			// therefore be greedy unless it's a safe leg (no greed on safe legs)
-			l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, max(bullImbalance, 2))
-		}
-	} else {
-		if bullImbalance > 0 {
-			// we have too many bull options in flight and this leg reduces our risk
-			l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, max(bullImbalance, 1))
-		} else if bearImbalance > 0 && !l.IsSafe() {
-			// we have too many bear options in flight and this fill would worsen it
-			l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, max(bearImbalance, 2))
-		}
+	// imbalance > 0 means too many unfilled bulls (long delta exposure)
+	// imbalance < 0 means too many unfilled bears (short delta exposure)
+	imbalance := unfilledBulls.Size() - unfilledBears.Size()
+
+	// bull legs: greed when imbalance positive, generous when negative
+	// bear legs: greed when imbalance negative, generous when positive
+	ticks := imbalance
+	if !l.IsBull() {
+		ticks = -ticks
+	}
+	ticks = max(-3, min(3, ticks))
+
+	if ticks > 0 && !l.IsSafe() {
+		// this leg worsens our exposure; demand a better price
+		// skip greed on safe legs (far OTM) since they carry little risk
+		l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, ticks)
+	} else if ticks < 0 {
+		// this leg reduces our exposure; accept a worse price to fill faster
+		l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, -ticks)
 	}
 }
 
@@ -146,11 +143,11 @@ func (l *Leg) Check() {
 }
 
 func (l *Leg) LogTickIfRelevant(option *Option) {
-	if l.Option == option && !l.Filled() {
-		log.Printf("tick %s %s %s %s bid=%s ask=%s spread=%s",
-			l.Name, l.Instruction(), option.Class, option.Strike,
-			option.Bid, option.Ask, option.Ask.Sub(option.Bid))
-	}
+	// if l.Option == option && !l.Filled() {
+	// 	log.Printf("tick %s %s %s %s bid=%s ask=%s spread=%s",
+	// 		l.Name, l.Instruction(), option.Class, option.Strike,
+	// 		option.Bid, option.Ask, option.Ask.Sub(option.Bid))
+	// }
 }
 
 func (l *Leg) UpdateOrderID(newID int64) {
