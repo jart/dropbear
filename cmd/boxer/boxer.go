@@ -26,10 +26,16 @@ func boxer() {
 		return
 	}
 
-	// // make boxes one at a time
-	// if boxes.Size() > 0 {
-	// 	return
-	// }
+	// prevent creating new boxes when imbalance is too high
+	bulls := unfilledBulls.Size()
+	bears := unfilledBears.Size()
+	imbalance := bulls - bears
+	if imbalance < 0 {
+		imbalance = -imbalance
+	}
+	if imbalance >= *maxImbalanceFlag {
+		return
+	}
 
 	// cooldown between boxes
 	if now.Sub(lastBoxTime) < *cooldownFlag {

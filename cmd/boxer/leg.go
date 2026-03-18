@@ -47,29 +47,27 @@ func (l *Leg) Filled() bool {
 }
 
 func (l *Leg) ApplyGreed() {
-	unfilledBullCount := unfilledBulls.Size()
-	unfilledBearCount := unfilledBears.Size()
-	bullImbalance := unfilledBullCount - unfilledBearCount
-	bearImbalance := unfilledBearCount - unfilledBullCount
+	bullCount := unfilledBulls.Size()
+	bearCount := unfilledBears.Size()
+	bullImbalance := bullCount - bearCount
+	bearImbalance := bearCount - bullCount
 	if l.IsBull() {
 		if bearImbalance > 0 {
-			// we have too many bear options in flight and this leg harms our risk profile
+			// we have too many bear options in flight and this leg reduces our risk
 			// therefore be generous with our limit price in accordance with our pain
-			l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, bearImbalance)
-		} else if bullImbalance > 0 {
-			// we have too many bull options in flight and this being filled would make it worse
-			// therefore be greedy with our limit price, in accordance with the imbalance
-			l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, bullImbalance)
+			l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, min(bearImbalance, 3))
+		} else if bullImbalance > 0 && !l.IsSafe() {
+			// we have too many bull options in flight and this fill would worsen it
+			// therefore be greedy unless it's a safe leg (no greed on safe legs)
+			l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, min(bullImbalance, 3))
 		}
 	} else {
 		if bullImbalance > 0 {
-			// we have too many bear options in flight and this leg harms our risk profile
-			// therefore be generous with our limit price in accordance with our pain
-			l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, bullImbalance)
-		} else if bearImbalance > 0 {
-			// we have too many bull options in flight and this being filled would make it worse
-			// therefore be greedy with our limit price, in accordance with the imbalance
-			l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, bearImbalance)
+			// we have too many bull options in flight and this leg reduces our risk
+			l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, min(bullImbalance, 3))
+		} else if bearImbalance > 0 && !l.IsSafe() {
+			// we have too many bear options in flight and this fill would worsen it
+			l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, min(bearImbalance, 3))
 		}
 	}
 }
