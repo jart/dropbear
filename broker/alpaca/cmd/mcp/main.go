@@ -525,6 +525,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "alpaca-mcp: json unmarshal error: %v\n", err)
 			continue
 		}
+		fmt.Fprintf(os.Stderr, "alpaca-mcp: recv %s id=%v\n", req.Method, req.ID)
 
 		var resp Response
 		resp.JSONRPC = "2.0"
@@ -544,6 +545,8 @@ func main() {
 			}
 		case "notifications/initialized":
 			continue
+		case "ping":
+			resp.Result = map[string]any{}
 		case "tools/list":
 			resp.Result = ToolsListResult{Tools: tools}
 		case "tools/call":
@@ -557,7 +560,11 @@ func main() {
 			resp.Error = &Error{Code: -32601, Message: "method not found"}
 		}
 
-		encoder.Encode(resp)
+		if err := encoder.Encode(resp); err != nil {
+			fmt.Fprintf(os.Stderr, "alpaca-mcp: write error id=%v: %v\n", req.ID, err)
+			break
+		}
+		fmt.Fprintf(os.Stderr, "alpaca-mcp: sent id=%v\n", req.ID)
 	}
 
 	if err := scanner.Err(); err != nil {
