@@ -4,6 +4,7 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/ds/cme"
 	"io"
 	"log"
 )
@@ -54,7 +55,7 @@ func streamFutures(key databento.ApiKey, defs chan<- *Future, ticks chan<- Futur
 			id := m.Header.InstrumentID
 			str := m.GetSTypeOutSymbol()
 			log.Printf("map %d -> %s", id, str)
-			sym, year, month, err := parseCME(str)
+			sym, year, month, err := cme.Parse(str)
 			if err != nil {
 				log.Printf("failed to parse cme symbol: %v", err)
 				continue

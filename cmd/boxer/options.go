@@ -30,7 +30,7 @@ func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- Optio
 		Symbols: []string{"SPXW.OPT"},
 	})
 	client.Subscribe(databento.Subscription{
-		Schema:  databento.SchemaTCBBO,
+		Schema:  databento.SchemaCMBP1,
 		SType:   databento.STypeParent,
 		Symbols: []string{"SPXW.OPT"},
 	})

@@ -1,4 +1,4 @@
-package main
+package cme
 
 import (
 	"dropbear/clocky"
@@ -26,7 +26,7 @@ import (
 │                                                                              │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 */
-func parseCME(cme string) (sym symbol.Symbol, year int, month clocky.Month, err error) {
+func Parse(cme string) (sym symbol.Symbol, year int, month clocky.Month, err error) {
 	if len(cme) != 4 && len(cme) != 5 {
 		return 0, 0, 0, errors.New("bad cme length")
 	}
@@ -54,7 +54,7 @@ func parseCME(cme string) (sym symbol.Symbol, year int, month clocky.Month, err 
 		year = year2
 	}
 	monthCode := cme[len(cme)-2]
-	month, ok := CMEMonths[monthCode]
+	month, ok := Months[monthCode]
 	if !ok {
 		return 0, 0, 0, errors.New("bad cme month code")
 	}
@@ -66,34 +66,4 @@ func parseCME(cme string) (sym symbol.Symbol, year int, month clocky.Month, err 
 	}
 	sym = symbol.Symbol(s)
 	return sym, year, month, nil
-}
-
-var CMEMonthCodes = map[clocky.Month]byte{
-	clocky.January:   'F',
-	clocky.February:  'G',
-	clocky.March:     'H',
-	clocky.April:     'J',
-	clocky.May:       'K',
-	clocky.June:      'M',
-	clocky.July:      'N',
-	clocky.August:    'Q',
-	clocky.September: 'U',
-	clocky.October:   'V',
-	clocky.November:  'X',
-	clocky.December:  'Z',
-}
-
-var CMEMonths = map[byte]clocky.Month{
-	'F': clocky.January,
-	'G': clocky.February,
-	'H': clocky.March,
-	'J': clocky.April,
-	'K': clocky.May,
-	'M': clocky.June,
-	'N': clocky.July,
-	'Q': clocky.August,
-	'U': clocky.September,
-	'V': clocky.October,
-	'X': clocky.November,
-	'Z': clocky.December,
 }

@@ -13,34 +13,39 @@ import (
 	"dropbear/ds/symbol"
 	"dropbear/loggy"
 
+	"github.com/emirpasic/gods/v2/sets/hashset"
 	"github.com/emirpasic/gods/v2/sets/treeset"
 )
 
 var (
 	widthFlag     = decimal.Flag("width", "50", "box width")
 	edgeFlag      = decimal.Flag("edge", "0.10", "min edge")
-	minSpread     = decimal.Flag("minspread", "0.10", "min spread")
-	maxEdgeFlag   = decimal.Flag("maxedge", "10.00", "max edge")
-	maxSpreadFlag = decimal.Flag("maxspread", "1.00", "max spread")
-	minBidFlag    = decimal.Flag("minbid", "0.05", "min bid")
+	moneynessFlag = decimal.Flag("moneyness", "100", "maximum distance from the money")
+	safetyFlag    = decimal.Flag("safety", "50", "spx safety points")
 	maxOpen       = flag.Int("maxopen", 4, "max open")
+	freshFlag     = clocky.DurationFlag("fresh", "150ms", "freshness threshold")
+	cooldownFlag  = clocky.DurationFlag("cooldown", "10s", "cooldown between boxes")
 	latencyFlag   = clocky.DurationFlag("latency", "70ms", "latency")
 	greedFlag     = decimal.Flag("greed", "0.00", "greed factor for spread placement")
-	biasFlag      = decimal.Flag("bias", "0.00", "extra greed on bull (+) or bear (-) legs")
-	patienceFlag  = clocky.DurationFlag("patience", "500ms", "patience")
 	demandFlag    = decimal.Flag("demand", "35", "min profit to pounce")
 	verbose       = flag.Bool("v", false, "verbose")
-	dry           = flag.Bool("dry", false, "dry run (don't send orders)")
+	dryFlag       = flag.Bool("dry", false, "dry run (don't send orders)")
 	timeTestFlag  = flag.Bool("timetest", false, "enable time test mode")
 )
 
 var (
-	es              *Future
-	sr1             *Future
-	schwabClient    *schwab.Client
-	futuresByID     = make(map[uint32]*Future)
-	optionsByID     = make(map[uint32]*Option)
-	optionsByStrike = treeset.NewWith(compareOptionByStrike)
+	es                  *Future
+	sr1                 *Future
+	schwabClient        *schwab.Client
+	futuresByID         = make(map[uint32]*Future)
+	optionsByID         = make(map[uint32]*Option)
+	legsByOrderID       = make(map[int64]*Leg)
+	optionsByStrike     = treeset.NewWith(compareOptionByStrike)
+	restrictedToBuying  = hashset.New[uint32]()
+	restrictedToSelling = hashset.New[uint32]()
+	legUpdates          = make(chan LegUpdate, 20)
+	unfilledBulls       = hashset.New[*Leg]()
+	unfilledBears       = hashset.New[*Leg]()
 )
 
 const (
@@ -84,6 +89,9 @@ func main() {
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
 			continue
+		case legUpdate := <-legUpdates:
+			onLegUpdate(legUpdate)
+			continue
 		default:
 			// all channels empty
 		}
@@ -102,6 +110,8 @@ func main() {
 			onOptionTick(t)
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
+		case legUpdate := <-legUpdates:
+			onLegUpdate(legUpdate)
 		}
 	}
 }
@@ -127,7 +137,6 @@ func onFutureTick(t FutureTick) {
 	future.TS = t.TS
 	future.Bid = t.Bid
 	future.Ask = t.Ask
-	future.Price = t.Bid.Add(t.Ask).DivInt(2)
 	if *timeTestFlag {
 		log.Printf("tick %s mid %s bid %s ask %s (%s stale)",
 			future.Symbol, future.Price, t.Bid, t.Ask, clocky.Since(future.TS))
@@ -161,122 +170,113 @@ func onOptionTick(t OptionTick) {
 	}
 
 	// log ticks for options associated with unfilled box legs
-	for _, box := range boxes {
-		for _, leg := range box.Legs {
-			if leg.Option == option {
-				leg.Lock.RLock()
-				if !leg.Filled {
-					log.Printf("tick %s %s %s %s bid=%s ask=%s spread=%s",
-						leg.Name, leg.Instruction, option.Class, option.Strike,
-						option.Bid, option.Ask, option.Ask.Sub(option.Bid))
-				}
-				leg.Lock.RUnlock()
-			}
-		}
+	for _, box := range boxes.Values() {
+		box.LogTickIfRelevant(option)
 	}
+}
+
+func onLegUpdate(update LegUpdate) {
+	update.Leg.OrderID = update.OrderID
+	legsByOrderID[update.OrderID] = update.Leg
 }
 
 func onOrderUpdate(event *schwab.OrderEvent) {
 	pretty, _ := json.MarshalIndent(json.RawMessage(event.RawData), "  ", "  ")
 	log.Printf("order %s: %s\n  %s", event.SchwabOrderID, event.BaseEvent.EventType, pretty)
-
-	// when an order is edited in thinkorswim, schwab cancels the old order
-	// and creates a new one. update the leg's order ID so we can track the fill.
-	if cancel := event.BaseEvent.CancelAcceptedEvent; cancel != nil {
-		for _, info := range cancel.LegCancelRequestInfoList {
-			if info.ChangedNewSchwabOrderId == "" {
-				continue
-			}
-			oldID, err := strconv.ParseInt(info.LegID, 10, 64)
-			if err != nil {
-				continue
-			}
-			newID, err := strconv.ParseInt(info.ChangedNewSchwabOrderId, 10, 64)
-			if err != nil {
-				continue
-			}
-			for _, box := range boxes {
-				for _, leg := range box.Legs {
-					leg.Lock.Lock()
-					if leg.OrderID == oldID {
-						log.Printf("leg order ID updated %d -> %d", oldID, newID)
-						leg.OrderID = newID
-					}
-					leg.Lock.Unlock()
-				}
-			}
-		}
-	}
-
-	// log market maker routing
-	if route := event.BaseEvent.ExecutionRequestedEventRoutedInfo; route != nil {
-		if route.RouteInfo.RouteRequestedType == "New" {
-			routeOrderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
-			if err == nil {
-				for _, box := range boxes {
-					for _, leg := range box.Legs {
-						leg.Lock.RLock()
-						match := leg.OrderID == routeOrderID
-						leg.Lock.RUnlock()
-						if match {
-							log.Printf("route %s %s %s %s -> %s @ %s",
-								leg.Name, leg.Instruction, leg.Option.Class,
-								leg.Option.Strike,
-								route.RouteInfo.RouteName,
-								route.RouteInfo.RoutedPrice)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	fill := event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo
-	if fill == nil {
+	if event.BaseEvent.CancelAcceptedEvent != nil {
+		onCancelEvent(event.BaseEvent.CancelAcceptedEvent)
 		return
 	}
+	if event.BaseEvent.ExecutionRequestedEventRoutedInfo != nil {
+		onRouteEvent(event, event.BaseEvent.ExecutionRequestedEventRoutedInfo)
+		return
+	}
+	if event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo != nil {
+		onFillEvent(event, event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo)
+		return
+	}
+}
+
+func onCancelEvent(cancel *schwab.CancelEvent) {
+	for _, info := range cancel.LegCancelRequestInfoList {
+		if info.ChangedNewSchwabOrderId == "" {
+			continue
+		}
+		oldID, err := strconv.ParseInt(info.LegID, 10, 64)
+		if err != nil {
+			continue
+		}
+		if leg := legsByOrderID[oldID]; leg != nil {
+			if info.ChangedNewSchwabOrderId != "" {
+				// order was updated in thinkorswim
+				newID, err := strconv.ParseInt(info.ChangedNewSchwabOrderId, 10, 64)
+				if err != nil {
+					continue
+				}
+				leg.UpdateOrderID(newID)
+			} else {
+				// order was canceled in thinkorswim
+				boxes.Remove(leg.Box)
+				unfilledBulls.Remove(leg)
+				unfilledBears.Remove(leg)
+				log.Printf("leg %s order canceled in thinkorswim (id=%d)", leg.Name, oldID)
+			}
+		} else {
+			log.Printf("order id %d not found for cancel event", oldID)
+		}
+	}
+}
+
+func onRouteEvent(event *schwab.OrderEvent, route *schwab.RouteEvent) {
+	if route.RouteInfo.RouteRequestedType != "New" {
+		return
+	}
+	routeOrderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
+	if err != nil {
+		log.Printf("invalid order id %s for route event", event.SchwabOrderID)
+		return
+	}
+	leg := legsByOrderID[routeOrderID]
+	if leg == nil {
+		log.Printf("order id %d not found for route event: %s -> %s @ %s",
+			routeOrderID, route.RouteInfo.RouteName, route.RouteInfo.RoutedPrice)
+		return
+	}
+	log.Printf("route %s %s %s %s -> %s @ %s",
+		leg.Name, leg.Instruction(), leg.Option.Class,
+		leg.Option.Strike,
+		route.RouteInfo.RouteName,
+		route.RouteInfo.RoutedPrice)
+}
+
+func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	osi := fill.OrderInfoForTransactionPosting.Symbol
 	qty := fill.ExecutionInfo.ExecutionQuantity
+	routeName := fill.ExecutionInfo.RouteName
+	fillPrice := fill.ExecutionInfo.ExecutionPrice
+	priceImprovement := fill.PriceImprovement
 	if fill.OrderInfoForTransactionPosting.BuySellCode == "Sell" {
 		qty = qty.Neg()
 	}
 	holdings[osi] = holdings[osi].Add(qty)
-
-	// match fill to box leg and check for box completion
 	orderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
 	if err != nil {
+		log.Printf("invalid order id %s for fill event", event.SchwabOrderID)
 		return
 	}
-	legName := ""
-	remaining := boxes[:0]
-	for _, box := range boxes {
-		for _, leg := range box.Legs {
-			leg.Lock.Lock()
-			if leg.OrderID == orderID {
-				leg.Filled = true
-				legName = leg.Name
-			}
-			leg.Lock.Unlock()
-		}
-		if box.AllFilled() {
-			side := "BUY"
-			if !box.Buying {
-				side = "SELL"
-			}
-			log.Printf("BOX FILLED: %s %s/%s profit=%s ($%s/box)",
-				side, box.Low, box.High, box.Profit, box.Profit.MulInt(100))
-		} else {
-			remaining = append(remaining, box)
-		}
+	leg := legsByOrderID[orderID]
+	if leg == nil {
+		log.Printf("order id %d not found for fill event", orderID)
+		return
 	}
-	boxes = remaining
-	routeName := fill.ExecutionInfo.RouteName
-	fillPrice := fill.ExecutionInfo.ExecutionPrice
-	if legName != "" {
-		log.Printf("fill %s %s via %s @ %s qty now %s",
-			legName, osi, routeName, fillPrice, holdings[osi])
-	} else {
-		log.Printf("fill %s via %s @ %s qty now %s",
-			osi, routeName, fillPrice, holdings[osi])
+	leg.FillPrice = fillPrice
+	unfilledBulls.Remove(leg)
+	unfilledBears.Remove(leg)
+	log.Printf("leg fill %s for %d at %s with %s price improvement from %s",
+		leg.Name, orderID, fillPrice, priceImprovement, routeName)
+	if leg.Box.Filled() {
+		log.Printf("box filled with profit %s (originally %s) %s",
+			leg.Box.FillProfit(), leg.Box.LimitProfit(), leg.Box)
+		boxes.Remove(leg.Box)
 	}
 }

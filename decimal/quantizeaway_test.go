@@ -5,6 +5,33 @@ import (
 	"testing"
 )
 
+func TestDecimal_QuantizeAway(t *testing.T) {
+	tests := []struct {
+		value   Decimal
+		quantum Decimal
+		expect  Decimal
+	}{
+		{Parse("0"), Parse("0.05"), Parse("0")},
+		{Parse("0.01"), Parse("0.05"), Parse("0.05")},
+		{Parse("-0.01"), Parse("0.05"), Parse("-0.05")},
+		{Parse("0.04"), Parse("0.05"), Parse("0.05")},
+		{Parse("-0.04"), Parse("0.05"), Parse("-0.05")},
+		{Parse("0.05"), Parse("0.05"), Parse("0.05")},
+		{Parse("-0.05"), Parse("0.05"), Parse("-0.05")},
+		{Parse("0.06"), Parse("0.05"), Parse("0.10")},
+		{Parse("-0.06"), Parse("0.05"), Parse("-0.10")},
+		{Parse("0.09"), Parse("0.05"), Parse("0.10")},
+		{Parse("-0.09"), Parse("0.05"), Parse("-0.10")},
+	}
+	for _, tt := range tests {
+		t.Run("", func(t *testing.T) {
+			if got := tt.value.QuantizeAway(tt.quantum); got != tt.expect {
+				t.Errorf("QuantizeAway(%s, %s) = %s, want %s", tt.value, tt.quantum, got, tt.expect)
+			}
+		})
+	}
+}
+
 func TestDecimal_QuantizeAway_Overflows(t *testing.T) {
 	tests := []struct {
 		name      string
