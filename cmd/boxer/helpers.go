@@ -9,6 +9,7 @@ import (
 var (
 	tick05  = decimal.Parse("0.05")
 	tick10  = decimal.Parse("0.10")
+	quarter = decimal.Parse("0.25")
 	three   = decimal.FromInt(3)
 	fifteen = decimal.FromInt(15)
 )
@@ -21,8 +22,6 @@ func optionTick(price decimal.Decimal) decimal.Decimal {
 	}
 	return tick10
 }
-
-var quarter = decimal.Parse("0.25")
 
 // isFresh returns true if the option's quote is recent and the underlying
 // hasn't moved significantly since the quote was received.
@@ -38,7 +37,7 @@ func isFresh(opt *Option, esMid decimal.Decimal) bool {
 // stale legs, to survive another arb bot picking off the top of book first.
 // It's floor(price / 15) * $0.10, e.g. $0.20 for a $30 option.
 func staleBuffer(price decimal.Decimal) decimal.Decimal {
-	return price.Abs().Div(fifteen).QuantizeTruncate(decimal.One).Mul(tick10)
+	return price.Abs().Div(fifteen).Truncate().Mul(tick10)
 }
 
 // legPrice returns the limit price for a leg based on quote freshness.

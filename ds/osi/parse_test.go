@@ -1,4 +1,4 @@
-package main
+package osi
 
 import (
 	"dropbear/clocky"
@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-func TestParseOSI(t *testing.T) {
-	sym, strike, class, year, month, day, err := parseOSI("SPXW  260409C06450000")
+func TestParse(t *testing.T) {
+	sym, strike, class, year, month, day, err := Parse("SPXW  260409C06450000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,5 +29,16 @@ func TestParseOSI(t *testing.T) {
 	}
 	if day != 9 {
 		t.Errorf("day = %d, want 9", day)
+	}
+}
+
+func TestParseErrors(t *testing.T) {
+	_, _, _, _, _, _, err := Parse("too short")
+	if err == nil {
+		t.Error("expected error for too short input")
+	}
+	_, _, _, _, _, _, err = Parse("SPXW  260409C0645000X") // invalid strike digit
+	if err == nil {
+		t.Error("expected error for invalid strike digit")
 	}
 }

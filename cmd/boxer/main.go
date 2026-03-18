@@ -35,13 +35,17 @@ var (
 )
 
 var (
-	futuresByID     = make(map[uint32]*Future)
 	es              *Future
 	sr1             *Future
+	schwabClient    *schwab.Client
+	futuresByID     = make(map[uint32]*Future)
 	optionsByID     = make(map[uint32]*Option)
 	optionsByStrike = treeset.NewWith(compareOptionByStrike)
-	schwabClient    *schwab.Client
-	holdings        = make(map[string]int)
+)
+
+const (
+	esSymbol  = symbol.Symbol('E' | 'S'<<8)
+	sr1Symbol = symbol.Symbol('S' | 'R'<<8 | '1'<<16)
 )
 
 func main() {
@@ -51,19 +55,7 @@ func main() {
 
 	key := databento.MustLoadDefaultKey()
 	schwabClient = schwab.NewClient()
-
-	// fetch account positions to populate option holdings
-	acct, err := schwabClient.GetAccount()
-	if err != nil {
-		log.Printf("warning: failed to fetch positions: %v", err)
-	} else {
-		for _, pos := range acct.SecuritiesAccount.Positions {
-			qty := pos.LongQuantity.Sub(pos.ShortQuantity).Int()
-			if qty != 0 {
-				holdings[pos.Instrument.Symbol] = qty
-			}
-		}
-	}
+	InitHoldings()
 
 	futureDefs := make(chan *Future, 64)
 	futureTicks := make(chan FutureTick, 512)
@@ -116,13 +108,14 @@ func main() {
 
 func onFutureDef(key databento.ApiKey, ticks chan<- FutureTick, f *Future) {
 	futuresByID[f.ID] = f
-	if f.Sym == symbol.Symbol('E'|'S'<<8) {
+	switch f.Symbol {
+	case esSymbol:
 		es = f
-	} else if f.Sym == symbol.Symbol('S'|'R'<<8|'1'<<16) {
+	case sr1Symbol:
 		sr1 = f
 		go fetchFuturePrice(key, sr1, ticks)
-	} else {
-		log.Fatalf("unknown future symbol: %s", f.Sym)
+	default:
+		log.Fatalf("unknown future symbol: %s", f.Symbol)
 	}
 }
 
@@ -136,17 +129,14 @@ func onFutureTick(t FutureTick) {
 	future.Ask = t.Ask
 	future.Price = t.Bid.Add(t.Ask).DivInt(2)
 	if *timeTestFlag {
-		log.Printf("tick %s mid %s bid %s ask %s (%s stale)", future.Sym, future.Price, t.Bid, t.Ask, clocky.Since(future.TS))
+		log.Printf("tick %s mid %s bid %s ask %s (%s stale)",
+			future.Symbol, future.Price, t.Bid, t.Ask, clocky.Since(future.TS))
 	}
 }
 
 func onOptionDef(o *Option) {
 	optionsByID[o.ID] = o
 	optionsByStrike.Add(o)
-	if qty, ok := holdings[o.OSI()]; ok {
-		log.Printf("position %s qty %d", o, qty)
-		_ = qty
-	}
 }
 
 func onOptionTick(t OptionTick) {
@@ -169,19 +159,18 @@ func onOptionTick(t OptionTick) {
 	if *timeTestFlag {
 		log.Printf("tick %s bid %s ask %s (%s stale)", option, t.Bid, t.Ask, clocky.Since(option.TS))
 	}
+
 	// log ticks for options associated with unfilled box legs
 	for _, box := range boxes {
-		for _, leg := range box.legs {
-			if leg.opt == option {
-				leg.lock.RLock()
-				filled := leg.filled
-				leg.lock.RUnlock()
-				if !filled {
+		for _, leg := range box.Legs {
+			if leg.Option == option {
+				leg.Lock.RLock()
+				if !leg.Filled {
 					log.Printf("tick %s %s %s %s bid=%s ask=%s spread=%s",
-						leg.name, leg.instruction, option.Class, option.Strike.Format(0),
-						option.Bid.Format(2), option.Ask.Format(2),
-						option.Ask.Sub(option.Bid).Format(2))
+						leg.Name, leg.Instruction, option.Class, option.Strike,
+						option.Bid, option.Ask, option.Ask.Sub(option.Bid))
 				}
+				leg.Lock.RUnlock()
 			}
 		}
 	}
@@ -207,13 +196,13 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 				continue
 			}
 			for _, box := range boxes {
-				for _, leg := range box.legs {
-					leg.lock.Lock()
-					if leg.orderID == oldID {
+				for _, leg := range box.Legs {
+					leg.Lock.Lock()
+					if leg.OrderID == oldID {
 						log.Printf("leg order ID updated %d -> %d", oldID, newID)
-						leg.orderID = newID
+						leg.OrderID = newID
 					}
-					leg.lock.Unlock()
+					leg.Lock.Unlock()
 				}
 			}
 		}
@@ -225,16 +214,16 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 			routeOrderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
 			if err == nil {
 				for _, box := range boxes {
-					for _, leg := range box.legs {
-						leg.lock.RLock()
-						match := leg.orderID == routeOrderID
-						leg.lock.RUnlock()
+					for _, leg := range box.Legs {
+						leg.Lock.RLock()
+						match := leg.OrderID == routeOrderID
+						leg.Lock.RUnlock()
 						if match {
 							log.Printf("route %s %s %s %s -> %s @ %s",
-								leg.name, leg.instruction, leg.opt.Class,
-								leg.opt.Strike.Format(0),
+								leg.Name, leg.Instruction, leg.Option.Class,
+								leg.Option.Strike,
 								route.RouteInfo.RouteName,
-								route.RouteInfo.RoutedPrice.Format(2))
+								route.RouteInfo.RoutedPrice)
 						}
 					}
 				}
@@ -247,11 +236,11 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 		return
 	}
 	osi := fill.OrderInfoForTransactionPosting.Symbol
-	qty := fill.ExecutionInfo.ExecutionQuantity.Int()
+	qty := fill.ExecutionInfo.ExecutionQuantity
 	if fill.OrderInfoForTransactionPosting.BuySellCode == "Sell" {
-		qty = -qty
+		qty = qty.Neg()
 	}
-	holdings[osi] += qty
+	holdings[osi] = holdings[osi].Add(qty)
 
 	// match fill to box leg and check for box completion
 	orderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
@@ -261,22 +250,21 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 	legName := ""
 	remaining := boxes[:0]
 	for _, box := range boxes {
-		for _, leg := range box.legs {
-			leg.lock.Lock()
-			if leg.orderID == orderID {
-				leg.filled = true
-				legName = leg.name
+		for _, leg := range box.Legs {
+			leg.Lock.Lock()
+			if leg.OrderID == orderID {
+				leg.Filled = true
+				legName = leg.Name
 			}
-			leg.lock.Unlock()
+			leg.Lock.Unlock()
 		}
 		if box.AllFilled() {
 			side := "BUY"
-			if !box.buying {
+			if !box.Buying {
 				side = "SELL"
 			}
 			log.Printf("BOX FILLED: %s %s/%s profit=%s ($%s/box)",
-				side, box.low.Format(0), box.high.Format(0),
-				box.profit.Format(2), box.profit.MulInt(100).Format(2))
+				side, box.Low, box.High, box.Profit, box.Profit.MulInt(100))
 		} else {
 			remaining = append(remaining, box)
 		}
@@ -285,10 +273,10 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 	routeName := fill.ExecutionInfo.RouteName
 	fillPrice := fill.ExecutionInfo.ExecutionPrice
 	if legName != "" {
-		log.Printf("fill %s %s via %s @ %s qty now %d",
-			legName, osi, routeName, fillPrice.Format(2), holdings[osi])
+		log.Printf("fill %s %s via %s @ %s qty now %s",
+			legName, osi, routeName, fillPrice, holdings[osi])
 	} else {
-		log.Printf("fill %s via %s @ %s qty now %d",
-			osi, routeName, fillPrice.Format(2), holdings[osi])
+		log.Printf("fill %s via %s @ %s qty now %s",
+			osi, routeName, fillPrice, holdings[osi])
 	}
 }

@@ -50,16 +50,16 @@ func boxer() {
 		}
 		switch opt.Class {
 		case databento.InstrumentClassCall:
-			sp.call = opt
+			sp.Call = opt
 		case databento.InstrumentClassPut:
-			sp.put = opt
+			sp.Put = opt
 		}
 	}
 
 	// collect strikes that have both a call and a put
 	var valid []decimal.Decimal
 	for strike, sp := range strikes {
-		if sp.call != nil && sp.put != nil {
+		if sp.Call != nil && sp.Put != nil {
 			valid = append(valid, strike)
 		}
 	}
@@ -84,14 +84,14 @@ func boxer() {
 			// compute per-leg prices based on quote freshness
 			// fresh (<150ms, ES drift <= 0.25): demand midpoint
 			// stale: cross the spread (buy at ask, sell at bid)
-			buyCL := legPrice(spLow.call, true, esMid)
-			buyCH := legPrice(spHigh.call, true, esMid)
-			buyPL := legPrice(spLow.put, true, esMid)
-			buyPH := legPrice(spHigh.put, true, esMid)
-			sellCL := legPrice(spLow.call, false, esMid)
-			sellCH := legPrice(spHigh.call, false, esMid)
-			sellPL := legPrice(spLow.put, false, esMid)
-			sellPH := legPrice(spHigh.put, false, esMid)
+			buyCL := legPrice(spLow.Call, true, esMid)
+			buyCH := legPrice(spHigh.Call, true, esMid)
+			buyPL := legPrice(spLow.Put, true, esMid)
+			buyPH := legPrice(spHigh.Put, true, esMid)
+			sellCL := legPrice(spLow.Call, false, esMid)
+			sellCH := legPrice(spHigh.Call, false, esMid)
+			sellPL := legPrice(spLow.Put, false, esMid)
+			sellPH := legPrice(spHigh.Put, false, esMid)
 
 			// apply directional bias: positive = greed on bull legs,
 			// negative = greed on bear legs
@@ -109,10 +109,10 @@ func boxer() {
 			buyPH = buyPH.Sub(bearBias)   // long put = bear
 
 			// midpoints (for edge reference)
-			midCL := spLow.call.Bid.Add(spLow.call.Ask).DivInt(2)
-			midCH := spHigh.call.Bid.Add(spHigh.call.Ask).DivInt(2)
-			midPL := spLow.put.Bid.Add(spLow.put.Ask).DivInt(2)
-			midPH := spHigh.put.Bid.Add(spHigh.put.Ask).DivInt(2)
+			midCL := spLow.Call.Bid.Add(spLow.Call.Ask).DivInt(2)
+			midCH := spHigh.Call.Bid.Add(spHigh.Call.Ask).DivInt(2)
+			midPL := spLow.Put.Bid.Add(spLow.Put.Ask).DivInt(2)
+			midPH := spHigh.Put.Bid.Add(spHigh.Put.Ask).DivInt(2)
 
 			// Buy box: Buy C(low) + Sell C(high) + Buy P(high) + Sell P(low)
 			buyPrice := buyCL.Sub(sellCH).Add(buyPH).Sub(sellPL)
@@ -127,42 +127,42 @@ func boxer() {
 			sellEdge := sellPrice.Sub(boxMid)
 
 			bs := &Box{
-				low:      low,
-				high:     high,
-				width:    width,
-				callLow:  spLow.call,
-				callHigh: spHigh.call,
-				putLow:   spLow.put,
-				putHigh:  spHigh.put,
-				mid:      boxMid,
+				Low:      low,
+				High:     high,
+				Width:    width,
+				CallLow:  spLow.Call,
+				CallHigh: spHigh.Call,
+				PutLow:   spLow.Put,
+				PutHigh:  spHigh.Put,
+				Mid:      boxMid,
 			}
 
 			if buyProfit.Cmp(sellProfit) >= 0 {
-				bs.buying = true
-				bs.price = buyPrice
-				bs.profit = buyProfit
-				bs.edge = buyEdge
+				bs.Buying = true
+				bs.Price = buyPrice
+				bs.Profit = buyProfit
+				bs.Edge = buyEdge
 			} else {
-				bs.buying = false
-				bs.price = sellPrice
-				bs.profit = sellProfit
-				bs.edge = sellEdge
+				bs.Buying = false
+				bs.Price = sellPrice
+				bs.Profit = sellProfit
+				bs.Edge = sellEdge
 			}
 
 			// skip boxes that would clobber existing positions
-			if bs.buying {
-				if !canOpen(spLow.call, true) || !canOpen(spHigh.call, false) ||
-					!canOpen(spHigh.put, true) || !canOpen(spLow.put, false) {
+			if bs.Buying {
+				if !canOpen(spLow.Call, true) || !canOpen(spHigh.Call, false) ||
+					!canOpen(spHigh.Put, true) || !canOpen(spLow.Put, false) {
 					continue
 				}
 			} else {
-				if !canOpen(spLow.call, false) || !canOpen(spHigh.call, true) ||
-					!canOpen(spHigh.put, false) || !canOpen(spLow.put, true) {
+				if !canOpen(spLow.Call, false) || !canOpen(spHigh.Call, true) ||
+					!canOpen(spHigh.Put, false) || !canOpen(spLow.Put, true) {
 					continue
 				}
 			}
 
-			if bs.profit.IsPositive() && (best == nil || bs.profit.Cmp(best.profit) > 0) {
+			if bs.Profit.IsPositive() && (best == nil || bs.Profit.Cmp(best.Profit) > 0) {
 				best = bs
 			}
 		}
@@ -173,54 +173,54 @@ func boxer() {
 	}
 
 	side := "BUY"
-	if !best.buying {
+	if !best.Buying {
 		side = "SELL"
 	}
-	dollars := best.profit.MulInt(100)
+	dollars := best.Profit.MulInt(100)
 	if dollars.Cmp(*demandFlag) < 0 {
 		return
 	}
 
-	if best.buying {
+	if best.Buying {
 		log.Printf("best box: %s %s/%s w=%s price=%s profit=%s edge=%s ($%s/box)\n%s\n%s\n%s\n%s",
-			side, best.low.Format(0), best.high.Format(0), best.width.Format(0),
-			best.price.Format(2), best.profit.Format(2), best.edge.Format(2), dollars.Format(2),
-			formatLeg(1, "BUY ", "C", best.callLow, esMid),
-			formatLeg(2, "SELL", "C", best.callHigh, esMid),
-			formatLeg(3, "BUY ", "P", best.putHigh, esMid),
-			formatLeg(4, "SELL", "P", best.putLow, esMid))
+			side, best.Low.Format(0), best.High.Format(0), best.Width.Format(0),
+			best.Price.Format(2), best.Profit.Format(2), best.Edge.Format(2), dollars.Format(2),
+			formatLeg(1, "BUY ", "C", best.CallLow, esMid),
+			formatLeg(2, "SELL", "C", best.CallHigh, esMid),
+			formatLeg(3, "BUY ", "P", best.PutHigh, esMid),
+			formatLeg(4, "SELL", "P", best.PutLow, esMid))
 	} else {
 		log.Printf("best box: %s %s/%s w=%s price=%s profit=%s edge=%s ($%s/box)\n%s\n%s\n%s\n%s",
-			side, best.low.Format(0), best.high.Format(0), best.width.Format(0),
-			best.price.Format(2), best.profit.Format(2), best.edge.Format(2), dollars.Format(2),
-			formatLeg(1, "SELL", "C", best.callLow, esMid),
-			formatLeg(2, "BUY ", "C", best.callHigh, esMid),
-			formatLeg(3, "SELL", "P", best.putHigh, esMid),
-			formatLeg(4, "BUY ", "P", best.putLow, esMid))
+			side, best.Low.Format(0), best.High.Format(0), best.Width.Format(0),
+			best.Price.Format(2), best.Profit.Format(2), best.Edge.Format(2), dollars.Format(2),
+			formatLeg(1, "SELL", "C", best.CallLow, esMid),
+			formatLeg(2, "BUY ", "C", best.CallHigh, esMid),
+			formatLeg(3, "SELL", "P", best.PutHigh, esMid),
+			formatLeg(4, "BUY ", "P", best.PutLow, esMid))
 	}
 
 	if *dry {
 		log.Printf("DRY RUN: would pounce on %s box %s/%s for $%s profit",
-			side, best.low.Format(0), best.high.Format(0), dollars.Format(2))
+			side, best.Low.Format(0), best.High.Format(0), dollars.Format(2))
 		return
 	}
 
 	log.Printf("POUNCING on %s box %s/%s for $%s profit", side,
-		best.low.Format(0), best.high.Format(0), dollars.Format(2))
+		best.Low.Format(0), best.High.Format(0), dollars.Format(2))
 
-	if best.buying {
-		best.legs = []*Leg{
-			NewLeg("#1", best.callLow, schwab.InstructionBuyToOpen, legPrice(best.callLow, true, esMid)),
-			NewLeg("#2", best.callHigh, schwab.InstructionSellToOpen, legPrice(best.callHigh, false, esMid)),
-			NewLeg("#3", best.putHigh, schwab.InstructionBuyToOpen, legPrice(best.putHigh, true, esMid)),
-			NewLeg("#4", best.putLow, schwab.InstructionSellToOpen, legPrice(best.putLow, false, esMid)),
+	if best.Buying {
+		best.Legs = []*Leg{
+			NewLeg("#1", best.CallLow, schwab.InstructionBuyToOpen, legPrice(best.CallLow, true, esMid)),
+			NewLeg("#2", best.CallHigh, schwab.InstructionSellToOpen, legPrice(best.CallHigh, false, esMid)),
+			NewLeg("#3", best.PutHigh, schwab.InstructionBuyToOpen, legPrice(best.PutHigh, true, esMid)),
+			NewLeg("#4", best.PutLow, schwab.InstructionSellToOpen, legPrice(best.PutLow, false, esMid)),
 		}
 	} else {
-		best.legs = []*Leg{
-			NewLeg("#1", best.callLow, schwab.InstructionSellToOpen, legPrice(best.callLow, false, esMid)),
-			NewLeg("#2", best.callHigh, schwab.InstructionBuyToOpen, legPrice(best.callHigh, true, esMid)),
-			NewLeg("#3", best.putHigh, schwab.InstructionSellToOpen, legPrice(best.putHigh, false, esMid)),
-			NewLeg("#4", best.putLow, schwab.InstructionBuyToOpen, legPrice(best.putLow, true, esMid)),
+		best.Legs = []*Leg{
+			NewLeg("#1", best.CallLow, schwab.InstructionSellToOpen, legPrice(best.CallLow, false, esMid)),
+			NewLeg("#2", best.CallHigh, schwab.InstructionBuyToOpen, legPrice(best.CallHigh, true, esMid)),
+			NewLeg("#3", best.PutHigh, schwab.InstructionSellToOpen, legPrice(best.PutHigh, false, esMid)),
+			NewLeg("#4", best.PutLow, schwab.InstructionBuyToOpen, legPrice(best.PutLow, true, esMid)),
 		}
 	}
 

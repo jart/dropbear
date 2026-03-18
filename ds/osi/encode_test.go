@@ -1,0 +1,15 @@
+package osi
+
+import (
+	"dropbear/clocky"
+	"dropbear/decimal"
+	"dropbear/ds/symbol"
+	"testing"
+)
+
+func TestEncode(t *testing.T) {
+	osi := Encode(symbol.MustParse("SPXW"), decimal.FromInt(6450), 'C', 2026, clocky.April, 9)
+	if osi != "SPXW  260409C06450000" {
+		t.Errorf("osi = %s, want SPXW  260409C06450000", osi)
+	}
+}

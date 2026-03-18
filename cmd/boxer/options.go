@@ -4,6 +4,7 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/ds/osi"
 	"io"
 	"log"
 	"time"
@@ -54,7 +55,7 @@ func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- Optio
 		case *databento.SymbolMappingMsg:
 			id := m.Header.InstrumentID
 			str := m.GetSTypeOutSymbol()
-			sym, strike, class, year, month, day, err := parseOSI(str)
+			sym, strike, class, year, month, day, err := osi.Parse(str)
 			if err != nil {
 				log.Printf("failed to parse OSI: %v", err)
 				continue
@@ -66,7 +67,7 @@ func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- Optio
 			}
 			defs <- &Option{
 				ID:     id,
-				Class:  class,
+				Class:  databento.InstrumentClass(class),
 				Sym:    sym,
 				Strike: strike,
 				Year:   year,

@@ -60,10 +60,10 @@ func streamFutures(key databento.ApiKey, defs chan<- *Future, ticks chan<- Futur
 				continue
 			}
 			defs <- &Future{
-				ID:    id,
-				Sym:   sym,
-				Year:  year,
-				Month: month,
+				ID:     id,
+				Symbol: sym,
+				Year:   year,
+				Month:  month,
 			}
 		case *databento.MBP1:
 			ticks <- FutureTick{

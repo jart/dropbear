@@ -3,32 +3,32 @@ package main
 import "dropbear/decimal"
 
 type Box struct {
-	low      decimal.Decimal
-	high     decimal.Decimal
-	width    decimal.Decimal
-	callLow  *Option
-	callHigh *Option
-	putLow   *Option
-	putHigh  *Option
-	mid      decimal.Decimal // unrounded box midpoint price
-	price    decimal.Decimal // rounded limit price (what we'd pay or receive)
-	profit   decimal.Decimal // guaranteed profit per point at expiration
-	edge     decimal.Decimal // how much better than midpoint we're demanding
-	buying   bool
-	legs     []*Leg
+	Low      decimal.Decimal
+	High     decimal.Decimal
+	Width    decimal.Decimal
+	CallLow  *Option
+	CallHigh *Option
+	PutLow   *Option
+	PutHigh  *Option
+	Mid      decimal.Decimal // unrounded box midpoint price
+	Price    decimal.Decimal // rounded limit price (what we'd pay or receive)
+	Profit   decimal.Decimal // guaranteed profit per point at expiration
+	Edge     decimal.Decimal // how much better than midpoint we're demanding
+	Buying   bool
+	Legs     []*Leg
 }
 
 func (b *Box) AllFilled() bool {
-	for _, l := range b.legs {
-		if !l.filled {
+	for _, l := range b.Legs {
+		if !l.Filled {
 			return false
 		}
 	}
-	return len(b.legs) == 4
+	return len(b.Legs) == 4
 }
 
 func (b *Box) Order() {
-	for _, l := range b.legs {
+	for _, l := range b.Legs {
 		go l.Order()
 	}
 }

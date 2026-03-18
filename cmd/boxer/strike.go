@@ -1,6 +1,6 @@
 package main
 
 type Strike struct {
-	call *Option
-	put  *Option
+	Call *Option
+	Put  *Option
 }

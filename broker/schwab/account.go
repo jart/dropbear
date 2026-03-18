@@ -13,26 +13,27 @@ type AccountResponse struct {
 
 // SecuritiesAccount represents a Schwab securities account.
 type SecuritiesAccount struct {
-	AccountNumber           string          `json:"accountNumber"`
-	RoundTrips              int64           `json:"roundTrips"`
-	IsDayTrader             bool            `json:"isDayTrader"`
-	IsClosingOnlyRestricted bool            `json:"isClosingOnlyRestricted"`
-	PfcbFlag                bool            `json:"pfcbFlag"`
-	Positions               []Position      `json:"positions"`
-	InitialBalances         Balances        `json:"initialBalances"`
+	Type                    string          `json:"type"`                    // e.g. "MARGIN"
+	AccountNumber           string          `json:"accountNumber"`           // e.g. "40595135"
+	RoundTrips              int64           `json:"roundTrips"`              // e.g. 0
+	IsDayTrader             bool            `json:"isDayTrader"`             // means you can tap day trading buying power
+	IsClosingOnlyRestricted bool            `json:"isClosingOnlyRestricted"` // means you're in a margin call
+	PfcbFlag                bool            `json:"pfcbFlag"`                // portfolio cash balance flag; if true, cash balance is swept to money market fund and not available for trading
+	Positions               []Position      `json:"positions"`               // list of open positions in the account
+	InitialBalances         Balances        `json:"initialBalances"`         // initial account balances at the start of the day
 	CurrentBalances         CurrentBalances `json:"currentBalances"`
 	ProjectedBalances       CurrentBalances `json:"projectedBalances"`
 }
 
 // Position represents a position in an account.
 type Position struct {
-	ShortQuantity                decimal.Decimal `json:"shortQuantity"`
+	LongQuantity                 decimal.Decimal `json:"longQuantity"`  // e.g. 100 for 100 shares long, or 0 if no long position
+	ShortQuantity                decimal.Decimal `json:"shortQuantity"` // e.g. 500 for 500 shares short, or 0 if no short position
+	SettledLongQuantity          decimal.Decimal `json:"settledLongQuantity"`
+	SettledShortQuantity         decimal.Decimal `json:"settledShortQuantity"`
 	AveragePrice                 decimal.Decimal `json:"averagePrice"`
 	CurrentDayProfitLoss         decimal.Decimal `json:"currentDayProfitLoss"`
 	CurrentDayProfitLossPercent  decimal.Decimal `json:"currentDayProfitLossPercentage"`
-	LongQuantity                 decimal.Decimal `json:"longQuantity"`
-	SettledLongQuantity          decimal.Decimal `json:"settledLongQuantity"`
-	SettledShortQuantity         decimal.Decimal `json:"settledShortQuantity"`
 	AgedQuantity                 decimal.Decimal `json:"agedQuantity"`
 	Instrument                   Instrument      `json:"instrument"`
 	MarketValue                  decimal.Decimal `json:"marketValue"`

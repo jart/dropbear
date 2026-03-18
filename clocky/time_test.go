@@ -14,6 +14,32 @@ func TestTimeIsZero(t *testing.T) {
 	}
 }
 
+func MyTest(t *testing.T) {
+	ts := MustParseTime("2026-03-11 10:16:19.241")
+	// now test fields
+	if ts.Year() != 2026 {
+		t.Errorf("Year() = %d, want 2026", ts.Year())
+	}
+	if ts.Month() != March {
+		t.Errorf("Month() = %d, want 3 (March)", ts.Month())
+	}
+	if ts.Day() != 11 {
+		t.Errorf("Day() = %d, want 11", ts.Day())
+	}
+	if ts.Hour() != 10 {
+		t.Errorf("Hour() = %d, want 10", ts.Hour())
+	}
+	if ts.Minute() != 16 {
+		t.Errorf("Minute() = %d, want 16", ts.Minute())
+	}
+	if ts.Second() != 19 {
+		t.Errorf("Second() = %d, want 19", ts.Second())
+	}
+	if ts.Nanosecond() != 241_000_000 {
+		t.Errorf("Nanosecond() = %d, want 241000000", ts.Nanosecond())
+	}
+}
+
 func TestTimeAdd(t *testing.T) {
 	tests := []struct {
 		name     string

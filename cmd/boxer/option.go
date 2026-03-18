@@ -4,6 +4,7 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/ds/osi"
 	"dropbear/ds/symbol"
 	"fmt"
 )
@@ -27,33 +28,7 @@ func (o *Option) String() string {
 }
 
 func (o *Option) OSI() string {
-	var buf [21]byte
-	// symbol: 6 chars, space-padded
-	for i := range buf[:6] {
-		buf[i] = ' '
-	}
-	s := uint64(o.Sym)
-	for i := 0; i < 6 && s != 0; i++ {
-		buf[i] = byte(s)
-		s >>= 8
-	}
-	// expiration: YYMMDD
-	yy := o.Year - 2000
-	buf[6] = byte(yy/10) + '0'
-	buf[7] = byte(yy%10) + '0'
-	buf[8] = byte(o.Month/10) + '0'
-	buf[9] = byte(o.Month%10) + '0'
-	buf[10] = byte(o.Day/10) + '0'
-	buf[11] = byte(o.Day%10) + '0'
-	// class
-	buf[12] = byte(o.Class)
-	// strike × 1000, 8 digits zero-padded
-	strike := o.Strike.MulInt(1000).Int64()
-	for i := 20; i >= 13; i-- {
-		buf[i] = byte(strike%10) + '0'
-		strike /= 10
-	}
-	return string(buf[:])
+	return osi.Encode(o.Sym, o.Strike, byte(o.Class), o.Year, o.Month, o.Day)
 }
 
 func compareOptionByStrike(a, b *Option) int {

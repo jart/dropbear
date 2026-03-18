@@ -95,6 +95,11 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println("authorization token saved to disk; you're good for 7 days")
 
-	// exit cleanly after responding
-	go func() { os.Exit(0) }()
+	// write response
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("<h1>authorization successful</h1>\n"))
+
+	// terminate program
+	os.Exit(0)
 }

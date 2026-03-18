@@ -8,55 +8,53 @@ import (
 )
 
 type Leg struct {
-	name        string // e.g. "#1", "#2", "#3", "#4"
-	opt         *Option
-	instruction schwab.Instruction
-	price       decimal.Decimal // actual order price
-	lock        sync.RWMutex    // protects orderID, finished, filled
-	orderID     int64           // schwab order ID, or 0 if not yet placed, or canceled
-	finished    bool            // true if order submission completed (success or failure)
-	filled      bool            // true if order was filled (confirmed by schwab websocket)
+	Name        string // e.g. "#1", "#2", "#3", "#4"
+	Option      *Option
+	Instruction schwab.Instruction
+	Price       decimal.Decimal // actual order price
+	Lock        sync.RWMutex    // protects orderID, finished, filled
+	OrderID     int64           // schwab order ID, or 0 if not yet placed, or canceled
+	Finished    bool            // true if order submission completed (success or failure)
+	Filled      bool            // true if order was filled (confirmed by schwab websocket)
 }
 
-func NewLeg(name string, opt *Option, instruction schwab.Instruction, price decimal.Decimal) *Leg {
+func NewLeg(name string, option *Option, instruction schwab.Instruction, price decimal.Decimal) *Leg {
 	return &Leg{
-		name:        name,
-		opt:         opt,
-		instruction: instruction,
-		price:       price,
+		Name:        name,
+		Option:      option,
+		Instruction: instruction,
+		Price:       price,
 	}
 }
 
 func (l *Leg) Order() {
 	orderID, err := schwabClient.CreateOrder(&schwab.Order{
 		OrderType:         schwab.OrderTypeLimit,
-		Price:             l.price,
+		Price:             l.Price,
 		Duration:          schwab.DurationDay,
 		Session:           schwab.SessionNormal,
 		OrderStrategyType: schwab.OrderStrategyTypeSingle,
-		OrderLegCollection: []schwab.OrderLeg{
-			{
-				Instruction: l.instruction,
-				Quantity:    decimal.FromInt(1),
-				Instrument: schwab.Instrument{
-					Symbol: l.opt.OSI(),
-					Type:   schwab.AssetTypeOption,
-				},
+		OrderLegCollection: []schwab.OrderLeg{{
+			Instruction: l.Instruction,
+			Quantity:    decimal.One,
+			Instrument: schwab.Instrument{
+				Symbol: l.Option.OSI(),
+				Type:   schwab.AssetTypeOption,
 			},
-		},
+		}},
 	})
 	if err != nil {
 		log.Printf("order FAILED %s %s %s %s @ %s: %v",
-			l.name, l.instruction, l.opt.Class, l.opt.Strike.Format(0), l.price.Format(2), err)
-		l.lock.Lock()
-		l.finished = true
-		l.lock.Unlock()
+			l.Name, l.Instruction, l.Option.Class, l.Option.Strike, l.Price, err)
+		l.Lock.Lock()
+		defer l.Lock.Unlock()
+		l.Finished = true
 		return
 	}
 	log.Printf("order SENT %s %s %s %s @ %s (id=%d)",
-		l.name, l.instruction, l.opt.Class, l.opt.Strike.Format(0), l.price.Format(2), orderID)
-	l.lock.Lock()
-	l.orderID = orderID
-	l.finished = true
-	l.lock.Unlock()
+		l.Name, l.Instruction, l.Option.Class, l.Option.Strike, l.Price, orderID)
+	l.Lock.Lock()
+	defer l.Lock.Unlock()
+	l.OrderID = orderID
+	l.Finished = true
 }

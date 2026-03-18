@@ -1,7 +1,6 @@
 package clocky
 
 import (
-	"os"
 	"time"
 )
 
@@ -11,21 +10,14 @@ var MTV *time.Location
 var UTC *time.Location
 
 func init() {
-	s := os.Getenv("TZ")
-	if s == "" {
-		s = "America/Los_Angeles"
-	}
-	tz, err := time.LoadLocation(s)
-	if err != nil {
-		panic("bad TZ variable: " + err.Error())
-	}
-	TZ = tz
+	UTC = time.UTC
 
 	// new york financial time
 	nyc, err := time.LoadLocation("America/New_York")
 	if err != nil {
 		panic("failed to load America/New_York: " + err.Error())
 	}
+	TZ = nyc
 	NYC = nyc
 
 	// google standard time
@@ -34,9 +26,6 @@ func init() {
 		panic("failed to load America/Los_Angeles: " + err.Error())
 	}
 	MTV = mtv
-
-	// coordinated universal time
-	UTC = time.UTC
 }
 
 func (t Time) In(loc *time.Location) time.Time {

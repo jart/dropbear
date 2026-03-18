@@ -29,7 +29,7 @@ type FeeCalculator struct {
 	TotalFees    decimal.Decimal
 	lock         sync.Mutex
 	sharesTraded decimal.Decimal
-	currentMonth int
+	currentMonth clocky.Month
 }
 
 // NewFeeCalculator creates a new fee calculator.

@@ -90,9 +90,6 @@ const (
 
 func (t *Time) unmarshalRFC3339(data []byte) error {
 	data = data[1 : len(data)-1]
-	if !hasTimezone(data) {
-		return ErrMissingTimezone
-	}
 	parsed, err := ParseTime(string(data))
 	if err != nil {
 		return err

@@ -18,6 +18,9 @@ func TestTimeUnmarshalJSON(t *testing.T) {
 		{"rfc3339", `"2024-01-15T10:30:00Z"`, want},
 		{"rfc3339_nanos", `"2024-01-15T10:30:00.123456789Z"`, want + 123456789},
 
+		// now test that time without zone is treated as new york time
+		{"local_time", `"2024-01-15 10:30:00"`, want + 5*3600_000_000_000}, // 5 hours behind UTC in January
+
 		// Unix seconds (integer)
 		{"unix_seconds", `1705314600`, want},
 
@@ -339,42 +342,6 @@ func TestTimestampLimits(t *testing.T) {
 		}
 		t.Logf("2200 float: %s -> %s (ns=%d)", input2200, got.RFC3339(), got%1_000_000_000)
 	})
-}
-
-func TestRFC3339RequiresTimezone(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		// Valid: has timezone
-		{"utc_z", `"2024-01-15T10:30:00Z"`, false},
-		{"utc_offset", `"2024-01-15T10:30:00+00:00"`, false},
-		{"positive_offset", `"2024-01-15T10:30:00+05:30"`, false},
-		{"negative_offset", `"2024-01-15T10:30:00-08:00"`, false},
-		{"with_nanos", `"2024-01-15T10:30:00.123456789Z"`, false},
-
-		// Invalid: no timezone
-		{"no_timezone", `"2024-01-15T10:30:00"`, true},
-		{"no_tz_with_nanos", `"2024-01-15T10:30:00.123456789"`, true},
-		{"date_only", `"2024-01-15"`, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var got Time
-			err := got.UnmarshalJSON([]byte(tt.input))
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("UnmarshalJSON(%s) should have failed, got %v", tt.input, got)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("UnmarshalJSON(%s) unexpected error: %v", tt.input, err)
-				}
-			}
-		})
-	}
 }
 
 func BenchmarkTimeMarshalJSON(b *testing.B) {

@@ -53,9 +53,11 @@ func (t Time) Quantize(d Duration) Time { return Time((int64(t) / int64(d)) * in
 func (t Time) Before(u Time) bool       { return t < u }
 func (t Time) After(u Time) bool        { return t > u }
 func (t Time) Minute() int              { return t.goTime().Minute() }
+func (t Time) Second() int              { return t.goTime().Second() }
+func (t Time) Nanosecond() int          { return t.goTime().Nanosecond() }
 func (t Time) Hour() int                { return t.goTime().Hour() }
 func (t Time) Day() int                 { return t.goTime().Day() }
-func (t Time) Month() int               { return int(t.goTime().Month()) }
+func (t Time) Month() Month             { return Month(t.goTime().Month()) }
 func (t Time) Year() int                { return t.goTime().Year() }
 func (t Time) Weekday() Weekday         { return Weekday(t.goTime().Weekday()) }
 
@@ -92,6 +94,7 @@ func (t Time) ClockInt() int {
 
 var localFormats = []string{
 	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05",
 	"2006-01-02T15:04",
 	"2006-01-02",
 }
