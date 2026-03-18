@@ -1,8 +1,8 @@
 package netty
 
 import (
+	"dropbear/clocky"
 	"sync"
-	"time"
 )
 
 // TokenBucket is a rate limiter that controls the rate of operations.
@@ -76,23 +76,23 @@ func newTokenBucket(ratePerSecond float64, burst int) TokenBucket {
 		tokens:   float64(burst),
 		burst:    float64(burst),
 		rate:     ratePerSecond / 1e9, // convert to per-nanosecond
-		lastTime: time.Now(),
+		lastTime: clocky.Now(),
 	}
 }
 
 // tokenBucket implements the TokenBucket interface using lazy refill.
 type tokenBucket struct {
 	mu       sync.Mutex
-	tokens   float64   // current number of tokens
-	burst    float64   // max tokens allowed
-	rate     float64   // tokens per nanosecond
-	lastTime time.Time // last refill time
+	tokens   float64     // current number of tokens
+	burst    float64     // max tokens allowed
+	rate     float64     // tokens per nanosecond
+	lastTime clocky.Time // last refill time
 }
 
 // refill adds tokens based on elapsed time since last access.
 // Must be called with mu held.
 func (tb *tokenBucket) refill() {
-	now := time.Now()
+	now := clocky.Now()
 	elapsed := now.Sub(tb.lastTime)
 	if elapsed > 0 {
 		tb.tokens += float64(elapsed.Nanoseconds()) * tb.rate
@@ -115,18 +115,24 @@ func (tb *tokenBucket) Try() bool {
 }
 
 func (tb *tokenBucket) Get() {
+	waitFor := tb.getImpl()
+	if waitFor > 0 {
+		clocky.Sleep(waitFor)
+	}
+}
+
+func (tb *tokenBucket) getImpl() clocky.Duration {
 	tb.mu.Lock()
+	defer tb.mu.Unlock()
 	tb.refill()
 	if tb.tokens >= 1 {
 		tb.tokens--
-		tb.mu.Unlock()
-		return
+		return 0
 	}
 	// calculate how long to wait for 1 token
 	need := 1 - tb.tokens
-	wait := time.Duration(need / tb.rate)
+	wait := clocky.Duration(need / tb.rate)
 	tb.tokens = 0
-	tb.lastTime = time.Now()
-	tb.mu.Unlock()
-	time.Sleep(wait)
+	tb.lastTime = clocky.Now()
+	return wait
 }
