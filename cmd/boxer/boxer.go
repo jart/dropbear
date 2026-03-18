@@ -26,10 +26,10 @@ func boxer() {
 		return
 	}
 
-	// make boxes one at a time
-	if boxes.Size() > 0 {
-		return
-	}
+	// // make boxes one at a time
+	// if boxes.Size() > 0 {
+	// 	return
+	// }
 
 	// cooldown between boxes
 	if now.Sub(lastBoxTime) < *cooldownFlag {
@@ -105,25 +105,25 @@ func boxer() {
 				Box:        box,
 				Name:       "#1",
 				Option:     spI.Call,
-				LimitPrice: quantizeTruncateSPX(spI.Call.MarketPrice()),
+				LimitPrice: quantizeAwaySPX(spI.Call.MarketPrice()).Neg(),
 			}
 			box.CallLeg2 = &Leg{
 				Box:        box,
 				Name:       "#2",
 				Option:     spJ.Call,
-				LimitPrice: quantizeAwaySPX(spJ.Call.MarketPrice()).Neg(),
+				LimitPrice: quantizeTruncateSPX(spJ.Call.MarketPrice()),
 			}
 			box.PutLeg1 = &Leg{
 				Box:        box,
 				Name:       "#3",
 				Option:     spI.Put,
-				LimitPrice: quantizeAwaySPX(spI.Put.MarketPrice()).Neg(),
+				LimitPrice: quantizeTruncateSPX(spI.Put.MarketPrice()),
 			}
 			box.PutLeg2 = &Leg{
 				Box:        box,
 				Name:       "#4",
 				Option:     spJ.Put,
-				LimitPrice: quantizeTruncateSPX(spJ.Put.MarketPrice()),
+				LimitPrice: quantizeAwaySPX(spJ.Put.MarketPrice()).Neg(),
 			}
 			box.ApplyGreed()
 

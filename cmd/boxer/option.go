@@ -31,7 +31,7 @@ func (o *Option) MarketPrice() decimal.Decimal {
 
 // String returns a human friendly string representation of the option, e.g. "SPXW 4000.00 C 2024-06-21".
 func (o *Option) String() string {
-	return fmt.Sprintf("%s %s %-4s %d-%02d-%02d", o.Sym, o.Strike, o.Class, o.Year, o.Month, o.Day)
+	return fmt.Sprintf("%s %s %s %d-%02d-%02d", o.Sym, o.Strike, o.Class, o.Year, o.Month, o.Day)
 }
 
 // OSI returns the OSI code for the option, e.g. "SPXW240621C04000000".

@@ -18,8 +18,8 @@ func (b *Box) String() string {
 	if b.IsBuying() {
 		direction = "buy"
 	}
-	return fmt.Sprintf("%s %sw box @ %s (market=%s)\n\t%s\n\t%s\n\t%s\n\t%s",
-		direction, b.Width(), b.LimitPrice().Abs(), b.MarketPrice(),
+	return fmt.Sprintf("%s %sw box @ %s (market=%s profit=%s)\n\t%s\n\t%s\n\t%s\n\t%s",
+		direction, b.Width(), b.LimitPrice().Abs(), b.MarketPrice(), b.LimitProfit(),
 		b.CallLeg1, b.CallLeg2, b.PutLeg1, b.PutLeg2)
 }
 
@@ -49,30 +49,30 @@ func (b *Box) LimitPrice() decimal.Decimal {
 		Add(b.PutLeg2.LimitPrice)
 }
 
-// FillPrice returns the net credit (positive) or debit (negative) of the box based on leg fill prices.
-func (b *Box) FillPrice() decimal.Decimal {
-	return b.CallLeg1.FillPrice.
-		Add(b.CallLeg2.FillPrice).
-		Add(b.PutLeg1.FillPrice).
-		Add(b.PutLeg2.FillPrice)
-}
-
 // LimitProfit returns the minimum profit of the box based on leg limit prices.
 func (b *Box) LimitProfit() decimal.Decimal {
-	return b.Width().Sub(b.LimitPrice())
+	return b.Width().Add(b.LimitPrice())
+}
+
+// FillPrice returns the net credit (positive) or debit (negative) of the box based on leg fill prices.
+func (b *Box) FillPrice() decimal.Decimal {
+	return b.CallLeg2.FillPrice.
+		Add(b.PutLeg1.FillPrice).
+		Sub(b.CallLeg1.FillPrice).
+		Sub(b.PutLeg2.FillPrice)
 }
 
 // FillProfit returns the minimum profit of the box after being filled.
 func (b *Box) FillProfit() decimal.Decimal {
-	return b.Width().Sub(b.FillPrice())
+	return b.Width().Add(b.FillPrice())
 }
 
 // MarketPrice returns the net credit (positive) or debit (negative) of the box based on leg mid prices.
 func (b *Box) MarketPrice() decimal.Decimal {
 	return b.CallLeg1.Option.MarketPrice().
 		Sub(b.CallLeg2.Option.MarketPrice()).
-		Add(b.PutLeg1.Option.MarketPrice()).
-		Sub(b.PutLeg2.Option.MarketPrice())
+		Sub(b.PutLeg1.Option.MarketPrice()).
+		Add(b.PutLeg2.Option.MarketPrice())
 }
 
 // Filled returns true if all legs of the box are filled.
@@ -119,17 +119,17 @@ func (b *Box) Check() {
 	if b.CallLeg1.Option.Strike.Cmp(b.CallLeg2.Option.Strike) == 0 {
 		panic("CallLeg1 and CallLeg2 must have different strikes")
 	}
-	if b.CallLeg1.LimitPrice.IsNegative() {
+	if !b.CallLeg1.LimitPrice.IsNegative() {
 		panic("CallLeg1 must be a buy (negative limit price)")
 	}
-	if b.CallLeg2.LimitPrice.IsPositive() {
+	if !b.CallLeg2.LimitPrice.IsPositive() {
 		panic("CallLeg2 must be a sell (positive limit price)")
 	}
-	if b.PutLeg1.LimitPrice.IsNegative() {
-		panic("PutLeg1 must be a buy (negative limit price)")
+	if !b.PutLeg1.LimitPrice.IsPositive() {
+		panic("PutLeg1 must be a sell (positive limit price)")
 	}
-	if b.PutLeg2.LimitPrice.IsPositive() {
-		panic("PutLeg2 must be a sell (positive limit price)")
+	if !b.PutLeg2.LimitPrice.IsNegative() {
+		panic("PutLeg2 must be a buy (negative limit price)")
 	}
 	limitPrice := b.LimitPrice()
 	if b.IsBuying() {

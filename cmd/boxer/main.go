@@ -24,7 +24,7 @@ var (
 	safetyFlag    = decimal.Flag("safety", "50", "spx safety points")
 	maxOpen       = flag.Int("maxopen", 4, "max open")
 	freshFlag     = clocky.DurationFlag("fresh", "150ms", "freshness threshold")
-	cooldownFlag  = clocky.DurationFlag("cooldown", "10s", "cooldown between boxes")
+	cooldownFlag  = clocky.DurationFlag("cooldown", "30s", "cooldown between boxes")
 	latencyFlag   = clocky.DurationFlag("latency", "70ms", "latency")
 	greedFlag     = decimal.Flag("greed", "0.00", "greed factor for spread placement")
 	demandFlag    = decimal.Flag("demand", "35", "min profit to pounce")

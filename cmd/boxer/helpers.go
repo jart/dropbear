@@ -65,7 +65,7 @@ func quantizeAwaySPX(price decimal.Decimal) decimal.Decimal {
 // optionTick returns the minimum tick size for a Penny Pilot option.
 // Options priced under $3 tick in $0.05; $3 and over tick in $0.10.
 func optionTick(price decimal.Decimal) decimal.Decimal {
-	if price.Cmp(three) < 0 {
+	if price.Abs().Cmp(three) < 0 {
 		return tick05
 	}
 	return tick10
