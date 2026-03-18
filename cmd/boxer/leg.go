@@ -24,8 +24,12 @@ type LegUpdate struct {
 }
 
 func (l *Leg) String() string {
-	return fmt.Sprintf("%s %s %s @ %s (greed=%s bid=%s ask=%s)",
-		l.Name, l.Instruction(), l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask)
+	kind := "bear"
+	if l.IsBull() {
+		kind = "bull"
+	}
+	return fmt.Sprintf("%s %s %s %s @ %s (greed=%s bid=%s ask=%s)",
+		l.Name, l.Instruction(), kind, l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask)
 }
 
 func (l *Leg) IsBull() bool {
@@ -55,19 +59,19 @@ func (l *Leg) ApplyGreed() {
 		if bearImbalance > 0 {
 			// we have too many bear options in flight and this leg reduces our risk
 			// therefore be generous with our limit price in accordance with our pain
-			l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, min(bearImbalance, 3))
+			l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, max(bearImbalance, 1))
 		} else if bullImbalance > 0 && !l.IsSafe() {
 			// we have too many bull options in flight and this fill would worsen it
 			// therefore be greedy unless it's a safe leg (no greed on safe legs)
-			l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, min(bullImbalance, 3))
+			l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, max(bullImbalance, 2))
 		}
 	} else {
 		if bullImbalance > 0 {
 			// we have too many bull options in flight and this leg reduces our risk
-			l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, min(bullImbalance, 3))
+			l.LimitPrice, l.Greed = applyGenerosity(l.LimitPrice, max(bullImbalance, 1))
 		} else if bearImbalance > 0 && !l.IsSafe() {
 			// we have too many bear options in flight and this fill would worsen it
-			l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, min(bearImbalance, 3))
+			l.LimitPrice, l.Greed = applyGreed(l.LimitPrice, max(bearImbalance, 2))
 		}
 	}
 }

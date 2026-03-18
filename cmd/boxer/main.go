@@ -18,13 +18,13 @@ import (
 )
 
 var (
+	demandFlag       = decimal.Flag("demand", "30", "min profit to pounce")
 	widthFlag        = decimal.Flag("width", "50", "box width")
-	moneynessFlag    = decimal.Flag("moneyness", "100", "maximum distance from the money")
+	moneynessFlag    = decimal.Flag("moneyness", "200", "maximum distance from the money")
 	safetyFlag       = decimal.Flag("safety", "50", "spx safety points")
-	freshFlag        = clocky.DurationFlag("fresh", "150ms", "freshness threshold")
-	cooldownFlag     = clocky.DurationFlag("cooldown", "10s", "cooldown between boxes")
+	freshFlag        = clocky.DurationFlag("fresh", "200ms", "freshness threshold")
+	cooldownFlag     = clocky.DurationFlag("cooldown", "8s", "cooldown between boxes")
 	greedFlag        = decimal.Flag("greed", "0.00", "greed factor for spread placement")
-	demandFlag       = decimal.Flag("demand", "15", "min profit to pounce")
 	maxImbalanceFlag = flag.Int("maximbalance", 3, "maximum absolute difference between unfilled bulls and bears")
 	verbose          = flag.Bool("v", false, "verbose")
 	dryFlag          = flag.Bool("dry", false, "dry run (don't send orders)")
@@ -135,6 +135,7 @@ func onFutureTick(t FutureTick) {
 	future.TS = t.TS
 	future.Bid = t.Bid
 	future.Ask = t.Ask
+	future.Price = t.Bid.Add(t.Ask).DivInt(2)
 	if *timeTestFlag {
 		log.Printf("tick %s mid %s bid %s ask %s (%s stale)",
 			future.Symbol, future.Price, t.Bid, t.Ask, clocky.Since(future.TS))
@@ -236,7 +237,7 @@ func onRouteEvent(event *schwab.OrderEvent, route *schwab.RouteEvent) {
 	}
 	leg := legsByOrderID[routeOrderID]
 	if leg == nil {
-		log.Printf("order id %d not found for route event: %s -> %s @ %s",
+		log.Printf("order id %d not found for route event: %s @ %s",
 			routeOrderID, route.RouteInfo.RouteName, route.RouteInfo.RoutedPrice)
 		return
 	}

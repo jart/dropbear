@@ -147,10 +147,6 @@ func (b *Box) Check() {
 			panic("Sell box must have negative width")
 		}
 	}
-	profit := b.LimitProfit()
-	if profit.IsNegative() {
-		panic("Box must have positive profit")
-	}
 }
 
 func (b *Box) LogTickIfRelevant(option *Option) {

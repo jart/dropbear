@@ -23,6 +23,7 @@ func boxer() {
 		return
 	}
 	if now.Sub(es.TS) > *freshFlag {
+		// log.Printf("ES quote is stale (last update %s ago), skipping box creation", now.Sub(es.TS))
 		return
 	}
 
@@ -34,6 +35,7 @@ func boxer() {
 		imbalance = -imbalance
 	}
 	if imbalance >= *maxImbalanceFlag {
+		// log.Printf("imbalance too high (bulls=%d bears=%d), skipping box creation", bulls, bears)
 		return
 	}
 
@@ -68,10 +70,14 @@ func boxer() {
 	sort.Slice(valid, func(i, j int) bool {
 		return valid[i].Cmp(valid[j]) < 0
 	})
+	if len(valid) == 0 {
+		return
+	}
 
 	// evaluate all box spread combinations
 	var best *Box
 	var bestProfit decimal.Decimal
+	var fail1, fail2, fail3, fail4 int
 	for i := 0; i < len(valid); i++ {
 		for j := 0; j < len(valid); j++ {
 			if i == j {
@@ -82,26 +88,36 @@ func boxer() {
 			spI := strikes[strikeI]
 			spJ := strikes[strikeJ]
 
+			// only trade strikes near the money
+			if strikeI.Sub(es.Price).Abs().Cmp(*moneynessFlag) > 0 ||
+				strikeJ.Sub(es.Price).Abs().Cmp(*moneynessFlag) > 0 {
+				fail1 += 1
+				continue
+			}
+
 			// check box isn't too large
 			width := strikeJ.Sub(strikeI)
 			if width.Abs().Cmp(*widthFlag) > 0 {
+				fail2 += 1
 				continue
 			}
 
 			// only trade if quotes are fresh and underlying hasn't moved significantly
 			// schwab leaks our order flow so we can not actually pick off stale quotes
-			if !spI.Call.IsFresh(now) ||
+			/* if !spI.Call.IsFresh(now) ||
 				!spI.Put.IsFresh(now) ||
 				!spJ.Call.IsFresh(now) ||
 				!spJ.Put.IsFresh(now) {
+				fail3 += 1
 				continue
-			}
+			} */
 
 			// check if opening these legs won't clobber existing positions
 			if !spI.Call.CanBuy() ||
 				!spI.Put.CanSell() ||
 				!spJ.Call.CanSell() ||
 				!spJ.Put.CanBuy() {
+				fail4 += 1
 				continue
 			}
 
@@ -132,23 +148,23 @@ func boxer() {
 				LimitPrice: quantizeAwaySPX(spJ.Put.MarketPrice()).Neg(),
 			}
 			box.ApplyGreed()
+			box.Check()
 
 			// check if box is profitable enough
 			profit := box.LimitProfit()
-			if profit.IsPositive() && (best == nil || profit.Cmp(bestProfit) > 0) {
+			if best == nil || profit.Cmp(bestProfit) > 0 {
 				best = box
 				bestProfit = profit
-				box.Check()
 			}
 		}
 	}
 
 	// check if we found an acceptable box
 	if best == nil {
+		log.Printf("no box found (fail1=%d fail2=%d fail3=%d fail4=%d)", fail1, fail2, fail3, fail4)
 		return
 	}
-	dollars := bestProfit.MulInt(100)
-	if dollars.Cmp(*demandFlag) < 0 {
+	if bestProfit.MulInt(100).Cmp(*demandFlag) < 0 {
 		return
 	}
 	log.Printf("best box: %s", best)
