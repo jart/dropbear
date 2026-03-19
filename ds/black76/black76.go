@@ -73,7 +73,7 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 	}
 	// Newton-Raphson with bisection fallback.
 	sigma := (lo + hi) / 2
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		p := price(sigma)
 		diff := p - marketPrice
 		if math.Abs(diff) < 1e-10 {
@@ -98,6 +98,45 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 		sigma = (lo + hi) / 2
 	}
 	return sigma
+}
+
+// Gamma returns the gamma of a Black-76 option (d²Price/dF²).
+// Gamma is the same for calls and puts.
+func Gamma(F, K, r, T, sigma float64) float64 {
+	if T <= 0 || sigma <= 0 || F <= 0 {
+		return 0
+	}
+	sqrtT := math.Sqrt(T)
+	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	return math.Exp(-r*T) * normalPDF(d1) / (F * sigma * sqrtT)
+}
+
+// CallTheta returns the daily theta of a Black-76 call (dPrice/dT per day).
+func CallTheta(F, K, r, T, sigma float64) float64 {
+	if T <= 0 || sigma <= 0 {
+		return 0
+	}
+	sqrtT := math.Sqrt(T)
+	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	d2 := d1 - sigma*sqrtT
+	disc := math.Exp(-r * T)
+	theta := -F*disc*normalPDF(d1)*sigma/(2*sqrtT) +
+		r*disc*(F*normalCDF(d1)-K*normalCDF(d2))
+	return theta / 365.25
+}
+
+// PutTheta returns the daily theta of a Black-76 put (dPrice/dT per day).
+func PutTheta(F, K, r, T, sigma float64) float64 {
+	if T <= 0 || sigma <= 0 {
+		return 0
+	}
+	sqrtT := math.Sqrt(T)
+	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	d2 := d1 - sigma*sqrtT
+	disc := math.Exp(-r * T)
+	theta := -F*disc*normalPDF(d1)*sigma/(2*sqrtT) +
+		r*disc*(K*normalCDF(-d2)-F*normalCDF(-d1))
+	return theta / 365.25
 }
 
 // CallDelta returns the delta of a Black-76 call (dPrice/dF).

@@ -166,6 +166,7 @@ func onOptionTick(t OptionTick) {
 	} else {
 		option.ES = decimal.Zero
 	}
+	option.UpdateDelta()
 }
 
 func onLegUpdate(update LegUpdate) {

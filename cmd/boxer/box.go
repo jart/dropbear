@@ -75,6 +75,14 @@ func (b *Box) MarketPrice() decimal.Decimal {
 		Add(b.PutLeg2.MarketPrice())
 }
 
+// FairPrice returns the net credit (positive) or debit (negative) of the box based on leg fair prices.
+func (b *Box) FairPrice() decimal.Decimal {
+	return b.CallLeg1.FairPrice().
+		Sub(b.CallLeg2.FairPrice()).
+		Sub(b.PutLeg1.FairPrice()).
+		Add(b.PutLeg2.FairPrice())
+}
+
 // Filled returns true if all legs of the box are filled.
 func (b *Box) Filled() bool {
 	return b.CallLeg1.Filled() &&

@@ -12,6 +12,18 @@ var (
 	fifteen = decimal.FromInt(15)
 )
 
+func compareOptionByStrike(a, b *Option) int {
+	return a.Strike.Cmp(b.Strike)
+}
+
+// riskFreeRate returns the annualized risk-free rate from the SR1 futures price.
+func riskFreeRate() float64 {
+	if sr1 == nil || sr1.Price.IsZero() {
+		return 0.04 // fallback
+	}
+	return (100.0 - sr1.Price.Float64()) / 100.0
+}
+
 // quantizeTruncateSPX rounds to the SPX tick size for buying.
 func quantizeTruncateSPX(price decimal.Decimal) decimal.Decimal {
 	tick := optionTick(price)

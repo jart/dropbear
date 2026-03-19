@@ -58,6 +58,10 @@ func (l *Leg) Filled() bool {
 	return !l.FillPrice.IsZero()
 }
 
+func (l *Leg) FairPrice() decimal.Decimal {
+	return l.Option.FairPrice()
+}
+
 func (l *Leg) MarketPrice() decimal.Decimal {
 	return l.Option.MarketPrice()
 }

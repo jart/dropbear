@@ -104,16 +104,6 @@ func boxer() {
 				continue
 			}
 
-			// only trade if quotes are fresh and underlying hasn't moved significantly
-			// schwab leaks our order flow so we can not actually pick off stale quotes
-			/* if !spI.Call.IsFresh(now) ||
-				!spI.Put.IsFresh(now) ||
-				!spJ.Call.IsFresh(now) ||
-				!spJ.Put.IsFresh(now) {
-				fail3 += 1
-				continue
-			} */
-
 			// check if opening these legs won't clobber existing positions
 			if !spI.Call.CanBuy() ||
 				!spI.Put.CanSell() ||
@@ -129,25 +119,25 @@ func boxer() {
 				Box:        box,
 				Name:       "#1",
 				Option:     spI.Call,
-				LimitPrice: quantizeAwaySPX(spI.Call.MarketPrice()).Neg(),
+				LimitPrice: quantizeAwaySPX(spI.Call.FairPrice()).Neg(),
 			}
 			box.CallLeg2 = &Leg{
 				Box:        box,
 				Name:       "#2",
 				Option:     spJ.Call,
-				LimitPrice: quantizeTruncateSPX(spJ.Call.MarketPrice()),
+				LimitPrice: quantizeTruncateSPX(spJ.Call.FairPrice()),
 			}
 			box.PutLeg1 = &Leg{
 				Box:        box,
 				Name:       "#3",
 				Option:     spI.Put,
-				LimitPrice: quantizeTruncateSPX(spI.Put.MarketPrice()),
+				LimitPrice: quantizeTruncateSPX(spI.Put.FairPrice()),
 			}
 			box.PutLeg2 = &Leg{
 				Box:        box,
 				Name:       "#4",
 				Option:     spJ.Put,
-				LimitPrice: quantizeAwaySPX(spJ.Put.MarketPrice()).Neg(),
+				LimitPrice: quantizeAwaySPX(spJ.Put.FairPrice()).Neg(),
 			}
 			box.ApplyGreed()
 			box.Check()
