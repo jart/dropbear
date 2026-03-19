@@ -19,12 +19,11 @@ import (
 
 var (
 	demandFlag       = decimal.Flag("demand", "30", "min profit to pounce")
-	widthFlag        = decimal.Flag("width", "50", "box width")
-	moneynessFlag    = decimal.Flag("moneyness", "200", "maximum distance from the money")
+	widthFlag        = decimal.Flag("width", "50", "maximum box width")
+	moneynessFlag    = decimal.Flag("moneyness", "200", "maximum distance of any leg from the money")
 	safetyFlag       = decimal.Flag("safety", "10", "spx safety points")
 	freshFlag        = clocky.DurationFlag("fresh", "200ms", "freshness threshold")
 	cooldownFlag     = clocky.DurationFlag("cooldown", "8s", "cooldown between boxes")
-	greedFlag        = decimal.Flag("greed", "0.00", "greed factor for spread placement")
 	maxImbalanceFlag = flag.Int("max-imbalance", 3, "maximum absolute difference between unfilled bulls and bears")
 	verbose          = flag.Bool("v", false, "verbose")
 	dryFlag          = flag.Bool("dry", false, "dry run (don't send orders)")
@@ -155,8 +154,14 @@ func onOptionTick(t OptionTick) {
 	switch t.Kind {
 	case OptionTickKindBid:
 		option.Bid = t.Price
+		option.Got |= 1
 	case OptionTickKindAsk:
 		option.Ask = t.Price
+		if t.Price.IsPositive() {
+			option.Got |= 2
+		} else {
+			option.Got &^= 2
+		}
 	case OptionTickKindTrade:
 		return // haven't found use for this yet
 	}

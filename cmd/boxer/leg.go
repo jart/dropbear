@@ -31,10 +31,10 @@ func (l *Leg) String() string {
 	if l.IsBull() {
 		kind = "bull"
 	}
-	return fmt.Sprintf("%s %s %s %s @ %s (greed=%s bid=%s ask=%s market=%s->%s fair=%s->%s iv=%g δ=%g γ=%s θ=%s ν=%s)",
+	return fmt.Sprintf("%s %s %s %s @ %s (greed=%s bid=%s ask=%s market=%s->%s fair=%s->%s iv=%.3f δ=%.3f γ=%s θ=%s ν=%s)",
 		l.Name, l.Instruction(), kind, l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask,
 		l.OldMarketPrice, l.MarketPrice(), l.OldFairPrice, l.FairPrice(), l.Option.IV, l.Option.Delta,
-		l.Option.Gamma(), l.Option.Theta(), l.Option.Vega())
+		l.Option.Gamma().Format(3), l.Option.Theta().Format(3), l.Option.Vega().Format(3))
 }
 
 func (l *Leg) IsBull() bool {

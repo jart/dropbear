@@ -60,12 +60,11 @@ func boxer() {
 		}
 	}
 
-	// collect strikes that have both a call and a put with live quotes
+	// collect strikes that have both a call and a put that are ready to trade
 	var valid []decimal.Decimal
 	for strike, sp := range strikes {
 		if sp.Call != nil && sp.Put != nil &&
-			!sp.Call.MarketPrice().IsZero() &&
-			!sp.Put.MarketPrice().IsZero() {
+			sp.Call.IsReady() && sp.Put.IsReady() {
 			valid = append(valid, strike)
 		}
 	}

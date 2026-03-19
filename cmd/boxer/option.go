@@ -15,6 +15,7 @@ import (
 type Option struct {
 	ID     uint32                    // instrument id
 	Class  databento.InstrumentClass // option class, e.g. 'C' for call, 'P' for put
+	Got    uint8                     // ready steady go
 	Sym    symbol.Symbol             // option symbol, e.g. SPXW, SPY
 	Strike decimal.Decimal           // option strike price
 	Year   int                       // option expiration year
@@ -27,6 +28,11 @@ type Option struct {
 	Mid    decimal.Decimal           // market mid at last tick (cached for delta prediction)
 	IV     float64                   // implied volatility at last tick
 	Delta  float64                   // Black-76 delta at last tick (dPrice/dES)
+}
+
+// IsReady returns true if the option has a two-sided quote and a computed delta.
+func (o *Option) IsReady() bool {
+	return o.Got == (1 | 2 | 4) // bid, ask, and delta are all set
 }
 
 // MarketPrice returns the mid price of the option, or zero if no quote is available.
@@ -99,6 +105,7 @@ func (o *Option) UpdateDelta() {
 	} else {
 		o.Delta = black76.PutDelta(F, K, r, T, iv)
 	}
+	o.Got |= 4
 }
 
 // Gamme returns the Black-76 gamma of the option (d²Price/dES²).
