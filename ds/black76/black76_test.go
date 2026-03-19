@@ -127,7 +127,7 @@ func TestEdgeCases(t *testing.T) {
 
 // Benchmark Black-76 call pricing.
 func BenchmarkCall(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		Call(5800, 5700, 0.04, 0.001, 0.20)
 	}
 }
@@ -135,8 +135,7 @@ func BenchmarkCall(b *testing.B) {
 // Benchmark implied vol solver.
 func BenchmarkIV(b *testing.B) {
 	price := Call(5800, 5700, 0.04, 0.5, 0.20)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		IV(5800, 5700, 0.04, 0.5, price, true)
 	}
 }

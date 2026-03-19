@@ -36,6 +36,11 @@ func unmarshalSchwabProto(d *Decimal, data []byte) error {
 	if neg {
 		v = -v
 	}
+	// When signScale is present, lo is pre-scaled (value * 10^6).
+	// When signScale is absent (e.g. AskSize), lo is a plain integer.
+	if _, hasScale := extractJSONStringField(data, "signScale"); !hasScale {
+		v *= Scale
+	}
 	*d = Decimal(v)
 	return nil
 }

@@ -1,13 +1,26 @@
+// black76 lets you compute the price and greeks of European-style
+// options contracts using the price of the underlying futures.
+//
+// It's called Black-76 because Fischer Black published it solo in his
+// 1976 paper called "The Pricing of Commodity Contracts." Scholes
+// wasn't a co-author on that paper. The original Black-Scholes (1973)
+// was Black and Scholes working together (with Merton contributing
+// independently) discovering the math for pricing equity options.
+//
+// It took Black three years to figure out that if the underlying is a
+// futures contract, you can simplify the math because the futures price
+// already embeds the cost of carry. You just discount the expected
+// payoff using the forward price directly.
 package black76
 
 import "math"
 
 const sqrt2Pi = math.Sqrt2 * math.SqrtPi // sqrt(2π)
 
-// Call returns the Black-76 price of a European call on a future.
+// Call returns the price of a European call on a future.
 // - F is the forward price of the underlying future
 // - K is the option strike
-// - r is the risk free rate
+// - r is the risk free rate (e.g. 0.05 for 5%)
 // - T is the time to expiration in years
 // - sigma is the volatility
 func Call(F, K, r, T, sigma float64) float64 {
@@ -15,15 +28,15 @@ func Call(F, K, r, T, sigma float64) float64 {
 		return math.Max(F-K, 0) * math.Exp(-r*T)
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
 	d2 := d1 - sigma*sqrtT
 	return math.Exp(-r*T) * (F*normalCDF(d1) - K*normalCDF(d2))
 }
 
-// Put returns the Black-76 price of a European put on a future.
+// Put returns the price of a European put on a future.
 // - F is the forward price of the underlying future
 // - K is the option strike
-// - r is the risk free rate
+// - r is the risk free rate (e.g. 0.05 for 5%)
 // - T is the time to expiration in years
 // - sigma is the volatility
 func Put(F, K, r, T, sigma float64) float64 {
@@ -31,15 +44,15 @@ func Put(F, K, r, T, sigma float64) float64 {
 		return math.Max(K-F, 0) * math.Exp(-r*T)
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
 	d2 := d1 - sigma*sqrtT
 	return math.Exp(-r*T) * (K*normalCDF(-d2) - F*normalCDF(-d1))
 }
 
-// Vega returns the vega of a Black-76 option (dPrice/dSigma).
+// Vega returns the vega of an option (dPrice/dSigma).
 // - F is the forward price of the underlying future
 // - K is the option strike
-// - r is the risk free rate
+// - r is the risk free rate (e.g. 0.05 for 5%)
 // - T is the time to expiration in years
 // - sigma is the volatility
 func Vega(F, K, r, T, sigma float64) float64 {
@@ -47,14 +60,14 @@ func Vega(F, K, r, T, sigma float64) float64 {
 		return 0
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
 	return F * math.Exp(-r*T) * normalPDF(d1) * sqrtT
 }
 
-// IV solves for implied volatility using Newton-Raphson with bisection bounds.
+// IV solves for implied volatility.
 // - F is the forward price of the underlying future
 // - K is the option strike
-// - r is the risk free rate
+// - r is the risk free rate (e.g. 0.05 for 5%)
 // - T is the time to expiration in years
 // - marketPrice is the observed option price
 // - isCall is true for calls, false for puts
@@ -68,12 +81,12 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 		}
 		return Put(F, K, r, T, sigma)
 	}
-	// Bisection to find initial bounds [lo, hi] bracketing the solution.
+	// bisection to find initial bounds [lo, hi] bracketing the solution
 	lo, hi := 0.001, 5.0
 	for price(hi) < marketPrice && hi < 100 {
 		hi *= 2
 	}
-	// Newton-Raphson with bisection fallback.
+	// newton-raphson with bisection fallback
 	sigma := (lo + hi) / 2
 	for range 100 {
 		p := price(sigma)
@@ -81,13 +94,13 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 		if math.Abs(diff) < 1e-10 {
 			break
 		}
-		// Tighten bisection bounds.
+		// tighten bisection bounds
 		if diff > 0 {
 			hi = sigma
 		} else {
 			lo = sigma
 		}
-		// Try Newton step.
+		// try newton step
 		vega := Vega(F, K, r, T, sigma)
 		if vega > 1e-12 {
 			next := sigma - diff/vega
@@ -96,30 +109,30 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 				continue
 			}
 		}
-		// Fall back to bisection.
+		// fall back to bisection
 		sigma = (lo + hi) / 2
 	}
 	return sigma
 }
 
-// Gamma returns the gamma of a Black-76 option (d²Price/dF²).
+// Gamma returns the gamma of an option (d²Price/dF²).
 // Gamma is the same for calls and puts.
 func Gamma(F, K, r, T, sigma float64) float64 {
 	if T <= 0 || sigma <= 0 || F <= 0 {
 		return 0
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
 	return math.Exp(-r*T) * normalPDF(d1) / (F * sigma * sqrtT)
 }
 
-// CallTheta returns the daily theta of a Black-76 call (dPrice/dT per day).
+// CallTheta returns the daily theta of a call (dPrice/dT per day).
 func CallTheta(F, K, r, T, sigma float64) float64 {
 	if T <= 0 || sigma <= 0 {
 		return 0
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
 	d2 := d1 - sigma*sqrtT
 	disc := math.Exp(-r * T)
 	theta := -F*disc*normalPDF(d1)*sigma/(2*sqrtT) +
@@ -127,13 +140,13 @@ func CallTheta(F, K, r, T, sigma float64) float64 {
 	return theta / 365.25
 }
 
-// PutTheta returns the daily theta of a Black-76 put (dPrice/dT per day).
+// PutTheta returns the daily theta of a put (dPrice/dT per day).
 func PutTheta(F, K, r, T, sigma float64) float64 {
 	if T <= 0 || sigma <= 0 {
 		return 0
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
 	d2 := d1 - sigma*sqrtT
 	disc := math.Exp(-r * T)
 	theta := -F*disc*normalPDF(d1)*sigma/(2*sqrtT) +
@@ -141,7 +154,7 @@ func PutTheta(F, K, r, T, sigma float64) float64 {
 	return theta / 365.25
 }
 
-// CallDelta returns the delta of a Black-76 call (dPrice/dF).
+// CallDelta returns the delta of a call (dPrice/dF).
 func CallDelta(F, K, r, T, sigma float64) float64 {
 	if T <= 0 || sigma <= 0 {
 		if F > K {
@@ -150,21 +163,21 @@ func CallDelta(F, K, r, T, sigma float64) float64 {
 		return 0
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
 	return math.Exp(-r*T) * normalCDF(d1)
 }
 
-// PutDelta returns the delta of a Black-76 put (dPrice/dF).
+// PutDelta returns the delta of a put (dPrice/dF).
 func PutDelta(F, K, r, T, sigma float64) float64 {
 	return CallDelta(F, K, r, T, sigma) - math.Exp(-r*T)
 }
 
 // normalCDF computes the standard normal cumulative distribution function.
 func normalCDF(x float64) float64 {
-	return 0.5 * math.Erfc(-x/math.Sqrt2)
+	return .5 * math.Erfc(-x/math.Sqrt2)
 }
 
 // normalPDF computes the standard normal probability density function.
 func normalPDF(x float64) float64 {
-	return math.Exp(-0.5*x*x) / sqrt2Pi
+	return math.Exp(-.5*x*x) / sqrt2Pi
 }

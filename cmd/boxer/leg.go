@@ -9,14 +9,16 @@ import (
 )
 
 type Leg struct {
-	Box        *Box            // the box this leg belongs to
-	Name       string          // arbitrary human friendly name for logs, e.g. "#1", "#2", "#3", "#4"
-	Option     *Option         // the option instrument for this leg
-	LimitPrice decimal.Decimal // our limit order price (negative if buying, e.g. -0.15 means we get a $15 debit or in otherwords are paying $15 for the leg)
-	Greed      decimal.Decimal // the amount of greed applied to the limit price (positive means more greedy, negative means more generous)
-	OrderID    int64           // schwab order ID, or 0 if not yet placed, or canceled
-	FillPrice  decimal.Decimal // the fill price of the leg (always positive, zero if not yet filled)
-	RouteName  string          // pfof processor name that's handling order
+	Box            *Box            // the box this leg belongs to
+	Name           string          // arbitrary human friendly name for logs, e.g. "#1", "#2", "#3", "#4"
+	Option         *Option         // the option instrument for this leg
+	LimitPrice     decimal.Decimal // our limit order price (negative if buying, e.g. -0.15 means we get a $15 debit or in otherwords are paying $15 for the leg)
+	OldMarketPrice decimal.Decimal // the market price of the leg at the time we last updated the limit price
+	OldFairPrice   decimal.Decimal // the fair price of the leg at the time we last updated the limit price
+	Greed          decimal.Decimal // the amount of greed applied to the limit price (positive means more greedy, negative means more generous)
+	OrderID        int64           // schwab order ID, or 0 if not yet placed, or canceled
+	FillPrice      decimal.Decimal // the fill price of the leg (always positive, zero if not yet filled)
+	RouteName      string          // pfof processor name that's handling order
 }
 
 type LegUpdate struct {
@@ -29,8 +31,10 @@ func (l *Leg) String() string {
 	if l.IsBull() {
 		kind = "bull"
 	}
-	return fmt.Sprintf("%s %s %s %s @ %s (greed=%s bid=%s ask=%s)",
-		l.Name, l.Instruction(), kind, l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask)
+	return fmt.Sprintf("%s %s %s %s @ %s (greed=%s bid=%s ask=%s market=%s->%s fair=%s->%s iv=%g δ=%g γ=%s θ=%s ν=%s)",
+		l.Name, l.Instruction(), kind, l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask,
+		l.OldMarketPrice, l.MarketPrice(), l.OldFairPrice, l.FairPrice(), l.Option.IV, l.Option.Delta,
+		l.Option.Gamma(), l.Option.Theta(), l.Option.Vega())
 }
 
 func (l *Leg) IsBull() bool {
@@ -67,6 +71,8 @@ func (l *Leg) MarketPrice() decimal.Decimal {
 }
 
 func (l *Leg) ApplyGreed() {
+	l.OldFairPrice = l.FairPrice()
+	l.OldMarketPrice = l.MarketPrice()
 	// imbalance > 0 means too many unfilled bulls (long delta exposure)
 	// imbalance < 0 means too many unfilled bears (short delta exposure)
 	imbalance := unfilledBulls.Size() - unfilledBears.Size()

@@ -95,6 +95,7 @@ func TestDecimalUnmarshalJSONSchwabProto(t *testing.T) {
 		want  Decimal
 	}{
 		// Schwab protobuf format: lo is raw int64 (value * 10^6)
+		{`{"lo": "2"}`, Parse("2")},
 		{`{"lo": "18500000", "signScale": 12}`, Parse("18.5")},
 		{`{"lo": "19000000", "signScale": 12}`, Parse("19")},
 		{`{"lo": "1000000", "signScale": 12}`, Parse("1")},

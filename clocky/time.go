@@ -92,47 +92,10 @@ func (t Time) ClockInt() int {
 	return hour*1_00_00 + min*1_00 + sec
 }
 
-var localFormats = []string{
-	"2006-01-02T15:04:05",
-	"2006-01-02 15:04:05",
-	"2006-01-02T15:04",
-	"2006-01-02",
-}
-
 // Date creates a Time from date and time components in California.
 func Date(year int, month Month, day, hour, min, sec, nanos int) Time {
 	t := time.Date(year, time.Month(month), day, hour, min, sec, nanos, TZ)
 	return Time(t.UnixNano())
-}
-
-// Parse turns string into Time.
-func ParseTime(s string) (Time, error) {
-	if s == "" {
-		return 0, nil
-	}
-	t, err := time.Parse(time.RFC3339Nano, s)
-	if err == nil {
-		return Time(t.UnixNano()), nil
-	}
-	t, err = time.Parse(time.RFC3339, s)
-	if err == nil {
-		return Time(t.UnixNano()), nil
-	}
-	for _, format := range localFormats {
-		if t, err := time.ParseInLocation(format, s, TZ); err == nil {
-			return Time(t.UnixNano()), nil
-		}
-	}
-	return 0, err
-}
-
-// MustParseTime is like ParseTime but panics on error.
-func MustParseTime(s string) Time {
-	t, err := ParseTime(s)
-	if err != nil {
-		panic("invalid timestamp: " + s)
-	}
-	return t
 }
 
 // Store atomically stores v into d.

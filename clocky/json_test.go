@@ -21,6 +21,9 @@ func TestTimeUnmarshalJSON(t *testing.T) {
 		// now test that time without zone is treated as new york time
 		{"local_time", `"2024-01-15 10:30:00"`, want + 5*3600_000_000_000}, // 5 hours behind UTC in January
 
+		// schwab's websocket sends timestamps like this
+		{"local_time_milli", `"2024-01-15 10:30:00.123"`, want + 5*3600_000_000_000 + 123_000_000},
+
 		// Unix seconds (integer)
 		{"unix_seconds", `1705314600`, want},
 
@@ -344,6 +347,22 @@ func TestTimestampLimits(t *testing.T) {
 	})
 }
 
+// now test that "2024-01-15" will give us midnight in new york on that date, not utc
+// schwab websocket api sends timestamps like this.
+func TestTimeUnmarshalJSON_LocalDate(t *testing.T) {
+	input := `"2024-01-15"`
+	var got Time
+	if err := json.Unmarshal([]byte(input), &got); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if got.Year() != 2024 || got.Month() != 1 || got.Day() != 15 {
+		t.Errorf("Unmarshal(%s) = %s, want 2024-01-15", input, got.RFC3339())
+	}
+	if got.Hour() != 0 || got.Minute() != 0 || got.Second() != 0 {
+		t.Errorf("Unmarshal(%s) = %s, want time component to be 00:00:00", input, got.RFC3339())
+	}
+}
+
 func BenchmarkTimeMarshalJSON(b *testing.B) {
 	t := Time(1705314600_123_456_789)
 	b.ReportAllocs()
@@ -352,8 +371,37 @@ func BenchmarkTimeMarshalJSON(b *testing.B) {
 	}
 }
 
-func BenchmarkTimeUnmarshalJSON(b *testing.B) {
+func BenchmarkTimeUnmarshalJSON_Integer(b *testing.B) {
 	data := []byte(`1705314600000`)
+	b.ReportAllocs()
+	for b.Loop() {
+		var t Time
+		t.UnmarshalJSON(data)
+	}
+}
+
+func BenchmarkTimeUnmarshalJSON_RFC3339(b *testing.B) {
+	data := []byte(`"2024-01-15T10:30:00Z"`)
+	b.ReportAllocs()
+	for b.Loop() {
+		var t Time
+		t.UnmarshalJSON(data)
+	}
+}
+
+// TODO: this is slow (10x longer)
+func BenchmarkTimeUnmarshalJSON_ISO8660NYC(b *testing.B) {
+	data := []byte(`"2024-01-15 10:30:00"`)
+	b.ReportAllocs()
+	for b.Loop() {
+		var t Time
+		t.UnmarshalJSON(data)
+	}
+}
+
+// TODO: this is slow (10x longer)
+func BenchmarkTimeUnmarshalJSON_JustDate(b *testing.B) {
+	data := []byte(`"2024-01-15"`)
 	b.ReportAllocs()
 	for b.Loop() {
 		var t Time
