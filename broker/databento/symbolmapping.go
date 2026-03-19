@@ -2,6 +2,7 @@ package databento
 
 import (
 	"dropbear/clocky"
+	"strings"
 	"unsafe"
 )
 
@@ -22,6 +23,27 @@ func (sm *SymbolMappingMsg) GetSTypeInSymbol() string {
 
 func (sm *SymbolMappingMsg) GetSTypeOutSymbol() string {
 	return convertBytesToString(sm.STypeOutSymbol[:])
+}
+
+func (sm *SymbolMappingMsg) GoString() string {
+	var b strings.Builder
+	b.WriteString("SymbolMappingMsg{\n")
+	appendName(&b, "Header")
+	appendField(&b, &sm.Header)
+	appendName(&b, "STypeIn")
+	appendField(&b, sm.STypeIn)
+	appendName(&b, "STypeInSymbol")
+	appendByteString(&b, sm.STypeInSymbol[:])
+	appendName(&b, "STypeOut")
+	appendField(&b, sm.STypeOut)
+	appendName(&b, "STypeOutSymbol")
+	appendByteString(&b, sm.STypeOutSymbol[:])
+	appendName(&b, "StartTS")
+	appendTimestamp(&b, sm.StartTS)
+	appendName(&b, "EndTS")
+	appendTimestamp(&b, sm.EndTS)
+	b.WriteString("}")
+	return b.String()
 }
 
 // SymbolMappingMsgV1 maps a symbol from one SType to another (v1).

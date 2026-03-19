@@ -18,8 +18,8 @@ func (b *Box) String() string {
 	if b.IsBuying() {
 		direction = "buy"
 	}
-	return fmt.Sprintf("%s %sw box @ %s (market=%s profit=%s)\n\t%s\n\t%s\n\t%s\n\t%s",
-		direction, b.Width(), b.LimitPrice(), b.MarketPrice(), b.LimitProfit(),
+	return fmt.Sprintf("%s %sw box @ %s (market=%s profit=%s es=%s)\n\t%s\n\t%s\n\t%s\n\t%s",
+		direction, b.Width(), b.LimitPrice(), b.MarketPrice(), b.LimitProfit(), es.Price,
 		b.CallLeg1, b.CallLeg2, b.PutLeg1, b.PutLeg2)
 }
 
@@ -69,10 +69,10 @@ func (b *Box) FillProfit() decimal.Decimal {
 
 // MarketPrice returns the net credit (positive) or debit (negative) of the box based on leg mid prices.
 func (b *Box) MarketPrice() decimal.Decimal {
-	return b.CallLeg1.Option.MarketPrice().
-		Sub(b.CallLeg2.Option.MarketPrice()).
-		Sub(b.PutLeg1.Option.MarketPrice()).
-		Add(b.PutLeg2.Option.MarketPrice())
+	return b.CallLeg1.MarketPrice().
+		Sub(b.CallLeg2.MarketPrice()).
+		Sub(b.PutLeg1.MarketPrice()).
+		Add(b.PutLeg2.MarketPrice())
 }
 
 // Filled returns true if all legs of the box are filled.
@@ -147,11 +147,4 @@ func (b *Box) Check() {
 			panic("Sell box must have negative width")
 		}
 	}
-}
-
-func (b *Box) LogTickIfRelevant(option *Option) {
-	b.CallLeg1.LogTickIfRelevant(option)
-	b.CallLeg2.LogTickIfRelevant(option)
-	b.PutLeg1.LogTickIfRelevant(option)
-	b.PutLeg2.LogTickIfRelevant(option)
 }

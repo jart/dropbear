@@ -46,7 +46,8 @@ func castRecord(version uint8, rec []byte) (any, error) {
 				return nil, errors.New("record size mismatch for instrumentV1")
 			}
 			v1 := (*instrumentV1)(unsafe.Pointer(&rec[0]))
-			return v1.ToV3(), nil
+			inst := v1.ToV3()
+			return &inst, nil
 		} else {
 			if len(rec) != int(unsafe.Sizeof(Instrument{})) {
 				return nil, errors.New("record size mismatch for Instrument")

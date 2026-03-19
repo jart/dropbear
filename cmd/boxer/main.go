@@ -21,7 +21,7 @@ var (
 	demandFlag       = decimal.Flag("demand", "30", "min profit to pounce")
 	widthFlag        = decimal.Flag("width", "50", "box width")
 	moneynessFlag    = decimal.Flag("moneyness", "200", "maximum distance from the money")
-	safetyFlag       = decimal.Flag("safety", "50", "spx safety points")
+	safetyFlag       = decimal.Flag("safety", "10", "spx safety points")
 	freshFlag        = clocky.DurationFlag("fresh", "200ms", "freshness threshold")
 	cooldownFlag     = clocky.DurationFlag("cooldown", "8s", "cooldown between boxes")
 	greedFlag        = decimal.Flag("greed", "0.00", "greed factor for spread placement")
@@ -152,25 +152,19 @@ func onOptionTick(t OptionTick) {
 	if option == nil {
 		return
 	}
-	if option.Bid == t.Bid && option.Ask == t.Ask {
-		// no price change, ignore tick
-		return
+	switch t.Kind {
+	case OptionTickKindBid:
+		option.Bid = t.Price
+	case OptionTickKindAsk:
+		option.Ask = t.Price
+	case OptionTickKindTrade:
+		return // haven't found use for this yet
 	}
-	option.Bid = t.Bid
-	option.Ask = t.Ask
 	option.TS = t.TS
 	if es != nil {
 		option.ES = es.Price
 	} else {
 		option.ES = decimal.Zero
-	}
-	if *timeTestFlag {
-		log.Printf("tick %s bid %s ask %s (%s stale)", option, t.Bid, t.Ask, clocky.Since(option.TS))
-	}
-
-	// log ticks for options associated with unfilled box legs
-	for _, box := range boxes.Values() {
-		box.LogTickIfRelevant(option)
 	}
 }
 
@@ -271,11 +265,11 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	leg.FillPrice = fillPrice
 	unfilledBulls.Remove(leg)
 	unfilledBears.Remove(leg)
-	log.Printf("leg fill %s for %d at %s with %s price improvement from %s",
-		leg.Name, orderID, fillPrice, priceImprovement, routeName)
+	log.Printf("leg fill %s for %d at %s with %s price improvement from %s route (limit=%s market=%s es=%s)",
+		leg.Name, orderID, fillPrice, priceImprovement, routeName, leg.LimitPrice, leg.MarketPrice(), es.Price)
 	if leg.Box.Filled() {
-		log.Printf("box filled with profit %s (originally %s) %s",
-			leg.Box.FillProfit(), leg.Box.LimitProfit(), leg.Box)
+		log.Printf("box filled with profit %s (originally %s) %s (limit=%s market=%s es=%s)",
+			leg.Box.FillProfit(), leg.Box.LimitProfit(), leg.Box, leg.Box.LimitPrice(), leg.Box.MarketPrice(), es.Price)
 		boxes.Remove(leg.Box)
 	}
 }

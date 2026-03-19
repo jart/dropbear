@@ -16,6 +16,7 @@ type Leg struct {
 	Greed      decimal.Decimal // the amount of greed applied to the limit price (positive means more greedy, negative means more generous)
 	OrderID    int64           // schwab order ID, or 0 if not yet placed, or canceled
 	FillPrice  decimal.Decimal // the fill price of the leg (always positive, zero if not yet filled)
+	RouteName  string          // pfof processor name that's handling order
 }
 
 type LegUpdate struct {
@@ -38,8 +39,15 @@ func (l *Leg) IsBull() bool {
 }
 
 func (l *Leg) IsSafe() bool {
-	return (l.Option.Class == databento.InstrumentClassCall && es.Price.Add(*safetyFlag).Cmp(l.Option.Strike) <= 0) ||
-		(l.Option.Class == databento.InstrumentClassPut && es.Price.Sub(*safetyFlag).Cmp(l.Option.Strike) >= 0)
+	// selling a call is pretty safe if the strike is above the current price
+	if l.Option.Class == databento.InstrumentClassCall && !l.IsBuying() && l.Option.Strike.Cmp(es.Price.Add(*safetyFlag)) >= 0 {
+		return true
+	}
+	// selling a put is pretty safe if the strike is below the current price
+	if l.Option.Class == databento.InstrumentClassPut && !l.IsBuying() && l.Option.Strike.Cmp(es.Price.Sub(*safetyFlag)) <= 0 {
+		return true
+	}
+	return false
 }
 
 func (l *Leg) IsBuying() bool {
@@ -48,6 +56,10 @@ func (l *Leg) IsBuying() bool {
 
 func (l *Leg) Filled() bool {
 	return !l.FillPrice.IsZero()
+}
+
+func (l *Leg) MarketPrice() decimal.Decimal {
+	return l.Option.MarketPrice()
 }
 
 func (l *Leg) ApplyGreed() {
@@ -140,14 +152,6 @@ func (l *Leg) Check() {
 			panic("Leg is selling but option is restricted to buying only")
 		}
 	}
-}
-
-func (l *Leg) LogTickIfRelevant(option *Option) {
-	// if l.Option == option && !l.Filled() {
-	// 	log.Printf("tick %s %s %s %s bid=%s ask=%s spread=%s",
-	// 		l.Name, l.Instruction(), option.Class, option.Strike,
-	// 		option.Bid, option.Ask, option.Ask.Sub(option.Bid))
-	// }
 }
 
 func (l *Leg) UpdateOrderID(newID int64) {
