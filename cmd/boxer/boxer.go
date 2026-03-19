@@ -97,6 +97,12 @@ func boxer() {
 				continue
 			}
 
+			// skip boxes where both strikes are on the same side of ES
+			if (strikeI.Cmp(es.Price) > 0 && strikeJ.Cmp(es.Price) > 0) ||
+				(strikeI.Cmp(es.Price) < 0 && strikeJ.Cmp(es.Price) < 0) {
+				continue
+			}
+
 			// check box isn't too large
 			width := strikeJ.Sub(strikeI)
 			if width.Abs().Cmp(*widthFlag) > 0 {
@@ -105,10 +111,7 @@ func boxer() {
 			}
 
 			// check if opening these legs won't clobber existing positions
-			if !spI.Call.CanBuy() ||
-				!spI.Put.CanSell() ||
-				!spJ.Call.CanSell() ||
-				!spJ.Put.CanBuy() {
+			if !spI.Call.CanBuy() || !spI.Put.CanSell() || !spJ.Call.CanSell() || !spJ.Put.CanBuy() {
 				fail4 += 1
 				continue
 			}

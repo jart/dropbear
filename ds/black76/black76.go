@@ -2,6 +2,8 @@ package black76
 
 import "math"
 
+const sqrt2Pi = math.Sqrt2 * math.SqrtPi // sqrt(2π)
+
 // Call returns the Black-76 price of a European call on a future.
 // - F is the forward price of the underlying future
 // - K is the option strike
@@ -164,5 +166,5 @@ func normalCDF(x float64) float64 {
 
 // normalPDF computes the standard normal probability density function.
 func normalPDF(x float64) float64 {
-	return math.Exp(-0.5*x*x) / math.Sqrt(2*math.Pi)
+	return math.Exp(-0.5*x*x) / sqrt2Pi
 }
