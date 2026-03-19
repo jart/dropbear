@@ -22,7 +22,7 @@ import (
 var (
 	demandFlag           = decimal.Flag("demand", "30", "min profit to pounce")
 	widthFlag            = decimal.Flag("width", "50", "maximum box width")
-	moneynessFlag        = decimal.Flag("moneyness", "200", "maximum distance of any leg from the money")
+	moneynessFlag        = decimal.Flag("moneyness", "50", "maximum distance of any leg from the money")
 	safetyFlag           = decimal.Flag("safety", "10", "spx safety points")
 	freshFlag            = clocky.DurationFlag("fresh", "200ms", "freshness threshold")
 	cooldownFlag         = clocky.DurationFlag("cooldown", "8s", "cooldown between boxes")

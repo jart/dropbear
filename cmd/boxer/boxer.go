@@ -118,36 +118,36 @@ func boxer() {
 			// we shall create a box spread
 			box := &Box{}
 
-			// this leg buys a call (crossing the spread)
+			// this leg buys a call
 			box.CallLeg1 = &Leg{
 				Box:        box,
 				Name:       "#1",
 				Option:     spI.Call,
-				LimitPrice: quantizeAwaySPX(spI.Call.Ask.Max(spI.Call.FairPrice())).Neg(),
+				LimitPrice: quantizeTruncateSPX(spI.Call.Ask.Min(spI.Call.FairPrice())).Neg(),
 			}
 
-			// this leg sells a call (crossing the spread)
+			// this leg sells a call
 			box.CallLeg2 = &Leg{
 				Box:        box,
 				Name:       "#2",
 				Option:     spJ.Call,
-				LimitPrice: quantizeTruncateSPX(spJ.Call.Bid.Min(spJ.Call.FairPrice())),
+				LimitPrice: quantizeAwaySPX(spJ.Call.Bid.Max(spJ.Call.FairPrice())),
 			}
 
-			// this leg sells a put (crossing the spread)
+			// this leg sells a put
 			box.PutLeg1 = &Leg{
 				Box:        box,
 				Name:       "#3",
 				Option:     spI.Put,
-				LimitPrice: quantizeTruncateSPX(spI.Put.Bid.Min(spI.Put.FairPrice())),
+				LimitPrice: quantizeAwaySPX(spI.Put.Bid.Max(spI.Put.FairPrice())),
 			}
 
-			// this leg buys a put (crossing the spread)
+			// this leg buys a put
 			box.PutLeg2 = &Leg{
 				Box:        box,
 				Name:       "#4",
 				Option:     spJ.Put,
-				LimitPrice: quantizeAwaySPX(spJ.Put.Ask.Max(spJ.Put.FairPrice())).Neg(),
+				LimitPrice: quantizeTruncateSPX(spJ.Put.Ask.Min(spJ.Put.FairPrice())).Neg(),
 			}
 
 			// apply additional greed or generosity
@@ -169,6 +169,7 @@ func boxer() {
 		return
 	}
 	if bestProfit.MulInt(100).Cmp(*demandFlag) < 0 {
+		log.Printf("no box good enough (best profit %s)", bestProfit)
 		return
 	}
 	log.Printf("best box: %s", best)
