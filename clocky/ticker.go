@@ -7,7 +7,7 @@ var NewTicker = RealNewTicker
 
 // RealNewTicker creates a new Ticker that sends on C at the given interval.
 func RealNewTicker(d Duration) *Ticker {
-	t := time.NewTicker(time.Duration(d) * time.Microsecond)
+	t := time.NewTicker(time.Duration(d))
 	return &Ticker{C: t.C, ticker: t}
 }
 

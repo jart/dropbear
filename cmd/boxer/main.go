@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"strconv"
+	"strings"
 
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
@@ -14,20 +15,22 @@ import (
 	"dropbear/loggy"
 
 	"github.com/emirpasic/gods/v2/sets/hashset"
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/emirpasic/gods/v2/sets/treeset"
 )
 
 var (
-	demandFlag       = decimal.Flag("demand", "30", "min profit to pounce")
-	widthFlag        = decimal.Flag("width", "50", "maximum box width")
-	moneynessFlag    = decimal.Flag("moneyness", "200", "maximum distance of any leg from the money")
-	safetyFlag       = decimal.Flag("safety", "10", "spx safety points")
-	freshFlag        = clocky.DurationFlag("fresh", "200ms", "freshness threshold")
-	cooldownFlag     = clocky.DurationFlag("cooldown", "8s", "cooldown between boxes")
-	maxImbalanceFlag = flag.Int("max-imbalance", 3, "maximum absolute difference between unfilled bulls and bears")
-	verbose          = flag.Bool("v", false, "verbose")
-	dryFlag          = flag.Bool("dry", false, "dry run (don't send orders)")
-	timeTestFlag     = flag.Bool("timetest", false, "enable time test mode")
+	demandFlag           = decimal.Flag("demand", "30", "min profit to pounce")
+	widthFlag            = decimal.Flag("width", "50", "maximum box width")
+	moneynessFlag        = decimal.Flag("moneyness", "200", "maximum distance of any leg from the money")
+	safetyFlag           = decimal.Flag("safety", "10", "spx safety points")
+	freshFlag            = clocky.DurationFlag("fresh", "200ms", "freshness threshold")
+	cooldownFlag         = clocky.DurationFlag("cooldown", "8s", "cooldown between boxes")
+	unfilledIntervalFlag = clocky.DurationFlag("unfilled-interval", "3s", "reporting interval for unfilled legs")
+	maxImbalanceFlag     = flag.Int("max-imbalance", 3, "maximum absolute difference between unfilled bulls and bears")
+	verbose              = flag.Bool("v", false, "verbose")
+	dryFlag              = flag.Bool("dry", false, "dry run (don't send orders)")
+	timeTestFlag         = flag.Bool("timetest", false, "enable time test mode")
 )
 
 var (
@@ -41,8 +44,8 @@ var (
 	restrictedToBuying  = hashset.New[uint32]()
 	restrictedToSelling = hashset.New[uint32]()
 	legUpdates          = make(chan LegUpdate, 20)
-	unfilledBulls       = hashset.New[*Leg]()
-	unfilledBears       = hashset.New[*Leg]()
+	unfilledBulls       = linkedhashset.New[*Leg]()
+	unfilledBears       = linkedhashset.New[*Leg]()
 )
 
 const (
@@ -64,6 +67,7 @@ func main() {
 	optionDefs := make(chan *Option, 64)
 	optionTicks := make(chan OptionTick, 512)
 	orderUpdates := schwabClient.OrderUpdates()
+	unfilledTicker := clocky.NewTicker(*unfilledIntervalFlag)
 
 	go streamFutures(key, futureDefs, futureTicks)
 	go streamOptions(key, optionDefs, optionTicks)
@@ -89,6 +93,9 @@ func main() {
 		case legUpdate := <-legUpdates:
 			onLegUpdate(legUpdate)
 			continue
+		case <-unfilledTicker.C:
+			onUnfilledTicker()
+			continue
 		default:
 			// all channels empty
 		}
@@ -109,6 +116,8 @@ func main() {
 			onOrderUpdate(update)
 		case legUpdate := <-legUpdates:
 			onLegUpdate(legUpdate)
+		case <-unfilledTicker.C:
+			onUnfilledTicker()
 		}
 	}
 }
@@ -278,4 +287,22 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 			leg.Box.FillProfit(), leg.Box.LimitProfit(), leg.Box, leg.Box.LimitPrice(), leg.Box.MarketPrice(), es.Price)
 		boxes.Remove(leg.Box)
 	}
+}
+
+func onUnfilledTicker() {
+	logUnfilledLegs("bull", unfilledBulls)
+	logUnfilledLegs("bear", unfilledBears)
+}
+
+func logUnfilledLegs(description string, unfilled *linkedhashset.Set[*Leg]) {
+	if unfilled.Empty() {
+		return
+	}
+	var b strings.Builder
+	for it := unfilled.Iterator(); it.Next(); {
+		leg := it.Value()
+		b.WriteString("\n\t")
+		b.WriteString(leg.String())
+	}
+	log.Printf("%d unfilled %s legs:%s", unfilled.Size(), description, b.String())
 }
