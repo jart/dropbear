@@ -73,7 +73,7 @@ type Order struct {
 	TaxLotMethod             string            `json:"taxLotMethod,omitempty"`
 	OrderLegCollection       []OrderLeg        `json:"orderLegCollection"`
 	ActivationPrice          decimal.Decimal   `json:"activationPrice,omitempty"`
-	SpecialInstruction       string            `json:"specialInstruction,omitempty"`
+	SpecialInstruction       SpecialInstruction `json:"specialInstruction,omitempty"`
 	OrderStrategyType        OrderStrategyType `json:"orderStrategyType"`
 	OrderID                  int64             `json:"orderId,omitempty"`
 	Cancelable               bool              `json:"cancelable,omitempty"`

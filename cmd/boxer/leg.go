@@ -70,7 +70,6 @@ func (l *Leg) ApplyGreed() {
 	// imbalance > 0 means too many unfilled bulls (long delta exposure)
 	// imbalance < 0 means too many unfilled bears (short delta exposure)
 	imbalance := unfilledBulls.Size() - unfilledBears.Size()
-
 	// bull legs: greed when imbalance positive, generous when negative
 	// bear legs: greed when imbalance negative, generous when positive
 	ticks := imbalance
@@ -78,7 +77,6 @@ func (l *Leg) ApplyGreed() {
 		ticks = -ticks
 	}
 	ticks = max(-3, min(3, ticks))
-
 	if ticks > 0 && !l.IsSafe() {
 		// this leg worsens our exposure; demand a better price
 		// skip greed on safe legs (far OTM) since they carry little risk

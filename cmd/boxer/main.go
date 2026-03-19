@@ -25,7 +25,7 @@ var (
 	freshFlag        = clocky.DurationFlag("fresh", "200ms", "freshness threshold")
 	cooldownFlag     = clocky.DurationFlag("cooldown", "8s", "cooldown between boxes")
 	greedFlag        = decimal.Flag("greed", "0.00", "greed factor for spread placement")
-	maxImbalanceFlag = flag.Int("maximbalance", 3, "maximum absolute difference between unfilled bulls and bears")
+	maxImbalanceFlag = flag.Int("max-imbalance", 3, "maximum absolute difference between unfilled bulls and bears")
 	verbose          = flag.Bool("v", false, "verbose")
 	dryFlag          = flag.Bool("dry", false, "dry run (don't send orders)")
 	timeTestFlag     = flag.Bool("timetest", false, "enable time test mode")

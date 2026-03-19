@@ -19,7 +19,7 @@ func boxer() {
 
 	// ensure dependencies are ready
 	now := clocky.Now()
-	if es == nil {
+	if es == nil || sr1 == nil {
 		return
 	}
 	if now.Sub(es.TS) > *freshFlag {
