@@ -6,11 +6,12 @@
 # Parses "leg fill" lines which contain "with N price improvement from EXCHANGE".
 # The price improvement value is in cents (e.g. "5" = $0.05).
 
-# leg fill #1 for 1005738135642 at 6.8 with 0 price improvement from WOLF_OPT_F3_J2
-/leg fill #[0-9]/ {
-    match($0, /with ([0-9.]+) price improvement from ([A-Za-z0-9_]+)/, _m)
-    if (_m[2] != "") {
-        _xchg = _m[2]
+# leg fill #1 for ID at PRICE with N price improvement from ROUTE
+# leg filled for order id ID at PRICE with N improvement from ROUTE route:
+/leg fill/ {
+    match($0, /with ([0-9.]+) (price )?improvement from ([A-Za-z0-9_]+)/, _m)
+    if (_m[3] != "") {
+        _xchg = _m[3]
         _imp = _m[1] + 0
         fill_n[_xchg]++
         total_imp[_xchg] += _imp

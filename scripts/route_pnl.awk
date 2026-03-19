@@ -47,13 +47,14 @@ BEGIN {
     }
 }
 
-# leg fill #1 for 1005738135642 at 6.8 with 0 price improvement from WOLF_OPT_F3_J2
-/leg fill #[0-9]/ {
-    match($0, /for ([0-9]+) at ([0-9.]+)/, _m)
+# leg fill #1 for ID at PRICE ... from ROUTE
+# leg filled for order id ID at PRICE ... from ROUTE route:
+/leg fill/ {
+    match($0, /(for|for order id) ([0-9]+) at ([0-9.]+)/, _m)
     match($0, /from ([A-Za-z0-9_]+)/, _ex)
-    if (_m[1] != "") {
-        _oid = _m[1]
-        _fill = _m[2] + 0.0
+    if (_m[2] != "") {
+        _oid = _m[2]
+        _fill = _m[3] + 0.0
         _xchg = _ex[1]
 
         _strike = order_strike[_oid]

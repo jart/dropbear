@@ -15,6 +15,7 @@ type Leg struct {
 	LimitPrice     decimal.Decimal // our limit order price (negative if buying, e.g. -0.15 means we get a $15 debit or in otherwords are paying $15 for the leg)
 	OldMarketPrice decimal.Decimal // the market price of the leg at the time we last updated the limit price
 	OldFairPrice   decimal.Decimal // the fair price of the leg at the time we last updated the limit price
+	OldIV          float64         // the IV of the leg at the time we last updated the limit price
 	Greed          decimal.Decimal // the amount of greed applied to the limit price (positive means more greedy, negative means more generous)
 	OrderID        int64           // schwab order ID, or 0 if not yet placed, or canceled
 	FillPrice      decimal.Decimal // the fill price of the leg (always positive, zero if not yet filled)
@@ -31,9 +32,9 @@ func (l *Leg) String() string {
 	if l.IsBull() {
 		kind = "bull"
 	}
-	return fmt.Sprintf("%s %s %s %s @ %s (greed=%s bid=%s ask=%s market=%s->%s fair=%s->%s iv=%.3f δ=%.3f γ=%s θ=%s ν=%s)",
+	return fmt.Sprintf("%s %s %s %s @ %s (greed=%s bid=%s ask=%s market=%s->%s fair=%s->%s iv=%.3f->%.3f δ=%.3f γ=%s θ=%s ν=%s)",
 		l.Name, l.Instruction(), kind, l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask,
-		l.OldMarketPrice, l.MarketPrice(), l.OldFairPrice, l.FairPrice(), l.Option.IV, l.Option.Delta,
+		l.OldMarketPrice, l.MarketPrice(), l.OldFairPrice, l.FairPrice(), l.OldIV, l.Option.IV, l.Option.Delta,
 		l.Option.Gamma().Format(3), l.Option.Theta().Format(3), l.Option.Vega().Format(3))
 }
 
@@ -94,6 +95,7 @@ func (l *Leg) ChooseLimitPrice() {
 }
 
 func (l *Leg) ApplyGreed() {
+	l.OldIV = l.Option.IV
 	l.OldFairPrice = l.FairPrice()
 	l.OldMarketPrice = l.MarketPrice()
 	// imbalance > 0 means too many unfilled bulls (long delta exposure)
@@ -105,7 +107,7 @@ func (l *Leg) ApplyGreed() {
 	if !l.IsBull() {
 		ticks = -ticks
 	}
-	ticks = max(-3, min(3, ticks))
+	ticks = max(-3, min(3, ticks*2))
 	if ticks > 0 && !l.IsSafe() {
 		// this leg worsens our exposure; demand a better price
 		// skip greed on safe legs (far OTM) since they carry little risk
@@ -142,8 +144,8 @@ func (l *Leg) doOrder(legUpdates chan<- LegUpdate) {
 	orderID, err := schwabClient.CreateOrder(&schwab.Order{
 		OrderType:         schwab.OrderTypeLimit,
 		Price:             l.LimitPrice.Abs(),
+		Duration:          schwab.DurationDay,
 		Session:           schwab.SessionNormal,
-		Duration:          schwab.DurationFillOrKill,
 		OrderStrategyType: schwab.OrderStrategyTypeSingle,
 		OrderLegCollection: []schwab.OrderLeg{{
 			Instruction: l.Instruction(),

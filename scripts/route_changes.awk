@@ -63,12 +63,13 @@ pending_order_id && /"RouteName":/ {
     }
 }
 
-# leg fill #1 for 1005738135642 at 6.8 with 0 price improvement from WOLF_OPT_F3_J2
-/leg fill #[0-9]/ {
-    match($0, /for ([0-9]+) at/, id)
+# leg fill #1 for ID at PRICE ... from ROUTE
+# leg filled for order id ID at PRICE ... from ROUTE route:
+/leg fill/ {
+    match($0, /(for|for order id) ([0-9]+) at/, id)
     match($0, /from ([A-Za-z0-9_]+)/, ex)
-    if (id[1] != "" && ex[1] != "") {
-        oid = id[1]
+    if (id[2] != "" && ex[1] != "") {
+        oid = id[2]
         fill = ex[1]
         routed = route_exchange[oid]
         desc = sent_id_to_desc[oid]

@@ -41,12 +41,13 @@ function parse_ts(s,    parts, hms, h, mn, sec) {
     }
 }
 
-# leg fill #1 for 1005738135642 at 6.8 with 0 price improvement from WOLF_OPT_F3_J2
-/leg fill #[0-9]/ {
-    match($0, /for ([0-9]+) at/, _id)
+# leg fill #1 for ID at PRICE ... from ROUTE
+# leg filled for order id ID at PRICE ... from ROUTE route:
+/leg fill/ {
+    match($0, /(for|for order id) ([0-9]+) at/, _id)
     match($0, /from ([A-Za-z0-9_]+)/, _ex)
-    if (_id[1] != "" && _ex[1] != "") {
-        _oid = _id[1]
+    if (_id[2] != "" && _ex[1] != "") {
+        _oid = _id[2]
         _exchange = _ex[1]
         _fill_time = parse_ts($1)
         if (_oid in sent_time) {

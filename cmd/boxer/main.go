@@ -21,13 +21,13 @@ import (
 
 var (
 	demandFlag           = decimal.Flag("demand", "30", "min profit to pounce")
-	widthFlag            = decimal.Flag("width", "50", "maximum box width")
-	moneynessFlag        = decimal.Flag("moneyness", "50", "maximum distance of any leg from the money")
+	widthFlag            = decimal.Flag("width", "25", "maximum box width")
+	moneynessFlag        = decimal.Flag("moneyness", "25", "maximum distance of any leg from the money")
 	safetyFlag           = decimal.Flag("safety", "10", "spx safety points")
 	freshFlag            = clocky.DurationFlag("fresh", "200ms", "freshness threshold")
 	cooldownFlag         = clocky.DurationFlag("cooldown", "8s", "cooldown between boxes")
 	unfilledIntervalFlag = clocky.DurationFlag("unfilled-interval", "3s", "reporting interval for unfilled legs")
-	maxImbalanceFlag     = flag.Int("max-imbalance", 3, "maximum absolute difference between unfilled bulls and bears")
+	maxImbalanceFlag     = flag.Int("max-imbalance", 2, "maximum absolute difference between unfilled bulls and bears")
 	verbose              = flag.Bool("v", false, "verbose")
 	dryFlag              = flag.Bool("dry", false, "dry run (don't send orders)")
 	timeTestFlag         = flag.Bool("timetest", false, "enable time test mode")
