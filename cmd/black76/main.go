@@ -1,18 +1,25 @@
-// Black-76 option pricing model for European options on futures.
+// Black-76 real-time fair value tracker.
 //
-// Reads ES futures, SR1 rate, and SPXW option data from databento DBN files,
-// computes Black-76 fair values, and compares them to market midpoints.
+// Streams ES futures ticks alongside SPXW option quotes and measures how well
+// Black-76 predicts fresh option quotes from the latest ES price. Compares two
+// prediction methods:
+//
+//   - Delta: old_mid + delta * (new_ES - old_ES)  — fast, first-order
+//   - Smile: Black76(new_ES, K, r, T, smile(K))   — full reprice via vol smile
+//
+// The smile is a quadratic in log-moneyness: σ(K) = a + b·x + c·x²
+// where x = ln(K/F), fitted by least squares from recently observed IVs.
 //
 // Usage:
 //
 //	go run ./cmd/black76 -date 2026-03-13
-//	go run ./cmd/black76 -date 2026-03-13 -time 12:00
-//	go run ./cmd/black76 -date 2026-03-13 -time 12:00 -range 100
+//	go run ./cmd/black76 -date 2026-03-13 -time 09:30 -duration 1h
+//	go run ./cmd/black76 -date 2026-03-13 -time 09:30 -duration 30m -range 100
 //
 // Reference: Fischer Black, "The pricing of commodity contracts",
 // Journal of Financial Economics, 3(1-2), 1976, pp. 167-179.
 //
-// Black-76 formulas and implied vol solver adapted from QuantLib's BlackFormula:
+// Black-76 formulas adapted from QuantLib's BlackFormula:
 // https://github.com/lballabio/QuantLib/blob/master/ql/pricingengines/blackformula.cpp
 package main
 
@@ -24,7 +31,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"dropbear/broker/databento"
@@ -33,13 +39,13 @@ import (
 )
 
 var (
-	dateFlag  = flag.String("date", "", "trading date (YYYY-MM-DD)")
-	timeFlag  = flag.String("time", "12:00", "snapshot time in ET (HH:MM)")
-	dirFlag   = flag.String("dir", "", "databento data directory (default ~/databento)")
-	rangeFlag = flag.Float64("range", 200, "strike range around ATM to display")
+	dateFlag     = flag.String("date", "", "trading date (YYYY-MM-DD)")
+	timeFlag     = flag.String("time", "09:30", "analysis start time in ET (HH:MM)")
+	durationFlag = flag.Duration("duration", time.Hour, "analysis window duration")
+	dirFlag      = flag.String("dir", "", "databento data directory (default ~/databento)")
+	rangeFlag    = flag.Float64("range", 200, "strike range around ATM to analyze")
 )
 
-// dbnToFloat converts a databento fixed-point price (1e-9 units) to float64.
 func dbnToFloat(p int64) float64 {
 	if p == databento.UndefPrice {
 		return 0
@@ -47,15 +53,73 @@ func dbnToFloat(p int64) float64 {
 	return float64(p) / 1e9
 }
 
+// smile fits σ(K) = A + B·d + C·d² where d = K - F (strike points from ATM).
+type smile struct {
+	F       float64 // forward price at calibration time
+	A, B, C float64
+}
+
+// Vol returns the interpolated vol for strike K, re-centered on forward F.
+// If F differs from the calibration forward, the smile shifts with it
+// (sticky-strike behavior: same K gets same vol regardless of spot move).
+func (s smile) Vol(K, F float64) float64 {
+	d := K - F
+	v := s.A + s.B*d + s.C*d*d
+	if v < 0.01 {
+		return 0.01
+	}
+	return v
+}
+
+// fitSmile fits a quadratic vol smile from (strike, iv) observations.
+func fitSmile(F float64, strikes []float64, ivs []float64) smile {
+	if len(strikes) < 3 {
+		if len(strikes) > 0 {
+			var sum float64
+			for _, iv := range ivs {
+				sum += iv
+			}
+			return smile{F: F, A: sum / float64(len(ivs))}
+		}
+		return smile{F: F}
+	}
+	var s0, s1, s2, s3, s4 float64
+	var t0, t1, t2 float64
+	for i, K := range strikes {
+		d := K - F
+		iv := ivs[i]
+		d2 := d * d
+		s0 += 1
+		s1 += d
+		s2 += d2
+		s3 += d * d2
+		s4 += d2 * d2
+		t0 += iv
+		t1 += d * iv
+		t2 += d2 * iv
+	}
+	det := s0*(s2*s4-s3*s3) - s1*(s1*s4-s3*s2) + s2*(s1*s3-s2*s2)
+	if math.Abs(det) < 1e-30 {
+		return smile{F: F, A: t0 / s0}
+	}
+	a := (t0*(s2*s4-s3*s3) - s1*(t1*s4-s3*t2) + s2*(t1*s3-s2*t2)) / det
+	b := (s0*(t1*s4-s3*t2) - t0*(s1*s4-s3*s2) + s2*(s1*t2-t1*s2)) / det
+	c := (s0*(s2*t2-t1*s3) - s1*(s1*t2-t1*s2) + t0*(s1*s3-s2*s2)) / det
+	return smile{F: F, A: a, B: b, C: c}
+}
+
 type optionDef struct {
 	Strike float64
 	IsCall bool
-	Expiry clocky.Time
 }
 
-type optionQuote struct {
-	Bid float64
-	Ask float64
+// optionState tracks the latest observed state per instrument.
+type optionState struct {
+	mid   float64     // last observed market mid
+	es    float64     // ES price when last quote arrived
+	iv    float64     // implied vol at last quote
+	delta float64     // Black-76 delta at last quote
+	ts    clocky.Time // timestamp of last quote
 }
 
 type priceSample struct {
@@ -63,10 +127,28 @@ type priceSample struct {
 	mid float64
 }
 
+// bucket accumulates prediction errors.
+type bucket struct {
+	name     string
+	count    int
+	deltaSq  float64
+	smileSq  float64
+	deltaSum float64
+	smileSum float64
+}
+
+func (b *bucket) add(deltaErr, smileErr float64) {
+	b.count++
+	b.deltaSq += deltaErr * deltaErr
+	b.smileSq += smileErr * smileErr
+	b.deltaSum += math.Abs(deltaErr)
+	b.smileSum += math.Abs(smileErr)
+}
+
 func main() {
 	flag.Parse()
 	if *dateFlag == "" {
-		fmt.Fprintf(os.Stderr, "usage: go run ./cmd/black76 -date 2026-03-13 [-time 12:00]\n")
+		fmt.Fprintf(os.Stderr, "usage: go run ./cmd/black76 -date 2026-03-13 [-time 09:30] [-duration 1h]\n")
 		os.Exit(1)
 	}
 
@@ -75,174 +157,353 @@ func main() {
 		dataDir = filepath.Join(os.Getenv("HOME"), "databento")
 	}
 
-	// Parse snapshot time in ET
 	loc, err := time.LoadLocation("America/New_York")
 	if err != nil {
 		log.Fatalf("load timezone: %v", err)
 	}
-	snapshotTime, err := time.ParseInLocation("2006-01-02 15:04", *dateFlag+" "+*timeFlag, loc)
+	startTime, err := time.ParseInLocation("2006-01-02 15:04", *dateFlag+" "+*timeFlag, loc)
 	if err != nil {
 		log.Fatalf("parse time: %v", err)
 	}
-	snapshotTS := clocky.Time(snapshotTime.UnixNano())
-
-	// Expiry is 4:00 PM ET on the target date (PM-settled SPXW)
-	expiryTime := time.Date(snapshotTime.Year(), snapshotTime.Month(), snapshotTime.Day(), 16, 0, 0, 0, loc)
+	startTS := clocky.Time(startTime.UnixNano())
+	endTime := startTime.Add(*durationFlag)
+	endTS := clocky.Time(endTime.UnixNano())
+	expiryTime := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 16, 0, 0, 0, loc)
 	expiryTS := clocky.Time(expiryTime.UnixNano())
 
-	// 1. Load ES futures prices
+	// 1. Load ES futures prices (downsampled to 1/sec)
 	log.Printf("loading ES futures data...")
-	esSamples := loadFuturesPrices(filepath.Join(dataDir, "ES", *dateFlag+".mbp-1.dbn"), snapshotTS)
+	esSamples := loadFuturesPrices(filepath.Join(dataDir, "ES", *dateFlag+".mbp-1.dbn"), endTS)
 	if len(esSamples) == 0 {
-		log.Fatal("no ES price data found before snapshot time")
+		log.Fatal("no ES price data found")
 	}
-	esPrice := esSamples[len(esSamples)-1].mid
-	log.Printf("ES price at snapshot: %.2f (%d samples)", esPrice, len(esSamples))
+	log.Printf("loaded %d ES samples", len(esSamples))
 
-	// 2. Load SR1 rate (SOFR 1-month future: price = 100 - annualized rate)
+	// 2. Load SR1 rate
 	log.Printf("loading SR1 rate data...")
-	sr1Samples := loadFuturesPrices(filepath.Join(dataDir, "SR1", *dateFlag+".mbp-1.dbn"), snapshotTS)
+	sr1Samples := loadFuturesPrices(filepath.Join(dataDir, "SR1", *dateFlag+".mbp-1.dbn"), endTS)
 	var rate float64
 	if len(sr1Samples) > 0 {
 		sr1Price := sr1Samples[len(sr1Samples)-1].mid
 		rate = (100.0 - sr1Price) / 100.0
-		log.Printf("SR1 price: %.4f -> rate: %.4f%%", sr1Price, rate*100)
+		log.Printf("SR1 rate: %.4f%%", rate*100)
 	} else {
 		rate = 0.04
 		log.Printf("warning: no SR1 data, using default rate %.2f%%", rate*100)
 	}
 
-	// 3. Load SPXW option definitions (filter for 0DTE)
+	// 3. Load SPXW definitions (0DTE only)
 	log.Printf("loading SPXW definitions...")
-	targetYear, targetMonth, targetDay := snapshotTime.Date()
-	options := loadOptionDefs(
+	targetYear, targetMonth, targetDay := startTime.Date()
+	defs := loadOptionDefs(
 		filepath.Join(dataDir, "SPXW", *dateFlag+".definition.dbn"),
-		loc, targetYear, targetMonth, targetDay,
+		targetYear, targetMonth, targetDay,
 	)
-	log.Printf("loaded %d 0DTE option definitions", len(options))
+	log.Printf("loaded %d 0DTE option definitions", len(defs))
 
-	// 4. Stream SPXW quotes until snapshot time
-	log.Printf("streaming SPXW quotes until %s ET...", snapshotTime.Format("15:04"))
-	quotes := loadOptionQuotes(
-		filepath.Join(dataDir, "SPXW", *dateFlag+".cmbp-1.dbn"),
-		options, snapshotTS,
-	)
-	log.Printf("got quotes for %d options", len(quotes))
+	// 4. Stream SPXW quotes and track predictions
+	log.Printf("streaming SPXW quotes %s - %s ET...", startTime.Format("15:04"), endTime.Format("15:04"))
 
-	// 5. Compute time to expiry
-	T := float64(expiryTS-snapshotTS) / (365.25 * 24 * 3600 * 1e9)
-	if T <= 0 {
-		log.Fatal("snapshot time is at or after expiry")
+	states := make(map[uint32]*optionState) // per-instrument state
+	var currentSmile smile                   // current fitted smile
+	var esIdx int                            // cursor into esSamples
+	var esPrice float64                      // latest ES price
+	var esMin, esMax float64                 // ES range during window
+
+	// Staleness buckets
+	staleBuckets := []*bucket{
+		{name: "< 100ms"},
+		{name: "100-500ms"},
+		{name: "500ms-2s"},
+		{name: "2-10s"},
+		{name: "> 10s"},
 	}
 
-	// 6. Compute implied vol for each option
-	type result struct {
-		strike float64
-		isCall bool
-		mid    float64
-		iv     float64
-		b76    float64
+	// Moneyness buckets (|ln(K/F)|)
+	moneyBuckets := []*bucket{
+		{name: "ATM (< 0.5%)"},
+		{name: "0.5-1%"},
+		{name: "1-2%"},
+		{name: "2-5%"},
+		{name: "> 5%"},
 	}
-	var results []result
-	for id, def := range options {
-		q, ok := quotes[id]
-		if !ok || q.Bid <= 0 || q.Ask <= 0 {
+
+	staleBucket := func(d time.Duration) *bucket {
+		switch {
+		case d < 100*time.Millisecond:
+			return staleBuckets[0]
+		case d < 500*time.Millisecond:
+			return staleBuckets[1]
+		case d < 2*time.Second:
+			return staleBuckets[2]
+		case d < 10*time.Second:
+			return staleBuckets[3]
+		default:
+			return staleBuckets[4]
+		}
+	}
+
+	moneyBucket := func(absLogMoney float64) *bucket {
+		switch {
+		case absLogMoney < 0.005:
+			return moneyBuckets[0]
+		case absLogMoney < 0.01:
+			return moneyBuckets[1]
+		case absLogMoney < 0.02:
+			return moneyBuckets[2]
+		case absLogMoney < 0.05:
+			return moneyBuckets[3]
+		default:
+			return moneyBuckets[4]
+		}
+	}
+
+	// Advance ES cursor to the given timestamp.
+	advanceES := func(ts clocky.Time) {
+		for esIdx < len(esSamples)-1 && esSamples[esIdx+1].ts <= ts {
+			esIdx++
+		}
+		if esIdx < len(esSamples) {
+			esPrice = esSamples[esIdx].mid
+		}
+	}
+
+	// Recalibrate smile: recompute IVs at the CURRENT ES price from
+	// last observed market mids, then fit the quadratic.
+	var smileStrikes, smileIVs []float64
+	recalibrate := func(now clocky.Time) {
+		smileStrikes = smileStrikes[:0]
+		smileIVs = smileIVs[:0]
+		T := float64(expiryTS-now) / (365.25 * 24 * 3600 * 1e9)
+		if T <= 0 {
+			return
+		}
+		for id, st := range states {
+			def := defs[id]
+			if st.mid <= 0 {
+				continue
+			}
+			if math.Abs(def.Strike-esPrice) > *rangeFlag {
+				continue
+			}
+			// OTM only: puts below ATM, calls above ATM
+			otmCall := def.IsCall && def.Strike >= esPrice
+			otmPut := !def.IsCall && def.Strike <= esPrice
+			if !otmCall && !otmPut {
+				continue
+			}
+			// Recompute IV at current ES price from last observed mid
+			// Adjust mid for ES move: mid + delta * (currentES - ES_at_quote)
+			adjMid := st.mid + st.delta*(esPrice-st.es)
+			if adjMid <= 0 {
+				continue
+			}
+			iv := black76.IV(esPrice, def.Strike, rate, T, adjMid, def.IsCall)
+			if iv <= 0.01 || iv > 3.0 {
+				continue
+			}
+			smileStrikes = append(smileStrikes, def.Strike)
+			smileIVs = append(smileIVs, iv)
+		}
+		currentSmile = fitSmile(esPrice, smileStrikes, smileIVs)
+	}
+
+	// Stream SPXW
+	r, err := databento.OpenFile(filepath.Join(dataDir, "SPXW", *dateFlag+".cmbp-1.dbn"))
+	if err != nil {
+		log.Fatalf("open SPXW cmbp-1: %v", err)
+	}
+	defer r.Close()
+
+	var nRecords, nUpdates, nPredictions int
+	var recalibN int
+	for {
+		rec, err := r.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Fatalf("read SPXW: %v", err)
+		}
+		nRecords++
+		if nRecords%50_000_000 == 0 {
+			log.Printf("  processed %dM records, %d predictions...", nRecords/1_000_000, nPredictions)
+		}
+
+		cmbp, ok := rec.(*databento.CMBP1)
+		if !ok {
 			continue
 		}
-		mid := (q.Bid + q.Ask) / 2
+		if cmbp.TSRecv > endTS {
+			break
+		}
+		if cmbp.TSRecv < startTS {
+			// Before analysis window: still update states for warm-up
+			def, ok := defs[cmbp.Header.InstrumentID]
+			if !ok {
+				continue
+			}
+			bid := dbnToFloat(cmbp.Levels[0].BidPx)
+			ask := dbnToFloat(cmbp.Levels[0].AskPx)
+			if bid <= 0 || ask <= 0 {
+				continue
+			}
+			advanceES(cmbp.TSRecv)
+			mid := (bid + ask) / 2
+			T := float64(expiryTS-cmbp.TSRecv) / (365.25 * 24 * 3600 * 1e9)
+			if T <= 0 {
+				continue
+			}
+			iv := black76.IV(esPrice, def.Strike, rate, T, mid, def.IsCall)
+			var delta float64
+			if def.IsCall {
+				delta = black76.CallDelta(esPrice, def.Strike, rate, T, iv)
+			} else {
+				delta = black76.PutDelta(esPrice, def.Strike, rate, T, iv)
+			}
+			st := states[cmbp.Header.InstrumentID]
+			if st == nil {
+				st = &optionState{}
+				states[cmbp.Header.InstrumentID] = st
+			}
+			st.mid = mid
+			st.es = esPrice
+			st.iv = iv
+			st.delta = delta
+			st.ts = cmbp.TSRecv
+			continue
+		}
+
+		// Inside analysis window
+		def, ok := defs[cmbp.Header.InstrumentID]
+		if !ok {
+			continue
+		}
+		bid := dbnToFloat(cmbp.Levels[0].BidPx)
+		ask := dbnToFloat(cmbp.Levels[0].AskPx)
+		if bid <= 0 || ask <= 0 {
+			continue
+		}
+
+		advanceES(cmbp.TSRecv)
+		if esPrice <= 0 {
+			continue
+		}
+		if esMin == 0 || esPrice < esMin {
+			esMin = esPrice
+		}
+		if esPrice > esMax {
+			esMax = esPrice
+		}
+
+		mid := (bid + ask) / 2
+		T := float64(expiryTS-cmbp.TSRecv) / (365.25 * 24 * 3600 * 1e9)
+		if T <= 0 {
+			continue
+		}
+
+		// Skip strikes outside range
+		if math.Abs(def.Strike-esPrice) > *rangeFlag {
+			continue
+		}
+
+		nUpdates++
+
+		// If we have a previous state, compute prediction errors
+		st := states[cmbp.Header.InstrumentID]
+		if st != nil && st.mid > 0 && st.ts > 0 {
+			staleness := time.Duration(cmbp.TSRecv-st.ts) * time.Nanosecond
+
+			// Delta prediction: old_mid + delta * (new_ES - old_ES)
+			deltaPred := st.mid + st.delta*(esPrice-st.es)
+			deltaErr := deltaPred - mid
+
+			// Smile prediction: Black76(new_ES, K, r, T, smile_vol)
+			smileVol := currentSmile.Vol(def.Strike, esPrice)
+			var smilePred float64
+			if smileVol > 0 && currentSmile.A > 0 {
+				if def.IsCall {
+					smilePred = black76.Call(esPrice, def.Strike, rate, T, smileVol)
+				} else {
+					smilePred = black76.Put(esPrice, def.Strike, rate, T, smileVol)
+				}
+			} else {
+				smilePred = deltaPred // fall back to delta if no smile yet
+			}
+			smileErr := smilePred - mid
+
+			staleBucket(staleness).add(deltaErr, smileErr)
+			absLogMoney := math.Abs(math.Log(def.Strike / esPrice))
+			moneyBucket(absLogMoney).add(deltaErr, smileErr)
+			nPredictions++
+		}
+
+		// Update state
 		iv := black76.IV(esPrice, def.Strike, rate, T, mid, def.IsCall)
-		if iv <= 0.001 || iv > 5.0 {
-			continue
-		}
-		results = append(results, result{
-			strike: def.Strike,
-			isCall: def.IsCall,
-			mid:    mid,
-			iv:     iv,
-		})
-	}
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].strike != results[j].strike {
-			return results[i].strike < results[j].strike
-		}
-		return results[i].isCall && !results[j].isCall
-	})
-
-	// 7. Find ATM implied vol (average of ATM call and put)
-	var atmCallIV, atmPutIV float64
-	bestCallDist := math.MaxFloat64
-	bestPutDist := math.MaxFloat64
-	for _, r := range results {
-		dist := math.Abs(r.strike - esPrice)
-		if r.isCall && dist < bestCallDist {
-			bestCallDist = dist
-			atmCallIV = r.iv
-		}
-		if !r.isCall && dist < bestPutDist {
-			bestPutDist = dist
-			atmPutIV = r.iv
-		}
-	}
-	atmIV := (atmCallIV + atmPutIV) / 2
-	if atmIV <= 0 {
-		log.Fatal("could not determine ATM implied vol")
-	}
-
-	// 8. Compute B76 prices using flat ATM vol
-	for i := range results {
-		if results[i].isCall {
-			results[i].b76 = black76.Call(esPrice, results[i].strike, rate, T, atmIV)
+		var delta float64
+		if def.IsCall {
+			delta = black76.CallDelta(esPrice, def.Strike, rate, T, iv)
 		} else {
-			results[i].b76 = black76.Put(esPrice, results[i].strike, rate, T, atmIV)
+			delta = black76.PutDelta(esPrice, def.Strike, rate, T, iv)
+		}
+		if st == nil {
+			st = &optionState{}
+			states[cmbp.Header.InstrumentID] = st
+		}
+		st.mid = mid
+		st.es = esPrice
+		st.iv = iv
+		st.delta = delta
+		st.ts = cmbp.TSRecv
+
+		// Recalibrate smile periodically
+		recalibN++
+		if recalibN%10000 == 0 {
+			recalibrate(cmbp.TSRecv)
 		}
 	}
 
-	// 9. Print report
-	minutes := T * 365.25 * 24 * 60
-	fmt.Printf("\nBlack-76 Option Pricing Report\n")
-	fmt.Printf("==============================\n")
+	// Final calibration for reporting
+	recalibrate(endTS)
+
+	// Report
+	fmt.Printf("\nBlack-76 Real-Time Fair Value Analysis\n")
+	fmt.Printf("======================================\n")
 	fmt.Printf("Date:            %s\n", *dateFlag)
-	fmt.Printf("Snapshot:        %s ET\n", snapshotTime.Format("15:04:05"))
-	fmt.Printf("ES Futures:      %.2f\n", esPrice)
-	fmt.Printf("Risk-Free Rate:  %.4f%%\n", rate*100)
-	fmt.Printf("Time to Expiry:  %.1f min (%.6f yr)\n", minutes, T)
-	fmt.Printf("ATM Implied Vol: %.2f%% (call=%.2f%% put=%.2f%%)\n", atmIV*100, atmCallIV*100, atmPutIV*100)
-	fmt.Printf("Strike Range:    %.0f-%.0f (ES ± %.0f)\n\n", esPrice-*rangeFlag, esPrice+*rangeFlag, *rangeFlag)
+	fmt.Printf("Window:          %s - %s ET\n", startTime.Format("15:04"), endTime.Format("15:04"))
+	fmt.Printf("ES Range:        %.2f - %.2f\n", esMin, esMax)
+	fmt.Printf("SR1 Rate:        %.4f%%\n", rate*100)
+	fmt.Printf("0DTE Options:    %d defined\n", len(defs))
+	fmt.Printf("Quote Updates:   %d (within ±%.0f of ATM)\n", nUpdates, *rangeFlag)
+	fmt.Printf("Predictions:     %d\n", nPredictions)
+	fmt.Printf("Smile (final):   σ(K) = %.4f %+.6f·d %+.8f·d²  (d = K - F)\n",
+		currentSmile.A, currentSmile.B, currentSmile.C)
 
-	fmt.Printf("%-8s %-4s %10s %10s %+9s %8s\n",
-		"Strike", "Type", "Market", "B76(flat)", "Error", "IV")
-	fmt.Printf("%-8s %-4s %10s %10s %9s %8s\n",
-		"------", "----", "--------", "---------", "-------", "------")
+	fmt.Printf("\nPrediction Accuracy by Quote Staleness:\n")
+	printBucketTable(staleBuckets)
 
-	var sumErr, sumAbsErr, sumSqErr float64
-	var count int
-	for _, r := range results {
-		if math.Abs(r.strike-esPrice) > *rangeFlag {
+	fmt.Printf("\nPrediction Accuracy by Moneyness |ln(K/F)|:\n")
+	printBucketTable(moneyBuckets)
+}
+
+func printBucketTable(buckets []*bucket) {
+	fmt.Printf("  %-14s %7s %11s %11s %9s\n", "Bucket", "Count", "Delta RMSE", "Smile RMSE", "Winner")
+	fmt.Printf("  %-14s %7s %11s %11s %9s\n", "--------------", "-------", "-----------", "-----------", "---------")
+	for _, b := range buckets {
+		if b.count == 0 {
 			continue
 		}
-		typ := "P"
-		if r.isCall {
-			typ = "C"
+		n := float64(b.count)
+		dRMSE := math.Sqrt(b.deltaSq / n)
+		sRMSE := math.Sqrt(b.smileSq / n)
+		winner := "delta"
+		if sRMSE < dRMSE {
+			winner = "smile"
 		}
-		err := r.b76 - r.mid
-		fmt.Printf("%-8.0f %-4s %10.2f %10.2f %+9.2f %7.1f%%\n",
-			r.strike, typ, r.mid, r.b76, err, r.iv*100)
-		sumErr += err
-		sumAbsErr += math.Abs(err)
-		sumSqErr += err * err
-		count++
-	}
-
-	if count > 0 {
-		fmt.Printf("\nSummary (%d options within ±%.0f of ATM):\n", count, *rangeFlag)
-		fmt.Printf("  Mean Error:     %+.4f\n", sumErr/float64(count))
-		fmt.Printf("  Mean Abs Error: %.4f\n", sumAbsErr/float64(count))
-		fmt.Printf("  RMSE:           %.4f\n", math.Sqrt(sumSqErr/float64(count)))
+		fmt.Printf("  %-14s %7d %11.4f %11.4f %9s\n", b.name, b.count, dRMSE, sRMSE, winner)
 	}
 }
 
-// loadFuturesPrices reads MBP1 records from a DBN file, downsamples to one
-// price per second, and returns all samples up to the given timestamp.
 func loadFuturesPrices(path string, until clocky.Time) []priceSample {
 	r, err := databento.OpenFile(path)
 	if err != nil {
@@ -284,15 +545,12 @@ func loadFuturesPrices(path string, until clocky.Time) []priceSample {
 	return samples
 }
 
-// loadOptionDefs reads Instrument records from a definition DBN file and
-// returns only the 0DTE options matching the target date.
-func loadOptionDefs(path string, loc *time.Location, year int, month time.Month, day int) map[uint32]*optionDef {
+func loadOptionDefs(path string, year int, month time.Month, day int) map[uint32]*optionDef {
 	r, err := databento.OpenFile(path)
 	if err != nil {
 		log.Fatalf("open %s: %v", path, err)
 	}
 	defer r.Close()
-	// Match date in the RawSymbol field: "SPXW  YYMMDD..."
 	dateStr := fmt.Sprintf("%02d%02d%02d", year%100, month, day)
 	options := make(map[uint32]*optionDef)
 	for {
@@ -307,7 +565,6 @@ func loadOptionDefs(path string, loc *time.Location, year int, month time.Month,
 		if !ok {
 			continue
 		}
-		// Filter by date in RawSymbol: "SPXW  YYMMDDX..."
 		sym := inst.GetRawSymbol()
 		if len(sym) < 12 || sym[6:12] != dateStr {
 			continue
@@ -316,60 +573,10 @@ func loadOptionDefs(path string, loc *time.Location, year int, month time.Month,
 		if strike <= 0 {
 			continue
 		}
-		isCall := inst.InstrumentClass == databento.InstrumentClassCall
 		options[inst.Header.InstrumentID] = &optionDef{
 			Strike: strike,
-			IsCall: isCall,
-			Expiry: inst.Expiration,
+			IsCall: inst.InstrumentClass == databento.InstrumentClassCall,
 		}
 	}
 	return options
-}
-
-// loadOptionQuotes streams CMBP1 records from a DBN file, tracking the latest
-// bid/ask for each instrument in the defs set, stopping at the given timestamp.
-func loadOptionQuotes(path string, defs map[uint32]*optionDef, until clocky.Time) map[uint32]*optionQuote {
-	r, err := databento.OpenFile(path)
-	if err != nil {
-		log.Fatalf("open %s: %v", path, err)
-	}
-	defer r.Close()
-	quotes := make(map[uint32]*optionQuote)
-	n := 0
-	for {
-		rec, err := r.Read()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			log.Fatalf("read %s: %v", path, err)
-		}
-		n++
-		if n%50_000_000 == 0 {
-			log.Printf("  processed %dM records...", n/1_000_000)
-		}
-		cmbp, ok := rec.(*databento.CMBP1)
-		if !ok {
-			continue
-		}
-		if cmbp.TSRecv > until {
-			break
-		}
-		if _, ok := defs[cmbp.Header.InstrumentID]; !ok {
-			continue
-		}
-		bid := dbnToFloat(cmbp.Levels[0].BidPx)
-		ask := dbnToFloat(cmbp.Levels[0].AskPx)
-		if bid <= 0 || ask <= 0 {
-			continue
-		}
-		q := quotes[cmbp.Header.InstrumentID]
-		if q == nil {
-			q = &optionQuote{}
-			quotes[cmbp.Header.InstrumentID] = q
-		}
-		q.Bid = bid
-		q.Ask = ask
-	}
-	return quotes
 }

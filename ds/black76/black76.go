@@ -100,6 +100,24 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 	return sigma
 }
 
+// CallDelta returns the delta of a Black-76 call (dPrice/dF).
+func CallDelta(F, K, r, T, sigma float64) float64 {
+	if T <= 0 || sigma <= 0 {
+		if F > K {
+			return math.Exp(-r * T)
+		}
+		return 0
+	}
+	sqrtT := math.Sqrt(T)
+	d1 := (math.Log(F/K) + 0.5*sigma*sigma*T) / (sigma * sqrtT)
+	return math.Exp(-r*T) * normalCDF(d1)
+}
+
+// PutDelta returns the delta of a Black-76 put (dPrice/dF).
+func PutDelta(F, K, r, T, sigma float64) float64 {
+	return CallDelta(F, K, r, T, sigma) - math.Exp(-r*T)
+}
+
 // normalCDF computes the standard normal cumulative distribution function.
 func normalCDF(x float64) float64 {
 	return 0.5 * math.Erfc(-x/math.Sqrt2)
