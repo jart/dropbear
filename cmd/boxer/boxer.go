@@ -117,40 +117,29 @@ func boxer() {
 
 			// we shall create a box spread
 			box := &Box{}
-
-			// this leg buys a call
-			box.CallLeg1 = &Leg{
-				Box:        box,
-				Name:       "#1",
-				Option:     spI.Call,
-				LimitPrice: quantizeTruncateSPX(spI.Call.Ask.Min(spI.Call.FairPrice())).Neg(),
+			box.CallLeg1 = &Leg{ // buys a call
+				Box:    box,
+				Name:   "#1",
+				Option: spI.Call,
+			}
+			box.CallLeg2 = &Leg{ // sells a call
+				Box:    box,
+				Name:   "#2",
+				Option: spJ.Call,
+			}
+			box.PutLeg1 = &Leg{ // sells a put
+				Box:    box,
+				Name:   "#3",
+				Option: spI.Put,
+			}
+			box.PutLeg2 = &Leg{ // buys a put
+				Box:    box,
+				Name:   "#4",
+				Option: spJ.Put,
 			}
 
-			// this leg sells a call
-			box.CallLeg2 = &Leg{
-				Box:        box,
-				Name:       "#2",
-				Option:     spJ.Call,
-				LimitPrice: quantizeAwaySPX(spJ.Call.Bid.Max(spJ.Call.FairPrice())),
-			}
-
-			// this leg sells a put
-			box.PutLeg1 = &Leg{
-				Box:        box,
-				Name:       "#3",
-				Option:     spI.Put,
-				LimitPrice: quantizeAwaySPX(spI.Put.Bid.Max(spI.Put.FairPrice())),
-			}
-
-			// this leg buys a put
-			box.PutLeg2 = &Leg{
-				Box:        box,
-				Name:       "#4",
-				Option:     spJ.Put,
-				LimitPrice: quantizeTruncateSPX(spJ.Put.Ask.Min(spJ.Put.FairPrice())).Neg(),
-			}
-
-			// apply additional greed or generosity
+			// choose limit prices
+			box.ChooseLimitPrices()
 			box.ApplyGreed()
 			box.Check()
 

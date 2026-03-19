@@ -18,8 +18,8 @@ func (b *Box) String() string {
 	if b.IsBuying() {
 		direction = "buy"
 	}
-	return fmt.Sprintf("%s %sw box @ %s (market=%s profit=%s es=%s)\n\t%s\n\t%s\n\t%s\n\t%s",
-		direction, b.Width(), b.LimitPrice(), b.MarketPrice(), b.LimitProfit(), es.Price,
+	return fmt.Sprintf("%s %sw box @ %s (market=%s profit=%s->%s es=%s)\n\t%s\n\t%s\n\t%s\n\t%s",
+		direction, b.Width(), b.LimitPrice(), b.MarketPrice(), b.LimitProfit(), b.FillProfit(), es.Price,
 		b.CallLeg1, b.CallLeg2, b.PutLeg1, b.PutLeg2)
 }
 
@@ -32,6 +32,13 @@ func (b *Box) Width() decimal.Decimal {
 // IsBuying returns true if this is a buy box (net debit), false if it's a sell box (net credit).
 func (b *Box) IsBuying() bool {
 	return b.CallLeg1.Option.Strike.Cmp(b.CallLeg2.Option.Strike) < 0
+}
+
+func (b *Box) ChooseLimitPrices() {
+	b.CallLeg1.ChooseLimitPrice()
+	b.CallLeg2.ChooseLimitPrice()
+	b.PutLeg1.ChooseLimitPrice()
+	b.PutLeg2.ChooseLimitPrice()
 }
 
 func (b *Box) ApplyGreed() {
@@ -55,11 +62,12 @@ func (b *Box) LimitProfit() decimal.Decimal {
 }
 
 // FillPrice returns the net credit (positive) or debit (negative) of the box based on leg fill prices.
+// If a leg isn't filled yet, then we fall back to the limit price for that leg.
 func (b *Box) FillPrice() decimal.Decimal {
-	return b.CallLeg2.FillPrice.
-		Add(b.PutLeg1.FillPrice).
-		Sub(b.CallLeg1.FillPrice).
-		Sub(b.PutLeg2.FillPrice)
+	return b.CallLeg2.EffectivePrice().
+		Add(b.PutLeg1.EffectivePrice()).
+		Sub(b.CallLeg1.EffectivePrice()).
+		Sub(b.PutLeg2.EffectivePrice())
 }
 
 // FillProfit returns the minimum profit of the box after being filled.

@@ -62,12 +62,35 @@ func (l *Leg) Filled() bool {
 	return !l.FillPrice.IsZero()
 }
 
+// EffectivePrice returns the fill price if filled, otherwise the absolute limit price.
+func (l *Leg) EffectivePrice() decimal.Decimal {
+	if !l.FillPrice.IsZero() {
+		return l.FillPrice
+	}
+	return l.LimitPrice.Abs()
+}
+
 func (l *Leg) FairPrice() decimal.Decimal {
 	return l.Option.FairPrice()
 }
 
 func (l *Leg) MarketPrice() decimal.Decimal {
 	return l.Option.MarketPrice()
+}
+
+func (l *Leg) ChooseLimitPrice() {
+	switch l {
+	case l.Box.CallLeg1:
+		l.LimitPrice = quantizeTruncateSPX(l.Option.Ask.Min(l.Option.FairPrice())).Neg()
+	case l.Box.CallLeg2:
+		l.LimitPrice = quantizeAwaySPX(l.Option.Bid.Max(l.Option.FairPrice()))
+	case l.Box.PutLeg1:
+		l.LimitPrice = quantizeAwaySPX(l.Option.Bid.Max(l.Option.FairPrice()))
+	case l.Box.PutLeg2:
+		l.LimitPrice = quantizeTruncateSPX(l.Option.Ask.Min(l.Option.FairPrice())).Neg()
+	default:
+		panic("unknown leg")
+	}
 }
 
 func (l *Leg) ApplyGreed() {
@@ -119,8 +142,8 @@ func (l *Leg) doOrder(legUpdates chan<- LegUpdate) {
 	orderID, err := schwabClient.CreateOrder(&schwab.Order{
 		OrderType:         schwab.OrderTypeLimit,
 		Price:             l.LimitPrice.Abs(),
-		Duration:          schwab.DurationDay,
 		Session:           schwab.SessionNormal,
+		Duration:          schwab.DurationFillOrKill,
 		OrderStrategyType: schwab.OrderStrategyTypeSingle,
 		OrderLegCollection: []schwab.OrderLeg{{
 			Instruction: l.Instruction(),

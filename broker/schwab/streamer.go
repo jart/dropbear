@@ -39,14 +39,17 @@ func (c *Client) GetStreamerInfo() (*StreamerInfo, error) {
 // Reconnects automatically with exponential backoff on disconnection.
 func (c *Client) OrderUpdates() <-chan *OrderEvent {
 	ch := make(chan *OrderEvent, 64)
-	d := &orderUpdatesDaemon{client: c, ch: ch}
+	ready := make(chan struct{})
+	d := &orderUpdatesDaemon{client: c, ch: ch, ready: ready}
 	go d.run()
+	<-ready
 	return ch
 }
 
 type orderUpdatesDaemon struct {
 	client *Client
 	ch     chan<- *OrderEvent
+	ready  chan struct{}
 }
 
 func (d *orderUpdatesDaemon) run() {
@@ -138,6 +141,14 @@ func (d *orderUpdatesDaemon) impl() error {
 		return fmt.Errorf("reading subscription response: %w", err)
 	}
 	log.Printf("schwab stream: subscription response: %s", msg)
+
+	// signal that we're connected and subscribed
+	select {
+	case <-d.ready:
+		// already closed from a previous connection
+	default:
+		close(d.ready)
+	}
 
 	// main message loop
 	for {

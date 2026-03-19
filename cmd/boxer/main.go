@@ -203,6 +203,10 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 		onFillEvent(event, event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo)
 		return
 	}
+	if event.BaseEvent.OrderExpiredEvent != nil {
+		onExpiredEvent(event, event.BaseEvent.OrderExpiredEvent)
+		return
+	}
 }
 
 func onCancelEvent(cancel *schwab.CancelEvent) {
@@ -262,7 +266,7 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	qty := fill.ExecutionInfo.ExecutionQuantity
 	routeName := fill.ExecutionInfo.RouteName
 	fillPrice := fill.ExecutionInfo.ExecutionPrice
-	priceImprovement := fill.PriceImprovement
+	priceImprovement := fill.PriceImprovement.DivInt(100)
 	if fill.OrderInfoForTransactionPosting.BuySellCode == "Sell" {
 		qty = qty.Neg()
 	}
@@ -280,13 +284,34 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	leg.FillPrice = fillPrice
 	unfilledBulls.Remove(leg)
 	unfilledBears.Remove(leg)
-	log.Printf("leg fill %s for %d at %s with %s price improvement from %s route (limit=%s market=%s es=%s)",
-		leg.Name, orderID, fillPrice, priceImprovement, routeName, leg.LimitPrice, leg.MarketPrice(), es.Price)
+	log.Printf("leg filled for order id %d at %s with %s improvement from %s route: %s",
+		orderID, fillPrice, priceImprovement, routeName, leg)
 	if leg.Box.Filled() {
-		log.Printf("box filled with profit %s (originally %s) %s (limit=%s market=%s es=%s)",
-			leg.Box.FillProfit(), leg.Box.LimitProfit(), leg.Box, leg.Box.LimitPrice(), leg.Box.MarketPrice(), es.Price)
+		log.Printf("box filled: %s", leg.Box)
 		boxes.Remove(leg.Box)
 	}
+}
+
+func onExpiredEvent(event *schwab.OrderEvent, _ *schwab.ExpiredEvent) {
+	orderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
+	if err != nil {
+		log.Printf("invalid order id %s for expired event", event.SchwabOrderID)
+		return
+	}
+	leg := legsByOrderID[orderID]
+	if leg == nil {
+		log.Printf("order id %d not found for expired event", orderID)
+		return
+	}
+	// we assume this is a FOK order that failed to fill
+	// maybe the market maker to whom it was routed didn't like the order
+	// so we resend the order with a fresh limit price and hope it gets filled
+	log.Printf("order expired: %s", leg)
+	oldProfit := leg.Box.FillProfit()
+	leg.ChooseLimitPrice()
+	newProfit := leg.Box.LimitProfit()
+	log.Printf("resending leg order (box profit %s -> %s): %s", oldProfit, newProfit, leg)
+	leg.Order(legUpdates)
 }
 
 func onUnfilledTicker() {

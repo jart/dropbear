@@ -26,6 +26,7 @@ type BaseEvent struct {
 	OrderFillCompletedEventOrderLegQuantityInfo *FillEvent       `json:"OrderFillCompletedEventOrderLegQuantityInfo,omitempty"` // order filled (fully or partially)
 	CancelAcceptedEvent                         *CancelEvent     `json:"CancelAcceptedEvent,omitempty"`                         // cancel request accepted, CancelRequestType="ClientCancel"
 	OrderUROutCompletedEvent                    *RejectEvent     `json:"OrderUROutCompletedEvent,omitempty"`                    // order rejected/cancelled out, has ValidationDetail on reject
+	OrderExpiredEvent                           *ExpiredEvent    `json:"OrderExpiredEvent,omitempty"`                           // fok order failed to fill
 }
 
 // FillEvent is Schwab's OrderFillCompleted event payload.
@@ -33,7 +34,7 @@ type FillEvent struct {
 	LegID                          string          `json:"LegId"`            // e.g. "1005609024296" (same as SchwabOrderID for single-leg)
 	LegStatus                      string          `json:"LegStatus"`        // e.g. "LegClosed"
 	LegSubStatus                   string          `json:"LegSubStatus"`     // e.g. "LegSubStatusFilled"
-	PriceImprovement               decimal.Decimal `json:"PriceImprovement"` // price improvement amount (often zero)
+	PriceImprovement               decimal.Decimal `json:"PriceImprovement"` // notional improvement over schwab's quoted price to cross the spread
 	QuantityInfo                   QuantityInfo    `json:"QuantityInfo"`
 	ExecutionInfo                  ExecutionInfo   `json:"ExecutionInfo"`
 	OrderInfoForTransactionPosting OrderInfo       `json:"OrderInfoForTransactionPosting"`
@@ -110,6 +111,17 @@ type CancelEvent struct {
 	LifecycleSchwabOrderID   string                 `json:"LifecycleSchwabOrderID"` // e.g. "1005588594936"
 	CancelRequestType        string                 `json:"CancelRequestType"`      // e.g. "ClientCancel"
 	LegCancelRequestInfoList []LegCancelRequestInfo `json:"LegCancelRequestInfoList"`
+}
+
+// ExpiredEvent is sent when a FOK order fails to fill.
+type ExpiredEvent struct {
+	EventType      string          `json:"EventType"`      // e.g. "OrderExpired"
+	LegID          string          `json:"LegID"`          // e.g. "1005588594936"
+	ExpirationType string          `json:"ExpirationType"` // e.g. "DayOrderExpiry" (FOK)
+	LeavesQuantity decimal.Decimal `json:"LeavesQuantity"` // is zero for FOK orders that failed
+	CancelQuantity decimal.Decimal `json:"CancelQuantity"` // equals quantity for FOK orders that failed
+	LegStatus      string          `json:"LegStatus"`      // e.g. "LegClosed" (FOK)
+	LegSubStatus   string          `json:"LegSubStatus"`   // e.g. "LegSubStatusExpired" (FOK)
 }
 
 type LegCancelRequestInfo struct {
