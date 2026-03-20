@@ -33,12 +33,16 @@ func boxer() {
 		if !box.PartiallyFilled() {
 			continue
 		}
-		if box.ClosingProfit().IsNegative() {
+		closingProfit := box.ClosingProfit()
+		if !closingProfit.IsPositive() {
 			continue
 		}
-		if now.Sub(box.Created) < *patienceFlag {
+		elapsed := now.Sub(box.Created)
+		if elapsed < *patienceFlag {
 			continue
 		}
+		log.Printf("aborting partially filled box for %s profit (planned %s) after waiting %s for improvement to materialize: %s",
+			closingProfit, box.FillProfit(), elapsed, box)
 		box.Close()
 	}
 

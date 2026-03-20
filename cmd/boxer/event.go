@@ -133,20 +133,20 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	}
 	leg.RouteName = routeName
 	if leg.Closing {
+		if !leg.ClosePrice.IsZero() {
+			log.Printf("warning: leg for order id %d already has close price for fill event, but got another fill: %s", orderID, leg)
+		}
 		leg.Closing = false
 		leg.ClosePrice = fillPrice
 		log.Printf("leg closed for order id %d at %s with %s improvement from %s route yielding %s profit: %s",
 			orderID, fillPrice, priceImprovement, routeName, leg.Profit(), leg)
-		if !leg.ClosePrice.IsZero() {
-			log.Printf("warning: leg for order id %d already has close price for fill event, but got another fill: %s", orderID, leg)
-		}
 	} else {
-		log.Printf("leg filled for order id %d at %s with %s improvement from %s route: %s",
-			orderID, fillPrice, priceImprovement, routeName, leg)
 		if !leg.FillPrice.IsZero() {
 			log.Printf("warning: leg for order id %d already has fill price for fill event, but got another fill: %s", orderID, leg)
 		}
 		leg.FillPrice = fillPrice
+		log.Printf("leg filled for order id %d at %s with %s improvement from %s route: %s",
+			orderID, fillPrice, priceImprovement, routeName, leg)
 	}
 	onLegComplete(leg)
 }
@@ -170,9 +170,6 @@ func onExpiredEvent(event *schwab.OrderEvent, _ *schwab.ExpiredEvent) {
 
 func onLegUpdate(update LegUpdate) {
 	leg := update.Leg
-	if leg.OrderID != 0 {
-		panic("Leg update cannot have order id already set")
-	}
 	leg.OrderID = update.OrderID
 	gLegsByOrderID[update.OrderID] = leg
 	if leg.Canceling {

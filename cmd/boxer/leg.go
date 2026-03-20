@@ -36,10 +36,11 @@ func (l *Leg) String() string {
 	if l.IsBull() {
 		kind = "bull"
 	}
-	return fmt.Sprintf("%s %s %s %s @ %s (greed=%s bid=%s ask=%s profit=%s market=%s->%s fair=%s->%s iv=%s->%s δ=%s γ=%s θ=%s ν=%s)",
-		l.Name, l.Instruction(), kind, l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask, l.Profit(),
+	return fmt.Sprintf("%s %s %s %s %s @ %s (greed=%s bid=%s ask=%s profit=%s market=%s->%s fair=%s->%s iv=%s->%s δ=%s γ=%s θ=%s ν=%s route=%s)",
+		l.Name, l.DescribeState(), l.Instruction(), kind, l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask, l.Profit(),
 		l.OldMarketPrice, l.MarketPrice(), l.OldFairPrice, l.FairPrice(), l.OldIV.Format(3), l.Option.IV.Format(3),
-		l.Option.Delta.Format(3), l.Option.Gamma().Format(3), l.Option.Theta().Format(3), l.Option.Vega().Format(3))
+		l.Option.Delta.Format(3), l.Option.Gamma().Format(3), l.Option.Theta().Format(3), l.Option.Vega().Format(3),
+		l.RouteName)
 }
 
 func (l *Leg) IsBull() bool {
@@ -328,4 +329,32 @@ func (l *Leg) Check() {
 	if l.Canceled && l.Closed() {
 		panic("Leg cannot be both canceled and closed")
 	}
+}
+
+func (l *Leg) DescribeState() string {
+	if l.ClosePrice.IsPositive() {
+		return "closed"
+	}
+	if l.FillPrice.IsPositive() {
+		if l.Canceled {
+			return "filled-close-canceled"
+		}
+		if l.Canceling {
+			return "filled-close-canceling"
+		}
+		if l.Closing {
+			return "filled-closing"
+		}
+		return "filled"
+	}
+	if l.Canceling {
+		return "canceling"
+	}
+	if l.Canceled {
+		return "canceled"
+	}
+	if l.OrderID != 0 {
+		return "ordered"
+	}
+	return "pending"
 }
