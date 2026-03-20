@@ -156,6 +156,7 @@ func (l *Leg) Order() {
 	} else {
 		gUnfilledBears.Add(l)
 	}
+	gPendingLegs.Add(l)
 	go l.doOrder()
 }
 
@@ -220,21 +221,30 @@ func (l *Leg) doUpdate(orderID schwab.OrderID, limitPrice decimal.Decimal) {
 }
 
 // Profit returns profit of leg.
+// If leg was never filled, this returns zero.
 // If leg was filled, then this returns the hypothetical profit if it were to be closed.
 // If leg was closed, then this returns the executed profit of the round trip.
-// If leg was never filled, this returns zero.
 func (l *Leg) Profit() decimal.Decimal {
 	if l.FillPrice.IsZero() {
 		return decimal.Zero
 	}
+	// determine the closing price (actual or hypothetical)
 	closingPrice := l.ClosePrice
 	if closingPrice.IsZero() {
 		closingPrice = l.getClosingLimitPrice().Abs()
 	}
-	if l.IsBuying() {
+	// determine whether this leg originally bought or sold
+	// we can't use IsBuying() because Close() flips the LimitPrice sign
+	switch l {
+	case l.Box.BuyCall, l.Box.BuyPut:
+		// we bought at FillPrice, would sell at closingPrice
 		return closingPrice.Sub(l.FillPrice)
+	case l.Box.SellCall, l.Box.SellPut:
+		// we sold at FillPrice, would buy back at closingPrice
+		return l.FillPrice.Sub(closingPrice)
+	default:
+		panic("unknown leg in Profit()")
 	}
-	return l.FillPrice.Sub(closingPrice)
 }
 
 // Close closes a filled leg by sending the opposite order (e.g. sell to close if we bought to open).
@@ -248,16 +258,22 @@ func (l *Leg) Close() {
 	l.Closing = true
 	l.OrderID = 0
 	l.LimitPrice = l.getClosingLimitPrice()
+	gPendingLegs.Add(l)
 	go l.doOrder()
 }
 
 func (l *Leg) getClosingLimitPrice() decimal.Decimal {
-	// choose fair value price (usually midpoint)
-	// be generous on quantization (sell low, buy high)
-	if l.IsBuying() {
+	// To close, we do the opposite of the opening trade.
+	// Be generous on quantization to fill quickly (sell low, buy high).
+	switch l {
+	case l.Box.BuyCall, l.Box.BuyPut:
+		// we bought to open, so we sell to close
 		return quantizeTruncateSPX(l.Option.Bid.Max(l.Option.FairPrice()))
-	} else {
+	case l.Box.SellCall, l.Box.SellPut:
+		// we sold to open, so we buy to close
 		return quantizeAwaySPX(l.Option.Ask.Min(l.Option.FairPrice())).Neg()
+	default:
+		panic("unknown leg in getClosingLimitPrice()")
 	}
 }
 

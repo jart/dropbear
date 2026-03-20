@@ -25,6 +25,57 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 }
 
 func onCreatedEvent(order *schwab.OrderDetailsWrapper) {
+	if order.Order.AssetOrderEquityOrderLeg.OrderInstruction.ExecutionStrategy.LimitExecutionStrategy == nil {
+		log.Printf("warning: onCreatedEvent only supports limit orders")
+		return
+	}
+	limitPrice := order.Order.AssetOrderEquityOrderLeg.OrderInstruction.ExecutionStrategy.LimitExecutionStrategy.LimitPrice
+	legs := order.Order.AssetOrderEquityOrderLeg.OrderLegs
+	if len(legs) != 1 {
+		log.Printf("warning: onCreatedEvent only supports single-leg orders")
+		return
+	}
+	if legs[0].BuySellCode == "Buy" {
+		limitPrice = limitPrice.Neg()
+	}
+	osi := legs[0].Security.Symbol
+	leg := gLegsByOrderID[order.SchwabOrderID]
+	if leg != nil {
+		// if we know about the order id then make sure everything checks out
+		if leg.OrderID != order.SchwabOrderID {
+			log.Printf("warning: order id %d already exists but does not match created event order id %d: %s", leg.OrderID, order.SchwabOrderID, leg)
+		}
+		if leg.Option.OSI() != osi {
+			log.Printf("warning: leg for order id %d already exists but does not match created event OSI %s: %s", leg.OrderID, osi, leg)
+		}
+		if leg.LimitPrice.Cmp(limitPrice) != 0 {
+			log.Printf("warning: leg for order id %d already exists but does not match created event limit price %s: %s", leg.OrderID, limitPrice, leg)
+		}
+		return
+	}
+	// Schwab's API doesn't have a ClientOrderID parameter like other brokers.
+	// So we have to deal with this race condition where we get websocket events
+	// for an order before we get the response from the REST API that creates the leg.
+	// This is bad, because we don't know what the ID of our order is yet, so we guess.
+	found := 0
+	for it := gPendingLegs.Iterator(); it.Next(); {
+		l := it.Value()
+		if l.Option.OSI() == osi && l.LimitPrice.Cmp(limitPrice) == 0 {
+			leg = l
+			found += 1
+		}
+	}
+	switch found {
+	case 0:
+		log.Printf("warning: could not find leg for order id %d with OSI %s and limit price %s", order.SchwabOrderID, osi, limitPrice)
+		return
+	case 1:
+		log.Printf("note: guessing that order id %d maps to: %s", order.SchwabOrderID, leg)
+		onLegOrderID(leg, order.SchwabOrderID)
+	default:
+		log.Printf("warning: could not uniquely guess leg for order id %d", order.SchwabOrderID)
+		return
+	}
 }
 
 func onChangeEvent(event *schwab.OrderEvent, change *schwab.OrderChangeEvent) {
@@ -39,7 +90,7 @@ func onChangeEvent(event *schwab.OrderEvent, change *schwab.OrderChangeEvent) {
 		log.Printf("warning: old order id %d not found for change event order id %s", oldID, newID)
 		return
 	}
-	if leg.Complete() {
+	if leg.Complete() && !leg.Closing {
 		log.Printf("warning: leg for order id %d is already complete for change event order id %s: %s", oldID, newID, leg)
 		return
 	}
@@ -74,17 +125,22 @@ func onCancelEvent(cancel *schwab.CancelEvent) {
 			log.Printf("warning: got replacement cancel event for order id %d leg that still exists: %s", info.LegID, leg)
 			continue
 		}
-		if leg.Complete() {
+		if leg.Complete() && !leg.Closing {
 			log.Printf("warning: leg for order id %d is already complete for cancel event: %s", info.LegID, leg)
 			continue
 		}
-		if !leg.Canceling {
+		if leg.Canceling {
+			log.Printf("leg canceled for order id %d: %s", info.LegID, leg)
+		} else {
 			log.Printf("note: leg for order id %d was canceled from thinkorswim: %s", info.LegID, leg)
 		}
-		log.Printf("leg canceled for order id %d: %s", info.LegID, leg)
 		leg.Canceling = false
-		leg.Canceled = true
-		onLegComplete(leg)
+		if leg.Closing {
+			leg.Closing = false
+		} else {
+			leg.Canceled = true
+			onLegComplete(leg)
+		}
 	}
 }
 
@@ -96,10 +152,6 @@ func onExecutionRequested(event *schwab.OrderEvent, route *schwab.RouteEvent) {
 	if leg == nil {
 		log.Printf("warning: order id %d not found for route event: %s @ %s",
 			event.SchwabOrderID, route.RouteInfo.RouteName, route.RouteInfo.RoutedPrice)
-		return
-	}
-	if leg.Complete() {
-		log.Printf("warning: leg for order id %d is already complete for route event: %s @ %s", event.SchwabOrderID, route.RouteInfo.RouteName, route.RouteInfo.RoutedPrice)
 		return
 	}
 	leg.RouteName = route.RouteInfo.RouteName
@@ -123,7 +175,7 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 		log.Printf("warning: order id %d not found for fill event", orderID)
 		return
 	}
-	if leg.Complete() {
+	if leg.Complete() && !leg.Closing {
 		log.Printf("warning: leg for order id %d is already complete for fill event: %s", orderID, leg)
 		return
 	}
@@ -157,7 +209,7 @@ func onExpiredEvent(event *schwab.OrderEvent, _ *schwab.ExpiredEvent) {
 		log.Printf("warning: order id %d not found for expired event", event.SchwabOrderID)
 		return
 	}
-	if leg.Complete() {
+	if leg.Complete() && !leg.Closing {
 		log.Printf("warning: leg for order id %d is already complete for expired event: %s", event.SchwabOrderID, leg)
 		return
 	}
@@ -168,12 +220,12 @@ func onExpiredEvent(event *schwab.OrderEvent, _ *schwab.ExpiredEvent) {
 	onLegComplete(leg)
 }
 
-func onLegUpdate(update LegUpdate) {
-	leg := update.Leg
-	leg.OrderID = update.OrderID
-	gLegsByOrderID[update.OrderID] = leg
+func onLegOrderID(leg *Leg, orderID schwab.OrderID) {
+	leg.OrderID = orderID
+	gLegsByOrderID[orderID] = leg
+	gPendingLegs.Remove(leg)
 	if leg.Canceling {
-		log.Printf("note: defered canceling leg for order id %d: %s", update.OrderID, leg)
+		log.Printf("note: defered canceling leg for order id %d: %s", orderID, leg)
 		leg.Canceling = false
 		leg.Cancel()
 	}

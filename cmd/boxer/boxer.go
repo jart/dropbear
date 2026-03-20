@@ -24,27 +24,27 @@ func boxer() {
 		return
 	}
 
-	// check if we need to close partially filled boxes
-	for it := gPendingBoxes.Iterator(); it.Next(); {
-		box := it.Value()
-		if box.Closing {
-			continue
-		}
-		if !box.PartiallyFilled() {
-			continue
-		}
-		closingProfit := box.ClosingProfit()
-		if !closingProfit.IsPositive() {
-			continue
-		}
-		elapsed := now.Sub(box.Created)
-		if elapsed < *patienceFlag {
-			continue
-		}
-		log.Printf("aborting partially filled box for %s profit (planned %s) after waiting %s for improvement to materialize: %s",
-			closingProfit, box.FillProfit(), elapsed, box)
-		box.Close()
-	}
+	// // check if we need to close partially filled boxes
+	// for it := gPendingBoxes.Iterator(); it.Next(); {
+	// 	box := it.Value()
+	// 	if box.Closing {
+	// 		continue
+	// 	}
+	// 	if !box.PartiallyFilled() {
+	// 		continue
+	// 	}
+	// 	closingProfit := box.ClosingProfit()
+	// 	if !closingProfit.IsPositive() {
+	// 		continue
+	// 	}
+	// 	elapsed := now.Sub(box.Created)
+	// 	if elapsed < *patienceFlag {
+	// 		continue
+	// 	}
+	// 	log.Printf("aborting partially filled box for %s profit (planned %s) after waiting %s: %s",
+	// 		closingProfit, box.FillProfit(), elapsed, box)
+	// 	box.Close()
+	// }
 
 	// prevent creating new boxes when imbalance is too high
 	bulls := gUnfilledBulls.Size()

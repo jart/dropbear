@@ -51,6 +51,7 @@ var (
 	gUnfilledBulls       = linkedhashset.New[*Leg]()
 	gUnfilledBears       = linkedhashset.New[*Leg]()
 	gPendingBoxes        = linkedhashset.New[*Box]()
+	gPendingLegs         = linkedhashset.New[*Leg]()
 )
 
 const (
@@ -96,7 +97,7 @@ func main() {
 			onOrderUpdate(update)
 			continue
 		case legUpdate := <-gLegUpdates:
-			onLegUpdate(legUpdate)
+			onLegOrderID(legUpdate.Leg, legUpdate.OrderID)
 			continue
 		case <-heartbeat.C:
 			onHeartbeat()
@@ -119,7 +120,7 @@ func main() {
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
 		case legUpdate := <-gLegUpdates:
-			onLegUpdate(legUpdate)
+			onLegOrderID(legUpdate.Leg, legUpdate.OrderID)
 		case <-heartbeat.C:
 			onHeartbeat()
 		}
