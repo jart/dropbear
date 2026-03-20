@@ -12,6 +12,7 @@ import (
 	"dropbear/ds/symbol"
 	"dropbear/loggy"
 
+	"github.com/emirpasic/gods/v2/maps/treemap"
 	"github.com/emirpasic/gods/v2/sets/hashset"
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/emirpasic/gods/v2/sets/treeset"
@@ -35,6 +36,8 @@ var (
 	gES                  *Future
 	gSR1                 *Future
 	gSchwabClient        *schwab.Client
+	gSPXPrice            decimal.Decimal
+	gSPXPriceTime        clocky.Time
 	gFuturesByID         = make(map[uint32]*Future)
 	gOptionsByID         = make(map[uint32]*Option)
 	gOptionsByOSI        = make(map[string]*Option)
@@ -42,6 +45,8 @@ var (
 	gOptionsByStrike     = treeset.NewWith(compareOptionByStrike)
 	gRestrictedToBuying  = hashset.New[uint32]()
 	gRestrictedToSelling = hashset.New[uint32]()
+	gStrikes             = treemap.New[decimal.Decimal, *Strike]()
+	gPendingStrikes      = treemap.New[decimal.Decimal, *Strike]()
 	gLegUpdates          = make(chan LegUpdate, 20)
 	gUnfilledBulls       = linkedhashset.New[*Leg]()
 	gUnfilledBears       = linkedhashset.New[*Leg]()
@@ -187,6 +192,28 @@ func onOptionTick(t *databento.CMBP1) {
 			o.Got |= GotES
 		} else {
 			o.Got &^= GotES
+		}
+		if (o.Got & (GotBid | GotAsk | GotES)) == (GotBid | GotAsk | GotES) {
+			s, ok := gStrikes.Get(o.Strike)
+			if ok {
+				updateSPXPrice(s)
+			} else {
+				s, ok = gPendingStrikes.Get(o.Strike)
+				if !ok {
+					s = &Strike{}
+					gPendingStrikes.Put(o.Strike, s)
+				}
+				if o.Class == databento.InstrumentClassCall {
+					s.Call = o
+				} else {
+					s.Put = o
+				}
+				if s.IsReady() {
+					gPendingStrikes.Remove(o.Strike)
+					gStrikes.Put(o.Strike, s)
+					updateSPXPrice(s)
+				}
+			}
 		}
 		o.UpdateDelta()
 	}

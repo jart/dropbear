@@ -36,8 +36,8 @@ func (l *Leg) String() string {
 	if l.IsBull() {
 		kind = "bull"
 	}
-	return fmt.Sprintf("%s %s %s %s @ %s (greed=%s bid=%s ask=%s market=%s->%s fair=%s->%s iv=%s->%s δ=%s γ=%s θ=%s ν=%s)",
-		l.Name, l.Instruction(), kind, l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask,
+	return fmt.Sprintf("%s %s %s %s @ %s (greed=%s bid=%s ask=%s profit=%s market=%s->%s fair=%s->%s iv=%s->%s δ=%s γ=%s θ=%s ν=%s)",
+		l.Name, l.Instruction(), kind, l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask, l.Profit(),
 		l.OldMarketPrice, l.MarketPrice(), l.OldFairPrice, l.FairPrice(), l.OldIV.Format(3), l.Option.IV.Format(3),
 		l.Option.Delta.Format(3), l.Option.Gamma().Format(3), l.Option.Theta().Format(3), l.Option.Vega().Format(3))
 }
@@ -49,11 +49,11 @@ func (l *Leg) IsBull() bool {
 
 func (l *Leg) IsSafe() bool {
 	// selling a call is pretty safe if the strike is above the current price
-	if l.Option.Class == databento.InstrumentClassCall && !l.IsBuying() && l.Option.Strike.Cmp(gES.Price.Add(*safetyFlag)) >= 0 {
+	if l.Option.Class == databento.InstrumentClassCall && !l.IsBuying() && l.Option.Strike.Cmp(gSPXPrice.Add(*safetyFlag)) >= 0 {
 		return true
 	}
 	// selling a put is pretty safe if the strike is below the current price
-	if l.Option.Class == databento.InstrumentClassPut && !l.IsBuying() && l.Option.Strike.Cmp(gES.Price.Sub(*safetyFlag)) <= 0 {
+	if l.Option.Class == databento.InstrumentClassPut && !l.IsBuying() && l.Option.Strike.Cmp(gSPXPrice.Sub(*safetyFlag)) <= 0 {
 		return true
 	}
 	return false

@@ -21,9 +21,9 @@ func (b *Box) String() string {
 	if b.IsBuying() {
 		direction = "buy"
 	}
-	return fmt.Sprintf("%s %sw box @ %s (market=%s profit=%s->%s es=%s)\n\t%s\n\t%s\n\t%s\n\t%s",
-		direction, b.Width(), b.LimitPrice(), b.MarketPrice(), b.LimitProfit(), b.FillProfit(), gES.Price,
-		b.BuyCall, b.SellCall, b.SellPut, b.BuyPut)
+	return fmt.Sprintf("%s %sw box @ %s (market=%s profit=%s->%s close=%s spx=%s es=%s)\n\t%s\n\t%s\n\t%s\n\t%s",
+		direction, b.Width(), b.LimitPrice(), b.MarketPrice(), b.LimitProfit(), b.FillProfit(), b.ClosingProfit(),
+		gSPXPrice, gES.Price, b.BuyCall, b.SellCall, b.SellPut, b.BuyPut)
 }
 
 // Width returns the distance between the strikes of the box.

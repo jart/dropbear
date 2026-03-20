@@ -16,6 +16,10 @@ func compareOptionByStrike(a, b *Option) int {
 	return a.Strike.Cmp(b.Strike)
 }
 
+func compareStrikes(a, b *Strike) int {
+	return a.Strike().Cmp(b.Strike())
+}
+
 // riskFreeRate returns the annualized risk-free rate from the SR1 futures price.
 func riskFreeRate() float64 {
 	if gSR1 == nil || gSR1.Price.IsZero() {

@@ -82,15 +82,15 @@ func (o *Option) CanSell() bool {
 		!gRestrictedToBuying.Contains(o.ID)
 }
 
-// UpdateDelta recomputes the Black-76 delta from the current market mid and ES price.
-// Called on each fresh option tick after Bid/Ask/ES are updated.
+// UpdateDelta recomputes the Black-76 delta from the current market mid and SPX price.
+// Called on each fresh option tick after Bid/Ask/SPX are updated.
 func (o *Option) UpdateDelta() {
 	if (o.Got & (GotBid | GotAsk)) != (GotBid | GotAsk) {
 		o.Got &^= GotDelta
 		return
 	}
 	o.Mid = o.MarketPrice()
-	F := o.ES.Float64()
+	F := gSPXPrice.Float64()
 	K := o.Strike.Float64()
 	T := o.timeToExpiry()
 	if T <= 0 {
@@ -153,7 +153,7 @@ func (o *Option) greekParams() (F, K, r, T, iv float64, ok bool) {
 	if T <= 0 {
 		return
 	}
-	return o.ES.Float64(), o.Strike.Float64(), riskFreeRate(), T, o.IV.Float64(), true
+	return gSPXPrice.Float64(), o.Strike.Float64(), riskFreeRate(), T, o.IV.Float64(), true
 }
 
 // timeToExpiry returns number of years until expiration.
