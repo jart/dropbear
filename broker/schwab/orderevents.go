@@ -16,18 +16,18 @@ type OrderEvent struct {
 // BaseEvent contains the event type and the event-specific payload.
 // Only one of the event-specific fields will be populated per message.
 type BaseEvent struct {
-	EventType                                   string             `json:"EventType"`                                             // e.g. "OrderCreated", "OrderFillCompleted", "CancelAccepted", "ChangeCreated"
-	OrderCreatedEventEquityOrder                *OrderCreatedEvent `json:"OrderCreatedEventEquityOrder,omitempty"`                // huge blob with full order details, account info, legs, quotes
-	OrderAcceptedEvent                          *json.RawMessage   `json:"OrderAcceptedEvent,omitempty"`                          // status="Open", has quotes at acceptance time
-	ExecutionRequestedEventRoutedInfo           *RouteEvent        `json:"ExecutionRequestedEventRoutedInfo,omitempty"`           // order routed to venue (JANESTREET, DASH, CES_OPT, etc.)
-	ExecutionRequestCreatedEvent                *json.RawMessage   `json:"ExecutionRequestCreatedEvent,omitempty"`                // FIX ack from venue, RouteStatus="RouteFixAcknowledged"
-	ExecutionRequestCompletedEvent              *json.RawMessage   `json:"ExecutionRequestCompletedEvent,omitempty"`              // venue accepted/rejected, ResponseType="Accepted" or 7 (cancel ack)
-	ExecutionCreatedEventExecutionInfo          *json.RawMessage   `json:"ExecutionCreatedEventExecutionInfo,omitempty"`          // execution record created, has ExecutionTransType="Fill" or "UROut"
-	OrderFillCompletedEventOrderLegQuantityInfo *FillEvent         `json:"OrderFillCompletedEventOrderLegQuantityInfo,omitempty"` // order filled (fully or partially)
-	CancelAcceptedEvent                         *CancelEvent       `json:"CancelAcceptedEvent,omitempty"`                         // cancel request accepted, CancelRequestType="ClientCancel"
-	OrderUROutCompletedEvent                    *RejectEvent       `json:"OrderUROutCompletedEvent,omitempty"`                    // order rejected/cancelled out, has ValidationDetail on reject
-	OrderExpiredEvent                           *ExpiredEvent      `json:"OrderExpiredEvent,omitempty"`                           // fok order failed to fill
-	ChangeCreatedEventEquityOrder               *OrderChangeEvent  `json:"ChangeCreatedEventEquityOrder,omitempty"`               // order changed (will have novel SchwabOrderID if thinkorswim edit, that'll show up later in CancelEvent::ChangedNewSchwabOrderId)
+	EventType                                   string                 `json:"EventType"`                                             // e.g. "OrderCreated", "OrderFillCompleted", "CancelAccepted", "ChangeCreated"
+	OrderCreatedEventEquityOrder                *OrderCreatedEvent     `json:"OrderCreatedEventEquityOrder,omitempty"`                // huge blob with full order details, account info, legs, quotes
+	OrderAcceptedEvent                          *json.RawMessage       `json:"OrderAcceptedEvent,omitempty"`                          // status="Open", has quotes at acceptance time
+	ExecutionCreatedEventExecutionInfo          *ExecutionCreated      `json:"ExecutionCreatedEventExecutionInfo,omitempty"`          // ExecutionCreated: execution record created, has ExecutionTransType="Fill" or "UROut"
+	ExecutionRequestedEventRoutedInfo           *ExecutionRequested    `json:"ExecutionRequestedEventRoutedInfo,omitempty"`           // ExecutionRequested: order routed to venue (JANESTREET, DASH, CES_OPT, etc.)
+	ExecutionRequestCreatedEvent                *json.RawMessage       `json:"ExecutionRequestCreatedEvent,omitempty"`                // FIX ack from venue, RouteStatus="RouteFixAcknowledged"
+	ExecutionRequestCompletedEvent              *json.RawMessage       `json:"ExecutionRequestCompletedEvent,omitempty"`              // venue accepted/rejected, ResponseType="Accepted" or 7 (cancel ack)
+	OrderFillCompletedEventOrderLegQuantityInfo *FillEvent             `json:"OrderFillCompletedEventOrderLegQuantityInfo,omitempty"` // order filled (fully or partially)
+	CancelAcceptedEvent                         *CancelAcknowledgement `json:"CancelAcceptedEvent,omitempty"`                         // cancel request accepted, CancelRequestType="ClientCancel"
+	OrderUROutCompletedEvent                    *OrderUROutCompleted   `json:"OrderUROutCompletedEvent,omitempty"`                    // order rejected/cancelled out, has ValidationDetail on reject
+	OrderExpiredEvent                           *ExpiredEvent          `json:"OrderExpiredEvent,omitempty"`                           // fok order failed to fill
+	ChangeCreatedEventEquityOrder               *OrderChangeEvent      `json:"ChangeCreatedEventEquityOrder,omitempty"`               // order changed
 }
 
 // FillEvent is Schwab's OrderFillCompleted event payload.
@@ -83,6 +83,7 @@ type ExecutionInfo struct {
 	ExecutionTransType                string               `json:"ExecutionTransType"`                // "Fill" or "UROut"
 	ExecutionCapacityCode             string               `json:"ExecutionCapacityCode"`             // e.g. "Agency"
 	RouteName                         string               `json:"RouteName"`                         // e.g. "CES_OPT_F1_J1", "DASH_OPT_F2_J1"
+	CancelType                        string               `json:"CancelType,omitempty"`              // e.g. "ClientCancel"
 	RouteSequenceNumber               int                  `json:"RouteSequenceNumber"`               // e.g. 1
 	ReportingCapacityCode             string               `json:"ReportingCapacityCode"`             // e.g. "RC_Agency"
 	PrincipalAmount                   decimal.Decimal      `json:"PrincipalAmmount"`                  // notional value (note: Schwab typo "Ammount")
@@ -109,15 +110,17 @@ func (f *FeesCommissionAndTax) Total() decimal.Decimal {
 		Add(f.TaxWithholding1446).Add(f.GoodsAndServicesTax).Add(f.StateTaxWithholding).Add(f.FederalTaxWithholding)
 }
 
-// RejectEvent is Schwab's OrderUROutCompleted event payload.
-type RejectEvent struct {
-	LegID            OrderID            `json:"LegId"`            // e.g. "1005610854315"
-	LegStatus        string             `json:"LegStatus"`        // e.g. "LegClosed"
-	LegSubStatus     string             `json:"LegSubStatus"`     // e.g. "LegSubStatusCancelled"
-	LeavesQuantity   decimal.Decimal    `json:"LeavesQuantity"`   // remaining unfilled, 0 when fully cancelled out
-	CancelQuantity   decimal.Decimal    `json:"CancelQuantity"`   // quantity cancelled, e.g. 1
-	OutCancelType    string             `json:"OutCancelType"`    // "ClientCancel" or "SystemReject"
-	ValidationDetail []ValidationDetail `json:"ValidationDetail"` // present on SystemReject, describes why order was rejected
+type OrderUROutCompleted struct {
+	EventType        string             `json:"EventType"`                  // e.g. "OrderUROutCompleted"
+	LegID            OrderID            `json:"LegId"`                      // e.g. "1005610854315"
+	ExecutionID      string             `json:"ExecutionId"`                // e.g. "20260305-EST-ngOMS-16720352389"
+	LegStatus        string             `json:"LegStatus"`                  // e.g. "LegClosed"
+	LegSubStatus     string             `json:"LegSubStatus"`               // e.g. "LegSubStatusCancelled"
+	LeavesQuantity   decimal.Decimal    `json:"LeavesQuantity"`             // remaining unfilled, 0 when fully cancelled out
+	CancelQuantity   decimal.Decimal    `json:"CancelQuantity"`             // quantity cancelled, e.g. 1
+	OutCancelType    string             `json:"OutCancelType"`              // "ClientCancel" or "SystemReject"
+	RouteName        string             `json:"RouteName"`                  // e.g. "JANESTREET_F2_J2", "DASH_OPT_F2_J1", "CES_OPT_F1_J1"
+	ValidationDetail []ValidationDetail `json:"ValidationDetail,omitempty"` // present on SystemReject, describes why order was rejected
 }
 
 type ValidationDetail struct {
@@ -126,7 +129,7 @@ type ValidationDetail struct {
 	NgOMSRuleDescription string  `json:"NgOMSRuleDescription"` // human-readable rejection reason
 }
 
-type CancelEvent struct {
+type CancelAcknowledgement struct {
 	LifecycleSchwabOrderID   OrderID                `json:"LifecycleSchwabOrderID"` // e.g. "1005588594936"
 	CancelRequestType        string                 `json:"CancelRequestType"`      // e.g. "ClientCancel"
 	LegCancelRequestInfoList []LegCancelRequestInfo `json:"LegCancelRequestInfoList"`
@@ -143,22 +146,30 @@ type ExpiredEvent struct {
 }
 
 type LegCancelRequestInfo struct {
-	LegID                   OrderID         `json:"LegID"`                   // e.g. "1005588594936"
-	IntendedOrderQuantity   decimal.Decimal `json:"IntendedOrderQuantity"`   // original order quantity, e.g. 1
-	RequestedAmount         decimal.Decimal `json:"RequestedAmount"`         // quantity requested to cancel, e.g. 1
-	LegStatus               string          `json:"LegStatus"`               // e.g. "LegOpen"
-	LegSubStatus            string          `json:"LegSubStatus"`            // e.g. "LegSubStatusCancelled"
-	ChangedNewSchwabOrderId OrderID         `json:"ChangedNewSchwabOrderId"` // new order ID when order was edited (not just cancelled)
+	LegID                   OrderID         `json:"LegID"`                             // e.g. "1005588594936"
+	IntendedOrderQuantity   decimal.Decimal `json:"IntendedOrderQuantity"`             // original order quantity, e.g. 1
+	RequestedAmount         decimal.Decimal `json:"RequestedAmount"`                   // quantity requested to cancel, e.g. 1
+	LegStatus               string          `json:"LegStatus"`                         // e.g. "LegOpen"
+	LegSubStatus            string          `json:"LegSubStatus"`                      // e.g. "LegSubStatusCancelled"
+	ChangedNewOrderID       OrderID         `json:"ChangedNewOrderID,omitempty"`       // new order id when order was edited (not just cancelled)
+	ChangedNewSchwabOrderID OrderID         `json:"ChangedNewSchwabOrderId,omitempty"` // new order id when order was edited (not just cancelled)
 }
 
-type RouteEvent struct {
-	RouteSequenceNumber int       `json:"RouteSequenceNumber"` // increments per route attempt, e.g. 1, 2
-	RouteRequestedBy    string    `json:"RouteRequestedBy"`    // e.g. "RR_Broker"
-	LegID               OrderID   `json:"LegId"`               // e.g. "1005609024296"
-	RouteInfo           RouteInfo `json:"RouteInfo"`
+type ExecutionCreated struct {
+	EventType     string        `json:"EventType"`     // e.g. "ExecutionRequested"
+	LegID         OrderID       `json:"LegId"`         // e.g. "1005609024296"
+	ExecutionInfo ExecutionInfo `json:"ExecutionInfo"` //
 }
 
-type RouteInfo struct {
+type ExecutionRequested struct {
+	EventType           string                      `json:"EventType"`           // e.g. "ExecutionRequested"
+	RouteSequenceNumber int                         `json:"RouteSequenceNumber"` // increments per route attempt, e.g. 1, 2
+	RouteRequestedBy    string                      `json:"RouteRequestedBy"`    // e.g. "RR_Broker"
+	LegID               OrderID                     `json:"LegId"`               // e.g. "1005609024296"
+	RouteInfo           ExecutionRequestedRouteInfo `json:"RouteInfo"`
+}
+
+type ExecutionRequestedRouteInfo struct {
 	RouteName           string          `json:"RouteName"`           // e.g. "JANESTREET_F2_J2", "DASH_OPT_F2_J1", "CES_OPT_F1_J1"
 	RouteSequenceNumber int             `json:"RouteSequenceNumber"` // same as parent RouteSequenceNumber
 	RoutedQuantity      decimal.Decimal `json:"RoutedQuantity"`      // contracts routed, e.g. 1
@@ -215,12 +226,17 @@ type ClientChannelInfo struct {
 }
 
 type AssetOrderEquityOrderLeg struct {
-	OrderInstruction OrderInstruction `json:"OrderInstruction"` //
-	CommissionInfo   CommissionInfo   `json:"CommissionInfo"`   //
-	AssetType        string           `json:"AssetType"`        // e.g. "MajorAssetType_EquityOption"
-	TimeInForce      string           `json:"TimeInForce"`      // e.g. "Day"
-	OrderTypeCode    string           `json:"OrderTypeCode"`    // e.g. "Limit"
-	OrderLegs        []OrderLegInfo   `json:"OrderLegs"`        //
+	OrderInstruction  OrderInstruction `json:"OrderInstruction"`  //
+	CommissionInfo    CommissionInfo   `json:"CommissionInfo"`    //
+	AssetType         string           `json:"AssetType"`         // e.g. "MajorAssetType_EquityOption"
+	TimeInForce       string           `json:"TimeInForce"`       // e.g. "Day"
+	OrderTypeCode     string           `json:"OrderTypeCode"`     // e.g. "Limit"
+	OrderLegs         []OrderLegInfo   `json:"OrderLegs"`         //
+	OrderCapacityCode string           `json:"OrderCapacityCode"` // e.g. "OC_Agency"
+	SettlementType    string           `json:"SettlementType"`    // e.g. "SettlementType_Regular"
+	Rule80ACode       Rule80ACode      `json:"Rule80ACode"`       // e.g. 'I' (individual investor)
+	SolicitedCode     string           `json:"SolicitedCode"`     // e.g. "Unsolicited"
+	TradeTag          string           `json:"TradeTag"`          // e.g. "TA_jtunneygmailcom1744074585"
 }
 
 type OrderInstruction struct {
@@ -252,7 +268,7 @@ type OrderLegInfo struct {
 	QuantityUnitCodeType   string          `json:"QuantityUnitCodeType"`   // e.g. "SharesOrUnits"
 	LeavesQuantity         decimal.Decimal `json:"LeavesQuantity"`         // e.g. 1
 	BuySellCode            string          `json:"BuySellCode"`            // "Buy" or "Sell"
-	Security               SecurityInfo    `json:"SecurityInfo"`           //
+	Security               SecurityInfo    `json:"Security"`               //
 	QuoteOnOrderAcceptance QuoteInfo       `json:"QuoteOnOrderAcceptance"` //
 }
 

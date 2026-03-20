@@ -5,12 +5,7 @@ import (
 	"log"
 )
 
-var (
-	gHoldings map[string]decimal.Decimal
-)
-
 func InitHoldings() {
-	gHoldings = make(map[string]decimal.Decimal)
 	acct, err := gSchwabClient.GetAccount()
 	if err != nil {
 		log.Printf("warning: failed to fetch positions: %v", err)
@@ -18,8 +13,18 @@ func InitHoldings() {
 		for _, pos := range acct.SecuritiesAccount.Positions {
 			qty := pos.LongQuantity.Sub(pos.ShortQuantity)
 			if !qty.IsZero() {
-				gHoldings[pos.Instrument.Symbol] = qty
+				gHoldings.Put(pos.Instrument.Symbol, qty)
 			}
 		}
 	}
+}
+
+func GetHoldings(sym string) decimal.Decimal {
+	have, _ := gHoldings.Get(sym)
+	return have
+}
+
+func AddToHoldings(sym string, qty decimal.Decimal) {
+	have, _ := gHoldings.Get(sym)
+	gHoldings.Put(sym, have.Add(qty))
 }

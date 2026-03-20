@@ -34,7 +34,7 @@ func boxer() {
 			continue
 		}
 		closingProfit := box.ClosingProfit()
-		if !closingProfit.IsNegative() {
+		if closingProfit.IsNegative() {
 			continue
 		}
 		elapsed := now.Sub(box.Created)

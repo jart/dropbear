@@ -72,13 +72,13 @@ func (o *Option) OSI() string {
 
 // CanBuy returns true if we can buy this option, i.e. it won't close an existing short position.
 func (o *Option) CanBuy() bool {
-	return !gHoldings[o.OSI()].IsNegative() &&
+	return !GetHoldings(o.OSI()).IsNegative() &&
 		!gRestrictedToSelling.Contains(o.ID)
 }
 
 // CanSell returns true if we can sell this option, i.e. it won't close an existing long position.
 func (o *Option) CanSell() bool {
-	return !gHoldings[o.OSI()].IsPositive() &&
+	return !GetHoldings(o.OSI()).IsPositive() &&
 		!gRestrictedToBuying.Contains(o.ID)
 }
 

@@ -252,6 +252,9 @@ func (l *Leg) Close() {
 	if !l.Filled() {
 		panic("cannot close leg that isn't filled")
 	}
+	if l.Closed() {
+		panic("leg is already closed")
+	}
 	if l.Closing {
 		panic("leg is already closing")
 	}

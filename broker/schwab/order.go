@@ -5,6 +5,44 @@ import (
 	"dropbear/decimal"
 )
 
+// Order represents a Schwab order, both for reading responses and for building requests.
+type Order struct {
+	Session                  Session            `json:"session"`
+	Duration                 Duration           `json:"duration"`
+	OrderType                OrderType          `json:"orderType"`
+	CancelTime               clocky.Time        `json:"cancelTime,omitempty"`
+	ComplexOrderStrategyType ComplexStrategy    `json:"complexOrderStrategyType,omitempty"`
+	Quantity                 decimal.Decimal    `json:"quantity,omitempty"`
+	FilledQuantity           decimal.Decimal    `json:"filledQuantity,omitempty"`
+	RemainingQuantity        decimal.Decimal    `json:"remainingQuantity,omitempty"`
+	DestinationLinkName      string             `json:"destinationLinkName,omitempty"` // schwab support says they ignore this field :'(
+	ReleaseTime              clocky.Time        `json:"releaseTime,omitempty"`
+	StopPrice                decimal.Decimal    `json:"stopPrice,omitempty"`
+	StopPriceLinkBasis       string             `json:"stopPriceLinkBasis,omitempty"`
+	StopPriceLinkType        string             `json:"stopPriceLinkType,omitempty"`
+	StopPriceOffset          decimal.Decimal    `json:"stopPriceOffset,omitempty"`
+	StopType                 string             `json:"stopType,omitempty"`
+	PriceLinkBasis           string             `json:"priceLinkBasis,omitempty"`
+	PriceLinkType            string             `json:"priceLinkType,omitempty"`
+	Price                    decimal.Decimal    `json:"price,omitempty"`
+	TaxLotMethod             string             `json:"taxLotMethod,omitempty"`
+	OrderLegCollection       []OrderLeg         `json:"orderLegCollection"`
+	ActivationPrice          decimal.Decimal    `json:"activationPrice,omitempty"`
+	SpecialInstruction       SpecialInstruction `json:"specialInstruction,omitempty"`
+	OrderStrategyType        OrderStrategyType  `json:"orderStrategyType"`
+	OrderID                  OrderID            `json:"orderId,omitempty"`
+	Cancelable               bool               `json:"cancelable,omitempty"`
+	Editable                 bool               `json:"editable,omitempty"`
+	Status                   OrderStatus        `json:"status,omitempty"`
+	EnteredTime              clocky.Time        `json:"enteredTime,omitempty"`
+	CloseTime                clocky.Time        `json:"closeTime,omitempty"`
+	AccountNumber            int64              `json:"accountNumber,omitempty"`
+	OrderActivityCollection  []OrderActivity    `json:"orderActivityCollection,omitempty"`
+	ReplacingOrderCollection []string           `json:"replacingOrderCollection,omitempty"`
+	ChildOrderStrategies     []Order            `json:"childOrderStrategies,omitempty"`
+	StatusDescription        string             `json:"statusDescription,omitempty"`
+}
+
 // Instrument identifies a tradeable security.
 type Instrument struct {
 	CUSIP            string          `json:"cusip,omitempty"`
@@ -48,42 +86,4 @@ type OrderActivity struct {
 	Quantity               decimal.Decimal `json:"quantity"`
 	OrderRemainingQuantity decimal.Decimal `json:"orderRemainingQuantity"`
 	ExecutionLegs          []ExecutionLeg  `json:"executionLegs,omitempty"`
-}
-
-// Order represents a Schwab order, both for reading responses and for building requests.
-type Order struct {
-	Session                  Session            `json:"session"`
-	Duration                 Duration           `json:"duration"`
-	OrderType                OrderType          `json:"orderType"`
-	CancelTime               clocky.Time        `json:"cancelTime,omitempty"`
-	ComplexOrderStrategyType ComplexStrategy    `json:"complexOrderStrategyType,omitempty"`
-	Quantity                 decimal.Decimal    `json:"quantity,omitempty"`
-	FilledQuantity           decimal.Decimal    `json:"filledQuantity,omitempty"`
-	RemainingQuantity        decimal.Decimal    `json:"remainingQuantity,omitempty"`
-	DestinationLinkName      string             `json:"destinationLinkName,omitempty"`
-	ReleaseTime              clocky.Time        `json:"releaseTime,omitempty"`
-	StopPrice                decimal.Decimal    `json:"stopPrice,omitempty"`
-	StopPriceLinkBasis       string             `json:"stopPriceLinkBasis,omitempty"`
-	StopPriceLinkType        string             `json:"stopPriceLinkType,omitempty"`
-	StopPriceOffset          decimal.Decimal    `json:"stopPriceOffset,omitempty"`
-	StopType                 string             `json:"stopType,omitempty"`
-	PriceLinkBasis           string             `json:"priceLinkBasis,omitempty"`
-	PriceLinkType            string             `json:"priceLinkType,omitempty"`
-	Price                    decimal.Decimal    `json:"price,omitempty"`
-	TaxLotMethod             string             `json:"taxLotMethod,omitempty"`
-	OrderLegCollection       []OrderLeg         `json:"orderLegCollection"`
-	ActivationPrice          decimal.Decimal    `json:"activationPrice,omitempty"`
-	SpecialInstruction       SpecialInstruction `json:"specialInstruction,omitempty"`
-	OrderStrategyType        OrderStrategyType  `json:"orderStrategyType"`
-	OrderID                  OrderID            `json:"orderId,omitempty"`
-	Cancelable               bool               `json:"cancelable,omitempty"`
-	Editable                 bool               `json:"editable,omitempty"`
-	Status                   OrderStatus        `json:"status,omitempty"`
-	EnteredTime              clocky.Time        `json:"enteredTime,omitempty"`
-	CloseTime                clocky.Time        `json:"closeTime,omitempty"`
-	AccountNumber            int64              `json:"accountNumber,omitempty"`
-	OrderActivityCollection  []OrderActivity    `json:"orderActivityCollection,omitempty"`
-	ReplacingOrderCollection []string           `json:"replacingOrderCollection,omitempty"`
-	ChildOrderStrategies     []Order            `json:"childOrderStrategies,omitempty"`
-	StatusDescription        string             `json:"statusDescription,omitempty"`
 }

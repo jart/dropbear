@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"log"
-	"strings"
 
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
@@ -38,6 +37,7 @@ var (
 	gSchwabClient        *schwab.Client
 	gSPXPrice            decimal.Decimal
 	gSPXPriceTime        clocky.Time
+	gTotalFees           decimal.Decimal
 	gFuturesByID         = make(map[uint32]*Future)
 	gOptionsByID         = make(map[uint32]*Option)
 	gOptionsByOSI        = make(map[string]*Option)
@@ -45,6 +45,7 @@ var (
 	gOptionsByStrike     = treeset.NewWith(compareOptionByStrike)
 	gRestrictedToBuying  = hashset.New[uint32]()
 	gRestrictedToSelling = hashset.New[uint32]()
+	gHoldings            = treemap.New[string, decimal.Decimal]()
 	gStrikes             = treemap.New[decimal.Decimal, *Strike]()
 	gPendingStrikes      = treemap.New[decimal.Decimal, *Strike]()
 	gLegUpdates          = make(chan LegUpdate, 20)
@@ -218,22 +219,4 @@ func onOptionTick(t *databento.CMBP1) {
 		}
 		o.UpdateDelta()
 	}
-}
-
-func onHeartbeat() {
-	logUnfilledLegs("bull", gUnfilledBulls)
-	logUnfilledLegs("bear", gUnfilledBears)
-}
-
-func logUnfilledLegs(description string, unfilled *linkedhashset.Set[*Leg]) {
-	if unfilled.Empty() {
-		return
-	}
-	var b strings.Builder
-	for it := unfilled.Iterator(); it.Next(); {
-		leg := it.Value()
-		b.WriteString("\n\t")
-		b.WriteString(leg.String())
-	}
-	log.Printf("%d unfilled %s legs:%s", unfilled.Size(), description, b.String())
 }
