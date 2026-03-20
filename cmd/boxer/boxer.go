@@ -6,47 +6,63 @@ import (
 	"dropbear/decimal"
 	"log"
 	"sort"
-
-	"github.com/emirpasic/gods/v2/sets/hashset"
 )
 
 var (
-	boxes       = hashset.New[*Box]() // set of boxes currently being worked on (not yet fully filled)
-	lastBoxTime clocky.Time
+	gLastBoxTime clocky.Time
 )
 
 func boxer() {
 
 	// ensure dependencies are ready
 	now := clocky.Now()
-	if es == nil || sr1 == nil {
+	if gES == nil || gSR1 == nil {
 		return
 	}
-	if now.Sub(es.TS) > *freshFlag {
-		// log.Printf("ES quote is stale (last update %s ago), skipping box creation", now.Sub(es.TS))
+	if now.Sub(gES.TS) > *freshFlag {
 		return
 	}
 
+	// check if we need to close partially filled boxes
+	for it := gPendingBoxes.Iterator(); it.Next(); {
+		box := it.Value()
+		if box.Closing {
+			continue
+		}
+		if !box.PartiallyFilled() {
+			continue
+		}
+		if box.ClosingProfit().IsNegative() {
+			continue
+		}
+		if now.Sub(box.Created) < *patienceFlag {
+			continue
+		}
+		box.Close()
+	}
+
 	// prevent creating new boxes when imbalance is too high
-	bulls := unfilledBulls.Size()
-	bears := unfilledBears.Size()
+	bulls := gUnfilledBulls.Size()
+	bears := gUnfilledBears.Size()
+	if bulls+bears >= *maxUnfilledFlag {
+		return
+	}
 	imbalance := bulls - bears
 	if imbalance < 0 {
 		imbalance = -imbalance
 	}
 	if imbalance >= *maxImbalanceFlag {
-		// log.Printf("imbalance too high (bulls=%d bears=%d), skipping box creation", bulls, bears)
 		return
 	}
 
 	// cooldown between boxes
-	if now.Sub(lastBoxTime) < *cooldownFlag {
+	if now.Sub(gLastBoxTime) < *cooldownFlag {
 		return
 	}
 
 	// group options by strike into call/put pairs
 	strikes := make(map[decimal.Decimal]*Strike)
-	for _, opt := range optionsByID {
+	for _, opt := range gOptionsByID {
 		sp := strikes[opt.Strike]
 		if sp == nil {
 			sp = &Strike{}
@@ -78,7 +94,6 @@ func boxer() {
 	// evaluate all box spread combinations
 	var best *Box
 	var bestProfit decimal.Decimal
-	var fail1, fail2, fail3, fail4 int
 	for i := 0; i < len(valid); i++ {
 		for j := 0; j < len(valid); j++ {
 			if i == j {
@@ -90,49 +105,46 @@ func boxer() {
 			spJ := strikes[strikeJ]
 
 			// only trade strikes near the money
-			if strikeI.Sub(es.Price).Abs().Cmp(*moneynessFlag) > 0 ||
-				strikeJ.Sub(es.Price).Abs().Cmp(*moneynessFlag) > 0 {
-				fail1 += 1
+			if strikeI.Sub(gES.Price).Abs().Cmp(*moneynessFlag) > 0 ||
+				strikeJ.Sub(gES.Price).Abs().Cmp(*moneynessFlag) > 0 {
 				continue
 			}
 
 			// skip boxes where both strikes are on the same side of ES
-			if (strikeI.Cmp(es.Price) > 0 && strikeJ.Cmp(es.Price) > 0) ||
-				(strikeI.Cmp(es.Price) < 0 && strikeJ.Cmp(es.Price) < 0) {
+			if (strikeI.Cmp(gES.Price) > 0 && strikeJ.Cmp(gES.Price) > 0) ||
+				(strikeI.Cmp(gES.Price) < 0 && strikeJ.Cmp(gES.Price) < 0) {
 				continue
 			}
 
 			// check box isn't too large
 			width := strikeJ.Sub(strikeI)
 			if width.Abs().Cmp(*widthFlag) > 0 {
-				fail2 += 1
 				continue
 			}
 
 			// check if opening these legs won't clobber existing positions
 			if !spI.Call.CanBuy() || !spI.Put.CanSell() || !spJ.Call.CanSell() || !spJ.Put.CanBuy() {
-				fail4 += 1
 				continue
 			}
 
 			// we shall create a box spread
-			box := &Box{}
-			box.CallLeg1 = &Leg{ // buys a call
+			box := &Box{Created: now}
+			box.BuyCall = &Leg{
 				Box:    box,
 				Name:   "#1",
 				Option: spI.Call,
 			}
-			box.CallLeg2 = &Leg{ // sells a call
+			box.SellCall = &Leg{
 				Box:    box,
 				Name:   "#2",
 				Option: spJ.Call,
 			}
-			box.PutLeg1 = &Leg{ // sells a put
+			box.SellPut = &Leg{
 				Box:    box,
 				Name:   "#3",
 				Option: spI.Put,
 			}
-			box.PutLeg2 = &Leg{ // buys a put
+			box.BuyPut = &Leg{
 				Box:    box,
 				Name:   "#4",
 				Option: spJ.Put,
@@ -144,6 +156,7 @@ func boxer() {
 			box.Check()
 
 			// check if box is profitable enough
+			// todo(jart): break ties based on what improves risk profile most
 			profit := box.LimitProfit()
 			if best == nil || profit.Cmp(bestProfit) > 0 {
 				best = box
@@ -154,11 +167,9 @@ func boxer() {
 
 	// check if we found an acceptable box
 	if best == nil {
-		log.Printf("no box found (fail1=%d fail2=%d fail3=%d fail4=%d)", fail1, fail2, fail3, fail4)
 		return
 	}
 	if bestProfit.MulInt(100).Cmp(*demandFlag) < 0 {
-		log.Printf("no box good enough (best profit %s)", bestProfit)
 		return
 	}
 	log.Printf("best box: %s", best)
@@ -167,6 +178,6 @@ func boxer() {
 	}
 
 	// start manufacturing box
-	lastBoxTime = now
-	best.Order(legUpdates)
+	gLastBoxTime = now
+	best.Order()
 }

@@ -5,10 +5,10 @@ import "fmt"
 type SpecialInstruction uint8
 
 const (
-	SpecialInstructionNone              SpecialInstruction = iota
-	SpecialInstructionAllOrNone                            // ALL_OR_NONE
-	SpecialInstructionDoNotReduce                          // DO_NOT_REDUCE
-	SpecialInstructionAllOrNoneDoNotReduce                 // ALL_OR_NONE_DO_NOT_REDUCE
+	SpecialInstructionNone                 SpecialInstruction = iota
+	SpecialInstructionAllOrNone                               // ALL_OR_NONE
+	SpecialInstructionDoNotReduce                             // DO_NOT_REDUCE
+	SpecialInstructionAllOrNoneDoNotReduce                    // ALL_OR_NONE_DO_NOT_REDUCE
 )
 
 func ParseSpecialInstruction(s string) (SpecialInstruction, error) {

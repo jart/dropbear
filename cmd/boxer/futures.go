@@ -3,21 +3,12 @@ package main
 import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
-	"dropbear/decimal"
 	"dropbear/ds/cme"
 	"io"
 	"log"
 )
 
-// FutureTick is a price update for a future.
-type FutureTick struct {
-	ID  uint32
-	Bid decimal.Decimal
-	Ask decimal.Decimal
-	TS  clocky.Time
-}
-
-func streamFutures(key databento.ApiKey, defs chan<- *Future, ticks chan<- FutureTick) {
+func streamFutures(key databento.ApiKey, defs chan<- *Future, ticks chan<- *databento.MBP1) {
 	client, err := databento.Dial("GLBX.MDP3", key)
 	if err != nil {
 		log.Fatalf("dial: %v", err)
@@ -67,19 +58,14 @@ func streamFutures(key databento.ApiKey, defs chan<- *Future, ticks chan<- Futur
 				Month:  month,
 			}
 		case *databento.MBP1:
-			ticks <- FutureTick{
-				ID:  m.Header.InstrumentID,
-				Bid: dbnPrice(m.Levels[0].BidPx),
-				Ask: dbnPrice(m.Levels[0].AskPx),
-				TS:  m.TSRecv,
-			}
+			ticks <- m
 		default:
 			log.Printf("unknown record type: %T", m)
 		}
 	}
 }
 
-func fetchFuturePrice(key databento.ApiKey, future *Future, ticks chan<- FutureTick) {
+func fetchFuturePrice(key databento.ApiKey, future *Future, ticks chan<- *databento.MBP1) {
 	client := databento.NewHistoricalClient(key)
 	start := clocky.Now().Add(-clocky.Day).In(clocky.UTC)
 	end := clocky.Now().In(clocky.UTC)
@@ -93,11 +79,5 @@ func fetchFuturePrice(key databento.ApiKey, future *Future, ticks chan<- FutureT
 	if len(recs) == 0 {
 		log.Fatalf("no historical mbp1 records found for %s", future)
 	}
-	rec := recs[0].(*databento.MBP1)
-	ticks <- FutureTick{
-		ID:  future.ID,
-		Bid: dbnPrice(rec.Levels[0].BidPx),
-		Ask: dbnPrice(rec.Levels[0].AskPx),
-		TS:  rec.TSRecv,
-	}
+	ticks <- recs[0].(*databento.MBP1)
 }

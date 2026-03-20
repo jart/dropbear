@@ -13,26 +13,28 @@ import (
 )
 
 type Option struct {
-	ID     uint32                    // instrument id
-	Class  databento.InstrumentClass // option class, e.g. 'C' for call, 'P' for put
-	Got    uint8                     // ready steady go
-	Sym    symbol.Symbol             // option symbol, e.g. SPXW, SPY
-	Strike decimal.Decimal           // option strike price
-	Year   int                       // option expiration year
-	Month  clocky.Month              // option expiration month
-	Day    int                       // option expiration day
-	Bid    decimal.Decimal           // bid price, e.g. 0.10 (or zero if undefined)
-	Ask    decimal.Decimal           // ask price, e.g. 0.15 (or zero if undefined)
-	TS     clocky.Time               // timestamp of when Bid / Ask was last updated
-	ES     decimal.Decimal           // price of ES futures at time last tick was received
-	Mid    decimal.Decimal           // market mid at last tick (cached for delta prediction)
-	IV     float64                   // implied volatility at last tick
-	Delta  float64                   // Black-76 delta at last tick (dPrice/dES)
+	ID      uint32                    // instrument id
+	Class   databento.InstrumentClass // option class, e.g. 'C' for call, 'P' for put
+	Got     Got                       // ready steady go
+	Sym     symbol.Symbol             // option symbol, e.g. SPXW, SPY
+	Strike  decimal.Decimal           // option strike price
+	Year    int                       // option expiration year
+	Month   clocky.Month              // option expiration month
+	Day     int                       // option expiration day
+	Bid     decimal.Decimal           // bid price, e.g. 0.10 (or zero if undefined)
+	Ask     decimal.Decimal           // ask price, e.g. 0.15 (or zero if undefined)
+	BidSize uint32                    // number of contracts available at the best bid price
+	AskSize uint32                    // number of contracts available at the best ask price
+	TS      clocky.Time               // timestamp of when Bid / Ask was last updated
+	ES      decimal.Decimal           // price of ES futures at time last tick was received
+	Mid     decimal.Decimal           // market mid at last tick (cached for delta prediction)
+	IV      decimal.Decimal           // implied volatility at last tick
+	Delta   decimal.Decimal           // Black-76 delta at last tick (dPrice/dES)
 }
 
 // IsReady returns true if the option has a two-sided quote and a computed delta.
 func (o *Option) IsReady() bool {
-	return o.Got == (1 | 2 | 4) // bid, ask, and delta are all set
+	return o.Got == (GotBid | GotAsk | GotDelta | GotES) // bid, ask, delta, and ES are all set
 }
 
 // MarketPrice returns the mid price of the option, or zero if no quote is available.
@@ -46,11 +48,11 @@ func (o *Option) MarketPrice() decimal.Decimal {
 // by applying: fair = lastMid + delta * (currentES - esAtLastQuote).
 // Returns the stale market mid if delta hasn't been computed yet.
 func (o *Option) FairPrice() decimal.Decimal {
-	if o.Delta == 0 || o.Mid.IsZero() || es == nil {
+	if !o.IsReady() {
 		return o.MarketPrice()
 	}
-	dES := es.Price.Sub(o.ES)
-	adj := decimal.FromFloat64(o.Delta * dES.Float64())
+	dES := gES.Price.Sub(o.ES)
+	adj := o.Delta.Mul(dES)
 	fair := o.Mid.Add(adj)
 	if fair.IsNegative() {
 		return decimal.Zero
@@ -70,42 +72,46 @@ func (o *Option) OSI() string {
 
 // CanBuy returns true if we can buy this option, i.e. it won't close an existing short position.
 func (o *Option) CanBuy() bool {
-	return !holdings[o.OSI()].IsNegative() &&
-		!restrictedToSelling.Contains(o.ID)
+	return !gHoldings[o.OSI()].IsNegative() &&
+		!gRestrictedToSelling.Contains(o.ID)
 }
 
 // CanSell returns true if we can sell this option, i.e. it won't close an existing long position.
 func (o *Option) CanSell() bool {
-	return !holdings[o.OSI()].IsPositive() &&
-		!restrictedToBuying.Contains(o.ID)
+	return !gHoldings[o.OSI()].IsPositive() &&
+		!gRestrictedToBuying.Contains(o.ID)
 }
 
 // UpdateDelta recomputes the Black-76 delta from the current market mid and ES price.
 // Called on each fresh option tick after Bid/Ask/ES are updated.
 func (o *Option) UpdateDelta() {
-	mid := o.MarketPrice()
-	if mid.IsZero() || o.ES.IsZero() {
+	if (o.Got & (GotBid | GotAsk)) != (GotBid | GotAsk) {
+		o.Got &^= GotDelta
 		return
 	}
-	o.Mid = mid
+	o.Mid = o.MarketPrice()
 	F := o.ES.Float64()
 	K := o.Strike.Float64()
 	T := o.timeToExpiry()
 	if T <= 0 {
+		o.Got &^= GotDelta
 		return
 	}
 	r := riskFreeRate()
-	iv := black76.IV(F, K, r, T, mid.Float64(), o.Class == databento.InstrumentClassCall)
-	if iv <= 0 || math.IsNaN(iv) {
+	iv := black76.IV(F, K, r, T, o.Mid.Float64(), o.Class == databento.InstrumentClassCall)
+	if iv <= 0 || math.IsNaN(iv) || math.IsInf(iv, 0) {
+		o.Got &^= GotDelta
 		return
 	}
-	o.IV = iv
+	o.IV = decimal.FromFloat64(iv)
 	if o.Class == databento.InstrumentClassCall {
-		o.Delta = black76.CallDelta(F, K, r, T, iv)
+		o.Delta = decimal.FromFloat64(black76.CallDelta(F, K, r, T, iv))
 	} else {
-		o.Delta = black76.PutDelta(F, K, r, T, iv)
+		o.Delta = decimal.FromFloat64(black76.PutDelta(F, K, r, T, iv))
 	}
-	o.Got |= 4
+	if o.IV > 0 {
+		o.Got |= GotDelta
+	}
 }
 
 // Gamme returns the Black-76 gamma of the option (d²Price/dES²).
@@ -140,17 +146,19 @@ func (o *Option) Vega() decimal.Decimal {
 
 // greekParams returns the parameters needed to compute Black-76 greeks, or ok=false if any are invalid.
 func (o *Option) greekParams() (F, K, r, T, iv float64, ok bool) {
-	F = o.ES.Float64()
-	K = o.Strike.Float64()
-	T = o.timeToExpiry()
-	if T <= 0 || o.IV <= 0 || F <= 0 {
+	if !o.IsReady() {
 		return
 	}
-	return F, K, riskFreeRate(), T, o.IV, true
+	T = o.timeToExpiry()
+	if T <= 0 {
+		return
+	}
+	return o.ES.Float64(), o.Strike.Float64(), riskFreeRate(), T, o.IV.Float64(), true
 }
 
-// timeToExpiry returns years until 4:00 PM ET on the option's expiration date.
+// timeToExpiry returns number of years until expiration.
 func (o *Option) timeToExpiry() float64 {
+	// TODO(jart): handle early closing days
 	expiry := clocky.Date(o.Year, o.Month, o.Day, 16, 0, 0, 0)
 	now := clocky.Now()
 	if now >= expiry {

@@ -12,7 +12,7 @@ import (
 // CreateOrder places a new order.
 // Returns the order ID from the Location response header.
 // If the order fills immediately, Schwab may not return an order ID (returns 0).
-func (c *Client) CreateOrder(order *Order) (int64, error) {
+func (c *Client) CreateOrder(order *Order) (OrderID, error) {
 	if !c.TokenBucket.Try() {
 		return 0, ds.ErrTooManyRequests
 	}
@@ -29,17 +29,17 @@ func (c *Client) CreateOrder(order *Order) (int64, error) {
 
 // parseOrderIDFromLocation extracts the order ID from a Location header value
 // like "/trader/v1/accounts/{hash}/orders/12345".
-func parseOrderIDFromLocation(location string) int64 {
+func parseOrderIDFromLocation(location string) OrderID {
 	if location == "" {
 		return 0
 	}
 	id, _ := strconv.ParseInt(path.Base(location), 10, 64)
-	return id
+	return OrderID(id)
 }
 
 // ReplaceOrder replaces an existing order with a new order.
 // Returns the new order ID from the Location response header.
-func (c *Client) ReplaceOrder(orderID int64, order *Order) (int64, error) {
+func (c *Client) ReplaceOrder(orderID OrderID, order *Order) (OrderID, error) {
 	c.TokenBucket.Get()
 	token := getToken()
 	resp, err := c.RequestJSONRaw(netty.FastHTTPClient, "PUT",
@@ -55,7 +55,7 @@ func (c *Client) ReplaceOrder(orderID int64, order *Order) (int64, error) {
 // CancelOrder cancels an existing order.
 // The accountHash parameter must be the hash value from GetLinkedAccounts, not the plain number.
 // Returns nil on success. The Schwab API returns 200 OK with an empty body.
-func (c *Client) CancelOrder(orderID int64) error {
+func (c *Client) CancelOrder(orderID OrderID) error {
 	c.TokenBucket.Get()
 	token := getToken()
 	return c.RequestJSON(netty.FastHTTPClient, "DELETE",
@@ -65,7 +65,7 @@ func (c *Client) CancelOrder(orderID int64) error {
 
 // GetOrder retrieves a single order by ID.
 // The accountHash parameter must be the hash value from GetLinkedAccounts, not the plain number.
-func (c *Client) GetOrder(orderID int64) (*Order, error) {
+func (c *Client) GetOrder(orderID OrderID) (*Order, error) {
 	token := getToken()
 	var result Order
 	err := c.RequestJSON(netty.BulkHttpClient, "GET",

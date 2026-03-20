@@ -15,8 +15,9 @@ import (
 // CME publishes SPAN parameter files here (no auth required, public).
 //
 // File naming convention:
-//   nymex.YYYYMMDD.i.zip  — intraday (published ~10:00, 12:00, 14:00 CT)
-//   nymex.YYYYMMDD.s.zip  — settlement (published ~4:30 PM CT)
+//
+//	nymex.YYYYMMDD.i.zip  — intraday (published ~10:00, 12:00, 14:00 CT)
+//	nymex.YYYYMMDD.s.zip  — settlement (published ~4:30 PM CT)
 //
 // SPAN 1.x "B" records contain the price scan range for each contract series.
 // The "P" / type-2 combined commodity records hold the performance bond level.
@@ -39,11 +40,11 @@ const spanBaseURL = "https://www.cmegroup.com/ftp/span/data/nymex/"
 // (i.e., divide by 100 to get dollars). Verify against the margins page on
 // first run — if the values look wrong, adjust spanScanRangeDivisor.
 const (
-	spanRecordType    = 0
-	spanExchangeStart = 1
-	spanExchangeLen   = 4
-	spanCombCommStart = 5
-	spanCombCommLen   = 12
+	spanRecordType     = 0
+	spanExchangeStart  = 1
+	spanExchangeLen    = 4
+	spanCombCommStart  = 5
+	spanCombCommLen    = 12
 	spanScanRangeStart = 17
 	spanScanRangeLen   = 7
 	spanMinRecordLen   = spanScanRangeStart + spanScanRangeLen

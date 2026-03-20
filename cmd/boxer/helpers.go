@@ -18,10 +18,10 @@ func compareOptionByStrike(a, b *Option) int {
 
 // riskFreeRate returns the annualized risk-free rate from the SR1 futures price.
 func riskFreeRate() float64 {
-	if sr1 == nil || sr1.Price.IsZero() {
+	if gSR1 == nil || gSR1.Price.IsZero() {
 		return 0.04 // fallback
 	}
-	return (100.0 - sr1.Price.Float64()) / 100.0
+	return (100.0 - gSR1.Price.Float64()) / 100.0
 }
 
 // quantizeTruncateSPX rounds to the SPX tick size for buying.

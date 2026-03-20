@@ -3,30 +3,13 @@ package main
 import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
-	"dropbear/decimal"
 	"dropbear/ds/osi"
 	"io"
 	"log"
 	"time"
 )
 
-type OptionTickKind byte
-
-const (
-	OptionTickKindBid   OptionTickKind = 'B'
-	OptionTickKindAsk   OptionTickKind = 'A'
-	OptionTickKindTrade OptionTickKind = 'T'
-)
-
-// OptionTick is a price update for an option.
-type OptionTick struct {
-	ID    uint32
-	Kind  OptionTickKind
-	Price decimal.Decimal
-	TS    clocky.Time
-}
-
-func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- OptionTick) {
+func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- *databento.CMBP1) {
 	client, err := databento.Dial("OPRA.PILLAR", key)
 	if err != nil {
 		log.Fatalf("dial: %v", err)
@@ -83,51 +66,9 @@ func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- Optio
 				Day:    day,
 			}
 		case *databento.CMBP1:
-			onCMBP1(ticks, m)
+			ticks <- m
 		default:
 			log.Printf("unknown record type: %T", m)
-		}
-	}
-}
-
-func onCMBP1(ticks chan<- OptionTick, m *databento.CMBP1) {
-	switch m.Action {
-	case databento.ActionAdd:
-		switch m.Side {
-		case databento.SideNone:
-			ticks <- OptionTick{
-				ID:    m.Header.InstrumentID,
-				Kind:  OptionTickKindBid,
-				Price: dbnPrice(m.Levels[0].BidPx),
-				TS:    m.Header.TSEvent,
-			}
-			ticks <- OptionTick{
-				ID:    m.Header.InstrumentID,
-				Kind:  OptionTickKindAsk,
-				Price: dbnPrice(m.Levels[0].AskPx),
-				TS:    m.Header.TSEvent,
-			}
-		case databento.SideBid:
-			ticks <- OptionTick{
-				ID:    m.Header.InstrumentID,
-				Kind:  OptionTickKindBid,
-				Price: dbnPrice(m.Levels[0].BidPx),
-				TS:    m.Header.TSEvent,
-			}
-		case databento.SideAsk:
-			ticks <- OptionTick{
-				ID:    m.Header.InstrumentID,
-				Kind:  OptionTickKindAsk,
-				Price: dbnPrice(m.Levels[0].AskPx),
-				TS:    m.Header.TSEvent,
-			}
-		}
-	case databento.ActionTrade:
-		ticks <- OptionTick{
-			ID:    m.Header.InstrumentID,
-			Kind:  OptionTickKindTrade,
-			Price: dbnPrice(m.Price),
-			TS:    m.Header.TSEvent,
 		}
 	}
 }

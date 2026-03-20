@@ -26,7 +26,8 @@ func TestATMForward(t *testing.T) {
 }
 
 // Put-call parity for Black-76:
-//   C - P = e^(-rT) * (F - K)
+//
+//	C - P = e^(-rT) * (F - K)
 func TestPutCallParity(t *testing.T) {
 	cases := []struct {
 		F, K, r, T, sigma float64
@@ -79,9 +80,9 @@ func TestVega(t *testing.T) {
 // IV should round-trip: compute price from sigma, then recover sigma from price.
 func TestIVRoundTrip(t *testing.T) {
 	cases := []struct {
-		name                string
-		F, K, r, T, sigma   float64
-		isCall               bool
+		name              string
+		F, K, r, T, sigma float64
+		isCall            bool
 	}{
 		{"ATM call", 100, 100, 0.05, 1.0, 0.20, true},
 		{"ATM put", 100, 100, 0.05, 1.0, 0.20, false},

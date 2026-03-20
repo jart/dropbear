@@ -15,7 +15,9 @@ import (
 // This is undocumented/unofficial — if it breaks, SPAN monitoring still works.
 //
 // Alternative scrape target if this endpoint stops working:
-//   https://www.cmegroup.com/markets/energy/crude-oil/light-sweet-crude.margins.html
+//
+//	https://www.cmegroup.com/markets/energy/crude-oil/light-sweet-crude.margins.html
+//
 // (but that page is JS-rendered, so you'd need chromedp)
 // CME product codes → exchange mapping for the margins API.
 // Most NYMEX energy products live under exchange=NYMEX.

@@ -205,10 +205,10 @@ func main() {
 	log.Printf("streaming SPXW quotes %s - %s ET...", startTime.Format("15:04"), endTime.Format("15:04"))
 
 	states := make(map[uint32]*optionState) // per-instrument state
-	var currentSmile smile                   // current fitted smile
-	var esIdx int                            // cursor into esSamples
-	var esPrice float64                      // latest ES price
-	var esMin, esMax float64                 // ES range during window
+	var currentSmile smile                  // current fitted smile
+	var esIdx int                           // cursor into esSamples
+	var esPrice float64                     // latest ES price
+	var esMin, esMax float64                // ES range during window
 
 	// Staleness buckets
 	staleBuckets := []*bucket{

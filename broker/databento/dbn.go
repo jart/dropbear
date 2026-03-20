@@ -266,9 +266,9 @@ func decodeSymbolMapping(frame []byte, off, symLen int) (SymbolMapping, int, err
 // decodeRecord reads one record from the reader. Returns the raw bytes of the
 // full record (including header). Returns nil, io.EOF at end of stream.
 func decodeRecord(r io.Reader) ([]byte, error) {
-	// Read the first byte: record length in 32-bit words
+	// first byte has record length in 32-bit words
 	var lengthByte [1]byte
-	if _, err := io.ReadFull(r, lengthByte[:]); err != nil {
+	if _, err := r.Read(lengthByte[:]); err != nil {
 		return nil, err
 	}
 	recordSize := int(lengthByte[0]) * 4

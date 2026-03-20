@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"log"
-	"strconv"
 	"strings"
 
 	"dropbear/broker/databento"
@@ -20,32 +18,34 @@ import (
 )
 
 var (
-	demandFlag           = decimal.Flag("demand", "30", "min profit to pounce")
-	widthFlag            = decimal.Flag("width", "25", "maximum box width")
-	moneynessFlag        = decimal.Flag("moneyness", "25", "maximum distance of any leg from the money")
-	safetyFlag           = decimal.Flag("safety", "10", "spx safety points")
-	freshFlag            = clocky.DurationFlag("fresh", "200ms", "freshness threshold")
-	cooldownFlag         = clocky.DurationFlag("cooldown", "8s", "cooldown between boxes")
-	unfilledIntervalFlag = clocky.DurationFlag("unfilled-interval", "3s", "reporting interval for unfilled legs")
-	maxImbalanceFlag     = flag.Int("max-imbalance", 2, "maximum absolute difference between unfilled bulls and bears")
-	verbose              = flag.Bool("v", false, "verbose")
-	dryFlag              = flag.Bool("dry", false, "dry run (don't send orders)")
-	timeTestFlag         = flag.Bool("timetest", false, "enable time test mode")
+	demandFlag       = decimal.Flag("demand", "40", "min profit to pounce")
+	widthFlag        = decimal.Flag("width", "25", "maximum box width")
+	moneynessFlag    = decimal.Flag("moneyness", "25", "maximum distance of any leg from the money")
+	safetyFlag       = decimal.Flag("safety", "10", "spx safety points")
+	freshFlag        = clocky.DurationFlag("fresh", "200ms", "freshness threshold")
+	cooldownFlag     = clocky.DurationFlag("cooldown", "8s", "cooldown between boxes")
+	heartbeatFlag    = clocky.DurationFlag("heartbeat", "3s", "reporting interval for unfilled legs")
+	patienceFlag     = clocky.DurationFlag("patience", "10s", "how long to wait before closing partially filled box")
+	maxImbalanceFlag = flag.Int("max-imbalance", 2, "maximum absolute difference between unfilled bulls and bears")
+	maxUnfilledFlag  = flag.Int("max-unfilled", 4, "maximum number of unfilled legs (bulls + bears) before pausing")
+	dryFlag          = flag.Bool("dry", false, "dry run (don't send orders)")
 )
 
 var (
-	es                  *Future
-	sr1                 *Future
-	schwabClient        *schwab.Client
-	futuresByID         = make(map[uint32]*Future)
-	optionsByID         = make(map[uint32]*Option)
-	legsByOrderID       = make(map[int64]*Leg)
-	optionsByStrike     = treeset.NewWith(compareOptionByStrike)
-	restrictedToBuying  = hashset.New[uint32]()
-	restrictedToSelling = hashset.New[uint32]()
-	legUpdates          = make(chan LegUpdate, 20)
-	unfilledBulls       = linkedhashset.New[*Leg]()
-	unfilledBears       = linkedhashset.New[*Leg]()
+	gES                  *Future
+	gSR1                 *Future
+	gSchwabClient        *schwab.Client
+	gFuturesByID         = make(map[uint32]*Future)
+	gOptionsByID         = make(map[uint32]*Option)
+	gOptionsByOSI        = make(map[string]*Option)
+	gLegsByOrderID       = make(map[schwab.OrderID]*Leg)
+	gOptionsByStrike     = treeset.NewWith(compareOptionByStrike)
+	gRestrictedToBuying  = hashset.New[uint32]()
+	gRestrictedToSelling = hashset.New[uint32]()
+	gLegUpdates          = make(chan LegUpdate, 20)
+	gUnfilledBulls       = linkedhashset.New[*Leg]()
+	gUnfilledBears       = linkedhashset.New[*Leg]()
+	gPendingBoxes        = linkedhashset.New[*Box]()
 )
 
 const (
@@ -59,15 +59,15 @@ func main() {
 	loggy.AlsoLogToFile()
 
 	key := databento.MustLoadDefaultKey()
-	schwabClient = schwab.NewClient()
+	gSchwabClient = schwab.NewClient()
 	InitHoldings()
 
 	futureDefs := make(chan *Future, 64)
-	futureTicks := make(chan FutureTick, 512)
 	optionDefs := make(chan *Option, 64)
-	optionTicks := make(chan OptionTick, 512)
-	orderUpdates := schwabClient.OrderUpdates()
-	unfilledTicker := clocky.NewTicker(*unfilledIntervalFlag)
+	futureTicks := make(chan *databento.MBP1, 256)
+	optionTicks := make(chan *databento.CMBP1, 256)
+	orderUpdates := gSchwabClient.OrderUpdates()
+	heartbeat := clocky.NewTicker(*heartbeatFlag)
 
 	go streamFutures(key, futureDefs, futureTicks)
 	go streamOptions(key, optionDefs, optionTicks)
@@ -90,18 +90,17 @@ func main() {
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
 			continue
-		case legUpdate := <-legUpdates:
+		case legUpdate := <-gLegUpdates:
 			onLegUpdate(legUpdate)
 			continue
-		case <-unfilledTicker.C:
-			onUnfilledTicker()
+		case <-heartbeat.C:
+			onHeartbeat()
 			continue
 		default:
 			// all channels empty
 		}
-		if !*timeTestFlag {
-			boxer()
-		}
+		// let's go
+		boxer()
 		// block until next event
 		select {
 		case f := <-futureDefs:
@@ -114,209 +113,88 @@ func main() {
 			onOptionTick(t)
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
-		case legUpdate := <-legUpdates:
+		case legUpdate := <-gLegUpdates:
 			onLegUpdate(legUpdate)
-		case <-unfilledTicker.C:
-			onUnfilledTicker()
+		case <-heartbeat.C:
+			onHeartbeat()
 		}
 	}
 }
 
-func onFutureDef(key databento.ApiKey, ticks chan<- FutureTick, f *Future) {
-	futuresByID[f.ID] = f
+func onFutureDef(key databento.ApiKey, ticks chan<- *databento.MBP1, f *Future) {
+	gFuturesByID[f.ID] = f
 	switch f.Symbol {
 	case esSymbol:
-		es = f
+		gES = f
 	case sr1Symbol:
-		sr1 = f
-		go fetchFuturePrice(key, sr1, ticks)
+		gSR1 = f
+		go fetchFuturePrice(key, gSR1, ticks)
 	default:
 		log.Fatalf("unknown future symbol: %s", f.Symbol)
 	}
 }
 
-func onFutureTick(t FutureTick) {
-	future := futuresByID[t.ID]
-	if future == nil {
+func onFutureTick(t *databento.MBP1) {
+	f := gFuturesByID[t.Header.InstrumentID]
+	if f == nil {
 		return
 	}
-	future.TS = t.TS
-	future.Bid = t.Bid
-	future.Ask = t.Ask
-	future.Price = t.Bid.Add(t.Ask).DivInt(2)
-	if *timeTestFlag {
-		log.Printf("tick %s mid %s bid %s ask %s (%s stale)",
-			future.Symbol, future.Price, t.Bid, t.Ask, clocky.Since(future.TS))
+	if t.Header.TSEvent > f.TS {
+		f.TS = t.Header.TSEvent
+		f.Bid = dbnPrice(t.Levels[0].BidPx)
+		f.Ask = dbnPrice(t.Levels[0].AskPx)
+		f.Price = f.Bid.Add(f.Ask).DivInt(2)
+		f.AskSize = t.Levels[0].AskSz
+		f.BidSize = t.Levels[0].BidSz
 	}
 }
 
 func onOptionDef(o *Option) {
-	optionsByID[o.ID] = o
-	optionsByStrike.Add(o)
+	gOptionsByID[o.ID] = o
+	gOptionsByStrike.Add(o)
+	gOptionsByOSI[o.OSI()] = o
 }
 
-func onOptionTick(t OptionTick) {
-	option := optionsByID[t.ID]
-	if option == nil {
+func onOptionTick(t *databento.CMBP1) {
+	o := gOptionsByID[t.Header.InstrumentID]
+	if o == nil {
 		return
 	}
-	switch t.Kind {
-	case OptionTickKindBid:
-		option.Bid = t.Price
-		option.Got |= 1
-	case OptionTickKindAsk:
-		option.Ask = t.Price
-		if t.Price.IsPositive() {
-			option.Got |= 2
+	if t.Header.TSEvent > o.TS {
+		o.TS = t.Header.TSEvent
+		bid := t.Levels[0].BidPx
+		if bid != databento.UndefPrice {
+			o.Bid = decimal.Decimal(bid / 1000)
+			o.BidSize = t.Levels[0].BidSz
+			o.Got |= GotBid
 		} else {
-			option.Got &^= 2
+			o.Bid = decimal.Zero
+			o.BidSize = 0
+			o.Got &^= GotBid
 		}
-	case OptionTickKindTrade:
-		return // haven't found use for this yet
-	}
-	option.TS = t.TS
-	if es != nil {
-		option.ES = es.Price
-	} else {
-		option.ES = decimal.Zero
-	}
-	option.UpdateDelta()
-}
-
-func onLegUpdate(update LegUpdate) {
-	update.Leg.OrderID = update.OrderID
-	legsByOrderID[update.OrderID] = update.Leg
-}
-
-func onOrderUpdate(event *schwab.OrderEvent) {
-	pretty, _ := json.MarshalIndent(json.RawMessage(event.RawData), "  ", "  ")
-	log.Printf("order %s: %s\n  %s", event.SchwabOrderID, event.BaseEvent.EventType, pretty)
-	if event.BaseEvent.CancelAcceptedEvent != nil {
-		onCancelEvent(event.BaseEvent.CancelAcceptedEvent)
-		return
-	}
-	if event.BaseEvent.ExecutionRequestedEventRoutedInfo != nil {
-		onRouteEvent(event, event.BaseEvent.ExecutionRequestedEventRoutedInfo)
-		return
-	}
-	if event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo != nil {
-		onFillEvent(event, event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo)
-		return
-	}
-	if event.BaseEvent.OrderExpiredEvent != nil {
-		onExpiredEvent(event, event.BaseEvent.OrderExpiredEvent)
-		return
-	}
-}
-
-func onCancelEvent(cancel *schwab.CancelEvent) {
-	for _, info := range cancel.LegCancelRequestInfoList {
-		if info.ChangedNewSchwabOrderId == "" {
-			continue
-		}
-		oldID, err := strconv.ParseInt(info.LegID, 10, 64)
-		if err != nil {
-			continue
-		}
-		if leg := legsByOrderID[oldID]; leg != nil {
-			if info.ChangedNewSchwabOrderId != "" {
-				// order was updated in thinkorswim
-				newID, err := strconv.ParseInt(info.ChangedNewSchwabOrderId, 10, 64)
-				if err != nil {
-					continue
-				}
-				leg.UpdateOrderID(newID)
-			} else {
-				// order was canceled in thinkorswim
-				boxes.Remove(leg.Box)
-				unfilledBulls.Remove(leg)
-				unfilledBears.Remove(leg)
-				log.Printf("leg %s order canceled in thinkorswim (id=%d)", leg.Name, oldID)
-			}
+		ask := t.Levels[0].AskPx
+		if ask != databento.UndefPrice {
+			o.Ask = decimal.Decimal(ask / 1000)
+			o.AskSize = t.Levels[0].AskSz
+			o.Got |= GotAsk
 		} else {
-			log.Printf("order id %d not found for cancel event", oldID)
+			o.Ask = decimal.Zero
+			o.AskSize = 0
+			o.Got &^= GotAsk
 		}
+		if gES != nil && gES.Price.IsPositive() {
+			o.ES = gES.Price
+			o.Got |= GotES
+		} else {
+			o.Got &^= GotES
+		}
+		o.UpdateDelta()
 	}
 }
 
-func onRouteEvent(event *schwab.OrderEvent, route *schwab.RouteEvent) {
-	if route.RouteInfo.RouteRequestedType != "New" {
-		return
-	}
-	routeOrderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
-	if err != nil {
-		log.Printf("invalid order id %s for route event", event.SchwabOrderID)
-		return
-	}
-	leg := legsByOrderID[routeOrderID]
-	if leg == nil {
-		log.Printf("order id %d not found for route event: %s @ %s",
-			routeOrderID, route.RouteInfo.RouteName, route.RouteInfo.RoutedPrice)
-		return
-	}
-	log.Printf("route %s %s %s %s -> %s @ %s",
-		leg.Name, leg.Instruction(), leg.Option.Class,
-		leg.Option.Strike,
-		route.RouteInfo.RouteName,
-		route.RouteInfo.RoutedPrice)
-}
-
-func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
-	osi := fill.OrderInfoForTransactionPosting.Symbol
-	qty := fill.ExecutionInfo.ExecutionQuantity
-	routeName := fill.ExecutionInfo.RouteName
-	fillPrice := fill.ExecutionInfo.ExecutionPrice
-	priceImprovement := fill.PriceImprovement.DivInt(100)
-	if fill.OrderInfoForTransactionPosting.BuySellCode == "Sell" {
-		qty = qty.Neg()
-	}
-	holdings[osi] = holdings[osi].Add(qty)
-	orderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
-	if err != nil {
-		log.Printf("invalid order id %s for fill event", event.SchwabOrderID)
-		return
-	}
-	leg := legsByOrderID[orderID]
-	if leg == nil {
-		log.Printf("order id %d not found for fill event", orderID)
-		return
-	}
-	leg.FillPrice = fillPrice
-	unfilledBulls.Remove(leg)
-	unfilledBears.Remove(leg)
-	log.Printf("leg filled for order id %d at %s with %s improvement from %s route: %s",
-		orderID, fillPrice, priceImprovement, routeName, leg)
-	if leg.Box.Filled() {
-		log.Printf("box filled: %s", leg.Box)
-		boxes.Remove(leg.Box)
-	}
-}
-
-func onExpiredEvent(event *schwab.OrderEvent, _ *schwab.ExpiredEvent) {
-	orderID, err := strconv.ParseInt(event.SchwabOrderID, 10, 64)
-	if err != nil {
-		log.Printf("invalid order id %s for expired event", event.SchwabOrderID)
-		return
-	}
-	leg := legsByOrderID[orderID]
-	if leg == nil {
-		log.Printf("order id %d not found for expired event", orderID)
-		return
-	}
-	// we assume this is a FOK order that failed to fill
-	// maybe the market maker to whom it was routed didn't like the order
-	// so we resend the order with a fresh limit price and hope it gets filled
-	log.Printf("order expired: %s", leg)
-	oldProfit := leg.Box.FillProfit()
-	leg.ChooseLimitPrice()
-	newProfit := leg.Box.LimitProfit()
-	log.Printf("resending leg order (box profit %s -> %s): %s", oldProfit, newProfit, leg)
-	leg.Order(legUpdates)
-}
-
-func onUnfilledTicker() {
-	logUnfilledLegs("bull", unfilledBulls)
-	logUnfilledLegs("bear", unfilledBears)
+func onHeartbeat() {
+	logUnfilledLegs("bull", gUnfilledBulls)
+	logUnfilledLegs("bear", gUnfilledBears)
 }
 
 func logUnfilledLegs(description string, unfilled *linkedhashset.Set[*Leg]) {

@@ -7,7 +7,7 @@ import (
 
 // OrderEvent is the top-level JSON envelope for ACCT_ACTIVITY messages.
 type OrderEvent struct {
-	SchwabOrderID string          `json:"SchwabOrderID"` // e.g. "1005609024296"
+	SchwabOrderID OrderID         `json:"SchwabOrderID"` // e.g. "1005609024296" or 1005609024296
 	AccountNumber string          `json:"AccountNumber"` // e.g. "40595135"
 	BaseEvent     BaseEvent       `json:"BaseEvent"`
 	RawData       json.RawMessage `json:"-"` // original JSON (not marshaled back out)
@@ -16,28 +16,37 @@ type OrderEvent struct {
 // BaseEvent contains the event type and the event-specific payload.
 // Only one of the event-specific fields will be populated per message.
 type BaseEvent struct {
-	EventType                                   string           `json:"EventType"`                                             // e.g. "OrderCreated", "OrderFillCompleted", "CancelAccepted"
-	OrderCreatedEventEquityOrder                *json.RawMessage `json:"OrderCreatedEventEquityOrder,omitempty"`                // huge blob with full order details, account info, legs, quotes
-	OrderAcceptedEvent                          *json.RawMessage `json:"OrderAcceptedEvent,omitempty"`                          // status="Open", has quotes at acceptance time
-	ExecutionRequestedEventRoutedInfo           *RouteEvent      `json:"ExecutionRequestedEventRoutedInfo,omitempty"`           // order routed to venue (JANESTREET, DASH, CES_OPT, etc.)
-	ExecutionRequestCreatedEvent                *json.RawMessage `json:"ExecutionRequestCreatedEvent,omitempty"`                // FIX ack from venue, RouteStatus="RouteFixAcknowledged"
-	ExecutionRequestCompletedEvent              *json.RawMessage `json:"ExecutionRequestCompletedEvent,omitempty"`              // venue accepted/rejected, ResponseType="Accepted" or 7 (cancel ack)
-	ExecutionCreatedEventExecutionInfo          *json.RawMessage `json:"ExecutionCreatedEventExecutionInfo,omitempty"`          // execution record created, has ExecutionTransType="Fill" or "UROut"
-	OrderFillCompletedEventOrderLegQuantityInfo *FillEvent       `json:"OrderFillCompletedEventOrderLegQuantityInfo,omitempty"` // order filled (fully or partially)
-	CancelAcceptedEvent                         *CancelEvent     `json:"CancelAcceptedEvent,omitempty"`                         // cancel request accepted, CancelRequestType="ClientCancel"
-	OrderUROutCompletedEvent                    *RejectEvent     `json:"OrderUROutCompletedEvent,omitempty"`                    // order rejected/cancelled out, has ValidationDetail on reject
-	OrderExpiredEvent                           *ExpiredEvent    `json:"OrderExpiredEvent,omitempty"`                           // fok order failed to fill
+	EventType                                   string             `json:"EventType"`                                             // e.g. "OrderCreated", "OrderFillCompleted", "CancelAccepted", "ChangeCreated"
+	OrderCreatedEventEquityOrder                *OrderCreatedEvent `json:"OrderCreatedEventEquityOrder,omitempty"`                // huge blob with full order details, account info, legs, quotes
+	OrderAcceptedEvent                          *json.RawMessage   `json:"OrderAcceptedEvent,omitempty"`                          // status="Open", has quotes at acceptance time
+	ExecutionRequestedEventRoutedInfo           *RouteEvent        `json:"ExecutionRequestedEventRoutedInfo,omitempty"`           // order routed to venue (JANESTREET, DASH, CES_OPT, etc.)
+	ExecutionRequestCreatedEvent                *json.RawMessage   `json:"ExecutionRequestCreatedEvent,omitempty"`                // FIX ack from venue, RouteStatus="RouteFixAcknowledged"
+	ExecutionRequestCompletedEvent              *json.RawMessage   `json:"ExecutionRequestCompletedEvent,omitempty"`              // venue accepted/rejected, ResponseType="Accepted" or 7 (cancel ack)
+	ExecutionCreatedEventExecutionInfo          *json.RawMessage   `json:"ExecutionCreatedEventExecutionInfo,omitempty"`          // execution record created, has ExecutionTransType="Fill" or "UROut"
+	OrderFillCompletedEventOrderLegQuantityInfo *FillEvent         `json:"OrderFillCompletedEventOrderLegQuantityInfo,omitempty"` // order filled (fully or partially)
+	CancelAcceptedEvent                         *CancelEvent       `json:"CancelAcceptedEvent,omitempty"`                         // cancel request accepted, CancelRequestType="ClientCancel"
+	OrderUROutCompletedEvent                    *RejectEvent       `json:"OrderUROutCompletedEvent,omitempty"`                    // order rejected/cancelled out, has ValidationDetail on reject
+	OrderExpiredEvent                           *ExpiredEvent      `json:"OrderExpiredEvent,omitempty"`                           // fok order failed to fill
+	ChangeCreatedEventEquityOrder               *OrderChangeEvent  `json:"ChangeCreatedEventEquityOrder,omitempty"`               // order changed (will have novel SchwabOrderID if thinkorswim edit, that'll show up later in CancelEvent::ChangedNewSchwabOrderId)
 }
 
 // FillEvent is Schwab's OrderFillCompleted event payload.
 type FillEvent struct {
-	LegID                          string          `json:"LegId"`            // e.g. "1005609024296" (same as SchwabOrderID for single-leg)
+	LegID                          OrderID         `json:"LegId"`            // e.g. "1005609024296" (same as SchwabOrderID for single-leg)
 	LegStatus                      string          `json:"LegStatus"`        // e.g. "LegClosed"
 	LegSubStatus                   string          `json:"LegSubStatus"`     // e.g. "LegSubStatusFilled"
 	PriceImprovement               decimal.Decimal `json:"PriceImprovement"` // notional improvement over schwab's quoted price to cross the spread
 	QuantityInfo                   QuantityInfo    `json:"QuantityInfo"`
 	ExecutionInfo                  ExecutionInfo   `json:"ExecutionInfo"`
 	OrderInfoForTransactionPosting OrderInfo       `json:"OrderInfoForTransactionPosting"`
+}
+
+func (fill *FillEvent) Quantity() decimal.Decimal {
+	qty := fill.ExecutionInfo.ExecutionQuantity
+	if fill.OrderInfoForTransactionPosting.BuySellCode == "Sell" {
+		qty = qty.Neg()
+	}
+	return qty
 }
 
 type QuantityInfo struct {
@@ -56,6 +65,12 @@ type OrderInfo struct {
 	Symbol                string          `json:"Symbol"`                // e.g. "SPXW  260305C06915000"
 	SchwabSecurityID      string          `json:"SchwabSecurityID"`      // e.g. "131177361"
 	AccountingRuleCode    string          `json:"AccountingRuleCode"`    // e.g. "Margin", "ShortSale"
+	StopPrice             decimal.Decimal `json:"StopPrice"`             // stop price for stop orders
+	SolicitedCode         string          `json:"SolicitedCode"`         // e.g. "Unsolicited"
+	SettlementType        string          `json:"SettlementType"`        // e.g. "SettlementType_Regular"
+	OrderCreatedUserID    string          `json:"OrderCreatedUserID"`    // e.g. "N9XX"
+	OrderCreatedUserType  string          `json:"OrderCreatedUserType"`  // e.g. "Venue"
+	ClientProductCode     string          `json:"ClientProductCode"`     // e.g. "N1"
 }
 
 type ExecutionInfo struct {
@@ -89,9 +104,14 @@ type FeesCommissionAndTax struct {
 	FederalTaxWithholding decimal.Decimal `json:"FederalTaxWithholding"` // federal tax withholding (e.g. backup withholding)
 }
 
+func (f *FeesCommissionAndTax) Total() decimal.Decimal {
+	return f.CommissionAmount.Add(f.ORF).Add(f.IOF).Add(f.TAF).Add(f.FTT).Add(f.SECFees).
+		Add(f.TaxWithholding1446).Add(f.GoodsAndServicesTax).Add(f.StateTaxWithholding).Add(f.FederalTaxWithholding)
+}
+
 // RejectEvent is Schwab's OrderUROutCompleted event payload.
 type RejectEvent struct {
-	LegID            string             `json:"LegId"`            // e.g. "1005610854315"
+	LegID            OrderID            `json:"LegId"`            // e.g. "1005610854315"
 	LegStatus        string             `json:"LegStatus"`        // e.g. "LegClosed"
 	LegSubStatus     string             `json:"LegSubStatus"`     // e.g. "LegSubStatusCancelled"
 	LeavesQuantity   decimal.Decimal    `json:"LeavesQuantity"`   // remaining unfilled, 0 when fully cancelled out
@@ -101,22 +121,20 @@ type RejectEvent struct {
 }
 
 type ValidationDetail struct {
-	SchwabOrderID        string `json:"SchwabOrderID"`        // order that was rejected
-	NgOMSRuleName        string `json:"NgOMSRuleName"`        // e.g. "Regulatory_Sys_0006", "Non Standard EXP Warn"
-	NgOMSRuleDescription string `json:"NgOMSRuleDescription"` // human-readable rejection reason
+	SchwabOrderID        OrderID `json:"SchwabOrderID"`        // order that was rejected
+	NgOMSRuleName        string  `json:"NgOMSRuleName"`        // e.g. "Regulatory_Sys_0006", "Non Standard EXP Warn"
+	NgOMSRuleDescription string  `json:"NgOMSRuleDescription"` // human-readable rejection reason
 }
 
-// CancelEvent is Schwab's CancelAccepted event payload.
 type CancelEvent struct {
-	LifecycleSchwabOrderID   string                 `json:"LifecycleSchwabOrderID"` // e.g. "1005588594936"
+	LifecycleSchwabOrderID   OrderID                `json:"LifecycleSchwabOrderID"` // e.g. "1005588594936"
 	CancelRequestType        string                 `json:"CancelRequestType"`      // e.g. "ClientCancel"
 	LegCancelRequestInfoList []LegCancelRequestInfo `json:"LegCancelRequestInfoList"`
 }
 
-// ExpiredEvent is sent when a FOK order fails to fill.
 type ExpiredEvent struct {
 	EventType      string          `json:"EventType"`      // e.g. "OrderExpired"
-	LegID          string          `json:"LegID"`          // e.g. "1005588594936"
+	LegID          OrderID         `json:"LegID"`          // e.g. "1005588594936"
 	ExpirationType string          `json:"ExpirationType"` // e.g. "DayOrderExpiry" (FOK)
 	LeavesQuantity decimal.Decimal `json:"LeavesQuantity"` // is zero for FOK orders that failed
 	CancelQuantity decimal.Decimal `json:"CancelQuantity"` // equals quantity for FOK orders that failed
@@ -125,19 +143,18 @@ type ExpiredEvent struct {
 }
 
 type LegCancelRequestInfo struct {
-	LegID                   string          `json:"LegID"`                   // e.g. "1005588594936"
+	LegID                   OrderID         `json:"LegID"`                   // e.g. "1005588594936"
 	IntendedOrderQuantity   decimal.Decimal `json:"IntendedOrderQuantity"`   // original order quantity, e.g. 1
 	RequestedAmount         decimal.Decimal `json:"RequestedAmount"`         // quantity requested to cancel, e.g. 1
 	LegStatus               string          `json:"LegStatus"`               // e.g. "LegOpen"
 	LegSubStatus            string          `json:"LegSubStatus"`            // e.g. "LegSubStatusCancelled"
-	ChangedNewSchwabOrderId string          `json:"ChangedNewSchwabOrderId"` // new order ID when order was edited (not just cancelled)
+	ChangedNewSchwabOrderId OrderID         `json:"ChangedNewSchwabOrderId"` // new order ID when order was edited (not just cancelled)
 }
 
-// RouteEvent is Schwab's ExecutionRequested event payload.
 type RouteEvent struct {
 	RouteSequenceNumber int       `json:"RouteSequenceNumber"` // increments per route attempt, e.g. 1, 2
 	RouteRequestedBy    string    `json:"RouteRequestedBy"`    // e.g. "RR_Broker"
-	LegID               string    `json:"LegId"`               // e.g. "1005609024296"
+	LegID               OrderID   `json:"LegId"`               // e.g. "1005609024296"
 	RouteInfo           RouteInfo `json:"RouteInfo"`
 }
 
@@ -150,6 +167,122 @@ type RouteInfo struct {
 	ClientOrderID       string          `json:"ClientOrderID"`       // e.g. "1005609024296.1"
 	RouteTimeInForce    string          `json:"RouteTimeInForce"`    // e.g. "Day"
 	RouteRequestedType  string          `json:"RouteRequestedType"`  // "New" or "Cancel"
+	Quote               QuoteInfo       `json:"Quote"`               // quote at the time of routing
+}
+
+type OrderCreatedEvent struct {
+	EventType string              `json:"EventType"` // e.g. "OrderCreated"
+	Order     OrderDetailsWrapper `json:"Order"`     //
+}
+
+type OrderChangeEvent struct {
+	EventType              string              `json:"EventType"`              // e.g. "ChangeCreated"
+	ParentSchwabOrderID    OrderID             `json:"ParentSchwabOrderID"`    // e.g. "1005609024296"
+	LifecycleSchwabOrderID OrderID             `json:"LifecycleSchwabOrderID"` // e.g. "1005610854315"
+	Order                  OrderDetailsWrapper `json:"Order"`                  //
+}
+
+type OrderDetailsWrapper struct {
+	SchwabOrderID OrderID      `json:"SchwabOrderID"` // e.g. "1005609024296"
+	AccountNumber string       `json:"AccountNumber"` // e.g. "40595135"
+	Order         OrderDetails `json:"Order"`         //
+}
+
+type OrderDetails struct {
+	AccountInfo              AccountInfo              `json:"AccountInfo"`              //
+	ClientChannelInfo        ClientChannelInfo        `json:"ClientChannelInfo"`        //
+	LifecycleSchwabOrderID   OrderID                  `json:"LifecycleSchwabOrderID"`   // e.g. "1005610854315"
+	AutoConfirm              bool                     `json:"AutoConfirm"`              // e.g. false
+	SourceOMS                string                   `json:"SourceOMS"`                // e.g. "ngOMS"
+	FirmID                   string                   `json:"FirmID"`                   // e.g. "CHAS"
+	OrderAccount             string                   `json:"OrderAccount"`             // e.g. "TDAccount"
+	AssetOrderEquityOrderLeg AssetOrderEquityOrderLeg `json:"AssetOrderEquityOrderLeg"` //
+}
+
+type AccountInfo struct {
+	AccountNumber            string `json:"AccountNumber"`            // e.g. "40595135"
+	AccountBranch            string `json:"AccountBranch"`            // e.g. "SJ"
+	CustomerOrFirmCode       string `json:"CustomerOrFirmCode"`       // e.g. "CustomerOrFirmCode_Customer"
+	OrderPlacementCustomerID string `json:"OrderPlacementCustomerID"` // e.g. "40595135"
+	AccountState             string `json:"AccountState"`             // e.g. "CA"
+	AccountTypeCode          string `json:"AccountTypeCode"`          // e.g. "Customer"
+}
+
+type ClientChannelInfo struct {
+	ClientProductCode string `json:"ClientProductCode"` // e.g. "M1"
+	EventUserID       string `json:"EventUserID"`       // e.g. "01XX"
+	EventUserType     string `json:"EventUserType"`     // e.g. "Client"
+}
+
+type AssetOrderEquityOrderLeg struct {
+	OrderInstruction OrderInstruction `json:"OrderInstruction"` //
+	CommissionInfo   CommissionInfo   `json:"CommissionInfo"`   //
+	AssetType        string           `json:"AssetType"`        // e.g. "MajorAssetType_EquityOption"
+	TimeInForce      string           `json:"TimeInForce"`      // e.g. "Day"
+	OrderTypeCode    string           `json:"OrderTypeCode"`    // e.g. "Limit"
+	OrderLegs        []OrderLegInfo   `json:"OrderLegs"`        //
+}
+
+type OrderInstruction struct {
+	HandlingInstructionCode string            `json:"HandlingInstructionCode"` // e.g. "AutomatedExecutionNoIntervention"
+	ExecutionStrategy       ExecutionStrategy `json:"ExecutionStrategy"`       //
+}
+
+type ExecutionStrategy struct {
+	Type                   string                  `json:"Type"` // e.g. "ES_Limit"
+	LimitExecutionStrategy *LimitExecutionStrategy `json:"LimitExecutionStrategy,omitempty"`
+}
+
+type LimitExecutionStrategy struct {
+	Type               string          `json:"Type"`               // e.g. "ES_Limit"
+	LimitPrice         decimal.Decimal `json:"LimitPrice"`         // e.g. 0.25
+	LimitPriceUnitCode string          `json:"LimitPriceUnitCode"` // e.g. "Units"
+}
+
+type CommissionInfo struct {
+	EstimatedOrderQuantity    decimal.Decimal `json:"EstimatedOrderQuantity"`    // e.g. 1
+	EstimatedPrincipalAmount  decimal.Decimal `json:"EstimatedPrincipalAmount"`  // e.g. 28.47
+	EstimatedCommissionAmount decimal.Decimal `json:"EstimatedCommissionAmount"` // e.g. 0.65
+}
+
+type OrderLegInfo struct {
+	LegID                  OrderID         `json:"LegID"`                  // e.g. "1005609024296"
+	LegParentSchwabOrderID OrderID         `json:"LegParentSchwabOrderID"` // e.g. "1005609024296"
+	Quantity               decimal.Decimal `json:"Quantity"`               // e.g. 1
+	QuantityUnitCodeType   string          `json:"QuantityUnitCodeType"`   // e.g. "SharesOrUnits"
+	LeavesQuantity         decimal.Decimal `json:"LeavesQuantity"`         // e.g. 1
+	BuySellCode            string          `json:"BuySellCode"`            // "Buy" or "Sell"
+	Security               SecurityInfo    `json:"SecurityInfo"`           //
+	QuoteOnOrderAcceptance QuoteInfo       `json:"QuoteOnOrderAcceptance"` //
+}
+
+type SecurityInfo struct {
+	SchwabSecurityID     string             `json:"SchwabSecurityID"`     // e.g. "131177361"
+	Symbol               string             `json:"Symbol"`               // e.g. "SPXW  260305C06915000"
+	UnderlyingSymbol     string             `json:"UnderlyingSymbol"`     // e.g. "SPXW"
+	MajorAssetType       string             `json:"MajorAssetType"`       // e.g. "MajorAssetType_EquityOption"
+	PrimaryMarketSymbol  string             `json:"PrimaryMarketSymbol"`  // e.g. "SPXW  260305C06915000"
+	ShortDescriptionText string             `json:"ShortDescriptionText"` //
+	ShortName            string             `json:"ShortName"`            //
+	CUSIP                string             `json:"CUSIP"`                //
+	OptionSecurityInfo   OptionSecurityInfo `json:"OptionSecurityInfo"`   //
+}
+
+type OptionSecurityInfo struct {
+	PutCallCode                string          `json:"PutCallCode"`                // e.g. "Put", "Call"
+	UnderlyingSchwabSecurityID string          `json:"UnderlyingSchwabSecurityID"` // e.g. "131177361"
+	StrikePrice                decimal.Decimal `json:"StrikePrice"`                // e.g. 6915
+}
+
+type QuoteInfo struct {
+	Bid           decimal.Decimal `json:"Bid"`           //
+	Ask           decimal.Decimal `json:"Ask"`           //
+	BidSize       decimal.Decimal `json:"BidSize"`       //
+	AskSize       decimal.Decimal `json:"AskSize"`       //
+	Symbol        string          `json:"Symbol"`        // e.g. "SPXW  260305C06915000"
+	QuoteTypeCode string          `json:"QuoteTypeCode"` // e.g. "Mark"
+	Mid           decimal.Decimal `json:"Mid"`           //
+	SchwabOrderID OrderID         `json:"SchwabOrderID"` // e.g. "1005609024296" or 1005609024296
 }
 
 // ParseOrderEvent parses the raw JSON from an ACCT_ACTIVITY message.

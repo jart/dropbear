@@ -4,16 +4,17 @@
 package databento
 
 import (
-	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 )
 
 // FileReader reads DBN records from a file.
 type FileReader struct {
-	file     *os.File
-	reader   *bufio.Reader
+	off      int64
+	data     []byte
 	Metadata Metadata
 }
 
@@ -23,47 +24,48 @@ func OpenFile(path string) (*FileReader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("databento: open %s: %w", path, err)
 	}
-	r := &FileReader{
-		file:   f,
-		reader: bufio.NewReaderSize(f, 256*1024),
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
 	}
-	if err := decodeMetadata(r.reader, &r.Metadata); err != nil {
-		f.Close()
+	size := int(info.Size())
+	data, err := syscall.Mmap(int(f.Fd()), 0, size, syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		return nil, err
+	}
+	r := &FileReader{data: data}
+	reader := bytes.NewReader(data)
+	if err := decodeMetadata(reader, &r.Metadata); err != nil {
+		syscall.Munmap(data)
 		return nil, fmt.Errorf("databento: read metadata from %s: %w", path, err)
+	}
+	r.off, err = reader.Seek(0, io.SeekCurrent)
+	if err != nil {
+		panic("not possible")
 	}
 	return r, nil
 }
 
 // Read reads the next record from the file. Returns io.EOF at end of file.
+// You can't modify the returned record, since it points to read-only memory.
 func (r *FileReader) Read() (any, error) {
-	rec, err := decodeRecord(r.reader)
-	if err != nil {
-		return nil, err
+	if r.off == int64(len(r.data)) {
+		return nil, io.EOF
 	}
-	return castRecord(r.Metadata.Version, rec)
+	n := int64(r.data[r.off]) * 4
+	if n < 16 {
+		return nil, fmt.Errorf("dbn: record size %d too small (min 16)", n)
+	}
+	record := r.data[r.off : r.off+n]
+	r.off += n
+	return castRecord(r.Metadata.Version, record)
 }
 
 // Close closes the underlying file.
+// This will destroy objects returned by Read, since they point to the memory-mapped file.
 func (r *FileReader) Close() error {
-	return r.file.Close()
-}
-
-// ReadAll reads all records from a DBN file and returns them as a slice.
-func ReadAll(path string) (*Metadata, []any, error) {
-	r, err := OpenFile(path)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer r.Close()
-	var records []any
-	for {
-		rec, err := r.Read()
-		if err != nil {
-			if err == io.EOF {
-				return &r.Metadata, records, nil
-			}
-			return &r.Metadata, records, err
-		}
-		records = append(records, rec)
-	}
+	err := syscall.Munmap(r.data)
+	r.data = nil
+	return err
 }

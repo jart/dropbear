@@ -9,14 +9,16 @@ import (
 )
 
 type Future struct {
-	ID     uint32          // instrument id
-	Symbol symbol.Symbol   // future symbol, e.g. ES
-	Year   int             // future expiration year
-	Month  clocky.Month    // future expiration month
-	Price  decimal.Decimal // current market midpoint or zero if undefined
-	Bid    decimal.Decimal // current best bid price or zero if undefined
-	Ask    decimal.Decimal // current best ask price or zero if undefined
-	TS     clocky.Time     // timestamp of last tick
+	ID      uint32          // instrument id
+	Symbol  symbol.Symbol   // future symbol, e.g. ES
+	Year    int             // future expiration year
+	Month   clocky.Month    // future expiration month
+	Price   decimal.Decimal // current market midpoint or zero if undefined
+	Bid     decimal.Decimal // current best bid price or zero if undefined
+	Ask     decimal.Decimal // current best ask price or zero if undefined
+	TS      clocky.Time     // timestamp indicating freshness of price data
+	BidSize uint32          // number of contracts available at the best bid price
+	AskSize uint32          // number of contracts available at the best ask price
 }
 
 // MarketPrice returns the mid price of the future, or zero if no quote is available.
