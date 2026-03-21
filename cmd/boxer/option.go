@@ -26,15 +26,18 @@ type Option struct {
 	BidSize uint32                    // number of contracts available at the best bid price
 	AskSize uint32                    // number of contracts available at the best ask price
 	TS      clocky.Time               // timestamp of when Bid / Ask was last updated
-	ES      decimal.Decimal           // price of ES futures at time last tick was received
-	Mid     decimal.Decimal           // market mid at last tick (cached for delta prediction)
 	IV      decimal.Decimal           // implied volatility at last tick
 	Delta   decimal.Decimal           // Black-76 delta at last tick (dPrice/dES)
+	Gamma   decimal.Decimal           // Black-76 gamma at last tick (d²Price/dES²)
+	Theta   decimal.Decimal           // Black-76 theta at last tick (dPrice/dES)
+	Vega    decimal.Decimal           // Black-76 theta at last tick (dPrice/dES)
+	mid     decimal.Decimal           // market price when last tick was received
+	es      decimal.Decimal           // es price when last tick was received
 }
 
-// IsReady returns true if the option has a two-sided quote and a computed delta.
+// IsReady returns true if the option has a two-sided quote and greeks.
 func (o *Option) IsReady() bool {
-	return o.Got == (GotBid | GotAsk | GotDelta | GotES) // bid, ask, delta, and ES are all set
+	return (o.Got & GotGreeks) == GotGreeks
 }
 
 // MarketPrice returns the mid price of the option, or zero if no quote is available.
@@ -51,11 +54,11 @@ func (o *Option) FairPrice() decimal.Decimal {
 	if !o.IsReady() {
 		return o.MarketPrice()
 	}
-	dES := gES.Price.Sub(o.ES)
+	dES := gES.Price.Sub(o.es)
 	adj := o.Delta.Mul(dES)
-	fair := o.Mid.Add(adj)
-	if fair.IsNegative() {
-		return decimal.Zero
+	fair := o.mid.Add(adj)
+	if !fair.IsPositive() {
+		panic("computed bad fair price")
 	}
 	return fair
 }
@@ -82,78 +85,39 @@ func (o *Option) CanSell() bool {
 		!gRestrictedToBuying.Contains(o.ID)
 }
 
-// UpdateDelta recomputes the Black-76 delta from the current market mid and SPX price.
+// ComputeGreeks recomputes the Black-76 delta from the current market mid and SPX price.
 // Called on each fresh option tick after Bid/Ask/SPX are updated.
-func (o *Option) UpdateDelta() {
-	if (o.Got & (GotBid | GotAsk)) != (GotBid | GotAsk) {
-		o.Got &^= GotDelta
+func (o *Option) ComputeGreeks() {
+	if (o.Got&(GotBid|GotAsk)) != (GotBid|GotAsk) && gSPXPrice.IsPositive() && gES != nil && gES.Price.IsPositive() {
+		o.Got &^= GotGreeks
 		return
 	}
-	o.Mid = o.MarketPrice()
+	o.es = gES.Price
+	o.mid = o.MarketPrice()
 	F := gSPXPrice.Float64()
 	K := o.Strike.Float64()
+	r := riskFreeRate()
 	T := o.timeToExpiry()
 	if T <= 0 {
-		o.Got &^= GotDelta
+		o.Got &^= GotGreeks
 		return
 	}
-	r := riskFreeRate()
-	iv := black76.IV(F, K, r, T, o.Mid.Float64(), o.Class == databento.InstrumentClassCall)
+	iv := black76.IV(F, K, r, T, o.mid.Float64(), o.Class == databento.InstrumentClassCall)
 	if iv <= 0 || math.IsNaN(iv) || math.IsInf(iv, 0) {
-		o.Got &^= GotDelta
+		o.Got &^= GotGreeks
 		return
 	}
-	o.IV = decimal.FromFloat64(iv)
+	o.Vega = decimal.FromFloat64(black76.Vega(F, K, r, T, iv))
+	o.Gamma = decimal.FromFloat64(black76.Gamma(F, K, r, T, iv))
 	if o.Class == databento.InstrumentClassCall {
 		o.Delta = decimal.FromFloat64(black76.CallDelta(F, K, r, T, iv))
+		o.Theta = decimal.FromFloat64(black76.CallTheta(F, K, r, T, iv))
 	} else {
 		o.Delta = decimal.FromFloat64(black76.PutDelta(F, K, r, T, iv))
+		o.Theta = decimal.FromFloat64(black76.PutTheta(F, K, r, T, iv))
 	}
-	if o.IV > 0 {
-		o.Got |= GotDelta
-	}
-}
-
-// Gamme returns the Black-76 gamma of the option (d²Price/dES²).
-func (o *Option) Gamma() decimal.Decimal {
-	F, K, r, T, iv, ok := o.greekParams()
-	if !ok {
-		return decimal.Zero
-	}
-	return decimal.FromFloat64(black76.Gamma(F, K, r, T, iv))
-}
-
-// Theta returns the daily Black-76 theta of the option (dPrice/dT per day).
-func (o *Option) Theta() decimal.Decimal {
-	F, K, r, T, iv, ok := o.greekParams()
-	if !ok {
-		return decimal.Zero
-	}
-	if o.Class == databento.InstrumentClassCall {
-		return decimal.FromFloat64(black76.CallTheta(F, K, r, T, iv))
-	}
-	return decimal.FromFloat64(black76.PutTheta(F, K, r, T, iv))
-}
-
-// Vega returns the Black-76 vega of the option (dPrice/dIV).
-func (o *Option) Vega() decimal.Decimal {
-	F, K, r, T, iv, ok := o.greekParams()
-	if !ok {
-		return decimal.Zero
-	}
-	return decimal.FromFloat64(black76.Vega(F, K, r, T, iv))
-}
-
-// greekParams returns the parameters needed to compute Black-76 greeks, or ok=false if any are invalid.
-func (o *Option) greekParams() (F, K, r, T, iv float64, ok bool) {
-	if !o.IsReady() {
-		return
-	}
-	T = o.timeToExpiry()
-	if T <= 0 {
-		return
-	}
-	return gSPXPrice.Float64(), o.Strike.Float64(), riskFreeRate(), T, o.IV.Float64(), true
+	o.IV = decimal.FromFloat64(iv)
+	o.Got |= GotGreeks
 }
 
 // timeToExpiry returns number of years until expiration.

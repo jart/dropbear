@@ -18,6 +18,9 @@ func TestTimeUnmarshalJSON(t *testing.T) {
 		{"rfc3339", `"2024-01-15T10:30:00Z"`, want},
 		{"rfc3339_nanos", `"2024-01-15T10:30:00.123456789Z"`, want + 123456789},
 
+		// schwab's order history api sends these iso utc timestamps
+		{"schwab_order_api_utc", `"2024-01-15T10:30:00+0000"`, want},
+
 		// now test that time without zone is treated as new york time
 		{"local_time", `"2024-01-15 10:30:00"`, want + 5*3600_000_000_000}, // 5 hours behind UTC in January
 

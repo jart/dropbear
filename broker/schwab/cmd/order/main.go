@@ -30,8 +30,8 @@ func main() {
 				Instruction: schwab.InstructionBuyToOpen,
 				Quantity:    decimal.FromInt(1),
 				Instrument: schwab.Instrument{
-					Symbol: "SPXW  260305P06720000",
-					Type:   schwab.AssetTypeOption,
+					Symbol:    "SPXW  260305P06720000",
+					AssetType: schwab.AssetTypeOption,
 				},
 			},
 		},

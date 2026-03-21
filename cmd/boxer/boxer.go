@@ -20,9 +20,6 @@ func boxer() {
 	if now.Sub(gES.TS) > *freshFlag {
 		return
 	}
-	if now.Sub(gSPXPriceTime) > *freshFlag {
-		return
-	}
 
 	// check if we need to close partially filled boxes
 	for it := gPendingBoxes.Iterator(); it.Next(); {

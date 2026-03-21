@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"log"
 
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
@@ -36,7 +35,6 @@ var (
 	gSR1                 *Future
 	gSchwabClient        *schwab.Client
 	gSPXPrice            decimal.Decimal
-	gSPXPriceTime        clocky.Time
 	gTotalFees           decimal.Decimal
 	gFuturesByID         = make(map[uint32]*Future)
 	gOptionsByID         = make(map[uint32]*Option)
@@ -125,98 +123,5 @@ func main() {
 		case <-heartbeat.C:
 			onHeartbeat()
 		}
-	}
-}
-
-func onFutureDef(key databento.ApiKey, ticks chan<- *databento.MBP1, f *Future) {
-	gFuturesByID[f.ID] = f
-	switch f.Symbol {
-	case esSymbol:
-		gES = f
-	case sr1Symbol:
-		gSR1 = f
-		go fetchFuturePrice(key, gSR1, ticks)
-	default:
-		log.Fatalf("unknown future symbol: %s", f.Symbol)
-	}
-}
-
-func onFutureTick(t *databento.MBP1) {
-	f := gFuturesByID[t.Header.InstrumentID]
-	if f == nil {
-		return
-	}
-	if t.Header.TSEvent > f.TS {
-		f.TS = t.Header.TSEvent
-		f.Bid = dbnPrice(t.Levels[0].BidPx)
-		f.Ask = dbnPrice(t.Levels[0].AskPx)
-		f.Price = f.Bid.Add(f.Ask).DivInt(2)
-		f.AskSize = t.Levels[0].AskSz
-		f.BidSize = t.Levels[0].BidSz
-	}
-}
-
-func onOptionDef(o *Option) {
-	gOptionsByID[o.ID] = o
-	gOptionsByStrike.Add(o)
-	gOptionsByOSI[o.OSI()] = o
-}
-
-func onOptionTick(t *databento.CMBP1) {
-	o := gOptionsByID[t.Header.InstrumentID]
-	if o == nil {
-		return
-	}
-	if t.Header.TSEvent > o.TS {
-		o.TS = t.Header.TSEvent
-		bid := t.Levels[0].BidPx
-		if bid != databento.UndefPrice {
-			o.Bid = decimal.Decimal(bid / 1000)
-			o.BidSize = t.Levels[0].BidSz
-			o.Got |= GotBid
-		} else {
-			o.Bid = decimal.Zero
-			o.BidSize = 0
-			o.Got &^= GotBid
-		}
-		ask := t.Levels[0].AskPx
-		if ask != databento.UndefPrice {
-			o.Ask = decimal.Decimal(ask / 1000)
-			o.AskSize = t.Levels[0].AskSz
-			o.Got |= GotAsk
-		} else {
-			o.Ask = decimal.Zero
-			o.AskSize = 0
-			o.Got &^= GotAsk
-		}
-		if gES != nil && gES.Price.IsPositive() {
-			o.ES = gES.Price
-			o.Got |= GotES
-		} else {
-			o.Got &^= GotES
-		}
-		if (o.Got & (GotBid | GotAsk | GotES)) == (GotBid | GotAsk | GotES) {
-			s, ok := gStrikes.Get(o.Strike)
-			if ok {
-				updateSPXPrice(s)
-			} else {
-				s, ok = gPendingStrikes.Get(o.Strike)
-				if !ok {
-					s = &Strike{}
-					gPendingStrikes.Put(o.Strike, s)
-				}
-				if o.Class == databento.InstrumentClassCall {
-					s.Call = o
-				} else {
-					s.Put = o
-				}
-				if s.IsReady() {
-					gPendingStrikes.Remove(o.Strike)
-					gStrikes.Put(o.Strike, s)
-					updateSPXPrice(s)
-				}
-			}
-		}
-		o.UpdateDelta()
 	}
 }

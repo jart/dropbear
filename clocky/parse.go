@@ -3,6 +3,7 @@ package clocky
 import "time"
 
 var localFormats = []string{
+	"2006-01-02T15:04:05-0700", // e.g. "2024-01-15T10:30:00-0500" (schwab order history api)
 	"2006-01-02T15:04:05",
 	"2006-01-02 15:04:05",
 	"2006-01-02T15:04",

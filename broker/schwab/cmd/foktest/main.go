@@ -44,8 +44,8 @@ func main() {
 			Instruction: schwab.InstructionBuyToOpen,
 			Quantity:    decimal.One,
 			Instrument: schwab.Instrument{
-				Symbol: sym,
-				Type:   schwab.AssetTypeOption,
+				Symbol:    sym,
+				AssetType: schwab.AssetTypeOption,
 			},
 		}},
 	})

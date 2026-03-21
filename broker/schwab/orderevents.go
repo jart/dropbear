@@ -170,15 +170,16 @@ type ExecutionRequested struct {
 }
 
 type ExecutionRequestedRouteInfo struct {
-	RouteName           string          `json:"RouteName"`           // e.g. "JANESTREET_F2_J2", "DASH_OPT_F2_J1", "CES_OPT_F1_J1"
-	RouteSequenceNumber int             `json:"RouteSequenceNumber"` // same as parent RouteSequenceNumber
-	RoutedQuantity      decimal.Decimal `json:"RoutedQuantity"`      // contracts routed, e.g. 1
-	RoutedPrice         decimal.Decimal `json:"RoutedPrice"`         // limit price sent to venue, e.g. 28.47
-	RouteStatus         string          `json:"RouteStatus"`         // e.g. "RouteCreated"
-	ClientOrderID       string          `json:"ClientOrderID"`       // e.g. "1005609024296.1"
-	RouteTimeInForce    string          `json:"RouteTimeInForce"`    // e.g. "Day"
-	RouteRequestedType  string          `json:"RouteRequestedType"`  // "New" or "Cancel"
-	Quote               QuoteInfo       `json:"Quote"`               // quote at the time of routing
+	RouteName           string          `json:"RouteName"`                   // e.g. "JANESTREET_F2_J2", "DASH_OPT_F2_J1", "CES_OPT_F1_J1"
+	RouteSequenceNumber int             `json:"RouteSequenceNumber"`         // same as parent RouteSequenceNumber
+	RoutedQuantity      decimal.Decimal `json:"RoutedQuantity"`              // contracts routed, e.g. 1
+	RoutedPrice         decimal.Decimal `json:"RoutedPrice"`                 // limit price sent to venue, e.g. 28.47
+	RouteInstructions   []string        `json:"RouteInstructions,omitempty"` // e.g. ["FOK"]
+	RouteStatus         json.RawMessage `json:"RouteStatus"`                 // e.g. "RouteCreated", "RouteFixAcknowledged", "RouteVenueAccepted", 8 (rejected?)
+	ClientOrderID       string          `json:"ClientOrderID"`               // e.g. "1005609024296.1"
+	RouteTimeInForce    string          `json:"RouteTimeInForce"`            // e.g. "Day", "Fok"
+	RouteRequestedType  string          `json:"RouteRequestedType"`          // "New" or "Cancel"
+	Quote               QuoteInfo       `json:"Quote"`                       // quote at the time of routing
 }
 
 type OrderCreatedEvent struct {

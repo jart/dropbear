@@ -87,6 +87,22 @@ func optionTick(price decimal.Decimal) decimal.Decimal {
 	return tick10
 }
 
+// addTickSPX increases an spx option's price by one tick.
+func addTickSPX(price decimal.Decimal) decimal.Decimal {
+	if price.Abs().Cmp(three) <= 0 {
+		return price.Add(tick05)
+	}
+	return price.Add(tick10)
+}
+
+// subtractTickSPX reduces an spx option's price by one tick.
+func subtractTickSPX(price decimal.Decimal) decimal.Decimal {
+	if price.Abs().Cmp(three) <= 0 {
+		return price.Sub(tick05)
+	}
+	return price.Sub(tick10)
+}
+
 func dbnPrice(p int64) decimal.Decimal {
 	if p == databento.UndefPrice {
 		return decimal.Zero

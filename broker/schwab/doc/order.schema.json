@@ -7,7 +7,7 @@
   "quantity": 0,
   "filledQuantity": 0,
   "remainingQuantity": 0,
-  "destinationLinkName": "can be INET, ECN_ARCA, CBOE, AMEX, PHLX, ISE, BOX, NYSE, NASDAQ, BATS, C2, AUTO",
+  "destinationLinkName": "can be INET, ECN_ARCA, CBOE, AMEX, PHLX, ISE, BOX, NYSE, NASDAQ, BATS, C2, AUTO, JNST (Jane Street), CDRG (Citadel), DFIN (Dash), SISQ (Susquehanna), WEXM (Wolverine), SOHO (Two Sigma), NSDQ (NASDAQ), NITE (Knight Capital), ETMM (ETrade MM [Morgan Stanley])",
   "releaseTime": "2026-03-04T08:45:52.542Z",
   "stopPrice": 0,
   "stopPriceLinkBasis": "can be MANUAL, BASE, TRIGGER, LAST, BID, ASK, ASK_BID, MARK, AVERAGE",

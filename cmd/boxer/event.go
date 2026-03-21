@@ -2,6 +2,7 @@ package main
 
 import (
 	"dropbear/broker/schwab"
+	"dropbear/clocky"
 	"encoding/json"
 	"log"
 )
@@ -215,15 +216,15 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 			log.Printf("warning: leg for order id %d already has close price for fill event, but got another fill: %s", orderID, leg)
 		}
 		leg.ClosePrice = fillPrice
-		log.Printf("leg closed for order id %d at %s with %s fee %s improvement from %s route yielding %s profit: %s",
-			orderID, fillPrice, fee, priceImprovement, routeName, leg.Profit(), leg)
+		log.Printf("leg closed in %s for order id %d at %s with %s fee %s improvement from %s route yielding %s profit: %s",
+			clocky.Now().Sub(leg.Box.Created), orderID, fillPrice, fee, priceImprovement, routeName, leg.Profit(), leg)
 	} else {
 		if !leg.FillPrice.IsZero() {
 			log.Printf("warning: leg for order id %d already has fill price for fill event, but got another fill: %s", orderID, leg)
 		}
 		leg.FillPrice = fillPrice
-		log.Printf("leg filled for order id %d at %s with %s fee %s improvement from %s route: %s",
-			orderID, fillPrice, fee, priceImprovement, routeName, leg)
+		log.Printf("leg filled in %s for order id %d at %s with %s fee %s improvement from %s route: %s",
+			clocky.Now().Sub(leg.Box.Created), orderID, fillPrice, fee, priceImprovement, routeName, leg)
 	}
 	onLegComplete(leg)
 }
@@ -287,7 +288,8 @@ func onLegCancel(leg *Leg) {
 
 func onBoxComplete(box *Box) {
 	if box.Filled() {
-		log.Printf("box filled with %s profit: %s", box.FillProfit(), box)
+		log.Printf("box filled in %s with %s profit: %s",
+			clocky.Now().Sub(box.Created), box.FillProfit(), box)
 	} else {
 		closedLegs := 0
 		canceledLegs := 0
@@ -311,8 +313,8 @@ func onBoxComplete(box *Box) {
 		} else {
 			canceledLegs++
 		}
-		log.Printf("box aborted with with %s profit (versus %s planned) with %d closed legs and %d canceled legs: %s",
-			box.ClosingProfit(), box.FillProfit(), closedLegs, canceledLegs, box)
+		log.Printf("box aborted after %s with with %s profit (versus %s planned) with %d closed legs and %d canceled legs: %s",
+			clocky.Now().Sub(box.Created), box.ClosingProfit(), box.FillProfit(), closedLegs, canceledLegs, box)
 	}
 	gPendingBoxes.Remove(box)
 }

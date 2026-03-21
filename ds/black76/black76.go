@@ -28,8 +28,9 @@ func Call(F, K, r, T, sigma float64) float64 {
 		return math.Max(F-K, 0) * math.Exp(-r*T)
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
-	d2 := d1 - sigma*sqrtT
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
+	d2 := d1 - sigmaT
 	return math.Exp(-r*T) * (F*normalCDF(d1) - K*normalCDF(d2))
 }
 
@@ -44,7 +45,8 @@ func Put(F, K, r, T, sigma float64) float64 {
 		return math.Max(K-F, 0) * math.Exp(-r*T)
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
 	d2 := d1 - sigma*sqrtT
 	return math.Exp(-r*T) * (K*normalCDF(-d2) - F*normalCDF(-d1))
 }
@@ -60,7 +62,8 @@ func Vega(F, K, r, T, sigma float64) float64 {
 		return 0
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
 	return F * math.Exp(-r*T) * normalPDF(d1) * sqrtT
 }
 
@@ -86,10 +89,27 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 	for price(hi) < marketPrice && hi < 100 {
 		hi *= 2
 	}
-	// newton-raphson with bisection fallback
+	// halley's method with bisection fallback
+	// converges cubically so we need far fewer iterations than newton
+	// uses vomma (d²price/dσ²) = vega·d1·d2/σ which is free since we
+	// already have d1 and d2; the halley step simplifies to:
+	//   σ' = σ - 2·f·f' / (2·f'² - f·f'')
+	//      = σ - 2·diff / (2·vega - diff·d1·d2/σ)
+	disc := math.Exp(-r * T)
+	sqrtT := math.Sqrt(T)
+	logFK := math.Log(F / K)
 	sigma := (lo + hi) / 2
 	for range 100 {
-		p := price(sigma)
+		sigmaT := sigma * sqrtT
+		d1 := math.FMA(.5, sigmaT, logFK/sigmaT)
+		d2 := d1 - sigmaT
+		// compute price inline to reuse d1/d2
+		var p float64
+		if isCall {
+			p = disc * (F*normalCDF(d1) - K*normalCDF(d2))
+		} else {
+			p = disc * (K*normalCDF(-d2) - F*normalCDF(-d1))
+		}
 		diff := p - marketPrice
 		if math.Abs(diff) < 1e-10 {
 			break
@@ -100,10 +120,10 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 		} else {
 			lo = sigma
 		}
-		// try newton step
-		vega := Vega(F, K, r, T, sigma)
+		// try halley step
+		vega := F * disc * normalPDF(d1) * sqrtT
 		if vega > 1e-12 {
-			next := sigma - diff/vega
+			next := sigma - 2*diff/(2*vega-diff*d1*d2/sigma)
 			if next > lo && next < hi {
 				sigma = next
 				continue
@@ -122,7 +142,8 @@ func Gamma(F, K, r, T, sigma float64) float64 {
 		return 0
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
 	return math.Exp(-r*T) * normalPDF(d1) / (F * sigma * sqrtT)
 }
 
@@ -132,8 +153,9 @@ func CallTheta(F, K, r, T, sigma float64) float64 {
 		return 0
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
-	d2 := d1 - sigma*sqrtT
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
+	d2 := d1 - sigmaT
 	disc := math.Exp(-r * T)
 	theta := -F*disc*normalPDF(d1)*sigma/(2*sqrtT) +
 		r*disc*(F*normalCDF(d1)-K*normalCDF(d2))
@@ -146,8 +168,9 @@ func PutTheta(F, K, r, T, sigma float64) float64 {
 		return 0
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
-	d2 := d1 - sigma*sqrtT
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
+	d2 := d1 - sigmaT
 	disc := math.Exp(-r * T)
 	theta := -F*disc*normalPDF(d1)*sigma/(2*sqrtT) +
 		r*disc*(K*normalCDF(-d2)-F*normalCDF(-d1))
@@ -163,7 +186,8 @@ func CallDelta(F, K, r, T, sigma float64) float64 {
 		return 0
 	}
 	sqrtT := math.Sqrt(T)
-	d1 := (math.Log(F/K) + .5*sigma*sigma*T) / (sigma * sqrtT)
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
 	return math.Exp(-r*T) * normalCDF(d1)
 }
 

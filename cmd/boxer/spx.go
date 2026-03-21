@@ -1,14 +1,14 @@
 package main
 
 import (
-	"dropbear/clocky"
 	"dropbear/decimal"
 )
 
 // updateSPXPrice estimates the current SPX price based on options quotes.
 // We use the closest strike to the money to compute our inferred underlying price.
 // You must provide any ready strike, so this can compute an estimated price first.
-func updateSPXPrice(strike *Strike) {
+func updateSPXPrice(strike *Strike) bool {
+	changed := false
 	estimate := strike.UnderlyingPrice()
 	_, ceilStrike, ceilFound := gStrikes.Ceiling(estimate)
 	_, floorStrike, floorFound := gStrikes.Floor(estimate)
@@ -25,8 +25,10 @@ func updateSPXPrice(strike *Strike) {
 			closestDistance = floorDistance
 		}
 		if closestDistance.Cmp(decimal.FromInt(5)) <= 0 {
-			gSPXPrice = closestStrike.UnderlyingPrice()
-			gSPXPriceTime = clocky.Now()
+			spxPrice := closestStrike.UnderlyingPrice()
+			changed = spxPrice.Cmp(gSPXPrice) != 0
+			gSPXPrice = spxPrice
 		}
 	}
+	return changed
 }

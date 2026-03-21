@@ -39,7 +39,7 @@ func (l *Leg) String() string {
 	return fmt.Sprintf("%s %s %s %s %s @ %s (greed=%s bid=%s ask=%s profit=%s market=%s->%s fair=%s->%s iv=%s->%s δ=%s γ=%s θ=%s ν=%s route=%s)",
 		l.Name, l.DescribeState(), l.Instruction(), kind, l.Option, l.LimitPrice, l.Greed, l.Option.Bid, l.Option.Ask, l.Profit(),
 		l.OldMarketPrice, l.MarketPrice(), l.OldFairPrice, l.FairPrice(), l.OldIV.Format(3), l.Option.IV.Format(3),
-		l.Option.Delta.Format(3), l.Option.Gamma().Format(3), l.Option.Theta().Format(3), l.Option.Vega().Format(3),
+		l.Option.Delta.Format(3), l.Option.Gamma.Format(3), l.Option.Theta.Format(3), l.Option.Vega.Format(3),
 		l.RouteName)
 }
 
@@ -94,16 +94,21 @@ func (l *Leg) MarketPrice() decimal.Decimal {
 
 func (l *Leg) ChooseLimitPrice() {
 	switch l {
-	case l.Box.BuyCall:
-		l.LimitPrice = quantizeTruncateSPX(l.Option.Ask.Min(l.Option.FairPrice())).Neg()
-	case l.Box.SellCall:
+	case l.Box.BuyCall, l.Box.BuyPut:
+		l.LimitPrice = quantizeTruncateSPX(l.Option.Ask.Min(l.Option.FairPrice()))
+		if l.LimitPrice.Cmp(l.Option.Ask) == 0 {
+			// CBOE AIM PI auctions only happen if you go *beyond* the spread
+			l.LimitPrice = subtractTickSPX(l.LimitPrice)
+		}
+		l.LimitPrice = l.LimitPrice.Neg()
+	case l.Box.SellCall, l.Box.SellPut:
 		l.LimitPrice = quantizeAwaySPX(l.Option.Bid.Max(l.Option.FairPrice()))
-	case l.Box.SellPut:
-		l.LimitPrice = quantizeAwaySPX(l.Option.Bid.Max(l.Option.FairPrice()))
-	case l.Box.BuyPut:
-		l.LimitPrice = quantizeTruncateSPX(l.Option.Ask.Min(l.Option.FairPrice())).Neg()
+		if l.LimitPrice.Cmp(l.Option.Bid) == 0 {
+			// CBOE AIM PI auctions only happen if you go *beyond* the spread
+			l.LimitPrice = addTickSPX(l.LimitPrice)
+		}
 	default:
-		panic("unknown leg")
+		panic("detached leg")
 	}
 }
 
@@ -171,8 +176,8 @@ func (l *Leg) doOrder() {
 			Instruction: l.Instruction(),
 			Quantity:    decimal.One,
 			Instrument: schwab.Instrument{
-				Symbol: l.Option.OSI(),
-				Type:   schwab.AssetTypeOption,
+				Symbol:    l.Option.OSI(),
+				AssetType: schwab.AssetTypeOption,
 			},
 		}},
 	})
@@ -206,8 +211,8 @@ func (l *Leg) doUpdate(orderID schwab.OrderID, limitPrice decimal.Decimal) {
 			Instruction: l.Instruction(),
 			Quantity:    decimal.One,
 			Instrument: schwab.Instrument{
-				Symbol: l.Option.OSI(),
-				Type:   schwab.AssetTypeOption,
+				Symbol:    l.Option.OSI(),
+				AssetType: schwab.AssetTypeOption,
 			},
 		}},
 	})

@@ -15,7 +15,8 @@ type Order struct {
 	Quantity                 decimal.Decimal    `json:"quantity,omitempty"`
 	FilledQuantity           decimal.Decimal    `json:"filledQuantity,omitempty"`
 	RemainingQuantity        decimal.Decimal    `json:"remainingQuantity,omitempty"`
-	DestinationLinkName      string             `json:"destinationLinkName,omitempty"` // schwab support says they ignore this field :'(
+	RequestedDestination     string             `json:"requestedDestination,omitempty"`
+	DestinationLinkName      string             `json:"destinationLinkName,omitempty"`
 	ReleaseTime              clocky.Time        `json:"releaseTime,omitempty"`
 	StopPrice                decimal.Decimal    `json:"stopPrice,omitempty"`
 	StopPriceLinkBasis       string             `json:"stopPriceLinkBasis,omitempty"`
@@ -34,6 +35,7 @@ type Order struct {
 	Cancelable               bool               `json:"cancelable,omitempty"`
 	Editable                 bool               `json:"editable,omitempty"`
 	Status                   OrderStatus        `json:"status,omitempty"`
+	Tag                      string             `json:"tag,omitempty"`
 	EnteredTime              clocky.Time        `json:"enteredTime,omitempty"`
 	CloseTime                clocky.Time        `json:"closeTime,omitempty"`
 	AccountNumber            int64              `json:"accountNumber,omitempty"`
@@ -50,8 +52,8 @@ type Instrument struct {
 	Description      string          `json:"description,omitempty"`
 	InstrumentID     int64           `json:"instrumentId,omitempty"`
 	NetChange        decimal.Decimal `json:"netChange,omitempty"`
-	Type             AssetType       `json:"assetType"`
-	InstrumentType   string          `json:"type,omitempty"`             // e.g. "VANILLA", "EXCHANGE_TRADED_FUND", "SWEEP_VEHICLE"
+	AssetType        AssetType       `json:"assetType,omitempty"`        // e.g. "OPTION"
+	Type             string          `json:"type,omitempty"`             // e.g. "VANILLA", "EXCHANGE_TRADED_FUND", "SWEEP_VEHICLE"
 	PutCall          string          `json:"putCall,omitempty"`          // "PUT" or "CALL" (options only)
 	UnderlyingSymbol string          `json:"underlyingSymbol,omitempty"` // e.g. "$SPX" (options only)
 }

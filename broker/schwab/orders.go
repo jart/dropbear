@@ -2,7 +2,6 @@ package schwab
 
 import (
 	"dropbear/clocky"
-	"dropbear/ds"
 	"dropbear/netty"
 	"fmt"
 	"path"
@@ -13,9 +12,7 @@ import (
 // Returns the order ID from the Location response header.
 // If the order fills immediately, Schwab may not return an order ID (returns 0).
 func (c *Client) CreateOrder(order *Order) (OrderID, error) {
-	if !c.TokenBucket.Try() {
-		return 0, ds.ErrTooManyRequests
-	}
+	c.TokenBucket.Get()
 	token := getToken()
 	resp, err := c.RequestJSONRaw(netty.FastHTTPClient, "POST",
 		fmt.Sprintf("/accounts/%s/orders", token.AccountHash),
