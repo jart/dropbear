@@ -72,8 +72,8 @@ func boxer() {
 			if spI == spJ {
 				continue
 			}
-			strikeI := spI.Strike()
-			strikeJ := spJ.Strike()
+			strikeI := spI.Price
+			strikeJ := spJ.Price
 
 			// only trade strikes near the money
 			if strikeI.Sub(gSPX.Price).Abs().Cmp(*moneynessFlag) > 0 ||

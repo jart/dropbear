@@ -10,6 +10,7 @@ import (
 // Options represents the current state of an option chain.
 type Options struct {
 	Price          decimal.Decimal
+	AtTheMoney     *Strike
 	Strikes        *treemap.Map[decimal.Decimal, *Strike]
 	pendingStrikes *treemap.Map[decimal.Decimal, *Strike]
 }
@@ -22,64 +23,83 @@ func NewOptions() *Options {
 	}
 }
 
-// UpdateOption tracks an option whose quote has changed.
-// Returns true if caller should recompute its greeks too.
-func (os *Options) UpdateOption(o *Option) bool {
-	mustRecomputeGreeks := false
-	if (o.Got & (GotBid | GotAsk)) == (GotBid | GotAsk) {
-		s, ok := os.Strikes.Get(o.Strike)
-		if ok {
-			if os.updatePrice(s) {
-				mustRecomputeGreeks = true
-			}
-		} else {
-			s, ok = os.pendingStrikes.Get(o.Strike)
-			if !ok {
-				s = &Strike{}
-				os.pendingStrikes.Put(o.Strike, s)
-			}
-			if o.Class == databento.InstrumentClassCall {
-				s.Call = o
-			} else {
-				s.Put = o
-			}
-			if s.IsReady() {
-				os.pendingStrikes.Remove(o.Strike)
-				os.Strikes.Put(o.Strike, s)
-				if os.updatePrice(s) {
-					mustRecomputeGreeks = true
-				}
-			}
+// Add adds an option to the option chain.
+// This should be called repeatedly each time its quotes are updated.
+// Returns true if this operation resulted in Price/AtTheMoney being updated.
+func (oc *Options) Add(o *Option) bool {
+	strikePrice := o.Strike.Price
+	strike, _ := oc.Strikes.Get(strikePrice)
+	if strike == nil {
+		strike = oc.populateStrike(o, strikePrice)
+	}
+	if o.HasQuotes() && strike.IsReady() {
+		if oc.AtTheMoney == nil && strike.UnderlyingPrice().IsPositive() {
+			oc.AtTheMoney = strike
+		}
+		if strike == oc.AtTheMoney {
+			return oc.updateFields()
 		}
 	}
-	return mustRecomputeGreeks
+	return false
 }
 
-// updatePrice estimates the current SPX price based on options quotes.
-// We use the closest strike to the money to compute our inferred underlying price.
-// You must provide any ready strike, so this can compute an estimated price first.
-func (os *Options) updatePrice(strike *Strike) bool {
-	changed := false
-	estimate := strike.UnderlyingPrice()
-	_, ceilStrike, ceilFound := os.Strikes.Ceiling(estimate)
-	_, floorStrike, floorFound := os.Strikes.Floor(estimate)
-	if ceilFound && floorFound && ceilStrike.IsReady() && floorStrike.IsReady() {
-		ceilDistance := ceilStrike.Strike().Sub(estimate).Abs()
-		floorDistance := floorStrike.Strike().Sub(estimate).Abs()
-		var closestStrike *Strike
-		var closestDistance decimal.Decimal
-		if ceilDistance.Cmp(floorDistance) <= 0 {
-			closestStrike = ceilStrike
-			closestDistance = ceilDistance
+//go:noinline
+func (oc *Options) updateFields() bool {
+	newPrice := oc.AtTheMoney.UnderlyingPrice()
+	if !newPrice.IsPositive() {
+		return false
+	}
+	var atm *Strike
+	_, strike1, _ := oc.Strikes.Floor(newPrice)
+	_, strike2, _ := oc.Strikes.Ceiling(newPrice)
+	if strike1 != nil && strike2 != nil {
+		distance1 := strike1.Price.Sub(newPrice).Abs()
+		distance2 := strike2.Price.Sub(newPrice).Abs()
+		if distance2.Cmp(distance1) < 0 {
+			atm = strike2
 		} else {
-			closestStrike = floorStrike
-			closestDistance = floorDistance
+			atm = strike1
 		}
-		if closestDistance.Cmp(decimal.FromInt(5)) <= 0 {
-			spxPrice := closestStrike.UnderlyingPrice()
-			changed = spxPrice.Cmp(os.Price) != 0
-			os.Price = spxPrice
+	} else if strike2 != nil {
+		atm = strike2
+	} else {
+		atm = strike1
+	}
+	if atm != oc.AtTheMoney {
+		oc.AtTheMoney = atm
+		newPrice = atm.UnderlyingPrice()
+	}
+	if !newPrice.IsPositive() || newPrice == oc.Price {
+		return false
+	}
+	oc.Price = newPrice
+	return true
+}
+
+//go:noinline
+func (oc *Options) populateStrike(o *Option, strikePrice decimal.Decimal) *Strike {
+	strike, _ := oc.pendingStrikes.Get(strikePrice)
+	if strike == nil {
+		strike = &Strike{Price: strikePrice}
+		oc.pendingStrikes.Put(strikePrice, strike)
+	}
+	o.Strike = strike
+	if o.Class == databento.InstrumentClassCall {
+		strike.Call = o
+	} else {
+		strike.Put = o
+	}
+	if strike.IsReady() {
+		oc.pendingStrikes.Remove(strikePrice)
+		_, strike.Prev, _ = oc.Strikes.Floor(strikePrice)
+		_, strike.Next, _ = oc.Strikes.Ceiling(strikePrice)
+		oc.Strikes.Put(strikePrice, strike)
+		if strike.Prev != nil {
+			strike.Prev.Next = strike
+		}
+		if strike.Next != nil {
+			strike.Next.Prev = strike
 		}
 	}
-	return changed
+	return strike
 }

@@ -1,3 +1,5 @@
+// replay is a tool for replaying historical 0dte SPXW option trades using historical quotes from a DBN file, e.g.
+// day=03-19; go run ./cmd/replay -date 2026-${day} -orders ~/scratch/schwab-orders-2026-${day}.json -defs ~/databento/SPXW/2026-${day}.definition.dbn -quotes ~/databento/SPXW/2026-${day}.cmbp-1.0dte.dbn | tee ~/scratch/boxreport-2026-${day}.txt
 package main
 
 import (
@@ -14,6 +16,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime/pprof"
 	"strings"
 
 	"github.com/emirpasic/gods/v2/maps/treemap"
@@ -21,11 +24,12 @@ import (
 )
 
 var (
-	dateFlag   = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
-	ordersFlag = flag.String("orders", "", "path to JSON file containing Schwab orders")
-	quotesFlag = flag.String("quotes", "", "path to DBN file containing SPX quotes")
-	defsFlag   = flag.String("defs", "", "path to DBN file containing SPX definitions")
-	rangeFlag  = decimal.Flag("range", "100", "possible movement of spx for risk calculation")
+	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
+	ordersFlag     = flag.String("orders", "", "path to JSON file containing Schwab orders")
+	quotesFlag     = flag.String("quotes", "", "path to DBN file containing SPX quotes")
+	defsFlag       = flag.String("defs", "", "path to DBN file containing SPX definitions")
+	rangeFlag      = decimal.Flag("range", "200", "possible movement of spx for risk calculation")
+	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 )
 
 const (
@@ -40,7 +44,7 @@ var (
 	gOptionsByOSI   = map[string]*options.Option{}
 	gTrades         = binaryheap.NewWith(compareTradeByTime)
 	gPendingStrikes = treemap.New[decimal.Decimal, *options.Strike]()
-	kRiskFreeRate   = decimal.Parse("0.04")
+	kRiskFreeRate   = decimal.Parse("0.035")
 	kMultiplier     = decimal.FromInt(100)
 	kTick           = decimal.FromInt(5)
 )
@@ -68,6 +72,18 @@ func main() {
 	// open business data
 	loadDefinitions(*defsFlag)
 	loadSchwabOrders(*ordersFlag)
+
+	if *flagCPUProfile != "" {
+		f, err := os.Create(*flagCPUProfile)
+		if err != nil {
+			log.Fatalf("could not create CPU profile: %v", err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatalf("could not start CPU profile: %v", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
 
 	// open quotes file (this is big)
 	quoteReader, err := databento.OpenFileReader(*quotesFlag)
@@ -110,11 +126,12 @@ func main() {
 		}
 		liq := computeLiquidationValue()
 		eod := computeSettlementAt(gSPX.Price)
+		pay := computeExpectedPayoff()
 		best, worst := computeRisk()
-		fmt.Printf("%02d:%02d:%02d %s have %+3d of %s %c cost: %6s cash: %8s liq: %6s eod: %6s best: %6s worst: %6s\n",
+		fmt.Printf("%02d:%02d:%02d %s have %+3d of %s %c cost: %6s cash: %8s liq: %8s eod: %6s best: %6s worst: %6s payoff: %6s\n",
 			trade.Time.Hour(), trade.Time.Minute(), trade.Time.Second(), describeTag(trade.Tag),
 			gPositions[trade.Option.OSI()], trade.Option.Strike, trade.Option.Class,
-			trade.Cost, gCash, liq, eod, best, worst)
+			trade.Cost, gCash, liq.Format(2), eod, best, worst, pay.Format(2))
 	}
 
 	// settle remaining positions at close
@@ -126,16 +143,17 @@ func main() {
 		intrinsic := gOptionsByOSI[contract].IntrinsicValue(gSPX.Price)
 		settlement := intrinsic.MulInt(pos).Mul(kMultiplier)
 		gCash = gCash.Add(settlement)
-		fmt.Printf("have %3d of %s worth %8s\n", pos, contract, settlement)
+		fmt.Printf("have %3d of %s worth %10s\n", pos, contract, settlement.Format(2))
 	}
-	fmt.Printf("\nending balance %s at spx price %s\n", gCash, gSPX.Price)
+	fmt.Printf("\nending balance %s at spx price %s\n", gCash.Format(2), gSPX.Price)
 }
 
 func computeRisk() (best, worst decimal.Decimal) {
 	lo := gSPX.Price.Sub(*rangeFlag)
 	hi := gSPX.Price.Add(*rangeFlag)
-	for price := lo; price.Cmp(hi) <= 0; price = price.Add(kTick) {
-		settlement := computeSettlementAt(price)
+	_, strike, _ := gSPX.Strikes.Ceiling(lo)
+	for ; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+		settlement := computeSettlementAt(strike.Price)
 		worst = worst.Min(settlement)
 		best = best.Max(settlement)
 	}
@@ -160,6 +178,18 @@ func computeLiquidationValue() decimal.Decimal {
 		cash = cash.Add(value)
 	}
 	return cash
+}
+
+func computeExpectedPayoff() decimal.Decimal {
+	payoff := decimal.Zero
+	lo := gSPX.Price.Sub(*rangeFlag)
+	hi := gSPX.Price.Add(*rangeFlag)
+	_, strike, _ := gSPX.Strikes.Ceiling(lo)
+	for ; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+		settlement := computeSettlementAt(strike.Price)
+		payoff = payoff.Add(settlement.Mul(strike.Probability()))
+	}
+	return payoff
 }
 
 func getTrades(path string, order *schwab.Order) {
@@ -261,8 +291,8 @@ func loadDefinitions(path string) {
 				option := &options.Option{
 					ID:     id,
 					Class:  class,
+					Strike: &options.Strike{Price: strike},
 					Sym:    sym,
-					Strike: strike,
 					Year:   year,
 					Month:  month,
 					Day:    day,
@@ -327,7 +357,7 @@ func onOptionQuote(o *options.Option, t *databento.CMBP1) {
 		o.AskSize = 0
 		o.Got &^= options.GotAsk
 	}
-	if gSPX.UpdateOption(o) {
+	if gSPX.Add(o) {
 		mustRecomputeGreeks = true
 	}
 	if mustRecomputeGreeks {
@@ -337,10 +367,10 @@ func onOptionQuote(o *options.Option, t *databento.CMBP1) {
 
 func describeTag(tag string) string {
 	if strings.HasPrefix(tag, "TA_") {
-		return "API"
+		return "API" // schwab api
 	}
 	if strings.Contains(tag, "TOS") {
-		return "TOS"
+		return "TOS" // thinkorswim
 	}
 	return tag
 }

@@ -91,7 +91,7 @@ func onOptionQuote(o *options.Option, t *databento.CMBP1) {
 		o.AskSize = 0
 		o.Got &^= options.GotAsk
 	}
-	if gSPX.UpdateOption(o) {
+	if gSPX.Add(o) {
 		mustRecomputeGreeks = true
 	}
 	if mustRecomputeGreeks && gES != nil {

@@ -51,11 +51,11 @@ func (l *Leg) IsBull() bool {
 
 func (l *Leg) IsSafe() bool {
 	// selling a call is pretty safe if the strike is above the current price
-	if l.Option.Class == databento.InstrumentClassCall && !l.IsBuying() && l.Option.Strike.Cmp(gSPX.Price.Add(*safetyFlag)) >= 0 {
+	if l.Option.Class == databento.InstrumentClassCall && !l.IsBuying() && l.Option.Strike.Price.Cmp(gSPX.Price.Add(*safetyFlag)) >= 0 {
 		return true
 	}
 	// selling a put is pretty safe if the strike is below the current price
-	if l.Option.Class == databento.InstrumentClassPut && !l.IsBuying() && l.Option.Strike.Cmp(gSPX.Price.Sub(*safetyFlag)) <= 0 {
+	if l.Option.Class == databento.InstrumentClassPut && !l.IsBuying() && l.Option.Strike.Price.Cmp(gSPX.Price.Sub(*safetyFlag)) <= 0 {
 		return true
 	}
 	return false

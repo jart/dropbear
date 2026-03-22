@@ -60,8 +60,8 @@ func streamOptions(key databento.ApiKey, defs chan<- *options.Option, ticks chan
 			defs <- &options.Option{
 				ID:     id,
 				Class:  databento.InstrumentClass(class),
+				Strike: &options.Strike{Price: strike},
 				Sym:    sym,
-				Strike: strike,
 				Year:   year,
 				Month:  month,
 				Day:    day,

@@ -13,109 +13,31 @@
 // payoff using the forward price directly.
 package black76
 
-import "math"
-
-const sqrt2Pi = math.Sqrt2 * math.SqrtPi // sqrt(2π)
-
-// Call computes all greeks at once cheaply for call options.
-// - F is the forward price of the underlying future
-// - K is the option strike
-// - r is the risk free rate (e.g. 0.05 for 5%)
-// - T is the time to expiration in years
-// - sigma is the volatility
-func Call(F, K, r, T, sigma float64) (price, delta, theta, gamma, vega float64) {
-	disc := math.Exp(-r * T)
-	if T <= 0 || sigma <= 0 {
-		fmk := F - K
-		price = math.Max(fmk, 0) * disc
-		if fmk > 0 {
-			delta = disc
-		} else {
-			delta = 0
-		}
-		theta = 0
-		gamma = 0
-		vega = 0
-		return
-	}
-	sqrtT := math.Sqrt(T)
-	sigmaT := sigma * sqrtT
-	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
-	d2 := d1 - sigmaT
-	Nd1 := normalCDF(d1)
-	Nd2 := normalCDF(d2)
-	npd1 := normalPDF(d1)
-	FNd1 := F * Nd1
-	KNd2 := K * Nd2
-	callpv := FNd1 - KNd2
-	decay := -F * npd1 * sigma / (2 * sqrtT)
-	price = disc * callpv
-	delta = disc * Nd1
-	theta = disc * math.FMA(r, callpv, decay) / 365.25
-	gamma = disc * npd1 / (F * sigmaT)
-	vega = F * disc * npd1 * sqrtT
-	return
-}
-
-// Put computes all greeks at once cheaply for put options.
-// - F is the forward price of the underlying future
-// - K is the option strike
-// - r is the risk free rate (e.g. 0.05 for 5%)
-// - T is the time to expiration in years
-// - sigma is the volatility
-func Put(F, K, r, T, sigma float64) (price, delta, theta, gamma, vega float64) {
-	disc := math.Exp(-r * T)
-	if T <= 0 || sigma <= 0 {
-		fmk := F - K
-		price = math.Max(-fmk, 0) * disc
-		if fmk > 0 {
-			delta = disc - disc
-		} else {
-			delta = -disc
-		}
-		theta = 0
-		gamma = 0
-		vega = 0
-		return
-	}
-	sqrtT := math.Sqrt(T)
-	sigmaT := sigma * sqrtT
-	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
-	d2 := d1 - sigmaT
-	Nd1 := normalCDF(d1)
-	Nd2 := normalCDF(d2)
-	npd1 := normalPDF(d1)
-	FNd1 := F * Nd1
-	KNd2 := K * Nd2
-	putpv := K - KNd2 - F + FNd1
-	decay := -F * npd1 * sigma / (2 * sqrtT)
-	price = disc * putpv
-	delta = disc*Nd1 - disc
-	theta = disc * math.FMA(r, putpv, decay) / 365.25
-	gamma = disc * npd1 / (F * sigmaT)
-	vega = F * disc * npd1 * sqrtT
-	return
-}
+import (
+	"dropbear/clocky"
+	"math"
+)
 
 // IV solves for implied volatility.
 // - F is the forward price of the underlying future
 // - K is the option strike
 // - r is the risk free rate (e.g. 0.05 for 5%)
-// - T is the time to expiration in years
+// - E is the time to expiration
 // - marketPrice is the observed option price
 // - isCall is true for calls, false for puts
-func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
+func IV(F, K, r float64, E clocky.Duration, marketPrice float64, isCall bool) float64 {
+	T := Annualize(E)
 	if T <= 0 || marketPrice <= 0 {
 		return 0
 	}
 	// bisection to find initial bounds [lo, hi] bracketing the solution
-	lo, hi := 0.001, 5.0
+	lo, hi := .001, .5
 	for hi < 100 {
 		price := 0.0
 		if isCall {
-			price, _, _, _, _ = Call(F, K, r, T, hi)
+			price = CallPrice(F, K, r, E, hi)
 		} else {
-			price, _, _, _, _ = Put(F, K, r, T, hi)
+			price = PutPrice(F, K, r, E, hi)
 		}
 		if price >= marketPrice {
 			break
@@ -139,9 +61,9 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 		// compute price inline to reuse d1/d2
 		var p float64
 		if isCall {
-			p = disc * (F*normalCDF(d1) - K*normalCDF(d2))
+			p = disc * (F*NormCDF(d1) - K*NormCDF(d2))
 		} else {
-			p = disc * (K*normalCDF(-d2) - F*normalCDF(-d1))
+			p = disc * (K*NormCDF(-d2) - F*NormCDF(-d1))
 		}
 		diff := p - marketPrice
 		if math.Abs(diff) < 1e-10 {
@@ -154,7 +76,7 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 			lo = sigma
 		}
 		// try halley step
-		vega := F * disc * normalPDF(d1) * sqrtT
+		vega := F * disc * NormPDF(d1) * sqrtT
 		if vega > 1e-12 {
 			next := sigma - 2*diff/(2*vega-diff*d1*d2/sigma)
 			if next > lo && next < hi {
@@ -168,12 +90,116 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 	return sigma
 }
 
-// normalCDF computes the standard normal cumulative distribution function.
-func normalCDF(x float64) float64 {
-	return .5 * math.Erfc(-x/math.Sqrt2)
+// CallGreeks computes all greeks at once cheaply for call options.
+// - F is the forward price of the underlying future
+// - K is the option strike
+// - r is the risk free rate (e.g. 0.05 for 5%)
+// - E is the time to expiration
+// - sigma is the volatility
+func CallGreeks(F, K, r float64, E clocky.Duration, sigma float64) (delta, theta, gamma, vega float64) {
+	T := Annualize(E)
+	disc := math.Exp(-r * T)
+	if T <= 0 || sigma <= 0 {
+		fmk := F - K
+		if fmk > 0 {
+			delta = disc
+		} else {
+			delta = 0
+		}
+		theta = 0
+		gamma = 0
+		vega = 0
+		return
+	}
+	sqrtT := math.Sqrt(T)
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
+	d2 := d1 - sigmaT
+	Nd1 := NormCDF(d1)
+	Nd2 := NormCDF(d2)
+	npd1 := NormPDF(d1)
+	FNd1 := F * Nd1
+	KNd2 := K * Nd2
+	callpv := FNd1 - KNd2
+	decay := -F * npd1 * sigma / (2 * sqrtT)
+	delta = disc * Nd1
+	theta = disc * math.FMA(r, callpv, decay) / DaysPerYear
+	gamma = disc * npd1 / (F * sigmaT)
+	vega = F * disc * npd1 * sqrtT
+	return
 }
 
-// normalPDF computes the standard normal probability density function.
-func normalPDF(x float64) float64 {
-	return math.Exp(-.5*x*x) / sqrt2Pi
+// PutGreeks computes all greeks at once cheaply for put options.
+// - F is the forward price of the underlying future
+// - K is the option strike
+// - r is the risk free rate (e.g. 0.05 for 5%)
+// - E is the time to expiration
+// - sigma is the volatility
+func PutGreeks(F, K, r float64, E clocky.Duration, sigma float64) (delta, theta, gamma, vega float64) {
+	T := Annualize(E)
+	disc := math.Exp(-r * T)
+	if T <= 0 || sigma <= 0 {
+		fmk := F - K
+		if fmk > 0 {
+			delta = disc - disc
+		} else {
+			delta = -disc
+		}
+		theta = 0
+		gamma = 0
+		vega = 0
+		return
+	}
+	sqrtT := math.Sqrt(T)
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
+	d2 := d1 - sigmaT
+	Nd1 := NormCDF(d1)
+	Nd2 := NormCDF(d2)
+	npd1 := NormPDF(d1)
+	FNd1 := F * Nd1
+	KNd2 := K * Nd2
+	putpv := K - KNd2 - F + FNd1
+	decay := -F * npd1 * sigma / (2 * sqrtT)
+	delta = disc*Nd1 - disc
+	theta = disc * math.FMA(r, putpv, decay) / DaysPerYear
+	gamma = disc * npd1 / (F * sigmaT)
+	vega = F * disc * npd1 * sqrtT
+	return
+}
+
+// CallPrice computes the price of a call option using Black-76.
+// - F is the forward price of the underlying future
+// - K is the option strike
+// - r is the risk free rate (e.g. 0.05 for 5%)
+// - E is the time to expiration
+// - sigma is the volatility
+func CallPrice(F, K, r float64, E clocky.Duration, sigma float64) float64 {
+	T := Annualize(E)
+	if T <= 0 || sigma <= 0 {
+		return math.Max(F-K, 0) * math.Exp(-r*T)
+	}
+	sqrtT := math.Sqrt(T)
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
+	d2 := d1 - sigmaT
+	return math.Exp(-r*T) * (F*NormCDF(d1) - K*NormCDF(d2))
+}
+
+// PutPrice computes the price of a put option using Black-76.
+// - F is the forward price of the underlying future
+// - K is the option strike
+// - r is the risk free rate (e.g. 0.05 for 5%)
+// - E is the time to expiration
+// - sigma is the volatility
+func PutPrice(F, K, r float64, E clocky.Duration, sigma float64) float64 {
+	T := Annualize(E)
+	if T <= 0 || sigma <= 0 {
+		return math.Max(K-F, 0) * math.Exp(-r*T)
+	}
+	sqrtT := math.Sqrt(T)
+	sigmaT := sigma * sqrtT
+	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
+	d2 := d1 - sigma*sqrtT
+	return math.Exp(-r*T) * (K*NormCDF(-d2) - F*NormCDF(-d1))
 }

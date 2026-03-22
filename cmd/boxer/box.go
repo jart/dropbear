@@ -29,12 +29,12 @@ func (b *Box) String() string {
 // Width returns the distance between the strikes of the box.
 // This will be negative for a sell (credit) box and positive for a buy (debit) box.
 func (b *Box) Width() decimal.Decimal {
-	return b.SellCall.Option.Strike.Sub(b.BuyCall.Option.Strike)
+	return b.SellCall.Option.Strike.Price.Sub(b.BuyCall.Option.Strike.Price)
 }
 
 // IsBuying returns true if this is a buy box (net debit), false if it's a sell box (net credit).
 func (b *Box) IsBuying() bool {
-	return b.BuyCall.Option.Strike.Cmp(b.SellCall.Option.Strike) < 0
+	return b.BuyCall.Option.Strike.Price.Cmp(b.SellCall.Option.Strike.Price) < 0
 }
 
 func (b *Box) ChooseLimitPrices() {
@@ -185,13 +185,13 @@ func (b *Box) Check() {
 	if b.BuyPut.Option.Class != databento.InstrumentClassPut {
 		panic("BuyPut must be a put")
 	}
-	if b.BuyCall.Option.Strike.Cmp(b.SellPut.Option.Strike) != 0 {
+	if b.BuyCall.Option.Strike.Price.Cmp(b.SellPut.Option.Strike.Price) != 0 {
 		panic("BuyCall and SellPut must have the same strike")
 	}
-	if b.SellCall.Option.Strike.Cmp(b.BuyPut.Option.Strike) != 0 {
+	if b.SellCall.Option.Strike.Price.Cmp(b.BuyPut.Option.Strike.Price) != 0 {
 		panic("SellCall and BuyPut must have the same strike")
 	}
-	if b.BuyCall.Option.Strike.Cmp(b.SellCall.Option.Strike) == 0 {
+	if b.BuyCall.Option.Strike.Price.Cmp(b.SellCall.Option.Strike.Price) == 0 {
 		panic("BuyCall and SellCall must have different strikes")
 	}
 	if !b.BuyCall.LimitPrice.IsNegative() {
