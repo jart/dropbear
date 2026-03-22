@@ -18,8 +18,8 @@ type FileReader struct {
 	Metadata Metadata
 }
 
-// OpenFile opens a DBN file and reads its metadata header.
-func OpenFile(path string) (*FileReader, error) {
+// OpenFileReader opens a DBN file and reads its metadata header.
+func OpenFileReader(path string) (*FileReader, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("databento: open %s: %w", path, err)

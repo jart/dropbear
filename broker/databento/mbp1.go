@@ -3,6 +3,7 @@ package databento
 import (
 	"dropbear/clocky"
 	"strings"
+	"unsafe"
 )
 
 type MBP1 struct {
@@ -17,6 +18,10 @@ type MBP1 struct {
 	TSInDelta int32       // matching-engine-sending timestamp expressed as the number of nanoseconds before ts_recv
 	Sequence  uint32      // message sequence number assigned at the venue
 	Levels    [1]BidAskPair
+}
+
+func (c *MBP1) InstrumentID() uint32 {
+	return c.Header.InstrumentID
 }
 
 func (m *MBP1) GoString() string {
@@ -48,4 +53,8 @@ func (m *MBP1) GoString() string {
 	b.WriteString("},\n")
 	b.WriteString("}")
 	return b.String()
+}
+
+func (m *MBP1) Encode() []byte {
+	return unsafe.Slice((*byte)(unsafe.Pointer(m)), unsafe.Sizeof(*m))
 }

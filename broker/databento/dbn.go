@@ -14,6 +14,11 @@ import (
 	"dropbear/clocky"
 )
 
+type DBN interface {
+	Encode() []byte
+	InstrumentID() uint32
+}
+
 func castRecord(version uint8, rec []byte) (any, error) {
 	if len(rec) < 2 {
 		return nil, errors.New("record too short")
@@ -194,6 +199,43 @@ func decodeMetadata(r io.Reader, m *Metadata) error {
 	}
 
 	return nil
+}
+
+func encodeRepeatedSymbol(frame []byte, off int, symbols []string, symLen int) int {
+	binary.LittleEndian.PutUint32(frame[off:], uint32(len(symbols)))
+	off += 4
+	for _, s := range symbols {
+		copy(frame[off:off+symLen], s)
+		off += symLen
+	}
+	return off
+}
+
+func encodeSymbolMappings(frame []byte, off int, mappings []SymbolMapping, symLen int) int {
+	binary.LittleEndian.PutUint32(frame[off:], uint32(len(mappings)))
+	off += 4
+	for _, sm := range mappings {
+		copy(frame[off:off+symLen], sm.RawSymbol)
+		off += symLen
+		binary.LittleEndian.PutUint32(frame[off:], uint32(len(sm.Intervals)))
+		off += 4
+		for _, iv := range sm.Intervals {
+			binary.LittleEndian.PutUint32(frame[off:], encodeISO8601Date(iv.StartDate))
+			off += 4
+			binary.LittleEndian.PutUint32(frame[off:], encodeISO8601Date(iv.EndDate))
+			off += 4
+			copy(frame[off:off+symLen], iv.Symbol)
+			off += symLen
+		}
+	}
+	return off
+}
+
+func encodeISO8601Date(t clocky.Time) uint32 {
+	if t == 0 {
+		return 0
+	}
+	return uint32(t.Year()*10000 + int(t.Month())*100 + t.Day())
 }
 
 func decodeRepeatedSymbol(frame []byte, off, symLen int) ([]string, int, error) {

@@ -70,14 +70,14 @@ func main() {
 	loadSchwabOrders(*ordersFlag)
 
 	// open quotes file (this is big)
-	quoteReader, err := databento.OpenFile(*quotesFlag)
+	quoteReader, err := databento.OpenFileReader(*quotesFlag)
 	if err != nil {
-		fmt.Printf("%s: %v\n", *quotesFlag, err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", *quotesFlag, err)
 		os.Exit(1)
 	}
 	defer quoteReader.Close()
 	if quoteReader.Metadata.Schema != databento.SchemaCMBP1 {
-		fmt.Printf("%s: expected quotes DBN file with schema %d, got %d\n", *quotesFlag, databento.SchemaCMBP1, quoteReader.Metadata.Schema)
+		fmt.Fprintf(os.Stderr, "%s: expected quotes DBN file with schema %d, got %d\n", *quotesFlag, databento.SchemaCMBP1, quoteReader.Metadata.Schema)
 		os.Exit(1)
 	}
 
@@ -88,7 +88,7 @@ func main() {
 			if err == io.EOF {
 				break
 			}
-			fmt.Printf("%s: read quote error: %v\n", *quotesFlag, err)
+			fmt.Fprintf(os.Stderr, "%s: read quote error: %v\n", *quotesFlag, err)
 			os.Exit(1)
 		}
 		m := rec.(*databento.CMBP1)
@@ -111,10 +111,10 @@ func main() {
 		liq := computeLiquidationValue()
 		eod := computeSettlementAt(gSPX.Price)
 		best, worst := computeRisk()
-		fmt.Printf("%02d:%02d:%02d have %+3d of %s %c cost: %6s cash: %8s liq: %6s eod: %6s best: %6s worst: %6s using: %s\n",
-			trade.Time.Hour(), trade.Time.Minute(), trade.Time.Second(),
+		fmt.Printf("%02d:%02d:%02d %s have %+3d of %s %c cost: %6s cash: %8s liq: %6s eod: %6s best: %6s worst: %6s\n",
+			trade.Time.Hour(), trade.Time.Minute(), trade.Time.Second(), describeTag(trade.Tag),
 			gPositions[trade.Option.OSI()], trade.Option.Strike, trade.Option.Class,
-			trade.Cost, gCash, liq, eod, best, worst, describeTag(trade.Tag))
+			trade.Cost, gCash, liq, eod, best, worst)
 	}
 
 	// settle remaining positions at close
@@ -228,7 +228,7 @@ func loadSchwabOrders(path string) {
 }
 
 func loadDefinitions(path string) {
-	defReader, err := databento.OpenFile(path)
+	defReader, err := databento.OpenFileReader(path)
 	if err != nil {
 		fmt.Printf("%s: %v\n", path, err)
 		os.Exit(1)

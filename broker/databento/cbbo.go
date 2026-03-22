@@ -3,6 +3,7 @@ package databento
 import (
 	"dropbear/clocky"
 	"strings"
+	"unsafe"
 )
 
 // CBBO is the record type for CBBO-1s and CBBO-1m schemas (subsampled
@@ -18,6 +19,10 @@ type CBBO struct {
 	TSRecv clocky.Time               // capture-server-received timestamp (nanoseconds since UNIX epoch)
 	_pad3  [8]byte                   //
 	Levels [1]ConsolidatedBidAskPair // top of book (NBBO)
+}
+
+func (c *CBBO) InstrumentID() uint32 {
+	return c.Header.InstrumentID
 }
 
 func (c *CBBO) GoString() string {
@@ -41,4 +46,8 @@ func (c *CBBO) GoString() string {
 	b.WriteString("},\n")
 	b.WriteString("}")
 	return b.String()
+}
+
+func (c *CBBO) Encode() []byte {
+	return unsafe.Slice((*byte)(unsafe.Pointer(c)), unsafe.Sizeof(*c))
 }

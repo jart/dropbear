@@ -28,7 +28,7 @@ func main() {
 }
 
 func Count(path string) (int, error) {
-	r, err := databento.OpenFile(path)
+	r, err := databento.OpenFileReader(path)
 	if err != nil {
 		return 0, err
 	}

@@ -6,6 +6,7 @@ package databento
 import (
 	"dropbear/clocky"
 	"strings"
+	"unsafe"
 )
 
 // CMBP1 is the record type for CMBP-1 and TCBBO schemas. Unlike CBBO (which
@@ -23,6 +24,10 @@ type CMBP1 struct {
 	TSInDelta int32       // delta from TSEvent to send time (nanoseconds)
 	_pad2     [4]byte
 	Levels    [1]ConsolidatedBidAskPair // top of book (NBBO)
+}
+
+func (c *CMBP1) InstrumentID() uint32 {
+	return c.Header.InstrumentID
 }
 
 func (c *CMBP1) GoString() string {
@@ -50,4 +55,8 @@ func (c *CMBP1) GoString() string {
 	b.WriteString("},\n")
 	b.WriteString("}")
 	return b.String()
+}
+
+func (c *CMBP1) Encode() []byte {
+	return unsafe.Slice((*byte)(unsafe.Pointer(c)), unsafe.Sizeof(*c))
 }

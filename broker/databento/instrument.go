@@ -3,6 +3,7 @@ package databento
 import (
 	"dropbear/clocky"
 	"strings"
+	"unsafe"
 )
 
 type Instrument struct {
@@ -254,4 +255,8 @@ func (m *Instrument) GoString() string {
 	appendField(&b, m.LegSide)
 	b.WriteString("}")
 	return b.String()
+}
+
+func (m *Instrument) Encode() []byte {
+	return unsafe.Slice((*byte)(unsafe.Pointer(m)), unsafe.Sizeof(*m))
 }

@@ -36,7 +36,7 @@ func main() {
 }
 
 func dump(path string) error {
-	r, err := databento.OpenFile(path)
+	r, err := databento.OpenFileReader(path)
 	if err != nil {
 		return err
 	}
