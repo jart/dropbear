@@ -17,54 +17,84 @@ import "math"
 
 const sqrt2Pi = math.Sqrt2 * math.SqrtPi // sqrt(2π)
 
-// Call returns the price of a European call on a future.
+// Call computes all greeks at once cheaply for call options.
 // - F is the forward price of the underlying future
 // - K is the option strike
 // - r is the risk free rate (e.g. 0.05 for 5%)
 // - T is the time to expiration in years
 // - sigma is the volatility
-func Call(F, K, r, T, sigma float64) float64 {
+func Call(F, K, r, T, sigma float64) (price, delta, theta, gamma, vega float64) {
+	disc := math.Exp(-r * T)
 	if T <= 0 || sigma <= 0 {
-		return math.Max(F-K, 0) * math.Exp(-r*T)
+		fmk := F - K
+		price = math.Max(fmk, 0) * disc
+		if fmk > 0 {
+			delta = disc
+		} else {
+			delta = 0
+		}
+		theta = 0
+		gamma = 0
+		vega = 0
+		return
 	}
 	sqrtT := math.Sqrt(T)
 	sigmaT := sigma * sqrtT
 	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
 	d2 := d1 - sigmaT
-	return math.Exp(-r*T) * (F*normalCDF(d1) - K*normalCDF(d2))
+	Nd1 := normalCDF(d1)
+	Nd2 := normalCDF(d2)
+	npd1 := normalPDF(d1)
+	FNd1 := F * Nd1
+	KNd2 := K * Nd2
+	callpv := FNd1 - KNd2
+	decay := -F * npd1 * sigma / (2 * sqrtT)
+	price = disc * callpv
+	delta = disc * Nd1
+	theta = disc * math.FMA(r, callpv, decay) / 365.25
+	gamma = disc * npd1 / (F * sigmaT)
+	vega = F * disc * npd1 * sqrtT
+	return
 }
 
-// Put returns the price of a European put on a future.
+// Put computes all greeks at once cheaply for put options.
 // - F is the forward price of the underlying future
 // - K is the option strike
 // - r is the risk free rate (e.g. 0.05 for 5%)
 // - T is the time to expiration in years
 // - sigma is the volatility
-func Put(F, K, r, T, sigma float64) float64 {
+func Put(F, K, r, T, sigma float64) (price, delta, theta, gamma, vega float64) {
+	disc := math.Exp(-r * T)
 	if T <= 0 || sigma <= 0 {
-		return math.Max(K-F, 0) * math.Exp(-r*T)
+		fmk := F - K
+		price = math.Max(-fmk, 0) * disc
+		if fmk > 0 {
+			delta = disc - disc
+		} else {
+			delta = -disc
+		}
+		theta = 0
+		gamma = 0
+		vega = 0
+		return
 	}
 	sqrtT := math.Sqrt(T)
 	sigmaT := sigma * sqrtT
 	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
-	d2 := d1 - sigma*sqrtT
-	return math.Exp(-r*T) * (K*normalCDF(-d2) - F*normalCDF(-d1))
-}
-
-// Vega returns the vega of an option (dPrice/dSigma).
-// - F is the forward price of the underlying future
-// - K is the option strike
-// - r is the risk free rate (e.g. 0.05 for 5%)
-// - T is the time to expiration in years
-// - sigma is the volatility
-func Vega(F, K, r, T, sigma float64) float64 {
-	if T <= 0 || sigma <= 0 {
-		return 0
-	}
-	sqrtT := math.Sqrt(T)
-	sigmaT := sigma * sqrtT
-	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
-	return F * math.Exp(-r*T) * normalPDF(d1) * sqrtT
+	d2 := d1 - sigmaT
+	Nd1 := normalCDF(d1)
+	Nd2 := normalCDF(d2)
+	npd1 := normalPDF(d1)
+	FNd1 := F * Nd1
+	KNd2 := K * Nd2
+	putpv := K - KNd2 - F + FNd1
+	decay := -F * npd1 * sigma / (2 * sqrtT)
+	price = disc * putpv
+	delta = disc*Nd1 - disc
+	theta = disc * math.FMA(r, putpv, decay) / 365.25
+	gamma = disc * npd1 / (F * sigmaT)
+	vega = F * disc * npd1 * sqrtT
+	return
 }
 
 // IV solves for implied volatility.
@@ -78,15 +108,18 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 	if T <= 0 || marketPrice <= 0 {
 		return 0
 	}
-	price := func(sigma float64) float64 {
-		if isCall {
-			return Call(F, K, r, T, sigma)
-		}
-		return Put(F, K, r, T, sigma)
-	}
 	// bisection to find initial bounds [lo, hi] bracketing the solution
 	lo, hi := 0.001, 5.0
-	for price(hi) < marketPrice && hi < 100 {
+	for hi < 100 {
+		price := 0.0
+		if isCall {
+			price, _, _, _, _ = Call(F, K, r, T, hi)
+		} else {
+			price, _, _, _, _ = Put(F, K, r, T, hi)
+		}
+		if price >= marketPrice {
+			break
+		}
 		hi *= 2
 	}
 	// halley's method with bisection fallback
@@ -133,67 +166,6 @@ func IV(F, K, r, T, marketPrice float64, isCall bool) float64 {
 		sigma = (lo + hi) / 2
 	}
 	return sigma
-}
-
-// Gamma returns the gamma of an option (d²Price/dF²).
-// Gamma is the same for calls and puts.
-func Gamma(F, K, r, T, sigma float64) float64 {
-	if T <= 0 || sigma <= 0 || F <= 0 {
-		return 0
-	}
-	sqrtT := math.Sqrt(T)
-	sigmaT := sigma * sqrtT
-	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
-	return math.Exp(-r*T) * normalPDF(d1) / (F * sigma * sqrtT)
-}
-
-// CallTheta returns the daily theta of a call (dPrice/dT per day).
-func CallTheta(F, K, r, T, sigma float64) float64 {
-	if T <= 0 || sigma <= 0 {
-		return 0
-	}
-	sqrtT := math.Sqrt(T)
-	sigmaT := sigma * sqrtT
-	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
-	d2 := d1 - sigmaT
-	disc := math.Exp(-r * T)
-	theta := -F*disc*normalPDF(d1)*sigma/(2*sqrtT) +
-		r*disc*(F*normalCDF(d1)-K*normalCDF(d2))
-	return theta / 365.25
-}
-
-// PutTheta returns the daily theta of a put (dPrice/dT per day).
-func PutTheta(F, K, r, T, sigma float64) float64 {
-	if T <= 0 || sigma <= 0 {
-		return 0
-	}
-	sqrtT := math.Sqrt(T)
-	sigmaT := sigma * sqrtT
-	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
-	d2 := d1 - sigmaT
-	disc := math.Exp(-r * T)
-	theta := -F*disc*normalPDF(d1)*sigma/(2*sqrtT) +
-		r*disc*(K*normalCDF(-d2)-F*normalCDF(-d1))
-	return theta / 365.25
-}
-
-// CallDelta returns the delta of a call (dPrice/dF).
-func CallDelta(F, K, r, T, sigma float64) float64 {
-	if T <= 0 || sigma <= 0 {
-		if F > K {
-			return math.Exp(-r * T)
-		}
-		return 0
-	}
-	sqrtT := math.Sqrt(T)
-	sigmaT := sigma * sqrtT
-	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
-	return math.Exp(-r*T) * normalCDF(d1)
-}
-
-// PutDelta returns the delta of a put (dPrice/dF).
-func PutDelta(F, K, r, T, sigma float64) float64 {
-	return CallDelta(F, K, r, T, sigma) - math.Exp(-r*T)
 }
 
 // normalCDF computes the standard normal cumulative distribution function.

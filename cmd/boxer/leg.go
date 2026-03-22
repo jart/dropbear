@@ -4,6 +4,7 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
 	"dropbear/decimal"
+	"dropbear/ds/options"
 	"fmt"
 	"log"
 )
@@ -11,7 +12,7 @@ import (
 type Leg struct {
 	Box            *Box            // the box this leg belongs to
 	Name           string          // arbitrary human friendly name for logs, e.g. "#1", "#2", "#3", "#4"
-	Option         *Option         // the option instrument for this leg
+	Option         *options.Option // the option instrument for this leg
 	LimitPrice     decimal.Decimal // our limit order price (negative if buying, e.g. -0.15 means we get a $15 debit or in otherwords are paying $15 for the leg)
 	OldMarketPrice decimal.Decimal // the market price of the leg at the time we last updated the limit price
 	OldFairPrice   decimal.Decimal // the fair price of the leg at the time we last updated the limit price
@@ -50,11 +51,11 @@ func (l *Leg) IsBull() bool {
 
 func (l *Leg) IsSafe() bool {
 	// selling a call is pretty safe if the strike is above the current price
-	if l.Option.Class == databento.InstrumentClassCall && !l.IsBuying() && l.Option.Strike.Cmp(gSPXPrice.Add(*safetyFlag)) >= 0 {
+	if l.Option.Class == databento.InstrumentClassCall && !l.IsBuying() && l.Option.Strike.Cmp(gSPX.Price.Add(*safetyFlag)) >= 0 {
 		return true
 	}
 	// selling a put is pretty safe if the strike is below the current price
-	if l.Option.Class == databento.InstrumentClassPut && !l.IsBuying() && l.Option.Strike.Cmp(gSPXPrice.Sub(*safetyFlag)) <= 0 {
+	if l.Option.Class == databento.InstrumentClassPut && !l.IsBuying() && l.Option.Strike.Cmp(gSPX.Price.Sub(*safetyFlag)) <= 0 {
 		return true
 	}
 	return false
@@ -85,7 +86,7 @@ func (l *Leg) EffectivePrice() decimal.Decimal {
 }
 
 func (l *Leg) FairPrice() decimal.Decimal {
-	return l.Option.FairPrice()
+	return l.Option.FairPrice(gES.Price)
 }
 
 func (l *Leg) MarketPrice() decimal.Decimal {
@@ -95,14 +96,14 @@ func (l *Leg) MarketPrice() decimal.Decimal {
 func (l *Leg) ChooseLimitPrice() {
 	switch l {
 	case l.Box.BuyCall, l.Box.BuyPut:
-		l.LimitPrice = quantizeTruncateSPX(l.Option.Ask.Min(l.Option.FairPrice()))
+		l.LimitPrice = quantizeTruncateSPX(l.Option.Ask.Min(l.FairPrice()))
 		if l.LimitPrice.Cmp(l.Option.Ask) == 0 {
 			// CBOE AIM PI auctions only happen if you go *beyond* the spread
 			l.LimitPrice = subtractTickSPX(l.LimitPrice)
 		}
 		l.LimitPrice = l.LimitPrice.Neg()
 	case l.Box.SellCall, l.Box.SellPut:
-		l.LimitPrice = quantizeAwaySPX(l.Option.Bid.Max(l.Option.FairPrice()))
+		l.LimitPrice = quantizeAwaySPX(l.Option.Bid.Max(l.FairPrice()))
 		if l.LimitPrice.Cmp(l.Option.Bid) == 0 {
 			// CBOE AIM PI auctions only happen if you go *beyond* the spread
 			l.LimitPrice = addTickSPX(l.LimitPrice)
@@ -276,10 +277,10 @@ func (l *Leg) getClosingLimitPrice() decimal.Decimal {
 	switch l {
 	case l.Box.BuyCall, l.Box.BuyPut:
 		// we bought to open, so we sell to close
-		return quantizeTruncateSPX(l.Option.Bid.Max(l.Option.FairPrice()))
+		return quantizeTruncateSPX(l.Option.Bid.Max(l.FairPrice()))
 	case l.Box.SellCall, l.Box.SellPut:
 		// we sold to open, so we buy to close
-		return quantizeAwaySPX(l.Option.Ask.Min(l.Option.FairPrice())).Neg()
+		return quantizeAwaySPX(l.Option.Ask.Min(l.FairPrice())).Neg()
 	default:
 		panic("unknown leg in getClosingLimitPrice()")
 	}

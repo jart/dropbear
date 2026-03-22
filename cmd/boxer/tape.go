@@ -3,6 +3,7 @@ package main
 import (
 	"dropbear/broker/databento"
 	"dropbear/decimal"
+	"dropbear/ds/options"
 	"log"
 )
 
@@ -34,7 +35,7 @@ func onFutureTick(t *databento.MBP1) {
 	}
 }
 
-func onOptionDef(o *Option) {
+func onOptionDef(o *options.Option) {
 	gOptionsByID[o.ID] = o
 	gOptionsByStrike.Add(o)
 	gOptionsByOSI[o.OSI()] = o
@@ -55,11 +56,11 @@ func onOptionTick(t *databento.CMBP1) {
 	}
 }
 
-func onOptionTrade(o *Option, t *databento.CMBP1) {
+func onOptionTrade(o *options.Option, t *databento.CMBP1) {
 	// TODO(jart): log information about trades?
 }
 
-func onOptionQuote(o *Option, t *databento.CMBP1) {
+func onOptionQuote(o *options.Option, t *databento.CMBP1) {
 	o.TS = t.Header.TSEvent
 	mustRecomputeGreeks := false
 	bid := t.Levels[0].BidPx
@@ -70,11 +71,11 @@ func onOptionQuote(o *Option, t *databento.CMBP1) {
 		}
 		o.Bid = price
 		o.BidSize = t.Levels[0].BidSz
-		o.Got |= GotBid
+		o.Got |= options.GotBid
 	} else {
 		o.Bid = decimal.Zero
 		o.BidSize = 0
-		o.Got &^= GotBid
+		o.Got &^= options.GotBid
 	}
 	ask := t.Levels[0].AskPx
 	if ask != databento.UndefPrice {
@@ -84,39 +85,16 @@ func onOptionQuote(o *Option, t *databento.CMBP1) {
 		}
 		o.Ask = price
 		o.AskSize = t.Levels[0].AskSz
-		o.Got |= GotAsk
+		o.Got |= options.GotAsk
 	} else {
 		o.Ask = decimal.Zero
 		o.AskSize = 0
-		o.Got &^= GotAsk
+		o.Got &^= options.GotAsk
 	}
-	if (o.Got & (GotBid | GotAsk)) == (GotBid | GotAsk) {
-		s, ok := gStrikes.Get(o.Strike)
-		if ok {
-			if updateSPXPrice(s) {
-				mustRecomputeGreeks = true
-			}
-		} else {
-			s, ok = gPendingStrikes.Get(o.Strike)
-			if !ok {
-				s = &Strike{}
-				gPendingStrikes.Put(o.Strike, s)
-			}
-			if o.Class == databento.InstrumentClassCall {
-				s.Call = o
-			} else {
-				s.Put = o
-			}
-			if s.IsReady() {
-				gPendingStrikes.Remove(o.Strike)
-				gStrikes.Put(o.Strike, s)
-				if updateSPXPrice(s) {
-					mustRecomputeGreeks = true
-				}
-			}
-		}
+	if gSPX.UpdateOption(o) {
+		mustRecomputeGreeks = true
 	}
-	if mustRecomputeGreeks {
-		o.ComputeGreeks()
+	if mustRecomputeGreeks && gES != nil {
+		o.ComputeGreeks(gSPX.Price, riskFreeRate(), gES.Price)
 	}
 }

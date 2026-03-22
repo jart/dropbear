@@ -14,7 +14,7 @@ func boxer() {
 
 	// ensure dependencies are ready
 	now := clocky.Now()
-	if gES == nil || gSR1 == nil || gSPXPrice.IsZero() {
+	if gES == nil || gSR1 == nil || gSPX.Price.IsZero() {
 		return
 	}
 	if now.Sub(gES.TS) > *freshFlag {
@@ -65,9 +65,9 @@ func boxer() {
 	// evaluate all box spread combinations
 	var best *Box
 	var bestProfit decimal.Decimal
-	for itI := gStrikes.Iterator(); itI.Next(); {
+	for itI := gSPX.Strikes.Iterator(); itI.Next(); {
 		spI := itI.Value()
-		for itJ := gStrikes.Iterator(); itJ.Next(); {
+		for itJ := gSPX.Strikes.Iterator(); itJ.Next(); {
 			spJ := itJ.Value()
 			if spI == spJ {
 				continue
@@ -76,14 +76,14 @@ func boxer() {
 			strikeJ := spJ.Strike()
 
 			// only trade strikes near the money
-			if strikeI.Sub(gSPXPrice).Abs().Cmp(*moneynessFlag) > 0 ||
-				strikeJ.Sub(gSPXPrice).Abs().Cmp(*moneynessFlag) > 0 {
+			if strikeI.Sub(gSPX.Price).Abs().Cmp(*moneynessFlag) > 0 ||
+				strikeJ.Sub(gSPX.Price).Abs().Cmp(*moneynessFlag) > 0 {
 				continue
 			}
 
 			// skip boxes where both strikes are on the same side of money
-			if (strikeI.Cmp(gSPXPrice) > 0 && strikeJ.Cmp(gSPXPrice) > 0) ||
-				(strikeI.Cmp(gSPXPrice) < 0 && strikeJ.Cmp(gSPXPrice) < 0) {
+			if (strikeI.Cmp(gSPX.Price) > 0 && strikeJ.Cmp(gSPX.Price) > 0) ||
+				(strikeI.Cmp(gSPX.Price) < 0 && strikeJ.Cmp(gSPX.Price) < 0) {
 				continue
 			}
 
@@ -94,7 +94,7 @@ func boxer() {
 			}
 
 			// check if opening these legs won't clobber existing positions
-			if !spI.Call.CanBuy() || !spI.Put.CanSell() || !spJ.Call.CanSell() || !spJ.Put.CanBuy() {
+			if !canBuy(spI.Call) || !canSell(spI.Put) || !canSell(spJ.Call) || !canBuy(spJ.Put) {
 				continue
 			}
 

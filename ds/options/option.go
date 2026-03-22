@@ -1,4 +1,4 @@
-package main
+package options
 
 import (
 	"dropbear/broker/databento"
@@ -27,17 +27,26 @@ type Option struct {
 	AskSize uint32                    // number of contracts available at the best ask price
 	TS      clocky.Time               // timestamp of when Bid / Ask was last updated
 	IV      decimal.Decimal           // implied volatility at last tick
+	Price   decimal.Decimal           // Black-76 price at last tick
 	Delta   decimal.Decimal           // Black-76 delta at last tick (dPrice/dES)
 	Gamma   decimal.Decimal           // Black-76 gamma at last tick (d²Price/dES²)
 	Theta   decimal.Decimal           // Black-76 theta at last tick (dPrice/dES)
 	Vega    decimal.Decimal           // Black-76 theta at last tick (dPrice/dES)
 	mid     decimal.Decimal           // market price when last tick was received
-	es      decimal.Decimal           // es price when last tick was received
+	fut     decimal.Decimal           // es price when last tick was received
 }
 
 // IsReady returns true if the option has a two-sided quote and greeks.
 func (o *Option) IsReady() bool {
 	return (o.Got & GotGreeks) == GotGreeks
+}
+
+// IntrinsicValue returns the intrinsic value of the option contract at the given underlying price.
+func (c *Option) IntrinsicValue(underlyingPrice decimal.Decimal) decimal.Decimal {
+	if c.Class == 'C' {
+		return underlyingPrice.Sub(c.Strike).Max(decimal.Zero)
+	}
+	return c.Strike.Sub(underlyingPrice).Max(decimal.Zero)
 }
 
 // MarketPrice returns the mid price of the option, or zero if no quote is available.
@@ -50,11 +59,11 @@ func (o *Option) MarketPrice() decimal.Decimal {
 // This predicts what the option mid should be right now, even if the OPRA quote is stale,
 // by applying: fair = lastMid + delta * (currentES - esAtLastQuote).
 // Returns the stale market mid if delta hasn't been computed yet.
-func (o *Option) FairPrice() decimal.Decimal {
-	if !o.IsReady() {
+func (o *Option) FairPrice(futuresPrice decimal.Decimal) decimal.Decimal {
+	if !o.IsReady() || futuresPrice.IsZero() || o.fut.IsZero() {
 		return o.MarketPrice()
 	}
-	dES := gES.Price.Sub(o.es)
+	dES := futuresPrice.Sub(o.fut)
 	adj := o.Delta.Mul(dES)
 	fair := o.mid.Add(adj)
 	if !fair.IsPositive() {
@@ -65,7 +74,7 @@ func (o *Option) FairPrice() decimal.Decimal {
 
 // String returns a human friendly string representation of the option, e.g. "SPXW 4000.00 C 2024-06-21".
 func (o *Option) String() string {
-	return fmt.Sprintf("%s %s %s %d-%02d-%02d", o.Sym, o.Strike, o.Class, o.Year, o.Month, o.Day)
+	return fmt.Sprintf("%s %s %4s %d-%02d-%02d", o.Sym, o.Strike, o.Class, o.Year, o.Month, o.Day)
 }
 
 // OSI returns the OSI code for the option, e.g. "SPXW240621C04000000".
@@ -73,30 +82,18 @@ func (o *Option) OSI() string {
 	return osi.Encode(o.Sym, o.Strike, byte(o.Class), o.Year, o.Month, o.Day)
 }
 
-// CanBuy returns true if we can buy this option, i.e. it won't close an existing short position.
-func (o *Option) CanBuy() bool {
-	return !GetHoldings(o.OSI()).IsNegative() &&
-		!gRestrictedToSelling.Contains(o.ID)
-}
-
-// CanSell returns true if we can sell this option, i.e. it won't close an existing long position.
-func (o *Option) CanSell() bool {
-	return !GetHoldings(o.OSI()).IsPositive() &&
-		!gRestrictedToBuying.Contains(o.ID)
-}
-
 // ComputeGreeks recomputes the Black-76 delta from the current market mid and SPX price.
 // Called on each fresh option tick after Bid/Ask/SPX are updated.
-func (o *Option) ComputeGreeks() {
-	if (o.Got&(GotBid|GotAsk)) != (GotBid|GotAsk) && gSPXPrice.IsPositive() && gES != nil && gES.Price.IsPositive() {
+func (o *Option) ComputeGreeks(underlyingPrice, riskFreeRate, futuresPrice decimal.Decimal) {
+	if (o.Got&(GotBid|GotAsk)) != (GotBid|GotAsk) || !underlyingPrice.IsPositive() {
 		o.Got &^= GotGreeks
 		return
 	}
-	o.es = gES.Price
+	o.fut = futuresPrice
 	o.mid = o.MarketPrice()
-	F := gSPXPrice.Float64()
+	F := underlyingPrice.Float64()
 	K := o.Strike.Float64()
-	r := riskFreeRate()
+	r := riskFreeRate.Float64()
 	T := o.timeToExpiry()
 	if T <= 0 {
 		o.Got &^= GotGreeks
@@ -107,15 +104,17 @@ func (o *Option) ComputeGreeks() {
 		o.Got &^= GotGreeks
 		return
 	}
-	o.Vega = decimal.FromFloat64(black76.Vega(F, K, r, T, iv))
-	o.Gamma = decimal.FromFloat64(black76.Gamma(F, K, r, T, iv))
+	var price, delta, theta, gamma, vega float64
 	if o.Class == databento.InstrumentClassCall {
-		o.Delta = decimal.FromFloat64(black76.CallDelta(F, K, r, T, iv))
-		o.Theta = decimal.FromFloat64(black76.CallTheta(F, K, r, T, iv))
+		price, delta, theta, gamma, vega = black76.Call(F, K, r, T, iv)
 	} else {
-		o.Delta = decimal.FromFloat64(black76.PutDelta(F, K, r, T, iv))
-		o.Theta = decimal.FromFloat64(black76.PutTheta(F, K, r, T, iv))
+		price, delta, theta, gamma, vega = black76.Put(F, K, r, T, iv)
 	}
+	o.Price = decimal.FromFloat64(price)
+	o.Delta = decimal.FromFloat64(delta)
+	o.Theta = decimal.FromFloat64(theta)
+	o.Gamma = decimal.FromFloat64(gamma)
+	o.Vega = decimal.FromFloat64(vega)
 	o.IV = decimal.FromFloat64(iv)
 	o.Got |= GotGreeks
 }

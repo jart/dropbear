@@ -3,29 +3,24 @@ package main
 import (
 	"dropbear/broker/databento"
 	"dropbear/decimal"
+	"dropbear/ds/options"
 )
 
 var (
-	tick05  = decimal.Parse("0.05")
-	tick10  = decimal.Parse("0.10")
-	three   = decimal.FromInt(3)
-	fifteen = decimal.FromInt(15)
+	tick05      = decimal.Parse("0.05")
+	tick10      = decimal.Parse("0.10")
+	defaultRate = decimal.Parse("0.04")
+	three       = decimal.FromInt(3)
+	fifteen     = decimal.FromInt(15)
+	hundred     = decimal.FromInt(100)
 )
 
-func compareOptionByStrike(a, b *Option) int {
-	return a.Strike.Cmp(b.Strike)
-}
-
-func compareStrikes(a, b *Strike) int {
-	return a.Strike().Cmp(b.Strike())
-}
-
 // riskFreeRate returns the annualized risk-free rate from the SR1 futures price.
-func riskFreeRate() float64 {
+func riskFreeRate() decimal.Decimal {
 	if gSR1 == nil || gSR1.Price.IsZero() {
-		return 0.04 // fallback
+		return defaultRate
 	}
-	return (100.0 - gSR1.Price.Float64()) / 100.0
+	return hundred.Sub(gSR1.Price).DivInt(100)
 }
 
 // quantizeTruncateSPX rounds to the SPX tick size for buying.
@@ -108,4 +103,16 @@ func dbnPrice(p int64) decimal.Decimal {
 		return decimal.Zero
 	}
 	return decimal.Decimal(p / 1000)
+}
+
+// canBuy returns true if we can buy this option, i.e. it won't close an existing short position.
+func canBuy(o *options.Option) bool {
+	return !GetHoldings(o.OSI()).IsNegative() &&
+		!gRestrictedToSelling.Contains(o.ID)
+}
+
+// canSell returns true if we can sell this option, i.e. it won't close an existing long position.
+func canSell(o *options.Option) bool {
+	return !GetHoldings(o.OSI()).IsPositive() &&
+		!gRestrictedToBuying.Contains(o.ID)
 }

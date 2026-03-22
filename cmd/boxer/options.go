@@ -3,13 +3,14 @@ package main
 import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
+	"dropbear/ds/options"
 	"dropbear/ds/osi"
 	"io"
 	"log"
 	"time"
 )
 
-func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- *databento.CMBP1) {
+func streamOptions(key databento.ApiKey, defs chan<- *options.Option, ticks chan<- *databento.CMBP1) {
 	client, err := databento.Dial("OPRA.PILLAR", key)
 	if err != nil {
 		log.Fatalf("dial: %v", err)
@@ -56,7 +57,7 @@ func streamOptions(key databento.ApiKey, defs chan<- *Option, ticks chan<- *data
 			if year != todayYear || time.Month(month) != todayMonth || day != todayDay {
 				continue
 			}
-			defs <- &Option{
+			defs <- &options.Option{
 				ID:     id,
 				Class:  databento.InstrumentClass(class),
 				Sym:    sym,

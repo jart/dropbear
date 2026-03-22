@@ -7,6 +7,7 @@ import (
 	"dropbear/broker/schwab"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/ds/options"
 	"dropbear/ds/symbol"
 	"dropbear/loggy"
 
@@ -34,18 +35,17 @@ var (
 	gES                  *Future
 	gSR1                 *Future
 	gSchwabClient        *schwab.Client
-	gSPXPrice            decimal.Decimal
 	gTotalFees           decimal.Decimal
+	gSPX                 = options.NewOptions()
 	gFuturesByID         = make(map[uint32]*Future)
-	gOptionsByID         = make(map[uint32]*Option)
-	gOptionsByOSI        = make(map[string]*Option)
+	gOptionsByID         = make(map[uint32]*options.Option)
+	gOptionsByOSI        = make(map[string]*options.Option)
 	gLegsByOrderID       = make(map[schwab.OrderID]*Leg)
-	gOptionsByStrike     = treeset.NewWith(compareOptionByStrike)
+	gOptionsByStrike     = treeset.NewWith(options.CompareOptionByStrike)
 	gRestrictedToBuying  = hashset.New[uint32]()
 	gRestrictedToSelling = hashset.New[uint32]()
 	gHoldings            = treemap.New[string, decimal.Decimal]()
-	gStrikes             = treemap.New[decimal.Decimal, *Strike]()
-	gPendingStrikes      = treemap.New[decimal.Decimal, *Strike]()
+	gPendingStrikes      = treemap.New[decimal.Decimal, *options.Strike]()
 	gLegUpdates          = make(chan LegUpdate, 20)
 	gUnfilledBulls       = linkedhashset.New[*Leg]()
 	gUnfilledBears       = linkedhashset.New[*Leg]()
@@ -68,7 +68,7 @@ func main() {
 	InitHoldings()
 
 	futureDefs := make(chan *Future, 64)
-	optionDefs := make(chan *Option, 64)
+	optionDefs := make(chan *options.Option, 64)
 	futureTicks := make(chan *databento.MBP1, 256)
 	optionTicks := make(chan *databento.CMBP1, 256)
 	orderUpdates := gSchwabClient.OrderUpdates()

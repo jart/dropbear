@@ -1,6 +1,8 @@
-package main
+package options
 
-import "dropbear/decimal"
+import (
+	"dropbear/decimal"
+)
 
 type Strike struct {
 	Call *Option

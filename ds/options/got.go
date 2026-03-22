@@ -1,4 +1,4 @@
-package main
+package options
 
 type Got uint8
 
