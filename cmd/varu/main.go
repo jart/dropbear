@@ -55,6 +55,7 @@ var (
 	gAbortSimulations  bool
 	gBaselinePayoff    decimal.Decimal
 	gBaselineWorst     decimal.Decimal
+	gBaselineDelta     decimal.Decimal
 )
 
 var (
@@ -150,6 +151,7 @@ func onThink() {
 	gSimulationCounter = 0
 	gBaselinePayoff = computeExpectedPayoff()
 	gBaselineWorst = computeRisk()
+	gBaselineDelta = computeDelta()
 	em := gSPX.ExpectedMove().Mul(*sigmasFlag)
 	lo := gSPX.Price.Sub(em)
 	hi := gSPX.Price.Add(em)
@@ -256,17 +258,17 @@ func sell(option *options.Option) {
 }
 
 func canBuy(option *options.Option) bool {
-	return true
-	// pos1, _ := gPositions.Get(option.OSI())
-	// pos2, _ := gStagedPositions.Get(option.OSI())
-	// return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
+	// return true
+	pos1, _ := gPositions.Get(option.OSI())
+	pos2, _ := gStagedPositions.Get(option.OSI())
+	return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
 }
 
 func canSell(option *options.Option) bool {
-	return true
-	// pos1, _ := gPositions.Get(option.OSI())
-	// pos2, _ := gStagedPositions.Get(option.OSI())
-	// return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
+	// return true
+	pos1, _ := gPositions.Get(option.OSI())
+	pos2, _ := gStagedPositions.Get(option.OSI())
+	return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
 }
 
 func endSimulation(strategy string) bool {
@@ -285,7 +287,9 @@ func endSimulation(strategy string) bool {
 	simulation.Payoff = computeExpectedPayoff()
 	payoffImprovement := simulation.Payoff.Sub(gBaselinePayoff)
 	riskReduction := simulation.Worst.Sub(gBaselineWorst).Max(decimal.Zero)
-	simulation.Score = payoffImprovement.Add(riskReduction.DivInt(10))
+	simDelta := computeDelta()
+	deltaImprovement := gBaselineDelta.Abs().Sub(simDelta.Abs()).Max(decimal.Zero)
+	simulation.Score = payoffImprovement.Add(riskReduction.DivInt(10)).Add(deltaImprovement)
 	if simulation.Worst.Cmp(gBaselinePayoff.Sub(*riskFlag)) >= 0 {
 		gSimulations.Add(simulation)
 	}
@@ -445,6 +449,14 @@ func computeExpectedPayoff() decimal.Decimal {
 		})
 	}
 	return payoff
+}
+
+func computeDelta() decimal.Decimal {
+	var delta decimal.Decimal
+	iteratePositions(func(sym string, pos decimal.Decimal) {
+		delta = delta.Add(gOptionsByOSI[sym].Delta.Mul(pos).Mul(kMultiplier))
+	})
+	return delta
 }
 
 func computeGreeks() (delta, gamma, theta, vega decimal.Decimal) {
