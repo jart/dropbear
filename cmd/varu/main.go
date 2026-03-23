@@ -134,7 +134,27 @@ func onThink() {
 	if gSimulations.Empty() {
 		return
 	}
-	// TODO: take first simulation and add it to gPositions and gCash, then clear gSimulations
+	it := gSimulations.Iterator()
+	it.Next()
+	sim := it.Value()
+	gCash = gCash.Add(sim.Price.Mul(kMultiplier))
+	for legIt := sim.Legs.Iterator(); legIt.Next(); {
+		sym, pos := legIt.Key(), legIt.Value()
+		existing, _ := gPositions.Get(sym)
+		gPositions.Put(sym, existing.Add(pos))
+	}
+	gNextTradeTime = clocky.Now().Add(*cooldownFlag)
+	log.Printf("trade: price=%s payoff=%s best=%s worst=%s", sim.Price, sim.Payoff.Truncate(), sim.Best, sim.Worst)
+	for legIt := sim.Legs.Iterator(); legIt.Next(); {
+		sym, pos := legIt.Key(), legIt.Value()
+		option := gOptionsByOSI[sym]
+		if pos.IsPositive() {
+			log.Printf("  buy  %s", option)
+		} else {
+			log.Printf("  sell %s", option)
+		}
+	}
+	gSimulations.Clear()
 }
 
 func simulateBuyCalls(hi decimal.Decimal) {
@@ -238,11 +258,19 @@ func endSimulation() bool {
 }
 
 func choosePriceForSimulation(simulation *Simulation) {
-	if simulation.Legs.Size() == 1 {
-		// TODO: cross the spread by one tick
-	} else {
-		// TODO: compute simulation.Price (limit price) of multi-leg order
+	var price decimal.Decimal
+	for it := simulation.Legs.Iterator(); it.Next(); {
+		sym, pos := it.Key(), it.Value()
+		o := gOptionsByOSI[sym]
+		if pos.IsPositive() {
+			// buying: cross from ask toward mid by one tick
+			price = price.Sub(decTickSPX(o.Ask))
+		} else {
+			// selling: cross from bid toward mid by one tick
+			price = price.Add(incTickSPX(o.Bid))
+		}
 	}
+	simulation.Price = price
 }
 
 func onHeartbeat() {
@@ -251,7 +279,7 @@ func onHeartbeat() {
 	pay := computeExpectedPayoff()
 	best, worst := computeRisk()
 	delta, gamma, theta, vega := computeGreeks()
-	log.Printf("cash:%8s liq:%7s eod:%7s best:%7s worst:%7s payoff:%7s delta:%7s gamma:%7s theta:%7s vega:%7s",
+	log.Printf("cash:%s liq:%s eod:%s best:%s worst:%s payoff:%s delta:%s gamma:%s theta:%s vega:%s",
 		gCash, liq.Truncate(), eod, best, worst, pay.Truncate(),
 		delta.Format(2), gamma.Format(2), theta.Format(2), vega.Format(2))
 }
@@ -340,14 +368,14 @@ func computeExpectedPayoff() decimal.Decimal {
 			probs = append(probs, strikeProb{strike, prob})
 			probSum = probSum.Add(prob)
 		} else {
-			log.Printf("warning: strike %s has bad probability %s (spx=%s | call got=%s bid=%s/%d ask=%s/%d | put got=%s bid=%s/%d ask=%s/%d)\n",
-				strike.Price, prob, gSPX.Price,
-				strike.Call.Got,
-				strike.Call.Bid, strike.Call.BidSize,
-				strike.Call.Ask, strike.Call.AskSize,
-				strike.Put.Got,
-				strike.Put.Bid, strike.Put.BidSize,
-				strike.Put.Ask, strike.Put.AskSize)
+			// log.Printf("warning: strike %s has bad probability %s (spx=%s | call got=%s bid=%s/%d ask=%s/%d | put got=%s bid=%s/%d ask=%s/%d)\n",
+			// 	strike.Price, prob, gSPX.Price,
+			// 	strike.Call.Got,
+			// 	strike.Call.Bid, strike.Call.BidSize,
+			// 	strike.Call.Ask, strike.Call.AskSize,
+			// 	strike.Put.Got,
+			// 	strike.Put.Bid, strike.Put.BidSize,
+			// 	strike.Put.Ask, strike.Put.AskSize)
 		}
 	})
 	if len(probs) == 0 || !probSum.IsPositive() {
