@@ -25,8 +25,9 @@ var (
 	defsFlag      = flag.String("defs", "", "path to DBN file containing SPX definitions")
 	sigmasFlag    = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
 	riskFlag      = decimal.Flag("risk", "15_000", "maximum risk allowed")
+	execFlag      = flag.String("exec", "mid", "order execution strategy (mid, take, or make)")
 	thinkFlag     = clocky.DurationFlag("think", "100ms", "interval between trading analysis")
-	cooldownFlag  = clocky.DurationFlag("cooldown", "8s", "interval between trading decisions")
+	cooldownFlag  = clocky.DurationFlag("cooldown", "1m", "interval between trading decisions")
 	heartbeatFlag = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
 )
 
@@ -61,8 +62,8 @@ var (
 
 type Simulation struct {
 	Legs     *treemap.Map[string, decimal.Decimal]
+	Strategy string
 	Price    decimal.Decimal
-	Best     decimal.Decimal
 	Worst    decimal.Decimal
 	Payoff   decimal.Decimal
 	Sequence int
@@ -134,9 +135,15 @@ func onThink() {
 	if gSimulations.Empty() {
 		return
 	}
+	currentPayoff := computeExpectedPayoff()
 	it := gSimulations.Iterator()
 	it.Next()
 	sim := it.Value()
+	if sim.Payoff.Cmp(currentPayoff) <= 0 {
+		gSimulations.Clear()
+		return
+	}
+	gNextTradeTime = clocky.Now().Add(*cooldownFlag)
 	gCash = gCash.Add(sim.Price.Mul(kMultiplier))
 	for legIt := sim.Legs.Iterator(); legIt.Next(); {
 		sym, pos := legIt.Key(), legIt.Value()
@@ -144,7 +151,7 @@ func onThink() {
 		gPositions.Put(sym, existing.Add(pos))
 	}
 	gNextTradeTime = clocky.Now().Add(*cooldownFlag)
-	log.Printf("trade: price=%s payoff=%s best=%s worst=%s", sim.Price, sim.Payoff.Truncate(), sim.Best, sim.Worst)
+	log.Printf("%s: price=%s payoff=%s worst=%s", sim.Strategy, sim.Price, sim.Payoff.Truncate(), sim.Worst)
 	for legIt := sim.Legs.Iterator(); legIt.Next(); {
 		sym, pos := legIt.Key(), legIt.Value()
 		option := gOptionsByOSI[sym]
@@ -160,14 +167,14 @@ func onThink() {
 func simulateBuyCalls(hi decimal.Decimal) {
 	for strike := gSPX.AtTheMoney; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
 		buy(strike.Call)
-		endSimulation()
+		endSimulation("buy call")
 	}
 }
 
 func simulateBuyPuts(lo decimal.Decimal) {
 	for strike := gSPX.AtTheMoney; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
 		buy(strike.Put)
-		endSimulation()
+		endSimulation("buy put")
 	}
 }
 
@@ -175,7 +182,7 @@ func simulateSellCallVerticals(hi decimal.Decimal) {
 	for strike := gSPX.AtTheMoney.Next; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
 		sell(gSPX.AtTheMoney.Call)
 		buy(strike.Call)
-		endSimulation()
+		endSimulation("sell call vertical")
 	}
 }
 
@@ -183,7 +190,7 @@ func simulateSellPutVerticals(lo decimal.Decimal) {
 	for strike := gSPX.AtTheMoney.Prev; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
 		sell(gSPX.AtTheMoney.Put)
 		buy(strike.Put)
-		endSimulation()
+		endSimulation("sell put vertical")
 	}
 }
 
@@ -191,7 +198,7 @@ func simulateBuyCombo(lo, hi decimal.Decimal) {
 	for _, strike, _ := gSPX.Strikes.Floor(lo); strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
 		buy(strike.Call)
 		sell(strike.Put)
-		if endSimulation() {
+		if endSimulation("buy combo") {
 			break
 		}
 	}
@@ -201,7 +208,7 @@ func simulateSellCombo(lo, hi decimal.Decimal) {
 	for _, strike, _ := gSPX.Strikes.Floor(lo); strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
 		sell(strike.Call)
 		buy(strike.Put)
-		if endSimulation() {
+		if endSimulation("sell combo") {
 			break
 		}
 	}
@@ -235,19 +242,19 @@ func canSell(option *options.Option) bool {
 	return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
 }
 
-func endSimulation() bool {
+func endSimulation(strategy string) bool {
 	if gAbortSimulations {
 		gAbortSimulations = false
 		gStagedPositions.Clear()
 		gStagedCash = decimal.Zero
 		return false
 	}
-	simulation := &Simulation{Legs: gStagedPositions}
+	simulation := &Simulation{Legs: gStagedPositions, Strategy: strategy}
 	simulation.Sequence = gSimulationCounter
 	gSimulationCounter++
 	choosePriceForSimulation(simulation)
 	gStagedCash = simulation.Price.Mul(kMultiplier)
-	simulation.Best, simulation.Worst = computeRisk()
+	simulation.Worst = computeRisk()
 	simulation.Payoff = computeExpectedPayoff()
 	if simulation.Worst.Cmp((*riskFlag).Neg()) >= 0 {
 		gSimulations.Add(simulation)
@@ -262,12 +269,32 @@ func choosePriceForSimulation(simulation *Simulation) {
 	for it := simulation.Legs.Iterator(); it.Next(); {
 		sym, pos := it.Key(), it.Value()
 		o := gOptionsByOSI[sym]
-		if pos.IsPositive() {
-			// buying: cross from ask toward mid by one tick
-			price = price.Sub(decTickSPX(o.Ask))
-		} else {
-			// selling: cross from bid toward mid by one tick
-			price = price.Add(incTickSPX(o.Bid))
+		switch *execFlag {
+		case "mid":
+			mid := o.MarketPrice()
+			if pos.IsPositive() {
+				price = price.Sub(mid)
+			} else {
+				price = price.Add(mid)
+			}
+		case "take":
+			if pos.IsPositive() {
+				// buying: cross from ask toward mid by one tick
+				price = price.Sub(decTickSPX(o.Ask))
+			} else {
+				// selling: cross from bid toward mid by one tick
+				price = price.Add(incTickSPX(o.Bid))
+			}
+		case "make":
+			if pos.IsPositive() {
+				// buying: cross from ask toward mid by one tick
+				price = price.Sub(decTickSPX(o.Ask))
+			} else {
+				// selling: cross from bid toward mid by one tick
+				price = price.Add(incTickSPX(o.Bid))
+			}
+		default:
+			panic("invalid exec strategy: " + *execFlag)
 		}
 	}
 	simulation.Price = price
@@ -277,10 +304,10 @@ func onHeartbeat() {
 	liq := computeLiquidationValue()
 	eod := computeSettlementAt(gSPX.Price)
 	pay := computeExpectedPayoff()
-	best, worst := computeRisk()
+	worst := computeRisk()
 	delta, gamma, theta, vega := computeGreeks()
-	log.Printf("cash:%s liq:%s eod:%s best:%s worst:%s payoff:%s delta:%s gamma:%s theta:%s vega:%s",
-		gCash, liq.Truncate(), eod, best, worst, pay.Truncate(),
+	log.Printf("cash:%s liq:%s eod:%s worst:%s payoff:%s delta:%s gamma:%s theta:%s vega:%s",
+		gCash, liq.Truncate(), eod, worst, pay.Truncate(),
 		delta.Format(2), gamma.Format(2), theta.Format(2), vega.Format(2))
 }
 
@@ -325,13 +352,14 @@ func iterateStrikes(f func(*options.Strike)) {
 	}
 }
 
-func computeRisk() (best, worst decimal.Decimal) {
-	iterateStrikes(func(strike *options.Strike) {
+func computeRisk() decimal.Decimal {
+	worst := decimal.Zero
+	for it := gSPX.Strikes.Iterator(); it.Next(); {
+		strike := it.Value()
 		settlement := computeSettlementAt(strike.Price)
 		worst = worst.Min(settlement)
-		best = best.Max(settlement)
-	})
-	return best, worst
+	}
+	return worst
 }
 
 func computeSettlementAt(underlyingPrice decimal.Decimal) decimal.Decimal {
