@@ -14,21 +14,24 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
+	"runtime/pprof"
 
 	"github.com/emirpasic/gods/v2/maps/treemap"
 	"github.com/emirpasic/gods/v2/sets/treeset"
 )
 
 var (
-	dateFlag      = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
-	quotesFlag    = flag.String("quotes", "", "path to DBN file containing SPX quotes")
-	defsFlag      = flag.String("defs", "", "path to DBN file containing SPX definitions")
-	sigmasFlag    = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
-	riskFlag      = decimal.Flag("risk", "15_000", "maximum risk allowed")
-	execFlag      = flag.String("exec", "mid", "order execution strategy (mid, take, or make)")
-	thinkFlag     = clocky.DurationFlag("think", "100ms", "interval between trading analysis")
-	cooldownFlag  = clocky.DurationFlag("cooldown", "1m", "interval between trading decisions")
-	heartbeatFlag = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
+	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
+	quotesFlag     = flag.String("quotes", "", "path to DBN file containing SPX quotes")
+	defsFlag       = flag.String("defs", "", "path to DBN file containing SPX definitions")
+	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
+	riskFlag       = decimal.Flag("risk", "15_000", "maximum risk allowed")
+	execFlag       = flag.String("exec", "mid", "order execution strategy (mid, take, or make)")
+	thinkFlag      = clocky.DurationFlag("think", "250ms", "interval between trading analysis")
+	cooldownFlag   = clocky.DurationFlag("cooldown", "10s", "interval between trading decisions")
+	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
+	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 )
 
 const (
@@ -50,6 +53,8 @@ var (
 	gSimulationCounter int
 	gNextTradeTime     clocky.Time
 	gAbortSimulations  bool
+	gBaselinePayoff    decimal.Decimal
+	gBaselineWorst     decimal.Decimal
 )
 
 var (
@@ -66,6 +71,7 @@ type Simulation struct {
 	Price    decimal.Decimal
 	Worst    decimal.Decimal
 	Payoff   decimal.Decimal
+	Score    decimal.Decimal // payoff improvement + risk reduction
 	Sequence int
 }
 
@@ -75,6 +81,25 @@ func main() {
 	black76.DaysPerYear = 252
 	black76.HoursPerDay = 6.5
 	loadDefinitions(*defsFlag)
+	if *flagCPUProfile != "" {
+		f, err := os.Create(*flagCPUProfile)
+		if err != nil {
+			log.Fatalf("could not create CPU profile: %v", err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatalf("could not start CPU profile: %v", err)
+		}
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		go func() {
+			<-c
+			pprof.StopCPUProfile()
+			f.Close()
+			os.Exit(0)
+		}()
+		defer pprof.StopCPUProfile()
+		defer f.Close()
+	}
 	quoteReader, err := databento.OpenFileReader(*quotesFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", *quotesFlag, err)
@@ -123,6 +148,8 @@ func main() {
 
 func onThink() {
 	gSimulationCounter = 0
+	gBaselinePayoff = computeExpectedPayoff()
+	gBaselineWorst = computeRisk()
 	em := gSPX.ExpectedMove().Mul(*sigmasFlag)
 	lo := gSPX.Price.Sub(em)
 	hi := gSPX.Price.Add(em)
@@ -135,22 +162,20 @@ func onThink() {
 	if gSimulations.Empty() {
 		return
 	}
-	currentPayoff := computeExpectedPayoff()
 	it := gSimulations.Iterator()
 	it.Next()
 	sim := it.Value()
-	if sim.Payoff.Cmp(currentPayoff) <= 0 {
+	if !sim.Score.IsPositive() {
 		gSimulations.Clear()
 		return
 	}
-	gNextTradeTime = clocky.Now().Add(*cooldownFlag)
 	gCash = gCash.Add(sim.Price.Mul(kMultiplier))
+	gNextTradeTime = clocky.Now().Add(*cooldownFlag)
 	for legIt := sim.Legs.Iterator(); legIt.Next(); {
 		sym, pos := legIt.Key(), legIt.Value()
 		existing, _ := gPositions.Get(sym)
 		gPositions.Put(sym, existing.Add(pos))
 	}
-	gNextTradeTime = clocky.Now().Add(*cooldownFlag)
 	log.Printf("%s: price=%s payoff=%s worst=%s", sim.Strategy, sim.Price, sim.Payoff.Truncate(), sim.Worst)
 	for legIt := sim.Legs.Iterator(); legIt.Next(); {
 		sym, pos := legIt.Key(), legIt.Value()
@@ -231,15 +256,17 @@ func sell(option *options.Option) {
 }
 
 func canBuy(option *options.Option) bool {
-	pos1, _ := gPositions.Get(option.OSI())
-	pos2, _ := gStagedPositions.Get(option.OSI())
-	return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
+	return true
+	// pos1, _ := gPositions.Get(option.OSI())
+	// pos2, _ := gStagedPositions.Get(option.OSI())
+	// return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
 }
 
 func canSell(option *options.Option) bool {
-	pos1, _ := gPositions.Get(option.OSI())
-	pos2, _ := gStagedPositions.Get(option.OSI())
-	return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
+	return true
+	// pos1, _ := gPositions.Get(option.OSI())
+	// pos2, _ := gStagedPositions.Get(option.OSI())
+	// return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
 }
 
 func endSimulation(strategy string) bool {
@@ -256,7 +283,10 @@ func endSimulation(strategy string) bool {
 	gStagedCash = simulation.Price.Mul(kMultiplier)
 	simulation.Worst = computeRisk()
 	simulation.Payoff = computeExpectedPayoff()
-	if simulation.Worst.Cmp((*riskFlag).Neg()) >= 0 {
+	payoffImprovement := simulation.Payoff.Sub(gBaselinePayoff)
+	riskReduction := simulation.Worst.Sub(gBaselineWorst).Max(decimal.Zero)
+	simulation.Score = payoffImprovement.Add(riskReduction.DivInt(10))
+	if simulation.Worst.Cmp(gBaselinePayoff.Sub(*riskFlag)) >= 0 {
 		gSimulations.Add(simulation)
 	}
 	gStagedPositions = treemap.New[string, decimal.Decimal]()
@@ -279,19 +309,15 @@ func choosePriceForSimulation(simulation *Simulation) {
 			}
 		case "take":
 			if pos.IsPositive() {
-				// buying: cross from ask toward mid by one tick
 				price = price.Sub(decTickSPX(o.Ask))
 			} else {
-				// selling: cross from bid toward mid by one tick
 				price = price.Add(incTickSPX(o.Bid))
 			}
 		case "make":
 			if pos.IsPositive() {
-				// buying: cross from ask toward mid by one tick
-				price = price.Sub(decTickSPX(o.Ask))
+				price = price.Sub(o.Bid)
 			} else {
-				// selling: cross from bid toward mid by one tick
-				price = price.Add(incTickSPX(o.Bid))
+				price = price.Add(o.Ask)
 			}
 		default:
 			panic("invalid exec strategy: " + *execFlag)
@@ -601,9 +627,9 @@ func decTickSPX(price decimal.Decimal) decimal.Decimal {
 }
 
 func compareSimulations(a, b *Simulation) int {
-	res := a.Payoff.Cmp(b.Payoff)
+	res := a.Score.Cmp(b.Score)
 	if res != 0 {
-		return -res
+		return -res // highest score first
 	}
 	return a.Sequence - b.Sequence
 }
