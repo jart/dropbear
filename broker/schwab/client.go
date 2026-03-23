@@ -87,7 +87,7 @@ func (c *Client) RequestJSON(client *http.Client, method, path string, requestBo
 			return fmt.Errorf("schwab: %s %s returned %d: %s", method, path, resp.StatusCode, body)
 		}
 		resp.Body.Close()
-		delay := time.Duration(1<<min(tries, 15)) * time.Millisecond
+		delay := time.Duration(100<<min(tries, 8)) * time.Millisecond
 		log.Printf("schwab: got %d read reset, retrying in %v (attempt %d)", resp.StatusCode, delay, tries)
 		time.Sleep(delay)
 		tries++
@@ -168,7 +168,7 @@ func (c *Client) Request(client *http.Client, method, path string, body []byte) 
 			if !netty.IsRetryableHTTPError(err) {
 				return nil, err
 			}
-			delay := time.Duration(1<<min(tries, 15)) * time.Millisecond
+			delay := time.Duration(100<<min(tries, 8)) * time.Millisecond
 			log.Printf("schwab: %v, retrying in %v (attempt %d)", err, delay, tries)
 			time.Sleep(delay)
 			tries++
@@ -179,13 +179,48 @@ func (c *Client) Request(client *http.Client, method, path string, body []byte) 
 		if !netty.IsRetryableHTTPStatusCode(resp.StatusCode) {
 			return resp, nil
 		}
+		// schwab returns 500 with a JSON body for normal errors (e.g. bad order)
+		// only retry 500 if it looks like a transient infrastructure failure
+		if resp.StatusCode == http.StatusInternalServerError {
+			if isSchwabApplicationError(resp) {
+				return resp, nil
+			}
+		}
 		statusCode := resp.StatusCode
 		resp.Body.Close()
 
 		// retry with exponential backoff
-		delay := time.Duration(1<<min(tries, 15)) * time.Millisecond
+		delay := time.Duration(100<<min(tries, 8)) * time.Millisecond
 		log.Printf("schwab: got %d, retrying in %v (attempt %d)", statusCode, delay, tries)
 		time.Sleep(delay)
 		tries++
 	}
+}
+
+// isSchwabApplicationError returns true if a 500 response is a Schwab application
+// error (JSON body with error message) rather than a transient infrastructure failure.
+// These should not be retried — they indicate a problem with the request.
+func isSchwabApplicationError(resp *http.Response) bool {
+	ct := resp.Header.Get("Content-Type")
+	return ct == "application/json" || len(ct) > 16 && ct[:16] == "application/json"
+}
+
+// logRetryableError logs headers and body for server errors to aid debugging.
+func logRetryableError(method, path string, resp *http.Response) {
+	if resp.StatusCode < 500 {
+		return
+	}
+	body, _ := io.ReadAll(resp.Body)
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "schwab: %s %s returned %d\n", method, path, resp.StatusCode)
+	for key, vals := range resp.Header {
+		for _, val := range vals {
+			fmt.Fprintf(&buf, "  %s: %s\n", key, val)
+		}
+	}
+	if len(body) > 0 {
+		buf.WriteString("  body: ")
+		buf.Write(body)
+	}
+	log.Print(buf.String())
 }

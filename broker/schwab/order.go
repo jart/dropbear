@@ -7,17 +7,17 @@ import (
 
 // Order represents a Schwab order, both for reading responses and for building requests.
 type Order struct {
-	Session                  Session            `json:"session"`
-	Duration                 Duration           `json:"duration"`
-	OrderType                OrderType          `json:"orderType"`
-	CancelTime               clocky.Time        `json:"cancelTime,omitempty"`
-	ComplexOrderStrategyType ComplexStrategy    `json:"complexOrderStrategyType,omitempty"`
-	Quantity                 decimal.Decimal    `json:"quantity,omitempty"`
-	FilledQuantity           decimal.Decimal    `json:"filledQuantity,omitempty"`
-	RemainingQuantity        decimal.Decimal    `json:"remainingQuantity,omitempty"`
-	RequestedDestination     string             `json:"requestedDestination,omitempty"`
-	DestinationLinkName      string             `json:"destinationLinkName,omitempty"`
-	ReleaseTime              clocky.Time        `json:"releaseTime,omitempty"`
+	Session                  Session            `json:"session"`                            // controls whether the order can execute in pre/post-market
+	Duration                 Duration           `json:"duration"`                           // lets you place GTC, FOK, and IOC orders
+	OrderType                OrderType          `json:"orderType"`                          // use OrderTypeLimit for single leg orders; use OrderTypeNetCredit or OrderTypeNetDebit for multi-leg options orders
+	ComplexOrderStrategyType ComplexStrategy    `json:"complexOrderStrategyType,omitempty"` // not actually needed when placing orders
+	CancelTime               clocky.Time        `json:"cancelTime,omitempty"`               // [order history only]
+	Quantity                 decimal.Decimal    `json:"quantity,omitempty"`                 //
+	FilledQuantity           decimal.Decimal    `json:"filledQuantity,omitempty"`           // [order history only]
+	RemainingQuantity        decimal.Decimal    `json:"remainingQuantity,omitempty"`        // [order history only]
+	RequestedDestination     string             `json:"requestedDestination,omitempty"`     // schwab throws error if you try to use this
+	DestinationLinkName      string             `json:"destinationLinkName,omitempty"`      // [order history only] which PFOF processor got your order (e.g. "DFIN", "JNST", etc.)
+	ReleaseTime              clocky.Time        `json:"releaseTime,omitempty"`              // [order history only] when the order was released to the market
 	StopPrice                decimal.Decimal    `json:"stopPrice,omitempty"`
 	StopPriceLinkBasis       string             `json:"stopPriceLinkBasis,omitempty"`
 	StopPriceLinkType        string             `json:"stopPriceLinkType,omitempty"`

@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"time"
+	"os"
 
 	"dropbear/broker/schwab"
 	"dropbear/decimal"
@@ -14,10 +14,7 @@ func main() {
 	loggy.Init()
 	loggy.AlsoLogToFile()
 	client := schwab.NewClient()
-
-	// start listening for order updates before placing the order
 	updates := client.OrderUpdates()
-	time.Sleep(1 * time.Second) // wait for streamer connection to establish
 
 	orderID, err := client.CreateOrder(&schwab.Order{
 		OrderType:         schwab.OrderTypeLimit,
@@ -37,7 +34,8 @@ func main() {
 		},
 	})
 	if err != nil {
-		panic(err)
+		log.Printf("got error creating order: %v", err)
+		os.Exit(1)
 	}
 	log.Printf("created order %d", orderID)
 
