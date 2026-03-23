@@ -7,6 +7,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds/black76"
 	"dropbear/ds/options"
+	"dropbear/ds/prob"
 	"dropbear/ds/symbol"
 	"dropbear/loggy"
 	"flag"
@@ -22,12 +23,14 @@ import (
 )
 
 var (
+	backtestFlag   = flag.Bool("backtest", false, "run in backtest mode")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
 	quotesFlag     = flag.String("quotes", "", "path to DBN file containing SPX quotes")
 	defsFlag       = flag.String("defs", "", "path to DBN file containing SPX definitions")
 	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
-	riskFlag       = decimal.Flag("risk", "15_000", "maximum risk allowed")
-	execFlag       = flag.String("exec", "mid", "order execution strategy (mid, take, or make)")
+	budgetFlag     = decimal.Flag("budget", "5_000", "maximum acceptable loss at current price")
+	floorFlag      = decimal.Flag("floor", "50_000", "maximum acceptable loss in catastrophic scenario")
+	execFlag       = decimal.Flag("exec", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
 	thinkFlag      = clocky.DurationFlag("think", "250ms", "interval between trading analysis")
 	cooldownFlag   = clocky.DurationFlag("cooldown", "10s", "interval between trading decisions")
 	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
@@ -258,14 +261,12 @@ func sell(option *options.Option) {
 }
 
 func canBuy(option *options.Option) bool {
-	// return true
 	pos1, _ := gPositions.Get(option.OSI())
 	pos2, _ := gStagedPositions.Get(option.OSI())
 	return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
 }
 
 func canSell(option *options.Option) bool {
-	// return true
 	pos1, _ := gPositions.Get(option.OSI())
 	pos2, _ := gStagedPositions.Get(option.OSI())
 	return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
@@ -290,7 +291,7 @@ func endSimulation(strategy string) bool {
 	simDelta := computeDelta()
 	deltaImprovement := gBaselineDelta.Abs().Sub(simDelta.Abs()).Max(decimal.Zero)
 	simulation.Score = payoffImprovement.Add(riskReduction.DivInt(10)).Add(deltaImprovement)
-	if simulation.Worst.Cmp(gBaselinePayoff.Sub(*riskFlag)) >= 0 {
+	if checkRiskTolerance() {
 		gSimulations.Add(simulation)
 	}
 	gStagedPositions = treemap.New[string, decimal.Decimal]()
@@ -299,32 +300,24 @@ func endSimulation(strategy string) bool {
 }
 
 func choosePriceForSimulation(simulation *Simulation) {
+	// exec controls where in the spread we price:
+	//   -1 = make (bid for buys, ask for sells — most favorable)
+	//    0 = mid
+	//    1 = take (ask for buys, bid for sells — least favorable)
+	// values beyond ±1 go past the spread
 	var price decimal.Decimal
+	exec := *execFlag
 	for it := simulation.Legs.Iterator(); it.Next(); {
 		sym, pos := it.Key(), it.Value()
 		o := gOptionsByOSI[sym]
-		switch *execFlag {
-		case "mid":
-			mid := o.MarketPrice()
-			if pos.IsPositive() {
-				price = price.Sub(mid)
-			} else {
-				price = price.Add(mid)
-			}
-		case "take":
-			if pos.IsPositive() {
-				price = price.Sub(decTickSPX(o.Ask))
-			} else {
-				price = price.Add(incTickSPX(o.Bid))
-			}
-		case "make":
-			if pos.IsPositive() {
-				price = price.Sub(o.Bid)
-			} else {
-				price = price.Add(o.Ask)
-			}
-		default:
-			panic("invalid exec strategy: " + *execFlag)
+		mid := o.MarketPrice()
+		halfSpread := o.Ask.Sub(o.Bid).DivInt(2)
+		if pos.IsPositive() {
+			// buying: mid + halfSpread * exec (round down = cheaper for us)
+			price = price.Sub(quantizeTruncateSPX(mid.Add(halfSpread.Mul(exec))))
+		} else {
+			// selling: mid - halfSpread * exec (round up = more credit for us)
+			price = price.Add(quantizeAwaySPX(mid.Sub(halfSpread.Mul(exec))))
 		}
 	}
 	simulation.Price = price
@@ -390,6 +383,33 @@ func computeRisk() decimal.Decimal {
 		worst = worst.Min(settlement)
 	}
 	return worst
+}
+
+// checkRiskTolerance verifies that the simulated position's loss at every
+// strike is within the acceptable risk tolerance for that probability level.
+// Uses the normal CDF to smoothly interpolate between the everyday budget
+// (at current price) and the catastrophic floor (at extreme moves).
+func checkRiskTolerance() bool {
+	em := gSPX.ExpectedMove()
+	if !em.IsPositive() {
+		return false
+	}
+	budget := *budgetFlag
+	floor := *floorFlag
+	for it := gSPX.Strikes.Iterator(); it.Next(); {
+		strike := it.Value()
+		settlement := computeSettlementAt(strike.Price)
+		sigmas := gSPX.Price.Sub(strike.Price).Abs().Div(em).Float64()
+		// NormCDF(0)=0.5, NormCDF(3)≈0.999. We want 0σ→budget, ∞σ→floor.
+		// Scale so: 0σ→0, ∞σ→1
+		blend := (prob.NormCDF(sigmas) - 0.5) * 2    // 0 at 0σ, ~1 at 3+σ
+		maxLoss := budget.Add(floor.Sub(budget).Mul( // lerp budget→floor
+			decimal.FromFloat64(blend)))
+		if settlement.Cmp(maxLoss.Neg()) < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func computeSettlementAt(underlyingPrice decimal.Decimal) decimal.Decimal {
@@ -644,4 +664,29 @@ func compareSimulations(a, b *Simulation) int {
 		return -res // highest score first
 	}
 	return a.Sequence - b.Sequence
+}
+
+// quantizeTruncateSPX rounds to the SPX tick size for buying.
+func quantizeTruncateSPX(price decimal.Decimal) decimal.Decimal {
+	tick := optionTick(price)
+	price = price.QuantizeTruncate(tick)
+	if price.IsZero() {
+		// handle cases like 0.00/0.05 bid/ask on far otm strikes
+		price = tick
+	}
+	return price
+}
+
+// quantizeAwaySPX rounds to the SPX tick size for selling.
+func quantizeAwaySPX(price decimal.Decimal) decimal.Decimal {
+	return price.QuantizeAway(optionTick(price))
+}
+
+// optionTick returns the minimum tick size for a Penny Pilot option.
+// Options priced under $3 tick in $0.05; $3 and over tick in $0.10.
+func optionTick(price decimal.Decimal) decimal.Decimal {
+	if price.Abs().Cmp(kThree) < 0 {
+		return kTick05
+	}
+	return kTick10
 }
