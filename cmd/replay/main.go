@@ -1,4 +1,4 @@
-// replay is a tool for replaying historical 0dte SPXW option trades using historical quotes from a DBN file, e.g.
+// replay is a tool for replaying historical 0dte spxw option trades using historical quotes from a dbn file, e.g.
 // day=03-19; go run ./cmd/replay -date 2026-${day} -orders ~/scratch/schwab-orders-2026-${day}.json -defs ~/databento/SPXW/2026-${day}.definition.dbn -quotes ~/databento/SPXW/2026-${day}.cmbp-1.0dte.dbn | tee ~/scratch/boxreport-2026-${day}.txt
 package main
 
@@ -16,7 +16,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"runtime/pprof"
 	"strings"
 
 	"github.com/emirpasic/gods/v2/maps/treemap"
@@ -24,12 +23,11 @@ import (
 )
 
 var (
-	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
-	ordersFlag     = flag.String("orders", "", "path to JSON file containing Schwab orders")
-	quotesFlag     = flag.String("quotes", "", "path to DBN file containing SPX quotes")
-	defsFlag       = flag.String("defs", "", "path to DBN file containing SPX definitions")
-	sigmasFlag     = decimal.Flag("sigmas", "3", "number of sigmas of strikes to consider")
-	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
+	dateFlag   = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
+	ordersFlag = flag.String("orders", "", "path to JSON file containing Schwab orders")
+	quotesFlag = flag.String("quotes", "", "path to DBN file containing SPX quotes")
+	defsFlag   = flag.String("defs", "", "path to DBN file containing SPX definitions")
+	sigmasFlag = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
 )
 
 const (
@@ -73,18 +71,6 @@ func main() {
 	loadDefinitions(*defsFlag)
 	loadSchwabOrders(*ordersFlag)
 
-	if *flagCPUProfile != "" {
-		f, err := os.Create(*flagCPUProfile)
-		if err != nil {
-			log.Fatalf("could not create CPU profile: %v", err)
-		}
-		defer f.Close()
-		if err := pprof.StartCPUProfile(f); err != nil {
-			log.Fatalf("could not start CPU profile: %v", err)
-		}
-		defer pprof.StopCPUProfile()
-	}
-
 	// open quotes file (this is big)
 	quoteReader, err := databento.OpenFileReader(*quotesFlag)
 	if err != nil {
@@ -93,11 +79,13 @@ func main() {
 	}
 	defer quoteReader.Close()
 	if quoteReader.Metadata.Schema != databento.SchemaCMBP1 {
-		fmt.Fprintf(os.Stderr, "%s: expected quotes DBN file with schema %d, got %d\n", *quotesFlag, databento.SchemaCMBP1, quoteReader.Metadata.Schema)
+		fmt.Fprintf(os.Stderr, "%s: expected quotes DBN file with schema %d, got %d\n",
+			*quotesFlag, databento.SchemaCMBP1, quoteReader.Metadata.Schema)
 		os.Exit(1)
 	}
 
 	// consume historical quotes while replaying our trades
+	var nextSample clocky.Time
 	for {
 		rec, err := quoteReader.Read()
 		if err != nil {
@@ -112,6 +100,18 @@ func main() {
 			break
 		}
 		onOptionTick(m)
+
+		now := m.TSRecv
+		if now >= nextSample && now.ClockInt() >= 9_35_00 {
+			nextSample = now.Add(3 * clocky.Minute)
+			liq := computeLiquidationValue()
+			eod := computeSettlementAt(gSPX.Price)
+			pay := computeExpectedPayoff()
+			best, worst := computeRisk()
+			fmt.Printf("%s cash:%8s liq:%7s eod:%7s best:%7s worst:%7s payoff:%7s\n",
+				now, gCash, liq.Truncate(), eod, best, worst, pay.Truncate())
+		}
+
 		trade, ok := gTrades.Peek()
 		if !ok || trade.Time.After(m.TSRecv) {
 			continue
@@ -200,7 +200,7 @@ func computeLiquidationValue() decimal.Decimal {
 }
 
 func computeExpectedPayoff() decimal.Decimal {
-	// first pass: collect probabilities and sum them
+	// collect probabilities and sum them
 	type strikeProb struct {
 		strike *options.Strike
 		prob   decimal.Decimal
@@ -213,19 +213,23 @@ func computeExpectedPayoff() decimal.Decimal {
 			probs = append(probs, strikeProb{strike, prob})
 			probSum = probSum.Add(prob)
 		} else {
-			log.Printf("warning: strike %s has bad probability %s (spx=%s | call got=%s bid=%s ask=%s | put got=%s bid=%s ask=%s)\n",
+			log.Printf("warning: strike %s has bad probability %s (spx=%s | call got=%s bid=%s/%d ask=%s/%d | put got=%s bid=%s/%d ask=%s/%d)\n",
 				strike.Price, prob, gSPX.Price,
-				strike.Call.Got, strike.Call.Bid, strike.Call.Ask,
-				strike.Put.Got, strike.Put.Bid, strike.Put.Ask)
+				strike.Call.Got,
+				strike.Call.Bid, strike.Call.BidSize,
+				strike.Call.Ask, strike.Call.AskSize,
+				strike.Put.Got,
+				strike.Put.Bid, strike.Put.BidSize,
+				strike.Put.Ask, strike.Put.AskSize)
 		}
 	})
 	if len(probs) == 0 || !probSum.IsPositive() {
 		panic("unexpectedly found no strikes with positive probability")
 	}
-	// second pass: compute expected payoff with normalized probabilities
+	// compute expected payoff with normalized probabilities
 	payoff := gCash
 	for _, sp := range probs {
-		prob := sp.prob.Div(probSum) // normalize so they sum to 1
+		prob := sp.prob.Div(probSum)
 		for it := gPositions.Iterator(); it.Next(); {
 			sym, pos := it.Key(), it.Value()
 			intrinsic := gOptionsByOSI[sym].IntrinsicValue(sp.strike.Price)

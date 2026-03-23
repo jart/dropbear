@@ -4,8 +4,6 @@ import (
 	"dropbear/decimal"
 )
 
-const kMinProbPrice = decimal.Half
-
 type Strike struct {
 	Price decimal.Decimal
 	Call  *Option
@@ -26,8 +24,27 @@ func (s *Strike) IsReady() bool {
 // Probability returns the chance (e.g. 0.01 for 1%) that options expire at this strike.
 // This should return a positive value. If the data is missing or toxic that might change.
 func (s *Strike) Probability() decimal.Decimal {
-	// The Breeden-Litzenberger result says the risk-neutral density is the
-	// second derivative of call (or puts) price with respect to strike.
+	p := s.computeProbability()
+	if p.IsPositive() {
+		return p
+	}
+	if !s.IsReady() || s.Prev == nil || s.Next == nil {
+		return decimal.Zero
+	}
+	l := s.Prev.computeProbability()
+	r := s.Next.computeProbability()
+	if l.IsPositive() && r.IsPositive() {
+		// interpolate missing probability as the average of neighbors
+		return l.Add(r).DivInt(2)
+	}
+	return decimal.Zero
+}
+
+// computeProbability returns the probability density at this strike,
+// which is the second derivative of call/put price with respect to strike.
+func (s *Strike) computeProbability() decimal.Decimal {
+	// Breeden and Litzenberger say risk-neutral density is
+	// second derivative of call (or put) price w.r.t. strike.
 	if !s.IsReady() || s.Prev == nil || s.Next == nil ||
 		!s.Prev.Put.HasQuotes() || !s.Put.HasQuotes() && !s.Next.Put.HasQuotes() ||
 		!s.Prev.Call.HasQuotes() || !s.Call.HasQuotes() && !s.Next.Call.HasQuotes() {
@@ -45,11 +62,6 @@ func (s *Strike) Probability() decimal.Decimal {
 		a = s.Prev.Put.MarketPrice()
 		b = s.Put.MarketPrice()
 		c = s.Next.Put.MarketPrice()
-	}
-	// prices below $1 are dominated by the tick size and produce
-	// unreliable butterflies due to convexity violations
-	if b.Cmp(kMinProbPrice) < 0 {
-		return decimal.Zero
 	}
 	// we compute butterfly
 	//   a/l - b*(1/l + 1/r) + c/r
