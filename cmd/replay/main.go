@@ -35,16 +35,15 @@ const (
 )
 
 var (
-	gCash           decimal.Decimal
-	gSPX            = options.NewOptions()
-	gPositions      = treemap.New[string, decimal.Decimal]()
-	gOptionsByID    = map[uint32]*options.Option{}
-	gOptionsByOSI   = map[string]*options.Option{}
-	gTrades         = binaryheap.NewWith(compareTradeByTime)
-	gPendingStrikes = treemap.New[decimal.Decimal, *options.Strike]()
-	kRiskFreeRate   = decimal.Parse("0.035")
-	kMultiplier     = decimal.FromInt(100)
-	kTick           = decimal.FromInt(5)
+	gCash         decimal.Decimal
+	gSPX          = options.NewOptions()
+	gOptionsByID  = map[uint32]*options.Option{}
+	gOptionsByOSI = map[string]*options.Option{}
+	gPositions    = treemap.New[string, decimal.Decimal]()
+	gTrades       = binaryheap.NewWith(compareTradeByTime)
+	kRiskFreeRate = decimal.Parse("0.035")
+	kMultiplier   = decimal.FromInt(100)
+	kTick         = decimal.FromInt(5)
 )
 
 type Trade struct {

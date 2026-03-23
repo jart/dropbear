@@ -31,14 +31,14 @@ func IsMarketOpen(dt clocky.Time) bool {
 }
 
 func getOpenTime(year int, month clocky.Month, day int) clocky.Time {
-	return clocky.Date(year, month, day, 6, 30, 0, 0)
+	return clocky.Date(year, month, day, 9, 30, 0, 0, clocky.NYC)
 }
 
 func getCloseTime(year int, month clocky.Month, day int) clocky.Time {
 	if isEarlyClose(year, month, day) {
-		return clocky.Date(year, month, day, 10, 0, 0, 0)
+		return clocky.Date(year, month, day, 13, 0, 0, 0, clocky.NYC)
 	}
-	return clocky.Date(year, month, day, 13, 0, 0, 0)
+	return clocky.Date(year, month, day, 16, 0, 0, 0, clocky.NYC)
 }
 
 func isTradingDay(year int, month clocky.Month, day int) bool {

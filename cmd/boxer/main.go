@@ -43,7 +43,6 @@ var (
 	gRestrictedToBuying  = hashset.New[uint32]()
 	gRestrictedToSelling = hashset.New[uint32]()
 	gHoldings            = treemap.New[string, decimal.Decimal]()
-	gPendingStrikes      = treemap.New[decimal.Decimal, *options.Strike]()
 	gLegUpdates          = make(chan LegUpdate, 20)
 	gUnfilledBulls       = linkedhashset.New[*Leg]()
 	gUnfilledBears       = linkedhashset.New[*Leg]()

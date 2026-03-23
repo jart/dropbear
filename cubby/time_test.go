@@ -362,11 +362,11 @@ func TestGetCloseTime(t *testing.T) {
 		wantHour  int
 		wantEarly bool
 	}{
-		{"Day after Thanksgiving", clocky.Date(2026, clocky.November, 27, 12, 0, 0, 0), 10, true},
-		{"Christmas Eve", clocky.Date(2026, clocky.December, 24, 12, 0, 0, 0), 10, true},
-		{"Day before July 4 (Sat)", clocky.Date(2026, clocky.July, 2, 12, 0, 0, 0), 10, true},
-		{"Thanksgiving itself", clocky.Date(2026, clocky.November, 26, 12, 0, 0, 0), 13, false},
-		{"Random day", clocky.Date(2026, clocky.March, 15, 12, 0, 0, 0), 13, false},
+		{"Day after Thanksgiving", clocky.Date(2026, clocky.November, 27, 13, 0, 0, 0, clocky.NYC), 13, true},
+		{"Christmas Eve", clocky.Date(2026, clocky.December, 24, 13, 0, 0, 0, clocky.NYC), 13, true},
+		{"Day before July 4 (Sat)", clocky.Date(2026, clocky.July, 2, 13, 0, 0, 0, clocky.NYC), 13, true},
+		{"Thanksgiving itself", clocky.Date(2026, clocky.November, 26, 13, 0, 0, 0, clocky.NYC), 16, false},
+		{"Random day", clocky.Date(2026, clocky.March, 15, 13, 0, 0, 0, clocky.NYC), 16, false},
 	}
 	for _, tt := range tests {
 		got := GetCloseTime(tt.date)
@@ -449,7 +449,7 @@ func TestTradingDayCount(t *testing.T) {
 		for month := clocky.January; month <= clocky.December; month++ {
 			days := daysIn(year, month)
 			for day := 1; day <= days; day++ {
-				dt := clocky.Date(year, month, day, 12, 0, 0, 0)
+				dt := clocky.Date(year, month, day, 12, 0, 0, 0, clocky.NYC)
 				if IsTradingDay(dt) {
 					count++
 				}

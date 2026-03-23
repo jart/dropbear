@@ -92,9 +92,9 @@ func (t Time) ClockInt() int {
 	return hour*1_00_00 + min*1_00 + sec
 }
 
-// Date creates a Time from date and time components in California.
-func Date(year int, month Month, day, hour, min, sec, nanos int) Time {
-	t := time.Date(year, time.Month(month), day, hour, min, sec, nanos, TZ)
+// Date creates a Time from date and time components in the specified location.
+func Date(year int, month Month, day, hour, min, sec, nanos int, loc *time.Location) Time {
+	t := time.Date(year, time.Month(month), day, hour, min, sec, nanos, loc)
 	return Time(t.UnixNano())
 }
 

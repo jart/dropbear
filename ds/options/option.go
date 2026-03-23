@@ -54,7 +54,7 @@ func (o *Option) MarketPrice() decimal.Decimal {
 
 // Expiry returns the expiration time of the option.
 func (o *Option) Expiry() clocky.Time {
-	return clocky.Date(o.Year, o.Month, o.Day, 16, 0, 0, 0)
+	return clocky.Date(o.Year, o.Month, o.Day, 16, 0, 0, 0, clocky.NYC)
 }
 
 // FairPrice returns the delta-adjusted mid price using the latest ES futures price.
