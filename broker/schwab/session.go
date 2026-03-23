@@ -9,6 +9,7 @@ const (
 	SessionAM                      // pre-market session
 	SessionPM                      // after-market session
 	SessionSeamless                // seamless extended hours
+	SessionEXTO                    // extended hours (EXTO)
 )
 
 func ParseSession(s string) (Session, error) {
@@ -21,6 +22,8 @@ func ParseSession(s string) (Session, error) {
 		return SessionPM, nil
 	case "SEAMLESS":
 		return SessionSeamless, nil
+	case "EXTO":
+		return SessionEXTO, nil
 	default:
 		return 0, fmt.Errorf("unknown session: %s", s)
 	}
@@ -36,6 +39,8 @@ func (s Session) String() string {
 		return "PM"
 	case SessionSeamless:
 		return "SEAMLESS"
+	case SessionEXTO:
+		return "EXTO"
 	default:
 		panic("unknown session")
 	}
@@ -51,6 +56,8 @@ func (s Session) GoString() string {
 		return "SessionPM"
 	case SessionSeamless:
 		return "SessionSeamless"
+	case SessionEXTO:
+		return "SessionEXTO"
 	default:
 		panic("unknown session")
 	}

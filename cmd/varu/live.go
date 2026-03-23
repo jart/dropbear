@@ -220,7 +220,7 @@ func streamOptions(key databento.ApiKey, defs chan<- *options.Option, ticks chan
 
 func sendLiveOrder(sim *Simulation) {
 	orderType := schwab.OrderTypeNetCredit
-	if sim.Payoff.IsNegative() {
+	if sim.Price.IsNegative() {
 		orderType = schwab.OrderTypeNetDebit
 	}
 	order := &schwab.Order{
@@ -288,15 +288,23 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 }
 
 func cancelUnfilledOrders() {
+	var toCancel []*Simulation
 	for it := gPendingOrders.Iterator(); it.Next(); {
 		sim := it.Value()
-		if sim.OrderID != 0 {
+		if sim.OrderID != 0 && clocky.Now().Sub(sim.Created) >= *patienceFlag {
+			toCancel = append(toCancel, sim)
+		}
+	}
+	for _, sim := range toCancel {
+		go func() {
 			err := gSchwabClient.CancelOrder(sim.OrderID)
 			if err != nil {
 				log.Printf("failed to cancel order id %d for simulation %d: %v", sim.OrderID, sim.Sequence, err)
 				os.Exit(1)
 			}
-		}
+		}()
+		delete(gSimulationsByID, sim.OrderID)
+		gPendingOrders.Remove(sim)
 	}
 }
 
@@ -385,18 +393,29 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 		log.Printf("warning: order id %d not found for fill event", orderID)
 		return
 	}
-	if fill.LegStatus != "LegClosed" {
-		log.Printf("warning: leg for order id %d has unexpected leg status for fill event: %s", orderID, fill.LegStatus)
+
+	// use actual fill price and quantity from execution, not simulated price
+	sym := fill.OrderInfoForTransactionPosting.Symbol
+	qty := fill.Quantity()
+	cash := fillPrice.Mul(qty.Abs()).Mul(kMultiplier)
+	if qty.IsPositive() {
+		cash = cash.Neg() // bought: we pay cash
 	}
-	gCash = gCash.Add(sim.Price.Mul(kMultiplier))
-	for legIt := sim.Legs.Iterator(); legIt.Next(); {
-		sym, qty := legIt.Key(), legIt.Value()
-		existing, _ := gPositions.Get(sym)
-		gPositions.Put(sym, existing.Add(qty))
+	gCash = gCash.Add(cash)
+
+	// update position for this filled leg
+	existing, _ := gPositions.Get(sym)
+	gPositions.Put(sym, existing.Add(qty))
+	log.Printf("leg filled for order id %d: %s %s @ %s, route: %s, improvement: %s, fee: %s",
+		orderID, fill.OrderInfoForTransactionPosting.BuySellCode, sym, fillPrice, routeName, priceImprovement, fee)
+
+	// remove filled leg from simulation; clean up when all legs are done
+	sim.Legs.Remove(sym)
+	if sim.Legs.Empty() {
+		delete(gSimulationsByID, sim.OrderID)
+		gPendingOrders.Remove(sim)
+		log.Printf("order complete for order id %d: %s", orderID, sim.Strategy)
 	}
-	delete(gSimulationsByID, sim.OrderID)
-	gPendingOrders.Remove(sim)
-	log.Printf("order filled for order id %d: %s, route: %s, price: %s, improvement: %s, fee: %s", orderID, sim, routeName, fillPrice, priceImprovement, fee)
 }
 
 func onExpiredEvent(ee *schwab.ExpiredEvent) {
