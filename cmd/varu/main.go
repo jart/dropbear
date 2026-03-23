@@ -1,0 +1,553 @@
+package main
+
+import (
+	"dropbear/broker/databento"
+	"dropbear/broker/schwab"
+	"dropbear/clocky"
+	"dropbear/decimal"
+	"dropbear/ds/black76"
+	"dropbear/ds/options"
+	"dropbear/ds/symbol"
+	"dropbear/loggy"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"os"
+
+	"github.com/emirpasic/gods/v2/maps/treemap"
+	"github.com/emirpasic/gods/v2/sets/treeset"
+)
+
+var (
+	dateFlag      = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
+	quotesFlag    = flag.String("quotes", "", "path to DBN file containing SPX quotes")
+	defsFlag      = flag.String("defs", "", "path to DBN file containing SPX definitions")
+	sigmasFlag    = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
+	riskFlag      = decimal.Flag("risk", "15_000", "maximum risk allowed")
+	thinkFlag     = clocky.DurationFlag("think", "100ms", "interval between trading analysis")
+	cooldownFlag  = clocky.DurationFlag("cooldown", "8s", "interval between trading decisions")
+	heartbeatFlag = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
+)
+
+const (
+	kSPXW       = symbol.Symbol('S' | 'P'<<8 | 'X'<<16 | 'W'<<24)
+	kStartOfDay = 9_35_00
+	kEndOfDay   = 16_00_00
+)
+
+var (
+	gSPX               = options.NewOptions()
+	gCash              decimal.Decimal
+	gPositions         = treemap.New[string, decimal.Decimal]()
+	gStagedCash        decimal.Decimal
+	gStagedPositions   = treemap.New[string, decimal.Decimal]()
+	gOptionsByID       = map[uint32]*options.Option{}
+	gOptionsByOSI      = map[string]*options.Option{}
+	gPendingStrikes    = treemap.New[decimal.Decimal, *options.Strike]()
+	gSimulations       = treeset.NewWith(compareSimulations)
+	gSimulationCounter int
+	gNextTradeTime     clocky.Time
+	gAbortSimulations  bool
+)
+
+var (
+	kRiskFreeRate = decimal.Parse("0.035")
+	kMultiplier   = decimal.FromInt(100)
+	kTick05       = decimal.Parse("0.05")
+	kTick10       = decimal.Parse("0.10")
+	kThree        = decimal.FromInt(3)
+)
+
+type Simulation struct {
+	Legs     *treemap.Map[string, decimal.Decimal]
+	Price    decimal.Decimal
+	Best     decimal.Decimal
+	Worst    decimal.Decimal
+	Payoff   decimal.Decimal
+	Sequence int
+}
+
+func main() {
+	loggy.Init()
+	flag.Parse()
+	black76.DaysPerYear = 252
+	black76.HoursPerDay = 6.5
+	loadDefinitions(*defsFlag)
+	quoteReader, err := databento.OpenFileReader(*quotesFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", *quotesFlag, err)
+		os.Exit(1)
+	}
+	defer quoteReader.Close()
+	if quoteReader.Metadata.Schema != databento.SchemaCMBP1 {
+		fmt.Fprintf(os.Stderr, "%s: expected quotes DBN file with schema %d, got %d\n",
+			*quotesFlag, databento.SchemaCMBP1, quoteReader.Metadata.Schema)
+		os.Exit(1)
+	}
+	clocky.Now = clocky.FakeNow
+	clocky.Sleep = clocky.FakeSleep
+	var nextThought, nextHeartbeat clocky.Time
+	for {
+		rec, err := quoteReader.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			fmt.Fprintf(os.Stderr, "%s: read quote error: %v\n", *quotesFlag, err)
+			os.Exit(1)
+		}
+		m := rec.(*databento.CMBP1)
+		now := m.TSRecv
+		clocky.SetNow(now)
+		onOptionTick(m)
+		clock := now.ClockInt()
+		if clock >= kEndOfDay {
+			break
+		}
+		if clock < kStartOfDay {
+			continue
+		}
+		if now >= nextThought && now >= gNextTradeTime {
+			nextThought = now.Add(*thinkFlag)
+			onThink()
+		}
+		if now >= nextHeartbeat {
+			nextHeartbeat = now.Add(*heartbeatFlag)
+			onHeartbeat()
+		}
+	}
+	onEndOfDay()
+}
+
+func onThink() {
+	gSimulationCounter = 0
+	em := gSPX.ExpectedMove().Mul(*sigmasFlag)
+	lo := gSPX.Price.Sub(em)
+	hi := gSPX.Price.Add(em)
+	simulateBuyCalls(hi)
+	simulateBuyPuts(lo)
+	simulateSellCallVerticals(hi)
+	simulateSellPutVerticals(lo)
+	simulateBuyCombo(lo, hi)
+	simulateSellCombo(lo, hi)
+	if gSimulations.Empty() {
+		return
+	}
+	// TODO: take first simulation and add it to gPositions and gCash, then clear gSimulations
+}
+
+func simulateBuyCalls(hi decimal.Decimal) {
+	for strike := gSPX.AtTheMoney; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+		buy(strike.Call)
+		endSimulation()
+	}
+}
+
+func simulateBuyPuts(lo decimal.Decimal) {
+	for strike := gSPX.AtTheMoney; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
+		buy(strike.Put)
+		endSimulation()
+	}
+}
+
+func simulateSellCallVerticals(hi decimal.Decimal) {
+	for strike := gSPX.AtTheMoney.Next; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+		sell(gSPX.AtTheMoney.Call)
+		buy(strike.Call)
+		endSimulation()
+	}
+}
+
+func simulateSellPutVerticals(lo decimal.Decimal) {
+	for strike := gSPX.AtTheMoney.Prev; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
+		sell(gSPX.AtTheMoney.Put)
+		buy(strike.Put)
+		endSimulation()
+	}
+}
+
+func simulateBuyCombo(lo, hi decimal.Decimal) {
+	for _, strike, _ := gSPX.Strikes.Floor(lo); strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+		buy(strike.Call)
+		sell(strike.Put)
+		if endSimulation() {
+			break
+		}
+	}
+}
+
+func simulateSellCombo(lo, hi decimal.Decimal) {
+	for _, strike, _ := gSPX.Strikes.Floor(lo); strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+		sell(strike.Call)
+		buy(strike.Put)
+		if endSimulation() {
+			break
+		}
+	}
+}
+
+func buy(option *options.Option) {
+	if canBuy(option) {
+		gStagedPositions.Put(option.OSI(), decimal.One)
+	} else {
+		gAbortSimulations = true
+	}
+}
+
+func sell(option *options.Option) {
+	if canSell(option) {
+		gStagedPositions.Put(option.OSI(), decimal.NegOne)
+	} else {
+		gAbortSimulations = true
+	}
+}
+
+func canBuy(option *options.Option) bool {
+	pos1, _ := gPositions.Get(option.OSI())
+	pos2, _ := gStagedPositions.Get(option.OSI())
+	return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
+}
+
+func canSell(option *options.Option) bool {
+	pos1, _ := gPositions.Get(option.OSI())
+	pos2, _ := gStagedPositions.Get(option.OSI())
+	return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
+}
+
+func endSimulation() bool {
+	if gAbortSimulations {
+		gAbortSimulations = false
+		gStagedPositions.Clear()
+		gStagedCash = decimal.Zero
+		return false
+	}
+	simulation := &Simulation{Legs: gStagedPositions}
+	simulation.Sequence = gSimulationCounter
+	gSimulationCounter++
+	choosePriceForSimulation(simulation)
+	gStagedCash = simulation.Price.Mul(kMultiplier)
+	simulation.Best, simulation.Worst = computeRisk()
+	simulation.Payoff = computeExpectedPayoff()
+	if simulation.Worst.Cmp((*riskFlag).Neg()) >= 0 {
+		gSimulations.Add(simulation)
+	}
+	gStagedPositions = treemap.New[string, decimal.Decimal]()
+	gStagedCash = decimal.Zero
+	return true
+}
+
+func choosePriceForSimulation(simulation *Simulation) {
+	if simulation.Legs.Size() == 1 {
+		// TODO: cross the spread by one tick
+	} else {
+		// TODO: compute simulation.Price (limit price) of multi-leg order
+	}
+}
+
+func onHeartbeat() {
+	liq := computeLiquidationValue()
+	eod := computeSettlementAt(gSPX.Price)
+	pay := computeExpectedPayoff()
+	best, worst := computeRisk()
+	delta, gamma, theta, vega := computeGreeks()
+	log.Printf("cash:%8s liq:%7s eod:%7s best:%7s worst:%7s payoff:%7s delta:%7s gamma:%7s theta:%7s vega:%7s",
+		gCash, liq.Truncate(), eod, best, worst, pay.Truncate(),
+		delta.Format(2), gamma.Format(2), theta.Format(2), vega.Format(2))
+}
+
+func onEndOfDay() {
+	log.Printf("end of day settlement time")
+	iteratePositions(func(sym string, pos decimal.Decimal) {
+		intrinsic := gOptionsByOSI[sym].IntrinsicValue(gSPX.Price)
+		settlement := intrinsic.Mul(pos).Mul(kMultiplier)
+		gCash = gCash.Add(settlement)
+		log.Printf("have %4s of %s worth %8s", pos, sym, settlement.Truncate())
+	})
+	log.Printf("ending balance %s at spx price %s", gCash.Format(2), gSPX.Price)
+}
+
+// iteratePositions calls f for all positions.
+func iteratePositions(f func(string, decimal.Decimal)) {
+	iteratePositionsImpl(gPositions, f)
+	iteratePositionsImpl(gStagedPositions, f)
+}
+
+func iteratePositionsImpl(positions *treemap.Map[string, decimal.Decimal], f func(string, decimal.Decimal)) {
+	for it := positions.Iterator(); it.Next(); {
+		sym, pos := it.Key(), it.Value()
+		if !pos.IsZero() {
+			f(sym, pos)
+		}
+	}
+}
+
+// iterateStrikes calls f for each strike within expected move range.
+func iterateStrikes(f func(*options.Strike)) {
+	em := gSPX.ExpectedMove().Mul(*sigmasFlag)
+	lo := gSPX.Price.Sub(em)
+	hi := gSPX.Price.Add(em)
+	_, strike, _ := gSPX.Strikes.Floor(lo)
+	for strike != nil {
+		f(strike)
+		if strike.Price.Cmp(hi) >= 0 {
+			break
+		}
+		strike = strike.Next
+	}
+}
+
+func computeRisk() (best, worst decimal.Decimal) {
+	iterateStrikes(func(strike *options.Strike) {
+		settlement := computeSettlementAt(strike.Price)
+		worst = worst.Min(settlement)
+		best = best.Max(settlement)
+	})
+	return best, worst
+}
+
+func computeSettlementAt(underlyingPrice decimal.Decimal) decimal.Decimal {
+	cash := gCash + gStagedCash
+	iteratePositions(func(sym string, pos decimal.Decimal) {
+		intrinsic := gOptionsByOSI[sym].IntrinsicValue(underlyingPrice)
+		settlement := intrinsic.Mul(pos).Mul(kMultiplier)
+		cash = cash.Add(settlement)
+	})
+	return cash
+}
+
+func computeLiquidationValue() decimal.Decimal {
+	cash := gCash + gStagedCash
+	iteratePositions(func(sym string, pos decimal.Decimal) {
+		mid := gOptionsByOSI[sym].MarketPrice()
+		value := mid.Mul(pos).Mul(kMultiplier)
+		cash = cash.Add(value)
+	})
+	return cash
+}
+
+func computeExpectedPayoff() decimal.Decimal {
+	// collect probabilities and sum them
+	type strikeProb struct {
+		strike *options.Strike
+		prob   decimal.Decimal
+	}
+	var probs []strikeProb
+	var probSum decimal.Decimal
+	iterateStrikes(func(strike *options.Strike) {
+		prob := strike.Probability()
+		if prob.IsPositive() {
+			probs = append(probs, strikeProb{strike, prob})
+			probSum = probSum.Add(prob)
+		} else {
+			log.Printf("warning: strike %s has bad probability %s (spx=%s | call got=%s bid=%s/%d ask=%s/%d | put got=%s bid=%s/%d ask=%s/%d)\n",
+				strike.Price, prob, gSPX.Price,
+				strike.Call.Got,
+				strike.Call.Bid, strike.Call.BidSize,
+				strike.Call.Ask, strike.Call.AskSize,
+				strike.Put.Got,
+				strike.Put.Bid, strike.Put.BidSize,
+				strike.Put.Ask, strike.Put.AskSize)
+		}
+	})
+	if len(probs) == 0 || !probSum.IsPositive() {
+		panic("unexpectedly found no strikes with positive probability")
+	}
+	// compute expected payoff with normalized probabilities
+	payoff := gCash + gStagedCash
+	for _, sp := range probs {
+		prob := sp.prob.Div(probSum)
+		iteratePositions(func(sym string, pos decimal.Decimal) {
+			intrinsic := gOptionsByOSI[sym].IntrinsicValue(sp.strike.Price)
+			payoff = payoff.Add(intrinsic.Mul(pos).Mul(kMultiplier).Mul(prob))
+		})
+	}
+	return payoff
+}
+
+func computeGreeks() (delta, gamma, theta, vega decimal.Decimal) {
+	iteratePositions(func(sym string, pos decimal.Decimal) {
+		delta = delta.Add(gOptionsByOSI[sym].Delta.Mul(pos).Mul(kMultiplier))
+		gamma = gamma.Add(gOptionsByOSI[sym].Gamma.Mul(pos).Mul(kMultiplier))
+		theta = theta.Add(gOptionsByOSI[sym].Theta.Mul(pos).Mul(kMultiplier))
+		vega = vega.Add(gOptionsByOSI[sym].Vega.Mul(pos))
+	})
+	return delta, gamma, theta, vega
+}
+
+func loadSchwabOrder(order *schwab.Order) {
+	if order.Status != schwab.OrderStatusFilled {
+		return
+	}
+	for _, leg := range order.OrderLegCollection {
+		if leg.Instrument.AssetType != schwab.AssetTypeOption {
+			continue
+		}
+		option := gOptionsByOSI[leg.Instrument.Symbol]
+		if option == nil {
+			continue
+		}
+		for _, activity := range order.OrderActivityCollection {
+			if activity.ExecutionType != schwab.ExecutionTypeFill {
+				continue
+			}
+			for _, execLeg := range activity.ExecutionLegs {
+				if execLeg.InstrumentID != leg.Instrument.InstrumentID {
+					continue
+				}
+				if execLeg.LegID != leg.LegID {
+					continue
+				}
+				price := execLeg.Price
+				switch leg.Instruction {
+				case schwab.InstructionBuyToOpen, schwab.InstructionBuyToClose:
+					price = price.Neg()
+				}
+				for range execLeg.Quantity.Int() {
+					cost := price.Mul(kMultiplier)
+					gCash = gCash.Add(cost)
+					sym := option.OSI()
+					pos, _ := gPositions.Get(sym)
+					if cost.IsNegative() {
+						pos = pos.Add(decimal.One) // bought
+					} else {
+						pos = pos.Sub(decimal.One) // sold
+					}
+					gPositions.Put(sym, pos)
+				}
+			}
+		}
+	}
+}
+
+func loadDefinitions(path string) {
+	defReader, err := databento.OpenFileReader(path)
+	if err != nil {
+		fmt.Printf("%s: %v\n", path, err)
+		os.Exit(1)
+	}
+	defer defReader.Close()
+	if defReader.Metadata.Schema != databento.SchemaDefinition {
+		fmt.Printf("%s: expected definitions DBN file with schema %d, got %d\n", path, databento.SchemaDefinition, defReader.Metadata.Schema)
+		os.Exit(1)
+	}
+	wantYear, wantMonth, wantDay := dateFlag.Date()
+	for {
+		rec, err := defReader.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			fmt.Printf("%s: read error: %v\n", path, err)
+			os.Exit(1)
+		}
+		switch m := rec.(type) {
+		case *databento.Instrument:
+			sym := symbol.MustParse(m.GetAsset())
+			year, timeMonth, day := m.Expiration.In(clocky.UTC).Date()
+			month := clocky.Month(timeMonth)
+			if sym == kSPXW && year == wantYear && month == wantMonth && day == wantDay {
+				rawSymbol := m.GetRawSymbol()
+				id := m.Header.InstrumentID
+				strike := decimal.Decimal(m.StrikePrice / 1000)
+				class := m.InstrumentClass
+				option := &options.Option{
+					ID:     id,
+					Class:  class,
+					Strike: &options.Strike{Price: strike},
+					Sym:    sym,
+					Year:   year,
+					Month:  month,
+					Day:    day,
+				}
+				gOptionsByID[id] = option
+				gOptionsByOSI[rawSymbol] = option
+			}
+		}
+	}
+	if len(gOptionsByID) == 0 {
+		fmt.Fprintf(os.Stderr, "no spxw 0dte definitions found\n")
+		os.Exit(1)
+	}
+}
+
+func onOptionTick(t *databento.CMBP1) {
+	if o := gOptionsByID[t.Header.InstrumentID]; o != nil {
+		switch t.Action {
+		case databento.ActionTrade:
+			onOptionTrade(o, t)
+		case databento.ActionAdd:
+			if t.Header.TSEvent > o.TS {
+				onOptionQuote(o, t)
+			}
+		default:
+			panic("unexpected option tick action: " + t.Action.String())
+		}
+	}
+}
+
+func onOptionTrade(o *options.Option, t *databento.CMBP1) {
+}
+
+func onOptionQuote(o *options.Option, t *databento.CMBP1) {
+	o.TS = t.Header.TSEvent
+	mustRecomputeGreeks := false
+	bid := t.Levels[0].BidPx
+	if bid != databento.UndefPrice {
+		price := decimal.Decimal(bid / 1000)
+		if price.Cmp(o.Bid) != 0 {
+			mustRecomputeGreeks = true
+		}
+		o.Bid = price
+		o.BidSize = t.Levels[0].BidSz
+		o.Got |= options.GotBid
+	} else {
+		o.Bid = decimal.Zero
+		o.BidSize = 0
+		o.Got &^= options.GotBid
+	}
+	ask := t.Levels[0].AskPx
+	if ask != databento.UndefPrice {
+		price := decimal.Decimal(ask / 1000)
+		if price.Cmp(o.Ask) != 0 {
+			mustRecomputeGreeks = true
+		}
+		o.Ask = price
+		o.AskSize = t.Levels[0].AskSz
+		o.Got |= options.GotAsk
+	} else {
+		o.Ask = decimal.Zero
+		o.AskSize = 0
+		o.Got &^= options.GotAsk
+	}
+	if gSPX.Add(o) {
+		mustRecomputeGreeks = true
+	}
+	if mustRecomputeGreeks {
+		o.ComputeGreeks(gSPX.Price, kRiskFreeRate, decimal.Zero)
+	}
+}
+
+// incTickSPX increases an spx option's price by one tick.
+func incTickSPX(price decimal.Decimal) decimal.Decimal {
+	if price.Abs().Cmp(kThree) <= 0 {
+		return price.Add(kTick05)
+	}
+	return price.Add(kTick10)
+}
+
+// decTickSPX reduces an spx option's price by one tick.
+func decTickSPX(price decimal.Decimal) decimal.Decimal {
+	if price.Abs().Cmp(kThree) <= 0 {
+		return price.Sub(kTick05)
+	}
+	return price.Sub(kTick10)
+}
+
+func compareSimulations(a, b *Simulation) int {
+	res := a.Payoff.Cmp(b.Payoff)
+	if res != 0 {
+		return -res
+	}
+	return a.Sequence - b.Sequence
+}

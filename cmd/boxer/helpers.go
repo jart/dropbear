@@ -7,9 +7,9 @@ import (
 )
 
 var (
+	defaultRate = decimal.Parse("0.04")
 	tick05      = decimal.Parse("0.05")
 	tick10      = decimal.Parse("0.10")
-	defaultRate = decimal.Parse("0.04")
 	three       = decimal.FromInt(3)
 	fifteen     = decimal.FromInt(15)
 	hundred     = decimal.FromInt(100)
