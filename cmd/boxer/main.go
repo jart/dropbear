@@ -14,7 +14,6 @@ import (
 	"github.com/emirpasic/gods/v2/maps/treemap"
 	"github.com/emirpasic/gods/v2/sets/hashset"
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
-	"github.com/emirpasic/gods/v2/sets/treeset"
 )
 
 var (
@@ -41,7 +40,6 @@ var (
 	gOptionsByID         = make(map[uint32]*options.Option)
 	gOptionsByOSI        = make(map[string]*options.Option)
 	gLegsByOrderID       = make(map[schwab.OrderID]*Leg)
-	gOptionsByStrike     = treeset.NewWith(options.CompareOptionByStrike)
 	gRestrictedToBuying  = hashset.New[uint32]()
 	gRestrictedToSelling = hashset.New[uint32]()
 	gHoldings            = treemap.New[string, decimal.Decimal]()

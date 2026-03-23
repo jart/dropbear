@@ -28,7 +28,7 @@ var (
 	ordersFlag     = flag.String("orders", "", "path to JSON file containing Schwab orders")
 	quotesFlag     = flag.String("quotes", "", "path to DBN file containing SPX quotes")
 	defsFlag       = flag.String("defs", "", "path to DBN file containing SPX definitions")
-	rangeFlag      = decimal.Flag("range", "200", "possible movement of spx for risk calculation")
+	sigmasFlag     = decimal.Flag("sigmas", "3", "number of sigmas of strikes to consider")
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 )
 
@@ -39,7 +39,7 @@ const (
 var (
 	gCash           decimal.Decimal
 	gSPX            = options.NewOptions()
-	gPositions      = map[string]int{}
+	gPositions      = treemap.New[string, decimal.Decimal]()
 	gOptionsByID    = map[uint32]*options.Option{}
 	gOptionsByOSI   = map[string]*options.Option{}
 	gTrades         = binaryheap.NewWith(compareTradeByTime)
@@ -119,52 +119,70 @@ func main() {
 		gTrades.Pop()
 		cash := trade.Cost
 		gCash = gCash.Add(cash)
+		sym := trade.Option.OSI()
+		pos, _ := gPositions.Get(sym)
 		if trade.Cost.IsNegative() {
-			gPositions[trade.Option.OSI()]++ // bought
+			pos = pos.Add(decimal.One) // bought
 		} else {
-			gPositions[trade.Option.OSI()]-- // sold
+			pos = pos.Sub(decimal.One) // sold
 		}
+		gPositions.Put(sym, pos)
 		liq := computeLiquidationValue()
 		eod := computeSettlementAt(gSPX.Price)
 		pay := computeExpectedPayoff()
 		best, worst := computeRisk()
-		fmt.Printf("%02d:%02d:%02d %s have %+3d of %s %c cost: %6s cash: %8s liq: %8s eod: %6s best: %6s worst: %6s payoff: %6s\n",
+		fmt.Printf("%02d:%02d:%02d %s have %4s of %s %c cost:%6s cash:%8s liq:%7s eod:%7s best:%7s worst:%7s payoff:%7s\n",
 			trade.Time.Hour(), trade.Time.Minute(), trade.Time.Second(), describeTag(trade.Tag),
-			gPositions[trade.Option.OSI()], trade.Option.Strike, trade.Option.Class,
-			trade.Cost, gCash, liq.Format(2), eod, best, worst, pay.Format(2))
+			pos, trade.Option.Strike, trade.Option.Class, trade.Cost, gCash, liq.Truncate(), eod,
+			best, worst, pay.Truncate())
 	}
 
 	// settle remaining positions at close
 	fmt.Printf("\nend of day settlement:\n")
-	for contract, pos := range gPositions {
+	for it := gPositions.Iterator(); it.Next(); {
+		sym := it.Key()
+		pos := it.Value()
 		if pos == 0 {
 			continue
 		}
-		intrinsic := gOptionsByOSI[contract].IntrinsicValue(gSPX.Price)
-		settlement := intrinsic.MulInt(pos).Mul(kMultiplier)
+		intrinsic := gOptionsByOSI[sym].IntrinsicValue(gSPX.Price)
+		settlement := intrinsic.Mul(pos).Mul(kMultiplier)
 		gCash = gCash.Add(settlement)
-		fmt.Printf("have %3d of %s worth %10s\n", pos, contract, settlement.Format(2))
+		fmt.Printf("have %4s of %s worth %8s\n", pos, sym, settlement.Truncate())
 	}
 	fmt.Printf("\nending balance %s at spx price %s\n", gCash.Format(2), gSPX.Price)
 }
 
+// iterateStrikes calls f for each strike within expected move range.
+func iterateStrikes(f func(*options.Strike)) {
+	em := gSPX.ExpectedMove().Mul(*sigmasFlag)
+	lo := gSPX.Price.Sub(em)
+	hi := gSPX.Price.Add(em)
+	_, strike, _ := gSPX.Strikes.Floor(lo)
+	for strike != nil {
+		f(strike)
+		if strike.Price.Cmp(hi) >= 0 {
+			break
+		}
+		strike = strike.Next
+	}
+}
+
 func computeRisk() (best, worst decimal.Decimal) {
-	lo := gSPX.Price.Sub(*rangeFlag)
-	hi := gSPX.Price.Add(*rangeFlag)
-	_, strike, _ := gSPX.Strikes.Ceiling(lo)
-	for ; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+	iterateStrikes(func(strike *options.Strike) {
 		settlement := computeSettlementAt(strike.Price)
 		worst = worst.Min(settlement)
 		best = best.Max(settlement)
-	}
+	})
 	return best, worst
 }
 
 func computeSettlementAt(underlyingPrice decimal.Decimal) decimal.Decimal {
 	cash := gCash
-	for sym, pos := range gPositions {
+	for it := gPositions.Iterator(); it.Next(); {
+		sym, pos := it.Key(), it.Value()
 		intrinsic := gOptionsByOSI[sym].IntrinsicValue(underlyingPrice)
-		settlement := intrinsic.MulInt(pos).Mul(kMultiplier)
+		settlement := intrinsic.Mul(pos).Mul(kMultiplier)
 		cash = cash.Add(settlement)
 	}
 	return cash
@@ -172,22 +190,47 @@ func computeSettlementAt(underlyingPrice decimal.Decimal) decimal.Decimal {
 
 func computeLiquidationValue() decimal.Decimal {
 	cash := gCash
-	for sym, pos := range gPositions {
+	for it := gPositions.Iterator(); it.Next(); {
+		sym, pos := it.Key(), it.Value()
 		mid := gOptionsByOSI[sym].MarketPrice()
-		value := mid.MulInt(pos).Mul(kMultiplier)
+		value := mid.Mul(pos).Mul(kMultiplier)
 		cash = cash.Add(value)
 	}
 	return cash
 }
 
 func computeExpectedPayoff() decimal.Decimal {
-	payoff := decimal.Zero
-	lo := gSPX.Price.Sub(*rangeFlag)
-	hi := gSPX.Price.Add(*rangeFlag)
-	_, strike, _ := gSPX.Strikes.Ceiling(lo)
-	for ; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		settlement := computeSettlementAt(strike.Price)
-		payoff = payoff.Add(settlement.Mul(strike.Probability()))
+	// first pass: collect probabilities and sum them
+	type strikeProb struct {
+		strike *options.Strike
+		prob   decimal.Decimal
+	}
+	var probs []strikeProb
+	var probSum decimal.Decimal
+	iterateStrikes(func(strike *options.Strike) {
+		prob := strike.Probability()
+		if prob.IsPositive() {
+			probs = append(probs, strikeProb{strike, prob})
+			probSum = probSum.Add(prob)
+		} else {
+			log.Printf("warning: strike %s has bad probability %s (spx=%s | call got=%s bid=%s ask=%s | put got=%s bid=%s ask=%s)\n",
+				strike.Price, prob, gSPX.Price,
+				strike.Call.Got, strike.Call.Bid, strike.Call.Ask,
+				strike.Put.Got, strike.Put.Bid, strike.Put.Ask)
+		}
+	})
+	if len(probs) == 0 || !probSum.IsPositive() {
+		panic("unexpectedly found no strikes with positive probability")
+	}
+	// second pass: compute expected payoff with normalized probabilities
+	payoff := gCash
+	for _, sp := range probs {
+		prob := sp.prob.Div(probSum) // normalize so they sum to 1
+		for it := gPositions.Iterator(); it.Next(); {
+			sym, pos := it.Key(), it.Value()
+			intrinsic := gOptionsByOSI[sym].IntrinsicValue(sp.strike.Price)
+			payoff = payoff.Add(intrinsic.Mul(pos).Mul(kMultiplier).Mul(prob))
+		}
 	}
 	return payoff
 }

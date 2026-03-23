@@ -37,7 +37,6 @@ func onFutureTick(t *databento.MBP1) {
 
 func onOptionDef(o *options.Option) {
 	gOptionsByID[o.ID] = o
-	gOptionsByStrike.Add(o)
 	gOptionsByOSI[o.OSI()] = o
 }
 
