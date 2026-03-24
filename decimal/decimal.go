@@ -3,7 +3,6 @@ package decimal
 import (
 	"encoding/binary"
 	"math"
-	"sync/atomic"
 )
 
 // Decimal represents a fixed-point decimal number.
@@ -39,24 +38,6 @@ func FromInt64(n int64) Decimal {
 		panic("decimal overflow")
 	}
 	return Decimal(n * Scale)
-}
-
-// maxSafeFloat is the largest float64 value that can be converted to Decimal
-// without precision loss. Beyond this, float64 can't represent values with
-// nanosecond precision (our smallest unit). This is 2^53 / Scale.
-const maxSafeFloat = float64(1<<53) / Scale // ~9,007,199
-
-// FromFloat64 converts float64 to Decimal.
-// Panics on NaN, infinity, or values where float64 lacks sufficient precision.
-// For large values (above ~9 million), use Parse() with a string instead.
-func FromFloat64(n float64) Decimal {
-	if math.IsNaN(n) || math.IsInf(n, 0) {
-		panic("decimal: NaN or infinity")
-	}
-	if n > maxSafeFloat || n < -maxSafeFloat {
-		panic("decimal: float64 lacks precision at this scale")
-	}
-	return Decimal(math.Round(n * Scale))
 }
 
 // FromBPS converts basis points to a Decimal fraction. FromBPS(100) returns 0.01.
@@ -96,15 +77,33 @@ func (d Decimal) Neg() Decimal {
 	return -d
 }
 
-func (d Decimal) IsPositive() bool { return d > 0 }
-func (d Decimal) IsNegative() bool { return d < 0 }
-func (d Decimal) IsZero() bool     { return d == 0 }
-func (d Decimal) Sqr() Decimal     { return d.Mul(d) }
-func (d Decimal) BPS() Decimal     { return d.MulInt(10000) }
-func (d Decimal) Int64() int64     { return int64(d) / Scale }
-func (d Decimal) Float64() float64 { return float64(d) / Scale }
+func (d Decimal) IsPositive() bool {
+	return d > 0
+}
 
-// Int returns the integer part of d.
+func (d Decimal) IsNegative() bool {
+	return d < 0
+}
+
+func (d Decimal) IsZero() bool {
+	return d == 0
+}
+
+func (d Decimal) Sqr() Decimal {
+	return d.Mul(d)
+}
+
+func (d Decimal) BPS() Decimal {
+	return d.MulInt(10000)
+}
+
+// Int64 returns the integer part of d, rounding toward zero.
+func (d Decimal) Int64() int64 {
+	return int64(d) / Scale
+}
+
+// Int returns the integer part of d, rounding toward zero.
+// This method panics if the result overflows int.
 func (d Decimal) Int() int {
 	r := int64(d) / Scale
 	if r > math.MaxInt || r < math.MinInt {
@@ -149,26 +148,6 @@ func (d Decimal) Max(o Decimal) Decimal {
 		return d
 	}
 	return o
-}
-
-// Store atomically stores v into d.
-func (d *Decimal) Store(v Decimal) {
-	atomic.StoreInt64((*int64)(d), int64(v))
-}
-
-// Load atomically loads and returns the value of d.
-func (d *Decimal) Load() Decimal {
-	return Decimal(atomic.LoadInt64((*int64)(d)))
-}
-
-// AtomicAdd atomically adds v to d.
-func (d *Decimal) AtomicAdd(v Decimal) Decimal {
-	return Decimal(atomic.AddInt64((*int64)(d), int64(v)))
-}
-
-// Swap atomically replaces v into d.
-func (d *Decimal) Swap(v Decimal) Decimal {
-	return Decimal(atomic.SwapInt64((*int64)(d), int64(v)))
 }
 
 func (d Decimal) Encode(b []byte) []byte {
