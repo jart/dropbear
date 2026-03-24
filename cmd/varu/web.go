@@ -27,20 +27,6 @@ var (
 // gPaused controls whether onThink runs.
 var gPaused bool
 
-// gStrategyEnabled controls which strategies are allowed to simulate.
-var gStrategyEnabled = map[string]bool{
-	"buy call":           true,
-	"buy put":            true,
-	"buy combo":          true,
-	"sell combo":         true,
-	"sell call vertical": true,
-	"sell put vertical":  true,
-	"buy call vertical":  true,
-	"buy put vertical":   true,
-	"sell condor":        true,
-	"buy condor":         true,
-}
-
 // WebRequest is a command sent from the web server to the main goroutine.
 type WebRequest struct {
 	Type     string          // "flags", "pause", "resume", "strategies"
@@ -94,6 +80,7 @@ type StateSnapshot struct {
 	Time       string                  `json:"time"`
 	Symbol     string                  `json:"symbol"`
 	Price      string                  `json:"price"`
+	Sigma      string                  `json:"sigma"`
 	Cash       string                  `json:"cash"`
 	Paused     bool                    `json:"paused"`
 	Positions  []PositionRow           `json:"positions"`
@@ -113,6 +100,8 @@ type PositionRow struct {
 	Ask    string `json:"ask"`
 	Mid    string `json:"mid"`
 	Delta  string `json:"delta"`
+	Prob   string `json:"prob"`
+	ITM    bool   `json:"itm"`
 }
 
 type RiskPoint struct {
@@ -132,6 +121,8 @@ type StatsData struct {
 	Worst       string `json:"worst"`
 	Liquidation string `json:"liquidation"`
 	EOD         string `json:"eod"`
+	Sigma       string `json:"sigma"`
+	Bias        string `json:"bias"`
 }
 
 type FlagsData struct {
@@ -156,20 +147,23 @@ func buildStateSnapshot() StateSnapshot {
 	snap := StateSnapshot{
 		Time:   now.String(),
 		Symbol: gSymbol.String(),
-		Price:  gChain.Price.String(),
+		Price:  gChain.Price.Format(2),
+		Sigma:  gChain.ExpectedMove().Format(2),
 		Cash:   gCash.Format(2),
 		Paused: gPaused,
 		Greeks: GreeksData{
-			Delta: delta.Format(2),
-			Gamma: gamma.Format(2),
-			Theta: theta.Format(2),
-			Vega:  vega.Format(2),
+			Delta: delta.Format(3),
+			Gamma: gamma.Format(3),
+			Theta: theta.Format(3),
+			Vega:  vega.Format(3),
 		},
 		Stats: StatsData{
-			Payoff:      computeExpectedPayoff().Truncate().String(),
-			Worst:       computeRisk().String(),
-			Liquidation: computeLiquidationValue().Truncate().String(),
-			EOD:         computeSettlementAt(gChain.Price).String(),
+			Payoff:      computeExpectedPayoff().Format(2),
+			Worst:       computeRisk().Format(2),
+			Liquidation: computeLiquidationValue().Truncate().Format(2),
+			EOD:         computeSettlementAt(gChain.Price).Format(2),
+			Sigma:       gChain.ExpectedMove().Format(2),
+			Bias:        computeBias().Format(2),
 		},
 		Flags: FlagsData{
 			Sigmas:   (*sigmasFlag).String(),
@@ -182,28 +176,82 @@ func buildStateSnapshot() StateSnapshot {
 		Strategies: make(map[string]StrategyInfo),
 	}
 
-	// positions
+	// find strike range from positions
+	price := gChain.Price
+	var minStrike, maxStrike decimal.Decimal
+	first := true
 	iteratePositions(func(sym string, pos decimal.Decimal) {
 		o := gOptionsByOSI[sym]
-		snap.Positions = append(snap.Positions, PositionRow{
-			OSI:    sym,
-			Strike: o.Strike.Price.String(),
-			Class:  string(o.Class),
-			Qty:    pos.String(),
-			Bid:    o.Bid.String(),
-			Ask:    o.Ask.String(),
-			Mid:    o.MarketPrice().String(),
-			Delta:  o.Delta.Format(4),
-		})
+		sp := o.Strike.Price
+		if first || sp.Cmp(minStrike) < 0 {
+			minStrike = sp
+		}
+		if first || sp.Cmp(maxStrike) > 0 {
+			maxStrike = sp
+		}
+		first = false
 	})
 
-	// risk profile across all strikes
+	// build position lookup
+	posMap := map[string]decimal.Decimal{}
+	iteratePositions(func(sym string, pos decimal.Decimal) {
+		posMap[sym] = pos
+	})
+
+	// emit all strikes in the range with call/put data
+	if !first {
+		for it := gChain.Strikes.Iterator(); it.Next(); {
+			strike := it.Value()
+			if strike.Price.Cmp(minStrike) < 0 || strike.Price.Cmp(maxStrike) > 0 {
+				continue
+			}
+			prob := strike.Probability().MulInt(100).Format(2)
+			if strike.Call != nil {
+				callQty := posMap[strike.Call.OSI()]
+				snap.Positions = append(snap.Positions, PositionRow{
+					OSI:    strike.Call.OSI(),
+					Strike: strike.Price.String(),
+					Class:  "C",
+					Qty:    callQty.String(),
+					Bid:    strike.Call.Bid.Format(2),
+					Ask:    strike.Call.Ask.Format(2),
+					Mid:    strike.Call.MarketPrice().Format(2),
+					Delta:  strike.Call.Delta.Format(4),
+					Prob:   prob,
+					ITM:    price.Cmp(strike.Price) > 0,
+				})
+			}
+			if strike.Put != nil {
+				putQty := posMap[strike.Put.OSI()]
+				snap.Positions = append(snap.Positions, PositionRow{
+					OSI:    strike.Put.OSI(),
+					Strike: strike.Price.String(),
+					Class:  "P",
+					Qty:    putQty.String(),
+					Bid:    strike.Put.Bid.Format(2),
+					Ask:    strike.Put.Ask.Format(2),
+					Mid:    strike.Put.MarketPrice().Format(2),
+					Delta:  strike.Put.Delta.Format(4),
+					Prob:   prob,
+					ITM:    price.Cmp(strike.Price) < 0,
+				})
+			}
+		}
+	}
+
+	// risk profile across strikes within ±4 sigmas
+	em := gChain.ExpectedMove()
+	chartLo := gChain.Price.Sub(em.MulInt(4))
+	chartHi := gChain.Price.Add(em.MulInt(4))
 	for it := gChain.Strikes.Iterator(); it.Next(); {
 		strike := it.Value()
+		if strike.Price.Cmp(chartLo) < 0 || strike.Price.Cmp(chartHi) > 0 {
+			continue
+		}
 		settlement := computeSettlementAt(strike.Price)
 		snap.Risk = append(snap.Risk, RiskPoint{
-			Strike:     strike.Price.String(),
-			Settlement: settlement.String(),
+			Strike:     strike.Price.Format(2),
+			Settlement: settlement.Format(2),
 		})
 	}
 
@@ -219,13 +267,21 @@ func buildStateSnapshot() StateSnapshot {
 	return snap
 }
 
-// broadcastState builds a snapshot and sends it to SSE clients.
+var (
+	lastSnapshotMu   sync.RWMutex
+	lastSnapshotJSON []byte
+)
+
+// broadcastState builds a snapshot and caches it for polling.
 // Must be called from the main goroutine.
 func broadcastState() {
 	data, err := json.Marshal(buildStateSnapshot())
 	if err != nil {
 		return
 	}
+	lastSnapshotMu.Lock()
+	lastSnapshotJSON = data
+	lastSnapshotMu.Unlock()
 	select {
 	case gSSEBroadcast <- data:
 	default:
@@ -306,8 +362,28 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
+	noCache(w)
 	w.Header().Set("Content-Type", "text/html")
 	w.Write(data)
+}
+
+func handleStateAPI(w http.ResponseWriter, r *http.Request) {
+	lastSnapshotMu.RLock()
+	data := lastSnapshotJSON
+	lastSnapshotMu.RUnlock()
+	noCache(w)
+	w.Header().Set("Content-Type", "application/json")
+	if data != nil {
+		w.Write(data)
+	} else {
+		w.Write([]byte("{}"))
+	}
+}
+
+func noCache(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 }
 
 func handleEventsAPI(w http.ResponseWriter, r *http.Request) {
@@ -428,6 +504,7 @@ func startWeb() {
 
 	// protected dashboard routes
 	http.HandleFunc("/", a.RequireAuth(handleIndex))
+	http.HandleFunc("/api/state", a.RequireAuth(handleStateAPI))
 	http.HandleFunc("/api/events", a.RequireAuth(handleEventsAPI))
 	http.HandleFunc("/api/flags", a.RequireAuth(handleFlagsAPI))
 	http.HandleFunc("/api/pause", a.RequireAuth(handlePauseAPI))

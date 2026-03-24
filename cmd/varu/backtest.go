@@ -84,13 +84,11 @@ func backtest() {
 				}
 			}
 		doneWebRequests:
+			broadcastState()
 		}
 		if now >= nextHeartbeat {
 			nextHeartbeat = now.Add(*heartbeatFlag)
 			onHeartbeat()
-			if *webFlag {
-				broadcastState()
-			}
 		}
 	}
 	onEndOfDay()

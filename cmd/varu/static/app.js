@@ -1,22 +1,24 @@
 'use strict';
 
-var es = null;
+var pollTimer = null;
 
-function connect() {
+function startPolling() {
   var status = document.getElementById('status');
-  es = new EventSource('/api/events');
-  es.onopen = function() {
-    status.textContent = 'connected';
-    status.className = 'status-connected';
-  };
-  es.onerror = function() {
-    status.textContent = 'disconnected';
-    status.className = 'status-disconnected';
-  };
-  es.onmessage = function(e) {
-    var data = JSON.parse(e.data);
-    render(data);
-  };
+  function poll() {
+    fetch('/api/state')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        status.textContent = 'live';
+        status.className = 'status-connected';
+        if (data && data.symbol) render(data);
+      })
+      .catch(function() {
+        status.textContent = 'disconnected';
+        status.className = 'status-disconnected';
+      });
+  }
+  poll();
+  pollTimer = setInterval(poll, 250);
 }
 
 function render(d) {
@@ -28,7 +30,7 @@ function render(d) {
   document.getElementById('resumeBtn').disabled = !d.paused;
   renderStats(d);
   renderPositions(d.positions || []);
-  renderRiskChart(d.risk || []);
+  renderRiskChart(d);
   renderStrategies(d.strategies || {});
   renderFlags(d.flags);
 }
@@ -38,6 +40,8 @@ function renderStats(d) {
   setText('statWorst', d.stats.worst);
   setText('statLiq', d.stats.liquidation);
   setText('statEOD', d.stats.eod);
+  setText('statSigma', d.stats.sigma);
+  setText('statBias', d.stats.bias);
   setText('statDelta', d.greeks.delta);
   setText('statGamma', d.greeks.gamma);
   setText('statTheta', d.greeks.theta);
@@ -45,6 +49,7 @@ function renderStats(d) {
   colorize('statPayoff', d.stats.payoff);
   colorize('statWorst', d.stats.worst);
   colorize('statEOD', d.stats.eod);
+  colorize('statBias', d.stats.bias);
 }
 
 function setText(id, val) {
@@ -59,24 +64,61 @@ function colorize(id, val) {
 
 function renderPositions(positions) {
   var body = document.getElementById('positionsBody');
-  var html = '';
+  // group by strike
+  var strikes = {};
+  var strikeList = [];
   for (var i = 0; i < positions.length; i++) {
     var p = positions[i];
-    var qtyClass = parseFloat(p.qty) > 0 ? 'pos' : parseFloat(p.qty) < 0 ? 'neg' : 'zero';
-    html += '<tr>' +
-      '<td>' + p.strike + '</td>' +
-      '<td>' + p.class + '</td>' +
-      '<td class="' + qtyClass + '">' + p.qty + '</td>' +
-      '<td>' + p.bid + '</td>' +
-      '<td>' + p.ask + '</td>' +
-      '<td>' + p.mid + '</td>' +
-      '<td>' + p.delta + '</td>' +
-      '</tr>';
+    var k = p.strike;
+    if (!strikes[k]) {
+      strikes[k] = {};
+      strikeList.push(k);
+    }
+    strikes[k][p.class] = p;
+  }
+  strikeList.sort(function(a, b) { return parseFloat(a) - parseFloat(b); });
+  var html = '';
+  var empty6 = '<td></td><td></td><td></td><td></td><td></td><td></td>';
+  for (var i = 0; i < strikeList.length; i++) {
+    var k = strikeList[i];
+    var c = strikes[k]['C'];
+    var p = strikes[k]['P'];
+    html += '<tr>';
+    // calls (left side)
+    if (c) {
+      var cq = parseFloat(c.qty);
+      var ci = c.itm ? ' itm' : '';
+      html += '<td class="' + (cq > 0 ? 'pos' : cq < 0 ? 'neg' : 'zero') + ci + '">' + c.qty + '</td>';
+      html += '<td class="' + ci + '">' + c.bid + '</td>';
+      html += '<td class="' + ci + '">' + c.ask + '</td>';
+      html += '<td class="' + ci + '">' + c.mid + '</td>';
+      html += '<td class="' + ci + '">' + c.delta + '</td>';
+      html += '<td class="' + ci + '">' + c.prob + '%</td>';
+    } else {
+      html += empty6;
+    }
+    // strike (center)
+    html += '<td class="strike-col">' + k + '</td>';
+    // puts (right side)
+    if (p) {
+      var pq = parseFloat(p.qty);
+      var pi = p.itm ? ' itm' : '';
+      html += '<td class="' + (pq > 0 ? 'pos' : pq < 0 ? 'neg' : 'zero') + pi + '">' + p.qty + '</td>';
+      html += '<td class="' + pi + '">' + p.bid + '</td>';
+      html += '<td class="' + pi + '">' + p.ask + '</td>';
+      html += '<td class="' + pi + '">' + p.mid + '</td>';
+      html += '<td class="' + pi + '">' + p.delta + '</td>';
+      html += '<td class="' + pi + '">' + p.prob + '%</td>';
+    } else {
+      html += empty6;
+    }
+    html += '</tr>';
   }
   body.innerHTML = html;
 }
 
-function renderRiskChart(risk) {
+function renderRiskChart(d) {
+  var risk = d.risk || [];
   var canvas = document.getElementById('riskChart');
   var ctx = canvas.getContext('2d');
   var w = canvas.width;
@@ -84,6 +126,8 @@ function renderRiskChart(risk) {
   ctx.clearRect(0, 0, w, h);
   if (risk.length < 2) return;
 
+  var price = parseFloat(d.price);
+  var sigma = parseFloat(d.sigma);
   var strikes = [];
   var settlements = [];
   for (var i = 0; i < risk.length; i++) {
@@ -111,6 +155,39 @@ function renderRiskChart(risk) {
     ctx.stroke();
   }
 
+  // sigma lines (yellow, solid, fading with distance)
+  if (sigma > 0) {
+    ctx.lineWidth = 1;
+    for (var n = 1; n <= 3; n++) {
+      var alpha = 0.6 / n;
+      ctx.strokeStyle = 'rgba(255,235,59,' + alpha + ')';
+      var lo = price - sigma * n;
+      var hi = price + sigma * n;
+      if (lo >= xMin) {
+        ctx.beginPath();
+        ctx.moveTo(tx(lo), 0);
+        ctx.lineTo(tx(lo), h);
+        ctx.stroke();
+      }
+      if (hi <= xMax) {
+        ctx.beginPath();
+        ctx.moveTo(tx(hi), 0);
+        ctx.lineTo(tx(hi), h);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // current price line (red, thin)
+  if (price >= xMin && price <= xMax) {
+    ctx.strokeStyle = '#ef5350';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(tx(price), 0);
+    ctx.lineTo(tx(price), h);
+    ctx.stroke();
+  }
+
   // P&L line
   ctx.strokeStyle = '#4fc3f7';
   ctx.lineWidth = 2;
@@ -128,7 +205,7 @@ function renderRiskChart(risk) {
     var x1 = tx(strikes[i]), x2 = tx(strikes[i + 1]);
     var y1 = settlements[i], y2 = settlements[i + 1];
     var avg = (y1 + y2) / 2;
-    ctx.fillStyle = avg >= 0 ? 'rgba(76,175,80,0.15)' : 'rgba(244,67,54,0.15)';
+    ctx.fillStyle = avg >= 0 ? 'rgba(102,187,106,0.15)' : 'rgba(239,83,80,0.15)';
     ctx.beginPath();
     ctx.moveTo(x1, ty(y1));
     ctx.lineTo(x2, ty(y2));
@@ -140,7 +217,7 @@ function renderRiskChart(risk) {
 
   // y-axis labels
   ctx.fillStyle = '#888';
-  ctx.font = '11px Courier New';
+  ctx.font = '11px monospace';
   ctx.textAlign = 'left';
   var ySteps = 5;
   for (var i = 0; i <= ySteps; i++) {
@@ -242,4 +319,4 @@ function toggleStrategy(cb) {
   });
 }
 
-connect();
+startPolling();

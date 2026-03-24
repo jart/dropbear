@@ -201,72 +201,6 @@ func sendBestOrder(now clocky.Time) {
 	gSimulations.Clear()
 }
 
-func simulateBuyCalls(hi decimal.Decimal) {
-	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		buy(strike.Call)
-		endSimulation("buy call")
-	}
-}
-
-func simulateBuyPuts(lo decimal.Decimal) {
-	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
-		buy(strike.Put)
-		endSimulation("buy put")
-	}
-}
-
-func simulateSellCallVerticals(hi decimal.Decimal) {
-	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		sell(gChain.AtTheMoney.Prev.Call)
-		buy(strike.Call)
-		endSimulation("sell call vertical")
-	}
-}
-
-func simulateSellPutVerticals(lo decimal.Decimal) {
-	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
-		sell(gChain.AtTheMoney.Next.Put)
-		buy(strike.Put)
-		endSimulation("sell put vertical")
-	}
-}
-
-func simulateBuyCallVerticals(hi decimal.Decimal) {
-	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		buy(gChain.AtTheMoney.Prev.Call)
-		sell(strike.Call)
-		endSimulation("buy call vertical")
-	}
-}
-
-func simulateBuyPutVerticals(lo decimal.Decimal) {
-	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
-		buy(gChain.AtTheMoney.Next.Put)
-		sell(strike.Put)
-		endSimulation("buy put vertical")
-	}
-}
-
-func simulateBuyCombo(lo, hi decimal.Decimal) {
-	for _, strike, _ := gChain.Strikes.Floor(lo); strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		buy(strike.Call)
-		sell(strike.Put)
-		if endSimulation("buy combo") {
-			break
-		}
-	}
-}
-
-func simulateSellCombo(lo, hi decimal.Decimal) {
-	for _, strike, _ := gChain.Strikes.Floor(lo); strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		sell(strike.Call)
-		buy(strike.Put)
-		if endSimulation("sell combo") {
-			break
-		}
-	}
-}
-
 func buy(option *options.Option) {
 	if canBuy(option) {
 		gStagedPositions.Put(option.OSI(), decimal.One)
@@ -503,6 +437,14 @@ func computeDelta() decimal.Decimal {
 }
 
 // computeGreeks calculates greeks for all positions.
+func computeBias() decimal.Decimal {
+	atm := gChain.AtTheMoney
+	if atm == nil || atm.Call == nil || atm.Put == nil {
+		return decimal.Zero
+	}
+	return atm.Call.MarketPrice().Sub(atm.Put.MarketPrice())
+}
+
 func computeGreeks() (delta, gamma, theta, vega decimal.Decimal) {
 	iteratePositions(func(sym string, pos decimal.Decimal) {
 		delta = delta.Add(gOptionsByOSI[sym].Delta.Mul(pos))
