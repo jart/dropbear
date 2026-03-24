@@ -20,8 +20,8 @@ var staticFiles embed.FS
 
 var (
 	listenFlag = flag.String("listen", "localhost:8484", "web dashboard bind address")
-	rpIDFlag   = flag.String("rpid", "dropbear.justine.lol", "WebAuthn relying party ID (domain)")
-	originFlag = flag.String("origin", "https://dropbear.justine.lol", "WebAuthn origin URL")
+	rpIDFlag   = flag.String("rpid", "varu.justinestreet.capital", "WebAuthn relying party ID (domain)")
+	originFlag = flag.String("origin", "https://varu.justinestreet.capital", "WebAuthn origin URL")
 )
 
 // gPaused controls whether onThink runs.

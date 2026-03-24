@@ -35,6 +35,7 @@ func backtest() {
 	clocky.Now = clocky.FakeNow
 	clocky.Sleep = clocky.FakeSleep
 	var rtBase time.Time
+	var nextDump time.Time
 	var rtBaseData clocky.Time
 	var nextThought, nextHeartbeat clocky.Time
 	for {
@@ -51,9 +52,13 @@ func backtest() {
 		clocky.SetNow(now)
 		onOptionTick(m)
 		clock := now.ClockInt()
+		var realNow time.Time
+		if *rtFlag || *webFlag {
+			realNow = time.Now()
+		}
 		if *rtFlag {
 			if rtBaseData == 0 && clock >= kStartOfDay {
-				rtBase = time.Now()
+				rtBase = realNow
 				rtBaseData = now
 			}
 			if rtBaseData != 0 {
@@ -84,9 +89,12 @@ func backtest() {
 				}
 			}
 		doneWebRequests:
-			broadcastState()
+			if realNow.After(nextDump) {
+				nextDump = realNow.Add(100 * time.Millisecond)
+				broadcastState()
+			}
 		}
-		if now >= nextHeartbeat {
+		if now.After(nextHeartbeat) {
 			nextHeartbeat = now.Add(*heartbeatFlag)
 			onHeartbeat()
 		}

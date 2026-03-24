@@ -1,6 +1,9 @@
 package main
 
-import "dropbear/decimal"
+import (
+	"dropbear/decimal"
+	"dropbear/ds/options"
+)
 
 const (
 	kStrategyBuyCall          = "buy call"
@@ -22,8 +25,8 @@ var gStrategyEnabled = map[string]bool{
 	kStrategySellCombo:        true,
 	kStrategySellCallVertical: true,
 	kStrategySellPutVertical:  true,
-	kStrategyBuyCallVertical:  true,
-	kStrategyBuyPutVertical:   true,
+	kStrategyBuyCallVertical:  false,
+	kStrategyBuyPutVertical:   false,
 	kStrategySellCondor:       false,
 	kStrategyBuyCondor:        false,
 }
@@ -43,34 +46,42 @@ func simulateBuyPuts(lo decimal.Decimal) {
 }
 
 func simulateSellCallVerticals(hi decimal.Decimal) {
-	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		sell(gChain.AtTheMoney.Prev.Call)
-		buy(strike.Call)
-		endSimulation(kStrategySellCallVertical)
+	for _, ss := range []*options.Strike{gChain.AtTheMoney.Prev, gChain.AtTheMoney, gChain.AtTheMoney.Next} {
+		for sb := gChain.AtTheMoney; sb != nil && sb.Price.Cmp(hi) <= 0; sb = sb.Next {
+			sell(ss.Call)
+			buy(sb.Call)
+			endSimulation(kStrategySellCallVertical)
+		}
 	}
 }
 
 func simulateSellPutVerticals(lo decimal.Decimal) {
-	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
-		sell(gChain.AtTheMoney.Next.Put)
-		buy(strike.Put)
-		endSimulation(kStrategySellPutVertical)
+	for _, ss := range []*options.Strike{gChain.AtTheMoney.Prev, gChain.AtTheMoney, gChain.AtTheMoney.Next} {
+		for sb := gChain.AtTheMoney; sb != nil && sb.Price.Cmp(lo) >= 0; sb = sb.Prev {
+			sell(ss.Put)
+			buy(sb.Put)
+			endSimulation(kStrategySellPutVertical)
+		}
 	}
 }
 
 func simulateBuyCallVerticals(hi decimal.Decimal) {
-	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		buy(gChain.AtTheMoney.Prev.Call)
-		sell(strike.Call)
-		endSimulation(kStrategyBuyCallVertical)
+	for _, sb := range []*options.Strike{gChain.AtTheMoney.Prev, gChain.AtTheMoney, gChain.AtTheMoney.Next} {
+		for ss := gChain.AtTheMoney; ss != nil && ss.Price.Cmp(hi) <= 0; ss = ss.Next {
+			buy(sb.Call)
+			sell(ss.Call)
+			endSimulation(kStrategyBuyCallVertical)
+		}
 	}
 }
 
 func simulateBuyPutVerticals(lo decimal.Decimal) {
-	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
-		buy(gChain.AtTheMoney.Next.Put)
-		sell(strike.Put)
-		endSimulation(kStrategyBuyPutVertical)
+	for _, sb := range []*options.Strike{gChain.AtTheMoney.Prev, gChain.AtTheMoney, gChain.AtTheMoney.Next} {
+		for ss := gChain.AtTheMoney; ss != nil && ss.Price.Cmp(lo) >= 0; ss = ss.Prev {
+			buy(sb.Put)
+			sell(ss.Put)
+			endSimulation(kStrategyBuyPutVertical)
+		}
 	}
 }
 

@@ -27,7 +27,7 @@ var (
 	rtFlag         = flag.Bool("rt", false, "run backtest in real time mode")
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
-	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
+	sigmasFlag     = decimal.Flag("sigmas", "1", "number of sigmas of strikes to consider")
 	budgetFlag     = decimal.Flag("budget", "5_000", "maximum acceptable loss at current price")
 	floorFlag      = decimal.Flag("floor", "50_000", "maximum acceptable loss in catastrophic scenario")
 	spreadFlag     = decimal.Flag("spread", "-.2", "spread crossing (-1=make, 0=mid, 1=take)")
@@ -106,10 +106,6 @@ func main() {
 	gRiskFloor = (*floorFlag).Float64()
 	gRiskBudget = (*budgetFlag).Float64()
 	if *webFlag {
-		if !*liveFlag && !*rtFlag {
-			fmt.Fprintf(os.Stderr, "web dashboard is only useful in live or real-time backtesting mode\n")
-			os.Exit(1)
-		}
 		startWeb()
 	}
 	if *flagCPUProfile != "" {
@@ -219,12 +215,14 @@ func sell(option *options.Option) {
 
 func canBuy(option *options.Option) bool {
 	pos1, _ := gPositions.Get(option.OSI())
-	return pos1.Cmp(decimal.Zero) >= 0
+	pos2, _ := gStagedPositions.Get(option.OSI())
+	return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
 }
 
 func canSell(option *options.Option) bool {
 	pos1, _ := gPositions.Get(option.OSI())
-	return pos1.Cmp(decimal.Zero) <= 0
+	pos2, _ := gStagedPositions.Get(option.OSI())
+	return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
 }
 
 func endSimulation(strategy string) bool {

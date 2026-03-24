@@ -48,9 +48,13 @@ func live() {
 	defer heartbeat.Stop()
 
 	// give the options data some time to populate
-	readySteadyGo := clocky.NewTicker(10 * clocky.Second)
+	readySteadyGo := clocky.NewTicker(5 * clocky.Second)
 	defer readySteadyGo.Stop()
 	ready := false
+
+	// how often to generate json for web dashboard
+	dumpTimer := clocky.NewTicker(250 * clocky.Millisecond)
+	defer dumpTimer.Stop()
 
 	for {
 		// drain all pending events
@@ -63,7 +67,6 @@ func live() {
 			continue
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
-			broadcastState()
 			continue
 		case simulationUpdate := <-gSimulationUpdates:
 			onSimulationOrderID(simulationUpdate.Simulation, simulationUpdate.OrderID)
@@ -73,6 +76,8 @@ func live() {
 			continue
 		case <-heartbeat.C:
 			onHeartbeat()
+			continue
+		case <-dumpTimer.C:
 			broadcastState()
 			continue
 		default:
@@ -96,16 +101,17 @@ func live() {
 			onOptionTick(t)
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
-			broadcastState()
 		case simulationUpdate := <-gSimulationUpdates:
 			onSimulationOrderID(simulationUpdate.Simulation, simulationUpdate.OrderID)
 		case req := <-gWebRequests:
 			processWebRequest(req)
 		case <-heartbeat.C:
 			onHeartbeat()
+		case <-dumpTimer.C:
 			broadcastState()
 		case <-readySteadyGo.C:
 			restorePortfolio()
+			broadcastState()
 			ready = true
 		}
 	}
