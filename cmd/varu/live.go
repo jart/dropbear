@@ -63,18 +63,23 @@ func live() {
 			continue
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
+			broadcastState()
 			continue
 		case simulationUpdate := <-gSimulationUpdates:
 			onSimulationOrderID(simulationUpdate.Simulation, simulationUpdate.OrderID)
 			continue
+		case req := <-gWebRequests:
+			processWebRequest(req)
+			continue
 		case <-heartbeat.C:
 			onHeartbeat()
+			broadcastState()
 			continue
 		default:
 			// all channels empty
 		}
 		// let's go
-		if ready {
+		if ready && !gPaused {
 			now := clocky.Now()
 			clock := now.ClockInt()
 			if clock >= kStartOfDay && clock <= kStopTrading &&
@@ -91,10 +96,14 @@ func live() {
 			onOptionTick(t)
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
+			broadcastState()
 		case simulationUpdate := <-gSimulationUpdates:
 			onSimulationOrderID(simulationUpdate.Simulation, simulationUpdate.OrderID)
+		case req := <-gWebRequests:
+			processWebRequest(req)
 		case <-heartbeat.C:
 			onHeartbeat()
+			broadcastState()
 		case <-readySteadyGo.C:
 			restorePortfolio()
 			ready = true

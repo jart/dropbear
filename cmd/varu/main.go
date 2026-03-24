@@ -23,6 +23,8 @@ import (
 
 var (
 	liveFlag       = flag.Bool("live", false, "run in live trading mode")
+	webFlag        = flag.Bool("web", false, "enable web dashboard feature")
+	rtFlag         = flag.Bool("rt", false, "run backtest in real time mode")
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
 	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
@@ -103,6 +105,13 @@ func main() {
 	gSymbol = symbol.MustParse(*symbolFlag)
 	gRiskFloor = (*floorFlag).Float64()
 	gRiskBudget = (*budgetFlag).Float64()
+	if *webFlag {
+		if !*liveFlag && !*rtFlag {
+			fmt.Fprintf(os.Stderr, "web dashboard is only useful in live or real-time backtesting mode\n")
+			os.Exit(1)
+		}
+		startWeb()
+	}
 	if *flagCPUProfile != "" {
 		f, err := os.Create(*flagCPUProfile)
 		if err != nil {
@@ -285,7 +294,7 @@ func canSell(option *options.Option) bool {
 }
 
 func endSimulation(strategy string) bool {
-	if gAbortSimulation {
+	if gAbortSimulation || !gStrategyEnabled[strategy] {
 		gAbortSimulation = false
 		gStagedPositions.Clear()
 		gStagedCash = decimal.Zero

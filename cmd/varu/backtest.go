@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
 var (
@@ -33,6 +34,8 @@ func backtest() {
 	}
 	clocky.Now = clocky.FakeNow
 	clocky.Sleep = clocky.FakeSleep
+	var rtBase time.Time
+	var rtBaseData clocky.Time
 	var nextThought, nextHeartbeat clocky.Time
 	for {
 		rec, err := quoteReader.Read()
@@ -48,6 +51,19 @@ func backtest() {
 		clocky.SetNow(now)
 		onOptionTick(m)
 		clock := now.ClockInt()
+		if *rtFlag {
+			if rtBaseData == 0 && clock >= kStartOfDay {
+				rtBase = time.Now()
+				rtBaseData = now
+			}
+			if rtBaseData != 0 {
+				dataElapsed := time.Duration(now - rtBaseData)
+				wallElapsed := time.Since(rtBase)
+				if dataElapsed > wallElapsed {
+					time.Sleep(dataElapsed - wallElapsed)
+				}
+			}
+		}
 		if clock >= kEndOfDay {
 			break
 		}
@@ -58,9 +74,23 @@ func backtest() {
 			nextThought = now.Add(*thinkFlag)
 			onThink(now)
 		}
+		if *webFlag {
+			for {
+				select {
+				case req := <-gWebRequests:
+					processWebRequest(req)
+				default:
+					goto doneWebRequests
+				}
+			}
+		doneWebRequests:
+		}
 		if now >= nextHeartbeat {
 			nextHeartbeat = now.Add(*heartbeatFlag)
 			onHeartbeat()
+			if *webFlag {
+				broadcastState()
+			}
 		}
 	}
 	onEndOfDay()
