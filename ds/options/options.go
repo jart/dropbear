@@ -2,6 +2,7 @@ package options
 
 import (
 	"dropbear/broker/databento"
+	"dropbear/clocky"
 	"dropbear/decimal"
 
 	"github.com/emirpasic/gods/v2/maps/treemap"
@@ -11,6 +12,7 @@ import (
 type Options struct {
 	Price          decimal.Decimal
 	AtTheMoney     *Strike
+	LastPopulate   clocky.Time
 	Strikes        *treemap.Map[decimal.Decimal, *Strike]
 	pendingStrikes *treemap.Map[decimal.Decimal, *Strike]
 }
@@ -121,6 +123,7 @@ func (oc *Options) populateStrike(o *Option, strikePrice decimal.Decimal) *Strik
 		if strike.Next != nil {
 			strike.Next.Prev = strike
 		}
+		oc.LastPopulate = clocky.Now()
 	}
 	return strike
 }

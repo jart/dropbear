@@ -47,14 +47,14 @@ func live() {
 	heartbeat := clocky.NewTicker(*heartbeatFlag)
 	defer heartbeat.Stop()
 
-	// give the options data some time to populate
-	readySteadyGo := clocky.NewTicker(5 * clocky.Second)
-	defer readySteadyGo.Stop()
-	ready := false
-
 	// how often to generate json for web dashboard
 	dumpTimer := clocky.NewTicker(250 * clocky.Millisecond)
 	defer dumpTimer.Stop()
+
+	// we must wait for options chain to become available
+	readySteadyGo := clocky.NewTicker(clocky.Second)
+	defer readySteadyGo.Stop()
+	ready := false
 
 	for {
 		// drain all pending events
@@ -84,7 +84,7 @@ func live() {
 			// all channels empty
 		}
 		// let's go
-		if ready && !gPaused {
+		if ready && !gPaused && !*dryFlag {
 			now := clocky.Now()
 			clock := now.ClockInt()
 			if clock >= kStartOfDay && clock <= kStopTrading &&
@@ -110,9 +110,11 @@ func live() {
 		case <-dumpTimer.C:
 			broadcastState()
 		case <-readySteadyGo.C:
-			restorePortfolio()
-			broadcastState()
-			ready = true
+			if !ready && gChain.LastPopulate != 0 && clocky.Now().After(gChain.LastPopulate.Add(clocky.Second)) {
+				restorePortfolio()
+				broadcastState()
+				ready = true
+			}
 		}
 	}
 }
@@ -120,15 +122,18 @@ func live() {
 // restorePortfolio reloads portfolio across command invocations.
 func restorePortfolio() {
 	now := clocky.Now()
+	startTime := clocky.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, clocky.UTC)
+	endTime := clocky.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, clocky.UTC)
 	orders, err := gSchwabClient.GetOrders(&schwab.GetOrdersRequest{
-		FromEnteredTime: clocky.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, clocky.UTC),
-		ToEnteredTime:   clocky.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, clocky.UTC),
+		FromEnteredTime: startTime,
+		ToEnteredTime:   endTime,
 		Status:          schwab.OrderStatusFilled,
 	})
 	if err != nil {
 		log.Printf("warning: failed to reload previous orders from schwab for today: %v", err)
 		os.Exit(1)
 	}
+	log.Printf("restoring portfolio from %d schwab orders placed today twixt %s to %s", len(orders), startTime, endTime)
 	for i := range orders {
 		loadSchwabOrder(&orders[i])
 	}
@@ -162,6 +167,7 @@ func loadSchwabOrder(order *schwab.Order) {
 				case schwab.InstructionBuyToOpen, schwab.InstructionBuyToClose:
 					price = price.Neg()
 				}
+				log.Printf("restoring filled leg for order id %d: %s %s @ %s", order.OrderID, leg.Instruction, option.OSI(), price)
 				for range execLeg.Quantity.Int() {
 					cost := price.MulInt(kMultiplier)
 					gCash = gCash.Add(cost)
@@ -314,23 +320,21 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 }
 
 func cancelUnfilledOrders(now clocky.Time) {
-	var toCancel []*Simulation
 	for it := gPendingOrders.Iterator(); it.Next(); {
 		sim := it.Value()
-		if sim.OrderID != 0 && now.Sub(sim.Created) >= *patienceFlag {
-			toCancel = append(toCancel, sim)
+		if sim.OrderID != 0 && !sim.Canceling && now.Sub(sim.Created) >= *patienceFlag {
+			sim.Canceling = true
+			go cancelOrder(sim)
 		}
 	}
-	for _, sim := range toCancel {
-		go func() {
-			err := gSchwabClient.CancelOrder(sim.OrderID)
-			if err != nil {
-				log.Printf("#%d failed to cancel order id %d: %v", sim.ID, sim.OrderID, err)
-				os.Exit(1)
-			}
-		}()
-		delete(gSimulationsByID, sim.OrderID)
-		gPendingOrders.Remove(sim)
+}
+
+func cancelOrder(sim *Simulation) {
+	log.Printf("#%d canceling order id %d for being unfilled after %s: %s", sim.ID, sim.OrderID, *patienceFlag, sim)
+	err := gSchwabClient.CancelOrder(sim.OrderID)
+	if err != nil {
+		log.Printf("warning: #%d failed to cancel order id %d: %v", sim.ID, sim.OrderID, err)
+		// could legitimately fail, e.g. "Order in state FILLED cannot be canceled"
 	}
 }
 
@@ -438,9 +442,10 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	// remove filled leg from simulation; clean up when all legs are done
 	sim.Legs.Remove(sym)
 	if sim.Legs.Empty() {
-		delete(gSimulationsByID, sim.OrderID)
-		gPendingOrders.Remove(sim)
+		deleteOrder(sim)
 		log.Printf("#%d order complete for order id %d: %s", sim.ID, sim.OrderID, sim.Strategy)
+		// trade instantly without delay once an order is filled
+		gNextTradeTime = clocky.Now()
 	}
 }
 
@@ -464,10 +469,15 @@ func onExpiredEvent(event *schwab.OrderEvent, ee *schwab.ExpiredEvent) {
 func onSimulationOrderID(sim *Simulation, orderID schwab.OrderID) {
 	sim.OrderID = orderID
 	gSimulationsByID[orderID] = sim
+	log.Printf("#%d got order id %d for simulation: %s", sim.ID, orderID, sim)
 }
 
 func onOrderCancel(sim *Simulation) {
+	deleteOrder(sim)
+	log.Printf("leg canceled for order id %d: %s", sim.OrderID, sim)
+}
+
+func deleteOrder(sim *Simulation) {
 	delete(gSimulationsByID, sim.OrderID)
 	gPendingOrders.Remove(sim)
-	log.Printf("leg canceled for order id %d: %s", sim.OrderID, sim)
 }

@@ -25,6 +25,7 @@ var (
 	liveFlag       = flag.Bool("live", false, "run in live trading mode")
 	webFlag        = flag.Bool("web", false, "enable web dashboard feature")
 	rtFlag         = flag.Bool("rt", false, "run backtest in real time mode")
+	dryFlag        = flag.Bool("dry", false, "don't send new orders in live mode")
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
 	sigmasFlag     = decimal.Flag("sigmas", "1", "number of sigmas of strikes to consider")
@@ -82,15 +83,16 @@ var (
 )
 
 type Simulation struct {
-	ID       int
-	OrderID  schwab.OrderID
-	Legs     *treemap.Map[string, decimal.Decimal]
-	Strategy string
-	Price    decimal.Decimal
-	Worst    decimal.Decimal
-	Payoff   decimal.Decimal
-	Score    decimal.Decimal // payoff improvement + risk reduction
-	Created  clocky.Time
+	ID        int
+	OrderID   schwab.OrderID
+	Legs      *treemap.Map[string, decimal.Decimal]
+	Strategy  string
+	Price     decimal.Decimal
+	Worst     decimal.Decimal
+	Payoff    decimal.Decimal
+	Score     decimal.Decimal // payoff improvement + risk reduction
+	Created   clocky.Time
+	Canceling bool
 }
 
 func (s *Simulation) String() string {
