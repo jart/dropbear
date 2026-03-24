@@ -7,6 +7,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds/options"
 	"dropbear/ds/osi"
+	"dropbear/loggy"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,6 +31,7 @@ type SimulationUpdate struct {
 }
 
 func live() {
+	loggy.AlsoLogToFile()
 
 	// subscribe to databento data
 	key := databento.MustLoadDefaultKey()
@@ -43,7 +45,11 @@ func live() {
 
 	// varu is the trading strategy with a heart
 	heartbeat := clocky.NewTicker(*heartbeatFlag)
+	defer heartbeat.Stop()
+
+	// give the options data some time to populate
 	readySteadyGo := clocky.NewTicker(10 * clocky.Second)
+	defer readySteadyGo.Stop()
 	ready := false
 
 	for {
@@ -69,8 +75,13 @@ func live() {
 		}
 		// let's go
 		if ready {
-			cancelUnfilledOrders()
-			onThink()
+			now := clocky.Now()
+			clock := now.ClockInt()
+			if clock >= kStartOfDay && clock <= kStopTrading &&
+				now >= gNextTradeTime && gPendingOrders.Size() < *maxPendingFlag {
+				onThink(now)
+			}
+			cancelUnfilledOrders(now)
 		}
 		// block until next event
 		select {
@@ -137,7 +148,7 @@ func loadSchwabOrder(order *schwab.Order) {
 					price = price.Neg()
 				}
 				for range execLeg.Quantity.Int() {
-					cost := price.Mul(kMultiplier)
+					cost := price.MulInt(kMultiplier)
 					gCash = gCash.Add(cost)
 					sym := option.OSI()
 					pos, _ := gPositions.Get(sym)
@@ -275,23 +286,23 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 	pretty, _ := json.MarshalIndent(json.RawMessage(event.RawData), "  ", "  ")
 	log.Printf("order %s: %s\n  %s", event.SchwabOrderID, event.BaseEvent.EventType, pretty)
 	if event.BaseEvent.CancelAcceptedEvent != nil {
-		onCancelAcknowledgement(event.BaseEvent.CancelAcceptedEvent)
+		onCancelAcknowledgement(event, event.BaseEvent.CancelAcceptedEvent)
 	} else if event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo != nil {
 		onFillEvent(event, event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo)
 	} else if event.BaseEvent.OrderExpiredEvent != nil {
-		onExpiredEvent(event.BaseEvent.OrderExpiredEvent)
+		onExpiredEvent(event, event.BaseEvent.OrderExpiredEvent)
 	} else if event.BaseEvent.ChangeCreatedEventEquityOrder != nil {
 		onChangeEvent(event, event.BaseEvent.ChangeCreatedEventEquityOrder)
 	} else if event.BaseEvent.OrderUROutCompletedEvent != nil {
-		onUROutCompletedEvent(event.BaseEvent.OrderUROutCompletedEvent)
+		onUROutCompletedEvent(event, event.BaseEvent.OrderUROutCompletedEvent)
 	}
 }
 
-func cancelUnfilledOrders() {
+func cancelUnfilledOrders(now clocky.Time) {
 	var toCancel []*Simulation
 	for it := gPendingOrders.Iterator(); it.Next(); {
 		sim := it.Value()
-		if sim.OrderID != 0 && clocky.Now().Sub(sim.Created) >= *patienceFlag {
+		if sim.OrderID != 0 && now.Sub(sim.Created) >= *patienceFlag {
 			toCancel = append(toCancel, sim)
 		}
 	}
@@ -299,7 +310,7 @@ func cancelUnfilledOrders() {
 		go func() {
 			err := gSchwabClient.CancelOrder(sim.OrderID)
 			if err != nil {
-				log.Printf("failed to cancel order id %d for simulation %d: %v", sim.OrderID, sim.Sequence, err)
+				log.Printf("#%d failed to cancel order id %d: %v", sim.ID, sim.OrderID, err)
 				os.Exit(1)
 			}
 		}()
@@ -321,26 +332,26 @@ func onChangeEvent(event *schwab.OrderEvent, change *schwab.OrderChangeEvent) {
 		return
 	}
 	if change.Order.Order.AssetOrderEquityOrderLeg.OrderInstruction.ExecutionStrategy.LimitExecutionStrategy == nil {
-		log.Printf("warning: onChangeEvent only supports limit orders")
+		log.Printf("#%d warning: onChangeEvent only supports limit orders", sim.ID)
 		return
 	}
 	limitPrice := change.Order.Order.AssetOrderEquityOrderLeg.OrderInstruction.ExecutionStrategy.LimitExecutionStrategy.LimitPrice
 	legs := change.Order.Order.AssetOrderEquityOrderLeg.OrderLegs
 	if len(legs) != 1 {
-		log.Printf("warning: onChangeEvent only supports single-leg orders")
+		log.Printf("#%d warning: onChangeEvent only supports single-leg orders", sim.ID)
 		return
 	}
 	if legs[0].BuySellCode == "Buy" {
 		limitPrice = limitPrice.Neg()
 	}
-	log.Printf("order id changed %d->%s with limit price %s->%s", oldID, newID, sim.Price, limitPrice)
+	log.Printf("#%d order id changed %d->%s with limit price %s->%s", sim.ID, oldID, newID, sim.Price, limitPrice)
 	sim.Price = limitPrice
 	sim.OrderID = newID
 	gSimulationsByID[newID] = sim
 	delete(gSimulationsByID, oldID)
 }
 
-func onCancelAcknowledgement(cancel *schwab.CancelAcknowledgement) {
+func onCancelAcknowledgement(event *schwab.OrderEvent, cancel *schwab.CancelAcknowledgement) {
 	for _, info := range cancel.LegCancelRequestInfoList {
 		sim := gSimulationsByID[info.LegID]
 		if sim == nil {
@@ -348,11 +359,11 @@ func onCancelAcknowledgement(cancel *schwab.CancelAcknowledgement) {
 			continue
 		}
 		if info.LegID != sim.OrderID {
-			log.Printf("warning: leg for order id %d does not match cancel event leg id %d: %s", sim.OrderID, info.LegID, sim)
+			log.Printf("warning: #%d leg for order id %d does not match cancel event leg id %d: %s", sim.ID, sim.OrderID, info.LegID, sim)
 			continue
 		}
 		if info.ChangedNewSchwabOrderID != 0 {
-			log.Printf("warning: got replacement cancel event for order id %d leg that still exists: %s", info.LegID, sim)
+			log.Printf("warning: #%d got replacement cancel event for order id %d leg that still exists: %s", sim.ID, info.LegID, sim)
 			continue
 		}
 		if info.LegStatus == "LegClosed" {
@@ -364,18 +375,18 @@ func onCancelAcknowledgement(cancel *schwab.CancelAcknowledgement) {
 	}
 }
 
-func onUROutCompletedEvent(uro *schwab.OrderUROutCompleted) {
-	sim := gSimulationsByID[uro.LegID]
+func onUROutCompletedEvent(event *schwab.OrderEvent, uro *schwab.OrderUROutCompleted) {
+	sim := gSimulationsByID[event.SchwabOrderID]
 	if sim == nil {
-		log.Printf("warning: order id %d not found for urout event", uro.LegID)
+		log.Printf("warning: order id %d not found for urout event", event.SchwabOrderID)
 		return
 	}
-	if uro.LegID != sim.OrderID {
-		log.Printf("warning: leg for order id %d does not match urout event leg id %d: %s", sim.OrderID, uro.LegID, sim)
+	if event.SchwabOrderID != sim.OrderID {
+		log.Printf("warning: #%d leg for order id %d does not match urout event leg id %d: %s", sim.ID, sim.OrderID, uro.LegID, sim)
 		return
 	}
 	if uro.LegStatus != "LegClosed" {
-		log.Printf("warning: leg for order id %d has unexpected leg status for urout event: %s", uro.LegID, uro.LegStatus)
+		log.Printf("warning: #%d leg for order id %d has unexpected leg status for urout event: %s", sim.ID, sim.OrderID, uro.LegStatus)
 		return
 	}
 	onOrderCancel(sim)
@@ -397,7 +408,7 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	// use actual fill price and quantity from execution, not simulated price
 	sym := fill.OrderInfoForTransactionPosting.Symbol
 	qty := fill.Quantity()
-	cash := fillPrice.Mul(qty.Abs()).Mul(kMultiplier)
+	cash := fillPrice.Mul(qty.Abs()).MulInt(kMultiplier)
 	if qty.IsPositive() {
 		cash = cash.Neg() // bought: we pay cash
 	}
@@ -406,32 +417,32 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	// update position for this filled leg
 	existing, _ := gPositions.Get(sym)
 	gPositions.Put(sym, existing.Add(qty))
-	log.Printf("leg filled for order id %d: %s %s @ %s, route: %s, improvement: %s, fee: %s",
-		orderID, fill.OrderInfoForTransactionPosting.BuySellCode, sym, fillPrice, routeName, priceImprovement, fee)
+	log.Printf("#%d leg filled for order id %d: %s %s @ %s, route: %s, improvement: %s, fee: %s",
+		sim.ID, orderID, fill.OrderInfoForTransactionPosting.BuySellCode, sym, fillPrice, routeName, priceImprovement, fee)
 
 	// remove filled leg from simulation; clean up when all legs are done
 	sim.Legs.Remove(sym)
 	if sim.Legs.Empty() {
 		delete(gSimulationsByID, sim.OrderID)
 		gPendingOrders.Remove(sim)
-		log.Printf("order complete for order id %d: %s", orderID, sim.Strategy)
+		log.Printf("#%d order complete for order id %d: %s", sim.ID, sim.OrderID, sim.Strategy)
 	}
 }
 
-func onExpiredEvent(ee *schwab.ExpiredEvent) {
-	sim := gSimulationsByID[ee.LegID]
+func onExpiredEvent(event *schwab.OrderEvent, ee *schwab.ExpiredEvent) {
+	sim := gSimulationsByID[event.SchwabOrderID]
 	if sim == nil {
-		log.Printf("warning: order id %d not found for expired event", ee.LegID)
+		log.Printf("warning: order id %d not found for expired event", event.SchwabOrderID)
 		return
 	}
-	if ee.LegID != sim.OrderID {
-		log.Printf("warning: leg for order id %d does not match expired event leg id %d: %s", sim.OrderID, ee.LegID, sim)
+	if event.SchwabOrderID != sim.OrderID {
+		log.Printf("warning: #%d leg for order id %d does not match expired event leg id %d: %s", sim.ID, sim.OrderID, ee.LegID, sim)
 		return
 	}
 	if ee.LegStatus != "LegClosed" {
-		log.Printf("warning: leg for order id %d has unexpected leg status for expired event: %s", ee.LegID, ee.LegStatus)
+		log.Printf("warning: #%d leg for order id %d has unexpected leg status for expired event: %s", sim.ID, sim.OrderID, ee.LegStatus)
 	}
-	log.Printf("leg expired for order id %d: %s", ee.LegID, sim)
+	log.Printf("#%d leg expired for order id %d: %s", sim.ID, sim.OrderID, sim)
 	onOrderCancel(sim)
 }
 

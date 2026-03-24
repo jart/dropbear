@@ -13,10 +13,9 @@ import (
 )
 
 var (
-	backtestFlag = flag.Bool("backtest", false, "run in backtest mode")
-	defsFlag     = flag.String("defs", "", "path to DBN file containing SPX definitions")
-	quotesFlag   = flag.String("quotes", "", "path to DBN file containing SPX quotes")
-	thinkFlag    = clocky.DurationFlag("think", "250ms", "interval between trading analysis")
+	defsFlag   = flag.String("defs", "", "path to DBN file containing SPX definitions")
+	quotesFlag = flag.String("quotes", "", "path to DBN file containing SPX quotes")
+	thinkFlag  = clocky.DurationFlag("think", "250ms", "interval between trading analysis")
 )
 
 func backtest() {
@@ -55,9 +54,9 @@ func backtest() {
 		if clock < kStartOfDay {
 			continue
 		}
-		if now >= nextThought && now >= gNextTradeTime {
+		if now >= nextThought && now >= gNextTradeTime && clock <= kStopTrading {
 			nextThought = now.Add(*thinkFlag)
-			onThink()
+			onThink(now)
 		}
 		if now >= nextHeartbeat {
 			nextHeartbeat = now.Add(*heartbeatFlag)
@@ -113,5 +112,14 @@ func loadDefinitions(path string) {
 	if len(gOptionsByID) == 0 {
 		fmt.Fprintf(os.Stderr, "no %s 0dte definitions found\n", gSymbol)
 		os.Exit(1)
+	}
+}
+
+func simulateOrder(sim *Simulation) {
+	gCash = gCash.Add(sim.Price.MulInt(kMultiplier))
+	for legIt := sim.Legs.Iterator(); legIt.Next(); {
+		sym, pos := legIt.Key(), legIt.Value()
+		existing, _ := gPositions.Get(sym)
+		gPositions.Put(sym, existing.Add(pos))
 	}
 }

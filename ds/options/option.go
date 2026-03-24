@@ -33,6 +33,8 @@ type Option struct {
 	Vega    decimal.Decimal           // Black-76 theta at last tick (dPrice/dES)
 	mid     decimal.Decimal           // market price when last tick was received
 	fut     decimal.Decimal           // es price when last tick was received
+	exp     clocky.Time               // caches expiration for quick access
+	osi     string                    // caches OSI code for quick access
 }
 
 // HasQuotes returns true if the option has valid bid and ask prices.
@@ -54,7 +56,11 @@ func (o *Option) MarketPrice() decimal.Decimal {
 
 // Expiry returns the expiration time of the option.
 func (o *Option) Expiry() clocky.Time {
-	return clocky.Date(o.Year, o.Month, o.Day, 16, 0, 0, 0, clocky.NYC)
+	if o.exp != 0 {
+		return o.exp
+	}
+	o.exp = clocky.Date(o.Year, o.Month, o.Day, 16, 0, 0, 0, clocky.NYC)
+	return o.exp
 }
 
 // FairPrice returns the delta-adjusted mid price using the latest ES futures price.
@@ -92,7 +98,11 @@ func (o *Option) String() string {
 
 // OSI returns the OSI code for the option, e.g. "SPXW240621C04000000".
 func (o *Option) OSI() string {
-	return osi.Encode(o.Sym, o.Strike.Price, byte(o.Class), o.Year, o.Month, o.Day)
+	if o.osi != "" {
+		return o.osi
+	}
+	o.osi = osi.Encode(o.Sym, o.Strike.Price, byte(o.Class), o.Year, o.Month, o.Day)
+	return o.osi
 }
 
 // ComputeGreeks recomputes the Black-76 delta from the current market mid and SPX price.
@@ -107,7 +117,7 @@ func (o *Option) ComputeGreeks(underlyingPrice, riskFreeRate, futuresPrice decim
 	F := underlyingPrice.Float64()
 	K := o.Strike.Price.Float64()
 	r := riskFreeRate.Float64()
-	E := o.Expiry().Sub(clocky.Now())
+	E := o.Expiry().Sub(o.TS)
 	if E <= 0 {
 		o.Got &^= GotGreeks
 		return

@@ -11,6 +11,7 @@ import (
 	"dropbear/ds/symbol"
 	"dropbear/loggy"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -21,23 +22,27 @@ import (
 )
 
 var (
+	liveFlag       = flag.Bool("live", false, "run in live trading mode")
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
 	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
 	budgetFlag     = decimal.Flag("budget", "5_000", "maximum acceptable loss at current price")
 	floorFlag      = decimal.Flag("floor", "50_000", "maximum acceptable loss in catastrophic scenario")
-	execFlag       = decimal.Flag("exec", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
+	spreadFlag     = decimal.Flag("spread", "-.2", "spread crossing (-1=make, 0=mid, 1=take)")
 	cooldownFlag   = clocky.DurationFlag("cooldown", "10s", "interval between trading decisions")
 	patienceFlag   = clocky.DurationFlag("patience", "9s", "how long to wait before canceling live orders")
 	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
+	maxPendingFlag = flag.Int("max-pending", 1, "maximum number of pending orders")
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
 )
 
 const (
-	kXSP        = symbol.Symbol('X' | 'S'<<8 | 'P'<<16)
-	kSPXW       = symbol.Symbol('S' | 'P'<<8 | 'X'<<16 | 'W'<<24)
-	kStartOfDay = 9_35_00
-	kEndOfDay   = 16_00_00
+	kXSP         = symbol.Symbol('X' | 'S'<<8 | 'P'<<16)
+	kSPXW        = symbol.Symbol('S' | 'P'<<8 | 'X'<<16 | 'W'<<24)
+	kStartOfDay  = 9_35_00
+	kStopTrading = 14_30_00
+	kEndOfDay    = 16_00_00
+	kMultiplier  = 100
 )
 
 var (
@@ -47,6 +52,7 @@ var (
 	gPositions      = treemap.New[string, decimal.Decimal]()
 	gOptionsByID    = map[uint32]*options.Option{}
 	gOptionsByOSI   = map[string]*options.Option{}
+	gStrategiesUsed = treemap.New[string, int]()
 	gNextTradeTime  clocky.Time
 	gBaselinePayoff decimal.Decimal
 	gBaselineWorst  decimal.Decimal
@@ -54,17 +60,19 @@ var (
 )
 
 var (
+	gRiskFloor         float64
+	gRiskBudget        float64
 	gStagedCash        decimal.Decimal
 	gStagedPositions   = treemap.New[string, decimal.Decimal]()
 	gSimulations       = treeset.NewWith(compareSimulations)
 	gSimulationsByID   = map[schwab.OrderID]*Simulation{}
 	gSimulationCounter int
-	gAbortSimulations  bool
+	gIdentifierCounter int
+	gAbortSimulation   bool
 )
 
 var (
 	kRiskFreeRate = decimal.Parse("0.035")
-	kMultiplier   = decimal.FromInt(100)
 	kTick01       = decimal.Parse("0.01")
 	kTick05       = decimal.Parse("0.05")
 	kTick10       = decimal.Parse("0.10")
@@ -72,28 +80,19 @@ var (
 )
 
 type Simulation struct {
+	ID       int
+	OrderID  schwab.OrderID
 	Legs     *treemap.Map[string, decimal.Decimal]
 	Strategy string
 	Price    decimal.Decimal
 	Worst    decimal.Decimal
 	Payoff   decimal.Decimal
 	Score    decimal.Decimal // payoff improvement + risk reduction
-	Sequence int
 	Created  clocky.Time
-	OrderID  schwab.OrderID
 }
 
 func (s *Simulation) String() string {
-	var legs []string
-	for it := s.Legs.Iterator(); it.Next(); {
-		sym, pos := it.Key(), it.Value()
-		action := "buy"
-		if pos.IsNegative() {
-			action = "sell"
-		}
-		legs = append(legs, action+" "+sym)
-	}
-	return s.Strategy + " " + s.Price.Format(2) + " " + s.Payoff.Format(2) + " " + s.Worst.Format(2) + " [" + stringJoin(legs, ", ") + "]"
+	return fmt.Sprintf("#%d %s", s.ID, s.Strategy)
 }
 
 func main() {
@@ -102,6 +101,8 @@ func main() {
 	black76.DaysPerYear = 252
 	black76.HoursPerDay = 6.5
 	gSymbol = symbol.MustParse(*symbolFlag)
+	gRiskFloor = (*floorFlag).Float64()
+	gRiskBudget = (*budgetFlag).Float64()
 	if *flagCPUProfile != "" {
 		f, err := os.Create(*flagCPUProfile)
 		if err != nil {
@@ -121,51 +122,64 @@ func main() {
 		defer pprof.StopCPUProfile()
 		defer f.Close()
 	}
-	if *backtestFlag {
-		backtest()
-	} else {
+	if *liveFlag {
 		live()
+	} else {
+		backtest()
 	}
 }
 
-func onThink() {
-	gSimulationCounter = 0
-	gBaselinePayoff = computeExpectedPayoff()
-	gBaselineWorst = computeRisk()
-	gBaselineDelta = computeDelta()
+func onThink(now clocky.Time) {
+	if !beginSimulations() {
+		return
+	}
 	em := gChain.ExpectedMove().Mul(*sigmasFlag)
 	lo := gChain.Price.Sub(em)
 	hi := gChain.Price.Add(em)
-	simulateBuyCalls(hi)
 	simulateBuyPuts(lo)
-	simulateSellCallVerticals(hi)
-	simulateSellPutVerticals(lo)
+	simulateBuyCalls(hi)
 	simulateBuyCombo(lo, hi)
 	simulateSellCombo(lo, hi)
+	simulateSellCallVerticals(hi)
+	simulateSellPutVerticals(lo)
+	simulateBuyCallVerticals(hi)
+	simulateBuyPutVerticals(lo)
+	sendBestOrder(now)
+}
+
+func beginSimulations() bool {
+	gSimulationCounter = 0
+	gBaselinePayoff = computeExpectedPayoff()
+	if gBaselinePayoff.Cmp(decimal.NegOne) == 0 {
+		return false
+	}
+	gBaselineWorst = computeRisk()
+	gBaselineDelta = computeDelta()
+	return true
+}
+
+func sendBestOrder(now clocky.Time) {
 	if gSimulations.Empty() {
 		return
 	}
+	log.Printf("%d out of %d simulated orders were reasonable",
+		gSimulations.Size(), gSimulationCounter)
 	it := gSimulations.Iterator()
 	it.Next()
 	sim := it.Value()
-	if !sim.Score.IsPositive() {
-		gSimulations.Clear()
-		return
-	}
-	now := clocky.Now()
 	sim.Created = now
+	sim.ID = gIdentifierCounter
+	gIdentifierCounter++
 	gNextTradeTime = now.Add(*cooldownFlag)
-	if *backtestFlag {
-		gCash = gCash.Add(sim.Price.Mul(kMultiplier))
-		for legIt := sim.Legs.Iterator(); legIt.Next(); {
-			sym, pos := legIt.Key(), legIt.Value()
-			existing, _ := gPositions.Get(sym)
-			gPositions.Put(sym, existing.Add(pos))
-		}
-	} else {
+	c, _ := gStrategiesUsed.Get(sim.Strategy)
+	gStrategiesUsed.Put(sim.Strategy, c+1)
+	if *liveFlag {
 		sendLiveOrder(sim)
+	} else {
+		simulateOrder(sim)
 	}
-	log.Printf("%s: price=%s payoff=%s worst=%s", sim.Strategy, sim.Price, sim.Payoff.Truncate(), sim.Worst)
+	log.Printf("#%d %s: price=%s payoff=%s worst=%s",
+		sim.ID, sim.Strategy, sim.Price, sim.Payoff.Truncate(), sim.Worst)
 	for legIt := sim.Legs.Iterator(); legIt.Next(); {
 		sym, pos := legIt.Key(), legIt.Value()
 		option := gOptionsByOSI[sym]
@@ -193,18 +207,34 @@ func simulateBuyPuts(lo decimal.Decimal) {
 }
 
 func simulateSellCallVerticals(hi decimal.Decimal) {
-	for strike := gChain.AtTheMoney.Next; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		sell(gChain.AtTheMoney.Call)
+	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+		sell(gChain.AtTheMoney.Prev.Call)
 		buy(strike.Call)
 		endSimulation("sell call vertical")
 	}
 }
 
 func simulateSellPutVerticals(lo decimal.Decimal) {
-	for strike := gChain.AtTheMoney.Prev; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
-		sell(gChain.AtTheMoney.Put)
+	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
+		sell(gChain.AtTheMoney.Next.Put)
 		buy(strike.Put)
 		endSimulation("sell put vertical")
+	}
+}
+
+func simulateBuyCallVerticals(hi decimal.Decimal) {
+	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+		buy(gChain.AtTheMoney.Prev.Call)
+		sell(strike.Call)
+		endSimulation("buy call vertical")
+	}
+}
+
+func simulateBuyPutVerticals(lo decimal.Decimal) {
+	for strike := gChain.AtTheMoney; strike != nil && strike.Price.Cmp(lo) >= 0; strike = strike.Prev {
+		buy(gChain.AtTheMoney.Next.Put)
+		sell(strike.Put)
+		endSimulation("buy put vertical")
 	}
 }
 
@@ -232,7 +262,7 @@ func buy(option *options.Option) {
 	if canBuy(option) {
 		gStagedPositions.Put(option.OSI(), decimal.One)
 	} else {
-		gAbortSimulations = true
+		gAbortSimulation = true
 	}
 }
 
@@ -240,71 +270,78 @@ func sell(option *options.Option) {
 	if canSell(option) {
 		gStagedPositions.Put(option.OSI(), decimal.NegOne)
 	} else {
-		gAbortSimulations = true
+		gAbortSimulation = true
 	}
 }
 
 func canBuy(option *options.Option) bool {
 	pos1, _ := gPositions.Get(option.OSI())
-	pos2, _ := gStagedPositions.Get(option.OSI())
-	return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
+	return pos1.Cmp(decimal.Zero) >= 0
 }
 
 func canSell(option *options.Option) bool {
 	pos1, _ := gPositions.Get(option.OSI())
-	pos2, _ := gStagedPositions.Get(option.OSI())
-	return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
+	return pos1.Cmp(decimal.Zero) <= 0
 }
 
 func endSimulation(strategy string) bool {
-	if gAbortSimulations {
-		gAbortSimulations = false
+	if gAbortSimulation {
+		gAbortSimulation = false
 		gStagedPositions.Clear()
 		gStagedCash = decimal.Zero
 		return false
 	}
-	simulation := &Simulation{Legs: gStagedPositions, Strategy: strategy}
-	simulation.Sequence = gSimulationCounter
-	gSimulationCounter++
-	choosePriceForSimulation(simulation)
-	gStagedCash = simulation.Price.Mul(kMultiplier)
-	simulation.Worst = computeRisk()
-	simulation.Payoff = computeExpectedPayoff()
-	payoffImprovement := simulation.Payoff.Sub(gBaselinePayoff)
-	riskReduction := simulation.Worst.Sub(gBaselineWorst).Max(decimal.Zero)
-	simDelta := computeDelta()
-	deltaImprovement := gBaselineDelta.Abs().Sub(simDelta.Abs()).Max(decimal.Zero)
-	simulation.Score = payoffImprovement.Add(riskReduction.DivInt(10)).Add(deltaImprovement)
+	price := choosePriceForSimulation()
+	gStagedCash = price.MulInt(kMultiplier)
 	if checkRiskTolerance() {
-		gSimulations.Add(simulation)
+		payoff := computeExpectedPayoff()
+		if payoff.Cmp(decimal.NegOne) != 0 {
+			sim := &Simulation{
+				ID:       gSimulationCounter,
+				Legs:     gStagedPositions,
+				Strategy: strategy,
+				Price:    price,
+				Worst:    computeRisk(),
+				Payoff:   payoff,
+			}
+			payoffImprovement := sim.Payoff.Sub(gBaselinePayoff)
+			riskReduction := sim.Worst.Sub(gBaselineWorst).Max(decimal.Zero)
+			simDelta := computeDelta()
+			deltaImprovement := gBaselineDelta.Abs().Sub(simDelta.Abs()).Max(decimal.Zero)
+			sim.Score = payoffImprovement.Add(riskReduction.DivInt(10)).Add(deltaImprovement)
+			if sim.Score.IsPositive() {
+				gSimulations.Add(sim)
+			}
+		}
 	}
+	gSimulationCounter++
 	gStagedPositions = treemap.New[string, decimal.Decimal]()
 	gStagedCash = decimal.Zero
 	return true
 }
 
-func choosePriceForSimulation(simulation *Simulation) {
+func choosePriceForSimulation() decimal.Decimal {
 	// exec controls where in the spread we price:
 	//   -1 = make (bid for buys, ask for sells — most favorable)
 	//    0 = mid
 	//    1 = take (ask for buys, bid for sells — least favorable)
 	// values beyond ±1 go past the spread
-	var price decimal.Decimal
-	exec := *execFlag
-	for it := simulation.Legs.Iterator(); it.Next(); {
+	spread := *spreadFlag
+	price := decimal.Zero
+	for it := gStagedPositions.Iterator(); it.Next(); {
 		sym, pos := it.Key(), it.Value()
-		o := gOptionsByOSI[sym]
-		mid := o.MarketPrice()
-		halfSpread := o.Ask.Sub(o.Bid).DivInt(2)
+		opt := gOptionsByOSI[sym]
+		mid := opt.MarketPrice()
+		hlf := opt.Ask.Sub(opt.Bid).DivInt(2)
 		if pos.IsPositive() {
-			// buying: mid + halfSpread * exec (round down = cheaper for us)
-			price = price.Sub(quantizeTruncate(mid.Add(halfSpread.Mul(exec))))
+			// buying: mid + halfSpread * spread (round down = cheaper for us)
+			price = price.Sub(quantizeTruncate(mid.Add(hlf.Mul(spread))))
 		} else {
-			// selling: mid - halfSpread * exec (round up = more credit for us)
-			price = price.Add(quantizeAway(mid.Sub(halfSpread.Mul(exec))))
+			// selling: mid - halfSpread * spread (round up = more credit for us)
+			price = price.Add(quantizeAway(mid.Sub(hlf.Mul(spread))))
 		}
 	}
-	simulation.Price = price
+	return price
 }
 
 func onHeartbeat() {
@@ -322,10 +359,15 @@ func onEndOfDay() {
 	log.Printf("end of day settlement time")
 	iteratePositions(func(sym string, pos decimal.Decimal) {
 		intrinsic := gOptionsByOSI[sym].IntrinsicValue(gChain.Price)
-		settlement := intrinsic.Mul(pos).Mul(kMultiplier)
+		settlement := intrinsic.Mul(pos).MulInt(kMultiplier)
 		gCash = gCash.Add(settlement)
 		log.Printf("have %4s of %s worth %8s", pos, sym, settlement.Truncate())
 	})
+	log.Printf("strategies used")
+	for it := gStrategiesUsed.Iterator(); it.Next(); {
+		strategy, count := it.Key(), it.Value()
+		log.Printf("%30s %4d", strategy, count)
+	}
 	log.Printf("ending balance %s at %s price %s", gCash.Format(2), gSymbol, gChain.Price)
 }
 
@@ -374,22 +416,20 @@ func computeRisk() decimal.Decimal {
 // Uses the normal CDF to smoothly interpolate between the everyday budget
 // (at current price) and the catastrophic floor (at extreme moves).
 func checkRiskTolerance() bool {
-	em := gChain.ExpectedMove()
-	if !em.IsPositive() {
+	em := gChain.ExpectedMove().Float64()
+	if em <= 0 {
 		return false
 	}
-	budget := *budgetFlag
-	floor := *floorFlag
 	for it := gChain.Strikes.Iterator(); it.Next(); {
 		strike := it.Value()
-		settlement := computeSettlementAt(strike.Price)
-		sigmas := gChain.Price.Sub(strike.Price).Abs().Div(em).Float64()
+		settlement := computeSettlementAt(strike.Price).Float64()
+		movement := gChain.Price.Sub(strike.Price).Abs().Float64()
+		sigmas := movement / em
 		// NormCDF(0)=0.5, NormCDF(3)≈0.999. We want 0σ→budget, ∞σ→floor.
 		// Scale so: 0σ→0, ∞σ→1
-		blend := (prob.NormCDF(sigmas) - 0.5) * 2    // 0 at 0σ, ~1 at 3+σ
-		maxLoss := budget.Add(floor.Sub(budget).Mul( // lerp budget→floor
-			decimal.FromFloat64(blend)))
-		if settlement.Cmp(maxLoss.Neg()) < 0 {
+		blend := (prob.NormCDF(sigmas) - .5) * 2                // 0 at 0σ, ~1 at 3+σ
+		maxLoss := gRiskBudget + (gRiskFloor-gRiskBudget)*blend // lerp budget→floor
+		if settlement < -maxLoss {
 			return false
 		}
 	}
@@ -397,23 +437,21 @@ func checkRiskTolerance() bool {
 }
 
 func computeSettlementAt(underlyingPrice decimal.Decimal) decimal.Decimal {
-	cash := gCash + gStagedCash
+	value := decimal.Zero
 	iteratePositions(func(sym string, pos decimal.Decimal) {
 		intrinsic := gOptionsByOSI[sym].IntrinsicValue(underlyingPrice)
-		settlement := intrinsic.Mul(pos).Mul(kMultiplier)
-		cash = cash.Add(settlement)
+		value = value.Add(intrinsic.Mul(pos))
 	})
-	return cash
+	return value.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
 }
 
 func computeLiquidationValue() decimal.Decimal {
-	cash := gCash + gStagedCash
+	value := decimal.Zero
 	iteratePositions(func(sym string, pos decimal.Decimal) {
 		mid := gOptionsByOSI[sym].MarketPrice()
-		value := mid.Mul(pos).Mul(kMultiplier)
-		cash = cash.Add(value)
+		value = value.Add(mid.Mul(pos))
 	})
-	return cash
+	return value.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
 }
 
 func computeExpectedPayoff() decimal.Decimal {
@@ -429,48 +467,45 @@ func computeExpectedPayoff() decimal.Decimal {
 		if prob.IsPositive() {
 			probs = append(probs, strikeProb{strike, prob})
 			probSum = probSum.Add(prob)
-		} else {
-			// log.Printf("warning: strike %s has bad probability %s (%s=%s | call got=%s bid=%s/%d ask=%s/%d | put got=%s bid=%s/%d ask=%s/%d)\n",
-			// 	strike.Price, prob, gSymbol, gChain.Price,
-			// 	strike.Call.Got,
-			// 	strike.Call.Bid, strike.Call.BidSize,
-			// 	strike.Call.Ask, strike.Call.AskSize,
-			// 	strike.Put.Got,
-			// 	strike.Put.Bid, strike.Put.BidSize,
-			// 	strike.Put.Ask, strike.Put.AskSize)
 		}
 	})
 	if len(probs) == 0 || !probSum.IsPositive() {
-		panic("unexpectedly found no strikes with positive probability")
+		return decimal.NegOne
 	}
 	// compute expected payoff with normalized probabilities
-	payoff := gCash + gStagedCash
+	payoff := decimal.Zero
 	for _, sp := range probs {
 		prob := sp.prob.Div(probSum)
 		iteratePositions(func(sym string, pos decimal.Decimal) {
 			intrinsic := gOptionsByOSI[sym].IntrinsicValue(sp.strike.Price)
-			payoff = payoff.Add(intrinsic.Mul(pos).Mul(kMultiplier).Mul(prob))
+			payoff = payoff.Add(intrinsic.Mul(pos).Mul(prob))
 		})
 	}
-	return payoff
+	return payoff.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
 }
 
+// computeDelta calculates the delta for all positions.
 func computeDelta() decimal.Decimal {
 	var delta decimal.Decimal
 	iteratePositions(func(sym string, pos decimal.Decimal) {
-		delta = delta.Add(gOptionsByOSI[sym].Delta.Mul(pos).Mul(kMultiplier))
+		delta = delta.Add(gOptionsByOSI[sym].Delta.Mul(pos))
 	})
-	return delta
+	return delta.MulInt(kMultiplier)
 }
 
+// computeGreeks calculates greeks for all positions.
 func computeGreeks() (delta, gamma, theta, vega decimal.Decimal) {
 	iteratePositions(func(sym string, pos decimal.Decimal) {
-		delta = delta.Add(gOptionsByOSI[sym].Delta.Mul(pos).Mul(kMultiplier))
-		gamma = gamma.Add(gOptionsByOSI[sym].Gamma.Mul(pos).Mul(kMultiplier))
-		theta = theta.Add(gOptionsByOSI[sym].Theta.Mul(pos).Mul(kMultiplier))
+		delta = delta.Add(gOptionsByOSI[sym].Delta.Mul(pos))
+		gamma = gamma.Add(gOptionsByOSI[sym].Gamma.Mul(pos))
+		theta = theta.Add(gOptionsByOSI[sym].Theta.Mul(pos))
 		vega = vega.Add(gOptionsByOSI[sym].Vega.Mul(pos))
 	})
-	return delta, gamma, theta, vega
+	delta = delta.MulInt(kMultiplier)
+	gamma = gamma.MulInt(kMultiplier)
+	theta = theta.MulInt(kMultiplier)
+	vega = vega.MulInt(kMultiplier)
+	return
 }
 
 func onOptionDef(o *options.Option) {
@@ -540,5 +575,5 @@ func compareSimulations(a, b *Simulation) int {
 	if res != 0 {
 		return -res // highest score first
 	}
-	return a.Sequence - b.Sequence
+	return a.ID - b.ID
 }

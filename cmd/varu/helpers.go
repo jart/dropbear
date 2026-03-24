@@ -2,7 +2,6 @@ package main
 
 import (
 	"dropbear/decimal"
-	"strings"
 )
 
 // incTick increases an spx option's price by one tick.
@@ -59,16 +58,4 @@ func optionTick(price decimal.Decimal) decimal.Decimal {
 	default:
 		return kTick01
 	}
-}
-
-// stringJoin is a more efficient version of strings.Join for small slices.
-func stringJoin(strs []string, sep string) string {
-	var result strings.Builder
-	for i, s := range strs {
-		if i > 0 {
-			result.WriteString(sep)
-		}
-		result.WriteString(s)
-	}
-	return result.String()
 }
