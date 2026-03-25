@@ -67,17 +67,27 @@ func streamFutures(key databento.ApiKey, defs chan<- *Future, ticks chan<- *data
 
 func fetchFuturePrice(key databento.ApiKey, future *Future, ticks chan<- *databento.MBP1) {
 	client := databento.NewHistoricalClient(key)
-	start := clocky.Now().Add(-clocky.Day).In(clocky.UTC)
-	end := clocky.Now().In(clocky.UTC)
-	startStr := start.Format("2006-01-02")
-	endStr := end.Format("2006-01-02")
+	start := clocky.Now().Add(-clocky.Day)
+	end := clocky.Now()
 	symbols := []string{future.CME()}
-	_, recs, err := client.GetRange("GLBX.MDP3", databento.SchemaMBP1, databento.STypeRawSymbol, symbols, startStr, endStr, 1)
+	// "GLBX.MDP3", databento.SchemaMBP1, databento.STypeRawSymbol, symbols, startStr, endStr, 1)
+	response, err := client.GetRange(databento.GetRangeParams{
+		Dataset:  "GLBX.MDP3",
+		Schema:   databento.SchemaMBP1,
+		STypeIn:  databento.STypeRawSymbol,
+		STypeOut: databento.STypeContinuous,
+		Symbols:  symbols,
+		Start:    start,
+		End:      end,
+		Limit:    1,
+	})
 	if err != nil {
 		log.Fatalf("failed to fetch historical mbp1: %v", err)
 	}
-	if len(recs) == 0 {
-		log.Fatalf("no historical mbp1 records found for %s", future)
+	defer response.Close()
+	record, err := response.Read()
+	if err != nil {
+		log.Fatalf("failed to read historical mbp1: %v", err)
 	}
-	ticks <- recs[0].(*databento.MBP1)
+	ticks <- record.(*databento.MBP1)
 }

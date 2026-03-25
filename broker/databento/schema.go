@@ -74,6 +74,54 @@ func (rt Schema) String() string {
 	}
 }
 
+// ParseSchema parses a schema string like "mbo" or "ohlcv-1m" into a Schema.
+func ParseSchema(s string) (Schema, error) {
+	switch s {
+	case "mbo":
+		return SchemaMBO, nil
+	case "mbp-1":
+		return SchemaMBP1, nil
+	case "mbp-10":
+		return SchemaMBP10, nil
+	case "tbbo":
+		return SchemaTBBO, nil
+	case "trades":
+		return SchemaTrades, nil
+	case "ohlcv-1s":
+		return SchemaOHLCV1S, nil
+	case "ohlcv-1m":
+		return SchemaOHLCV1M, nil
+	case "ohlcv-1h":
+		return SchemaOHLCV1H, nil
+	case "ohlcv-1d":
+		return SchemaOHLCV1D, nil
+	case "definition":
+		return SchemaDefinition, nil
+	case "statistics":
+		return SchemaStatistics, nil
+	case "status":
+		return SchemaStatus, nil
+	case "imbalance":
+		return SchemaImbalance, nil
+	case "ohlcv-eod":
+		return SchemaOHLCVEOD, nil
+	case "cmbp-1":
+		return SchemaCMBP1, nil
+	case "cbbo-1s":
+		return SchemaCMBP1S, nil
+	case "cbbo-1m":
+		return SchemaCMBP1M, nil
+	case "tcbbo":
+		return SchemaTCBBO, nil
+	case "bbo-1s":
+		return SchemaBBO1S, nil
+	case "bbo-1m":
+		return SchemaBBO1M, nil
+	default:
+		return 0, fmt.Errorf("databento: unknown schema %q", s)
+	}
+}
+
 func (rt Schema) GoString() string {
 	switch rt {
 	case SchemaMBO:

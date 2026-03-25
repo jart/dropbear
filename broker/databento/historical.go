@@ -4,87 +4,90 @@
 package databento
 
 import (
-	"bufio"
+	"dropbear/clocky"
+	"dropbear/netty"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
-	"net/url"
-	"strings"
 )
 
 const historicalGateway = "https://hist.databento.com"
 
 // HistoricalClient accesses Databento's historical market data API.
+// Rate-limits outgoing connections to comply with Databento's policy
+// of at most 5 new connections per second per IP.
 type HistoricalClient struct {
-	apiKey ApiKey
+	apiKey  ApiKey
+	limiter netty.TokenBucket
 }
 
 // NewHistoricalClient creates a new historical API client.
 func NewHistoricalClient(apiKey ApiKey) *HistoricalClient {
-	return &HistoricalClient{apiKey: apiKey}
+	return &HistoricalClient{
+		apiKey:  apiKey,
+		limiter: netty.NewTokenBucket(5, 5),
+	}
 }
 
-// GetRange fetches records from the historical timeseries API.
-// Returns the parsed metadata and a slice of raw record byte slices.
-// Each record slice contains the full record bytes including the header.
-func (c *HistoricalClient) GetRange(dataset string, schema Schema, stypeIn SType,
-	symbols []string, start, end string, limit int) (*Metadata, []any, error) {
-
-	params := url.Values{
-		"dataset":     {dataset},
-		"schema":      {schema.String()},
-		"stype_in":    {stypeIn.String()},
-		"stype_out":   {STypeInstrumentID.String()},
-		"symbols":     {strings.Join(symbols, ",")},
-		"start":       {start},
-		"end":         {end},
-		"encoding":    {"dbn"},
-		"compression": {"none"},
+// do executes an HTTP request with client-side rate limiting and
+// exponential backoff retry on 429 and other retryable status codes.
+// The caller is responsible for closing the response body on success.
+// For POST requests, set req.GetBody so the body can be re-read on retry.
+func (c *HistoricalClient) do(req *http.Request) (*http.Response, error) {
+	for tries := 0; ; tries++ {
+		if tries > 0 && req.GetBody != nil {
+			var err error
+			req.Body, err = req.GetBody()
+			if err != nil {
+				return nil, fmt.Errorf("databento: reset body: %w", err)
+			}
+		}
+		c.limiter.Get()
+		resp, err := netty.BulkHttpClient.Do(req)
+		if err != nil {
+			if !netty.IsRetryableHTTPError(err) {
+				return nil, err
+			}
+			delay := clocky.Second << min(tries, 5)
+			log.Printf("databento: %v, retrying in %v (attempt %d)", err, delay, tries+1)
+			clocky.Sleep(delay)
+			continue
+		}
+		if !netty.IsRetryableHTTPStatusCode(resp.StatusCode) {
+			return resp, nil
+		}
+		resp.Body.Close()
+		delay := clocky.Second << min(tries, 5)
+		log.Printf("databento: got %d, retrying in %v (attempt %d)", resp.StatusCode, delay, tries+1)
+		clocky.Sleep(delay)
 	}
-	if limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", limit))
-	}
+}
 
-	req, err := http.NewRequest("POST", historicalGateway+"/v0/timeseries.get_range",
-		strings.NewReader(params.Encode()))
+// getMetadataJSON performs a GET request to a metadata endpoint and
+// decodes the JSON response into dest.
+func (c *HistoricalClient) getMetadataJSON(path string, params map[string]string, dest any) error {
+	req, err := http.NewRequest("GET", historicalGateway+path, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("databento: create request: %w", err)
+		return err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if len(params) > 0 {
+		q := req.URL.Query()
+		for k, v := range params {
+			q.Set(k, v)
+		}
+		req.URL.RawQuery = q.Encode()
+	}
 	req.SetBasicAuth(string(c.apiKey), "")
-
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("databento: http post: %w", err)
+		return err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, nil, fmt.Errorf("databento: http %d: %s", resp.StatusCode, body)
+		return fmt.Errorf("databento: http %d: %s", resp.StatusCode, body)
 	}
-
-	body := bufio.NewReaderSize(resp.Body, 256*1024)
-	var meta Metadata
-	err = decodeMetadata(body, &meta)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var records []any
-	for {
-		rec, err := decodeRecord(body)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return &meta, records, err
-		}
-		obj, err := castRecord(meta.Version, rec)
-		if err != nil {
-			return &meta, records, err
-		}
-		records = append(records, obj)
-	}
-	return &meta, records, nil
+	return json.NewDecoder(resp.Body).Decode(dest)
 }

@@ -45,6 +45,11 @@ func castRecord(version uint8, rec []byte) (any, error) {
 			return nil, errors.New("record size mismatch for MBP10")
 		}
 		return (*MBP10)(unsafe.Pointer(&rec[0])), nil
+	case RTypeStatus:
+		if len(rec) != int(unsafe.Sizeof(StatusMsg{})) {
+			return nil, errors.New("record size mismatch for StatusMsg")
+		}
+		return (*StatusMsg)(unsafe.Pointer(&rec[0])), nil
 	case RTypeInstrumentDef:
 		if version == 1 {
 			if len(rec) != int(unsafe.Sizeof(instrumentV1{})) {

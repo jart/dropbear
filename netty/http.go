@@ -41,7 +41,6 @@ var BulkHttpClient = &http.Client{
 		ForceAttemptHTTP2:     true,
 		DisableCompression:    false,
 	},
-	Timeout: 60 * time.Second,
 }
 
 // FastHTTPClient is optimized for latency-critical order submission.
