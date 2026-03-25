@@ -15,6 +15,7 @@ import (
 type Option struct {
 	ID      uint32                    // instrument id
 	Class   databento.InstrumentClass // option class, e.g. 'C' for call, 'P' for put
+	Mode    Mode                      // trading mode, e.g. buy-only, sell-only, or unrestricted
 	Got     Got                       // ready steady go
 	Sym     symbol.Symbol             // option symbol, e.g. SPXW, SPY
 	Strike  *Strike                   // option strike price

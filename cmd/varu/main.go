@@ -27,6 +27,7 @@ var (
 	webFlag        = flag.Bool("web", false, "enable web dashboard feature")
 	rtFlag         = flag.Bool("rt", false, "run backtest in real time mode")
 	dryFlag        = flag.Bool("dry", false, "don't send new orders in live mode")
+	colorFlag      = flag.Bool("color", false, "enable option chain strike coloring")
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
 	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
@@ -142,19 +143,22 @@ func onThink(now clocky.Time) {
 	if !beginSimulations() {
 		return
 	}
-	em := gChain.ExpectedMove().Mul(*sigmasFlag)
-	lo := gChain.Price.Sub(em)
-	hi := gChain.Price.Add(em)
+	em_near := gChain.ExpectedMove()
+	lo_near := gChain.Price.Sub(em_near)
+	hi_near := gChain.Price.Add(em_near)
+	em_wide := gChain.ExpectedMove().Mul(*sigmasFlag)
+	lo_wide := gChain.Price.Sub(em_wide)
+	hi_wide := gChain.Price.Add(em_wide)
 	buyPut()
 	sellCall()
 	buyPut()
 	buyCall()
-	buyCombo(lo, hi)
-	sellCombo(lo, hi)
-	sellCallVertical(hi)
-	sellPutVertical(lo)
-	buyCallVertical(hi)
-	buyPutVertical(lo)
+	buyCombo(lo_near, hi_near)
+	sellCombo(lo_near, hi_near)
+	sellCallVertical(lo_near, hi_wide)
+	sellPutVertical(lo_wide, hi_near)
+	buyCallVertical(lo_near, hi_wide)
+	buyPutVertical(lo_wide, hi_near)
 	sendBestOrder(now)
 }
 
@@ -232,7 +236,18 @@ func sell(option *options.Option) {
 	}
 }
 
+func buyWithTheForce(option *options.Option) {
+	gStagedPositions.Put(option.OSI(), decimal.One)
+}
+
+func sellWithTheForce(option *options.Option) {
+	gStagedPositions.Put(option.OSI(), decimal.NegOne)
+}
+
 func canBuy(option *options.Option) bool {
+	if option.Mode == options.ModeSellOnly {
+		return false
+	}
 	return true
 	// pos1, _ := gPositions.Get(option.OSI())
 	// pos2, _ := gStagedPositions.Get(option.OSI())
@@ -240,6 +255,9 @@ func canBuy(option *options.Option) bool {
 }
 
 func canSell(option *options.Option) bool {
+	if option.Mode == options.ModeBuyOnly {
+		return false
+	}
 	return true
 	// pos1, _ := gPositions.Get(option.OSI())
 	// pos2, _ := gStagedPositions.Get(option.OSI())
@@ -481,6 +499,25 @@ func computeGreeks() (delta, gamma, theta, vega decimal.Decimal) {
 func onOptionDef(o *options.Option) {
 	gOptionsByID[o.ID] = o
 	gOptionsByOSI[o.OSI()] = o
+	for _, option := range gOptionsByID {
+		gChain.Add(option)
+	}
+}
+
+func onOptionDefEnd() {
+	if *colorFlag {
+		colorStrikes()
+	}
+}
+
+func colorStrikes() {
+	mode := options.ModeBuyOnly
+	for it := gChain.Strikes.Iterator(); it.Next(); {
+		strike := it.Value()
+		strike.Call.Mode = mode
+		strike.Put.Mode = mode.Flip()
+		mode = mode.Flip()
+	}
 }
 
 func onOptionTick(t *databento.CMBP1) {

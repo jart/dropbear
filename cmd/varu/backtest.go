@@ -33,6 +33,7 @@ func backtest() {
 	}
 	clocky.Now = clocky.FakeNow
 	clocky.Sleep = clocky.FakeSleep
+	loadedOptionDefs := false
 	var rtBase time.Time
 	var nextDump time.Time
 	var rtBaseData clocky.Time
@@ -70,9 +71,13 @@ func backtest() {
 				log.Printf("skipping instrument %s expiring on %04d-%02d-%02d\n", sym, year, month, day)
 			}
 		case *databento.CMBP1:
-			if len(gOptionsByID) == 0 {
-				fmt.Fprintf(os.Stderr, "no %s 0dte definitions found\n", gSymbol)
-				os.Exit(1)
+			if !loadedOptionDefs {
+				if len(gOptionsByID) == 0 {
+					fmt.Fprintf(os.Stderr, "no %s 0dte definitions found\n", gSymbol)
+					os.Exit(1)
+				}
+				onOptionDefEnd()
+				loadedOptionDefs = true
 			}
 			now := m.TSRecv
 			clocky.SetNow(now)
@@ -138,7 +143,6 @@ func simulateOrder(sim *Simulation) {
 		sym, pos := legIt.Key(), legIt.Value()
 		existing, _ := gPositions.Get(sym)
 		gPositions.Put(sym, existing.Add(pos))
-		fillPrice := gOptionsByOSI[sym].MarketPrice()
-		recordTrade(sym, pos, fillPrice)
+		recordFill(sym, pos, gOptionsByOSI[sym].MarketPrice())
 	}
 }

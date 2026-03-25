@@ -7,13 +7,13 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds/options"
 	"dropbear/ds/osi"
+	"dropbear/ds/symbol"
 	"dropbear/loggy"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"os"
-	"time"
+	"strconv"
 
 	"github.com/emirpasic/gods/v2/sets/treeset"
 )
@@ -120,6 +120,69 @@ func live() {
 	}
 }
 
+func fetchDefinitions(client *databento.HistoricalClient) {
+	now := clocky.Now()
+	yesterday := now.Add(-clocky.Day)
+	start := clocky.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, clocky.UTC)
+	end := clocky.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 23, 59, 59, 0, clocky.UTC)
+	resp, err := client.GetRange(databento.GetRangeParams{
+		Dataset: "OPRA.PILLAR",
+		Schema:  databento.SchemaDefinition,
+		STypeIn: databento.STypeParent,
+		Symbols: []string{gSymbol.String() + ".OPT"},
+		Start:   start,
+		End:     end,
+	})
+	if err != nil {
+		log.Fatal("fetch definitions:", err)
+	}
+	defer resp.Close()
+	wantYear, wantMonth, wantDay := now.Date()
+	for {
+		rec, err := resp.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Fatal("read definition:", err)
+		}
+		inst, ok := rec.(*databento.Instrument)
+		if !ok {
+			continue
+		}
+		str := inst.GetRawSymbol()
+		sym, strike, class, year, monthy, day, err := osi.Parse(str)
+		if err != nil {
+			log.Printf("failed to parse OSI: %v", err)
+			continue
+		}
+		month := clocky.Month(monthy)
+		if sym == gSymbol && year == wantYear && monthy == wantMonth && day == wantDay {
+			onOptionDef(&options.Option{
+				ID:     inst.Header.InstrumentID,
+				Class:  databento.InstrumentClass(class),
+				Strike: &options.Strike{Price: strike},
+				Sym:    symbol.MustParse(inst.GetUnderlying()),
+				Year:   year,
+				Month:  month,
+				Day:    day,
+			})
+		}
+	}
+	if len(gOptionsByID) == 0 {
+		log.Fatalf("no instruments found for %s expiring on %04d-%02d-%02d", gSymbol, wantYear, wantMonth, wantDay)
+	}
+	onOptionDefEnd()
+}
+
+func getOptionInstrumentIDs() []string {
+	ids := make([]string, 0, len(gOptionsByID))
+	for id := range gOptionsByID {
+		ids = append(ids, strconv.FormatInt(int64(id), 10))
+	}
+	return ids
+}
+
 // restorePortfolio reloads portfolio across command invocations.
 func restorePortfolio() {
 	now := clocky.Now()
@@ -168,21 +231,17 @@ func loadSchwabOrder(order *schwab.Order) {
 				case schwab.InstructionBuyToOpen, schwab.InstructionBuyToClose:
 					price = price.Neg()
 				}
-				qty := execLeg.Quantity.Int()
-				log.Printf("restoring filled leg for order id %d: %dx %s %s @ %s",
-					order.OrderID, qty, leg.Instruction, option.OSI(), price)
-				for range qty {
-					cost := price.MulInt(kMultiplier)
-					gCash = gCash.Add(cost)
-					sym := option.OSI()
-					pos, _ := gPositions.Get(sym)
-					if cost.IsNegative() {
-						pos = pos.Add(decimal.One) // bought
-					} else {
-						pos = pos.Sub(decimal.One) // sold
-					}
-					gPositions.Put(sym, pos)
+				sym := option.OSI()
+				fillQty := execLeg.Quantity
+				if price.IsPositive() {
+					fillQty = fillQty.Neg() // sold
 				}
+				log.Printf("restoring filled leg for order id %d: %s %s %s @ %s",
+					order.OrderID, fillQty, leg.Instruction, sym, execLeg.Price)
+				gCash = gCash.Add(price.Mul(execLeg.Quantity).MulInt(kMultiplier))
+				pos, _ := gPositions.Get(sym)
+				gPositions.Put(sym, pos.Add(fillQty))
+				recordFill(sym, fillQty, execLeg.Price)
 			}
 		}
 	}
@@ -194,22 +253,15 @@ func streamOptions(key databento.ApiKey, defs chan<- *options.Option, ticks chan
 		log.Fatalf("dial: %v", err)
 	}
 	defer client.Close()
-	dbSymbol := fmt.Sprintf("%s.OPT", gSymbol)
-	client.Subscribe(databento.Subscription{
-		Schema:  databento.SchemaDefinition,
-		SType:   databento.STypeParent,
-		Symbols: []string{dbSymbol},
-	})
 	client.Subscribe(databento.Subscription{
 		Schema:  databento.SchemaCMBP1,
-		SType:   databento.STypeParent,
-		Symbols: []string{dbSymbol},
+		SType:   databento.STypeInstrumentID,
+		Symbols: getOptionInstrumentIDs(),
 	})
-	meta, err := client.Start()
+	_, err = client.Start()
 	if err != nil {
 		log.Fatalf("start: %v", err)
 	}
-	log.Printf("streaming %s (dbn v%d)", dbSymbol, meta.Version)
 	for {
 		rec, err := client.Read()
 		if err != nil {
@@ -223,28 +275,6 @@ func streamOptions(key databento.ApiKey, defs chan<- *options.Option, ticks chan
 			log.Fatalf("option gateway error: %s", m.Err)
 		case *databento.SystemMsg:
 			log.Printf("option system message: %s", m.Msg)
-		case *databento.SymbolMappingMsg:
-			id := m.Header.InstrumentID
-			str := m.GetSTypeOutSymbol()
-			sym, strike, class, year, month, day, err := osi.Parse(str)
-			if err != nil {
-				log.Printf("failed to parse OSI: %v", err)
-				continue
-			}
-			now := clocky.Now().In(clocky.UTC)
-			todayYear, todayMonth, todayDay := now.Date()
-			if year != todayYear || time.Month(month) != todayMonth || day != todayDay {
-				continue
-			}
-			defs <- &options.Option{
-				ID:     id,
-				Class:  databento.InstrumentClass(class),
-				Strike: &options.Strike{Price: strike},
-				Sym:    sym,
-				Year:   year,
-				Month:  month,
-				Day:    day,
-			}
 		case *databento.CMBP1:
 			ticks <- m
 		default:
@@ -439,7 +469,7 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	// update position and cost basis for this filled leg
 	existing, _ := gPositions.Get(sym)
 	gPositions.Put(sym, existing.Add(qty))
-	recordTrade(sym, qty, fillPrice)
+	recordFill(sym, qty, fillPrice)
 	log.Printf("#%d leg filled for order id %d: %s %s @ %s, route: %s, improvement: %s, fee: %s",
 		sim.ID, orderID, fill.OrderInfoForTransactionPosting.BuySellCode, sym, fillPrice, routeName, priceImprovement, fee)
 

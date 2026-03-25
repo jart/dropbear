@@ -90,6 +90,11 @@ func (m *Instrument) GetAsset() string {
 	return convertBytesToString(m.Asset[:])
 }
 
+// GetUnderlying returns the underlying symbol as a string.
+func (m *Instrument) GetUnderlying() string {
+	return convertBytesToString(m.Underlying[:])
+}
+
 // GetExchange returns the exchange as a string.
 func (m *Instrument) GetExchange() string {
 	return convertBytesToString(m.Exchange[:])
