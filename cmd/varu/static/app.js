@@ -283,6 +283,7 @@ function renderFlags(flags) {
   setIfEmpty(form.spread, flags.spread);
   setIfEmpty(form.cooldown, flags.cooldown);
   setIfEmpty(form.patience, flags.patience);
+  setIfEmpty(form.prune, flags.prune);
 }
 
 function setIfEmpty(input, val) {
@@ -308,7 +309,8 @@ function submitFlags(e) {
     floor: form.floor.value,
     spread: form.spread.value,
     cooldown: form.cooldown.value,
-    patience: form.patience.value
+    patience: form.patience.value,
+    prune: form.prune.value
   };
   fetch('/api/flags', {
     method: 'POST',

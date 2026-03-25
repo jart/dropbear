@@ -33,6 +33,11 @@ type SimulationUpdate struct {
 func live() {
 	loggy.AlsoLogToFile()
 
+	// avoid confusion if we woke up too late
+	if clocky.Now().ClockInt() >= kStopTrading {
+		log.Printf("warning: varu stops day trading after %02d:%02d hours", kStopTrading/1_00_00, kStopTrading/1_00%1_00)
+	}
+
 	// subscribe to databento data
 	key := databento.MustLoadDefaultKey()
 	databentoHistoricalClient := databento.NewHistoricalClient(key)
@@ -154,6 +159,7 @@ func fetchDefinitions(client *databento.HistoricalClient) {
 		}
 		month := clocky.Month(monthy)
 		if sym == gSymbol && year == wantYear && monthy == wantMonth && day == wantDay {
+			log.Printf("got option definition: %s (id %d, raw symbol: %s)", str, inst.Header.InstrumentID, inst.GetRawSymbol())
 			onOptionDef(&options.Option{
 				ID:     inst.Header.InstrumentID,
 				Class:  databento.InstrumentClass(class),
@@ -175,6 +181,9 @@ func getOptionInstrumentIDs() []string {
 	ids := make([]string, 0, len(gOptionsByID))
 	for id := range gOptionsByID {
 		ids = append(ids, strconv.FormatInt(int64(id), 10))
+	}
+	if len(ids) == 0 {
+		panic("no option instrument ids found")
 	}
 	return ids
 }
@@ -249,15 +258,12 @@ func streamOptions(key databento.ApiKey, ticks chan<- *databento.CMBP1) {
 		log.Fatalf("dial: %v", err)
 	}
 	defer client.Close()
-	client.Subscribe(databento.Subscription{
+	client.MustSubscribe(databento.Subscription{
 		Schema:  databento.SchemaCMBP1,
 		SType:   databento.STypeInstrumentID,
 		Symbols: getOptionInstrumentIDs(),
 	})
-	_, err = client.Start()
-	if err != nil {
-		log.Fatalf("start: %v", err)
-	}
+	client.MustStart()
 	for {
 		rec, err := client.Read()
 		if err != nil {
@@ -274,7 +280,7 @@ func streamOptions(key databento.ApiKey, ticks chan<- *databento.CMBP1) {
 		case *databento.CMBP1:
 			ticks <- m
 		case *databento.SymbolMappingMsg:
-			// todo: maybe?
+			// dropout
 		default:
 			log.Printf("unknown record type: %T", m)
 		}

@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 )
 
@@ -133,6 +134,7 @@ type FlagsData struct {
 	Spread   string `json:"spread"`
 	Cooldown string `json:"cooldown"`
 	Patience string `json:"patience"`
+	Prune    string `json:"prune"`
 }
 
 type StrategyInfo struct {
@@ -174,6 +176,7 @@ func buildStateSnapshot() StateSnapshot {
 			Spread:   (*spreadFlag).String(),
 			Cooldown: (*cooldownFlag).String(),
 			Patience: (*patienceFlag).String(),
+			Prune:    strconv.FormatFloat(*pruneFlag, 'f', -1, 64),
 		},
 		Strategies: make(map[string]StrategyInfo),
 	}
@@ -348,6 +351,13 @@ func applyFlags(f *FlagsData) {
 		if err == nil {
 			*patienceFlag = d
 			log.Printf("web: patience = %s", f.Patience)
+		}
+	}
+	if f.Prune != "" {
+		v, err := strconv.ParseFloat(f.Prune, 64)
+		if err == nil && v >= 0 && v <= 1 {
+			*pruneFlag = v
+			log.Printf("web: prune = %s", f.Prune)
 		}
 	}
 }

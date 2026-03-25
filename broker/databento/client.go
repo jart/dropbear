@@ -45,7 +45,7 @@ type Subscription struct {
 	Schema   Schema
 	SType    SType
 	Symbols  []string
-	Start    clocky.Time // optional start time (zero means omit)
+	Start    clocky.Time // optional start time for intraday replay
 	Snapshot bool
 }
 
@@ -80,10 +80,17 @@ func (c *Client) Close() error {
 	return err
 }
 
-// Subscribe sends a subscription request to the gateway. Symbols are chunked
-// into groups of 128 per message (LSG maximum is 500).
+// MustSubscribe sends a subscription request to the gateway.
+// This function will panic on error.
+func (c *Client) MustSubscribe(sub Subscription) {
+	if err := c.Subscribe(sub); err != nil {
+		panic(err)
+	}
+}
+
+// Subscribe sends a subscription request to the gateway.
 func (c *Client) Subscribe(sub Subscription) error {
-	const maxSymbolsPerMsg = 128
+	const maxSymbolsPerMsg = 500
 	snapshot := "0"
 	if sub.Snapshot {
 		snapshot = "1"
@@ -113,6 +120,15 @@ func (c *Client) Subscribe(sub Subscription) error {
 		}
 	}
 	return nil
+}
+
+// MustStart is like Start but panics on error.
+func (c *Client) MustStart() *Metadata {
+	md, err := c.Start()
+	if err != nil {
+		panic(err)
+	}
+	return md
 }
 
 // Start sends the start_session command, reads the DBN metadata header, and

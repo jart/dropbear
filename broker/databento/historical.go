@@ -27,7 +27,7 @@ type HistoricalClient struct {
 func NewHistoricalClient(apiKey ApiKey) *HistoricalClient {
 	return &HistoricalClient{
 		apiKey:  apiKey,
-		limiter: netty.NewTokenBucket(5, 5),
+		limiter: netty.NewTokenBucket(5, 1),
 	}
 }
 

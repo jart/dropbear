@@ -6,6 +6,8 @@ import (
 	"unsafe"
 )
 
+// Instrument represents the definition of a financial instrument.
+// This is the v3 (version three) databento memory layout.
 type Instrument struct {
 	Header                   RecordHeader          // 16 bytes
 	TSRecv                   clocky.Time           // capture-server-received timestamp expressed as the number of nanoseconds since the UNIX epoch
@@ -78,6 +80,14 @@ type Instrument struct {
 	LegInstrumentClass       InstrumentClass       //
 	LegSide                  Side                  //
 	reserved                 [17]byte              // reserved for future use
+}
+
+func (m *Instrument) InstrumentID() uint32 {
+	return m.Header.InstrumentID
+}
+
+func (m *Instrument) GetTSRecv() clocky.Time {
+	return m.TSRecv
 }
 
 // GetRawSymbol returns the raw symbol as a string.

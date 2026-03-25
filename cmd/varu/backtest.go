@@ -6,17 +6,11 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds/options"
 	"dropbear/ds/symbol"
-	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"time"
-)
-
-var (
-	dbnFlag   = flag.String("dbn", "", "path to DBN file containing SPX definitions and quotes")
-	thinkFlag = clocky.DurationFlag("think", "250ms", "interval between trading analysis")
 )
 
 func backtest() {
@@ -100,7 +94,7 @@ func backtest() {
 					}
 				}
 			}
-			if clock >= kEndOfDay {
+			if clock >= kMarketClose {
 				break
 			}
 			if clock < kStartOfDay {

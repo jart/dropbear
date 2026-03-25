@@ -23,6 +23,7 @@ import (
 )
 
 var (
+	dbnFlag        = flag.String("dbn", "", "path to backtest data")
 	liveFlag       = flag.Bool("live", false, "run in live trading mode")
 	webFlag        = flag.Bool("web", false, "enable web dashboard feature")
 	rtFlag         = flag.Bool("rt", false, "run backtest in real time mode")
@@ -30,13 +31,15 @@ var (
 	colorFlag      = flag.Bool("color", false, "enable option chain strike coloring")
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
-	sigmasFlag     = decimal.Flag("sigmas", "1.5", "number of sigmas of strikes to consider")
+	sigmasFlag     = decimal.Flag("sigmas", "2", "number of sigmas of strikes to consider")
 	budgetFlag     = decimal.Flag("budget", "5_000", "maximum acceptable loss at current price")
 	floorFlag      = decimal.Flag("floor", "40_000", "maximum acceptable loss in catastrophic scenario")
 	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
-	slowdownFlag   = clocky.DurationFlag("slowdown", "200ms", "polling limit for web dashboard")
-	cooldownFlag   = clocky.DurationFlag("cooldown", "10s", "interval between trading decisions")
+	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
+	thinkFlag      = clocky.DurationFlag("think", "1000ms", "interval between backtest trading analysis")
 	patienceFlag   = clocky.DurationFlag("patience", "9s", "how long to wait before canceling live orders")
+	cooldownFlag   = clocky.DurationFlag("cooldown", "10s", "interval between trading decisions")
+	slowdownFlag   = clocky.DurationFlag("slowdown", "200ms", "polling limit for web dashboard")
 	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
 	maxPendingFlag = flag.Int("max-pending", 1, "maximum number of pending orders")
 	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
@@ -47,7 +50,7 @@ const (
 	kSPXW        = symbol.Symbol('S' | 'P'<<8 | 'X'<<16 | 'W'<<24)
 	kStartOfDay  = 9_35_00
 	kStopTrading = 14_30_00
-	kEndOfDay    = 16_00_00
+	kMarketClose = 16_00_00
 	kMultiplier  = 100
 )
 
@@ -155,8 +158,8 @@ func onThink(now clocky.Time) {
 	buyCall()
 	buyCombo(lo_near, hi_near)
 	sellCombo(lo_near, hi_near)
-	sellCallVertical(lo_near, hi_wide)
-	sellPutVertical(lo_wide, hi_near)
+	sellCallVertical(lo_wide, hi_wide)
+	sellPutVertical(lo_wide, hi_wide)
 	buyCallVertical(lo_near, hi_wide)
 	buyPutVertical(lo_wide, hi_near)
 	sendBestOrder(now)
@@ -206,8 +209,8 @@ func sendBestOrder(now clocky.Time) {
 	} else {
 		simulateOrder(sim)
 	}
-	log.Printf("#%d %s: price=%s payoff=%s worst=%s",
-		sim.ID, sim.Strategy, sim.Price, sim.Payoff.Truncate(), sim.Worst)
+	log.Printf("#%d %s: price=%s score=%s payoff=%s worst=%s",
+		sim.ID, sim.Strategy, sim.Price, sim.Score, sim.Payoff.Truncate(), sim.Worst)
 	for legIt := sim.Legs.Iterator(); legIt.Next(); {
 		sym, pos := legIt.Key(), legIt.Value()
 		option := gOptionsByOSI[sym]
@@ -220,6 +223,7 @@ func sendBestOrder(now clocky.Time) {
 	gSimulations.Clear()
 }
 
+// buy simulates buying an option.
 func buy(option *options.Option) {
 	if canBuy(option) {
 		gStagedPositions.Put(option.OSI(), decimal.One)
@@ -228,12 +232,18 @@ func buy(option *options.Option) {
 	}
 }
 
+// sell simulates selling an option.
 func sell(option *options.Option) {
 	if canSell(option) {
 		gStagedPositions.Put(option.OSI(), decimal.NegOne)
 	} else {
 		gAbortSimulation = true
 	}
+}
+
+// prune returns true if we should skip this branch of the search.
+func prune() bool {
+	return rando() < *pruneFlag
 }
 
 func buyWithTheForce(option *options.Option) {
@@ -265,7 +275,7 @@ func canSell(option *options.Option) bool {
 }
 
 func end(strategy string) bool {
-	if gAbortSimulation || !gStrategyEnabled[strategy] {
+	if gAbortSimulation {
 		gAbortSimulation = false
 		gStagedPositions.Clear()
 		gStagedCash = decimal.Zero
@@ -291,12 +301,13 @@ func end(strategy string) bool {
 			sim.Score = payoffImprovement.Add(riskReduction.DivInt(10)).Add(deltaImprovement)
 			if sim.Score.IsPositive() {
 				gSimulations.Add(sim)
+				gStagedPositions = treemap.New[string, decimal.Decimal]()
 			}
 		}
 	}
 	gSimulationCounter++
-	gStagedPositions = treemap.New[string, decimal.Decimal]()
 	gStagedCash = decimal.Zero
+	gStagedPositions.Clear()
 	return true
 }
 
@@ -328,13 +339,13 @@ func onHeartbeat() {
 	liq := computeLiquidationValue()
 	eod := computeSettlementAt(gChain.Price)
 	pay := computeExpectedPayoff()
-	worst := computeRisk()
+	bad := computeRisk()
 	delta, gamma, theta, vega := computeGreeks()
-	log.Printf("cash:%s liq:%s eod:%s worst:%s payoff:%s delta:%s gamma:%s theta:%s vega:%s",
-		gCash, liq.Truncate(), eod, worst, pay.Truncate(),
+	log.Printf("cash:%s liq:%s eod:%s worst:%s realized:%s payoff:%s delta:%s gamma:%s theta:%s vega:%s",
+		gCash, liq.Truncate(), eod, bad, gRealizedPnL.Truncate(), pay.Truncate(),
 		delta.Format(2), gamma.Format(2), theta.Format(2), vega.Format(2))
 }
-
+,
 func onEndOfDay() {
 	log.Printf("end of day settlement time")
 	iteratePositions(func(sym string, pos decimal.Decimal) {
@@ -499,9 +510,6 @@ func computeGreeks() (delta, gamma, theta, vega decimal.Decimal) {
 func onOptionDef(o *options.Option) {
 	gOptionsByID[o.ID] = o
 	gOptionsByOSI[o.OSI()] = o
-	for _, option := range gOptionsByID {
-		gChain.Add(option)
-	}
 }
 
 func onOptionDefEnd() {

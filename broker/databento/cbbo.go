@@ -25,6 +25,10 @@ func (c *CBBO) InstrumentID() uint32 {
 	return c.Header.InstrumentID
 }
 
+func (c *CBBO) GetTSRecv() clocky.Time {
+	return c.TSRecv
+}
+
 func (c *CBBO) GoString() string {
 	var b strings.Builder
 	b.WriteString("CBBO{\n")

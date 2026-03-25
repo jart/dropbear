@@ -17,6 +17,7 @@ import (
 type DBN interface {
 	Encode() []byte
 	InstrumentID() uint32
+	GetTSRecv() clocky.Time
 }
 
 func castRecord(version uint8, rec []byte) (any, error) {

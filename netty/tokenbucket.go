@@ -2,6 +2,7 @@ package netty
 
 import (
 	"dropbear/clocky"
+	"math"
 	"sync"
 )
 
@@ -64,6 +65,10 @@ func NewTokenBucketPerMinute(limitPerMinute int) TokenBucket {
 //
 // The bucket starts full (at burst capacity).
 //
+// Example for Databento which planly allows five requests per second:
+//
+//	limiter := NewTokenBucket(5, 1)
+//
 // Example for Kraken Pro REST API (max 20, decay 1/sec):
 //
 //	limiter := NewTokenBucket(1, 20)
@@ -72,10 +77,17 @@ func NewTokenBucket(ratePerSecond, burst int) TokenBucket {
 }
 
 func newTokenBucket(ratePerSecond float64, burst int) TokenBucket {
+	if burst < 1 {
+		panic("token bucket burst must be at least 1")
+	}
+	rate := ratePerSecond / 1e9
+	if !(rate > 0) || math.IsInf(rate, 1) {
+		panic("token bucket ratePerSecond must be sufficiently positive and finite")
+	}
 	return &tokenBucket{
 		tokens:   float64(burst),
 		burst:    float64(burst),
-		rate:     ratePerSecond / 1e9, // convert to per-nanosecond
+		rate:     rate,
 		lastTime: clocky.Now(),
 	}
 }

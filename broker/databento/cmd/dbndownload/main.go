@@ -30,12 +30,13 @@ import (
 )
 
 var (
-	dateFlag   = clocky.TimeFlag("date", "", "trading day to download (YYYY-MM-DD)")
-	expiryFlag = clocky.TimeFlag("expiry", "", "option expiration date (YYYY-MM-DD, defaults to -date)")
-	symFlag    = flag.String("sym", "", "parent symbol (e.g. SPXW, BTI)")
-	schemaFlag = flag.String("schema", "cmbp-1", "data schema to download (e.g. cmbp-1, cbbo-1s, trades)")
-	outputFlag = flag.String("o", "", "output file path")
-	jobsFlag   = flag.Int("j", 50, "max concurrent downloads")
+	datasetFlag = flag.String("dataset", "OPRA.PILLAR", "dataset to download from")
+	dateFlag    = clocky.TimeFlag("date", "", "trading day to download (YYYY-MM-DD)")
+	expiryFlag  = clocky.TimeFlag("expiry", "", "option expiration date (YYYY-MM-DD, defaults to -date)")
+	symFlag     = flag.String("sym", "", "parent symbol (e.g. SPXW, BTI)")
+	schemaFlag  = flag.String("schema", "cmbp-1", "data schema to download (e.g. cmbp-1, cbbo-1s, trades)")
+	outputFlag  = flag.String("o", "", "output file path")
+	jobsFlag    = flag.Int("j", 50, "max concurrent downloads")
 )
 
 func main() {
@@ -119,8 +120,8 @@ func main() {
 
 	// Write metadata header
 	meta := databento.Metadata{
-		Version:       2,
-		Dataset:       "OPRA.PILLAR",
+		Version:       3,
+		Dataset:       *datasetFlag,
 		Schema:        schema,
 		Start:         start,
 		End:           end,
@@ -161,9 +162,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("read temp file: %v", err)
 		}
+		dbn := rec.(databento.DBN)
 		heap.Push(&heapItem{
-			tsRecv: getTSRecv(rec),
-			dbn:    rec.(databento.DBN),
+			tsRecv: dbn.GetTSRecv(),
+			dbn:    dbn,
 			idx:    i,
 		})
 	}
@@ -186,9 +188,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("read temp file: %v", err)
 		}
+		dbn := rec.(databento.DBN)
 		heap.Push(&heapItem{
-			tsRecv: getTSRecv(rec),
-			dbn:    rec.(databento.DBN),
+			tsRecv: dbn.GetTSRecv(),
+			dbn:    dbn,
 			idx:    item.idx,
 		})
 	}
@@ -294,27 +297,6 @@ func fetchDefinitions(client *databento.HistoricalClient, start, end clocky.Time
 		log.Fatal("no instruments found expiring on ", expiryFlag.Format("2006-01-02"))
 	}
 	return instruments
-}
-
-// getTSRecv extracts TSRecv from any record type.
-func getTSRecv(rec any) clocky.Time {
-	switch r := rec.(type) {
-	case *databento.CMBP1:
-		return r.TSRecv
-	case *databento.CBBO:
-		return r.TSRecv
-	case *databento.MBP1:
-		return r.TSRecv
-	case *databento.MBP10:
-		return r.TSRecv
-	case *databento.Instrument:
-		return r.TSRecv
-	case *databento.StatusMsg:
-		return r.TSRecv
-	default:
-		log.Fatalf("getTSRecv: unsupported record type %T", rec)
-		return 0
-	}
 }
 
 type heapItem struct {

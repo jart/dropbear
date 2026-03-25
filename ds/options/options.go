@@ -46,7 +46,7 @@ func (oc *Options) ExpectedMove() decimal.Decimal {
 	return x.Add(y)
 }
 
-// Add adds an option to the option chain.
+// Add includes option in chain.
 // This should be called repeatedly each time its quotes are updated.
 // Returns true if this operation resulted in Price/AtTheMoney being updated.
 func (oc *Options) Add(o *Option) bool {
