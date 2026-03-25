@@ -33,17 +33,13 @@ func decTick(price decimal.Decimal) decimal.Decimal {
 // quantizeTruncate rounds to the SPX tick size for buying.
 func quantizeTruncate(price decimal.Decimal) decimal.Decimal {
 	tick := optionTick(price)
-	price = price.QuantizeTruncate(tick)
-	if price.IsZero() {
-		// handle cases like 0.00/0.05 bid/ask on far otm strikes
-		price = tick
-	}
-	return price
+	return price.QuantizeTruncate(tick).Max(tick)
 }
 
 // quantizeAway rounds to the SPX tick size for selling.
 func quantizeAway(price decimal.Decimal) decimal.Decimal {
-	return price.QuantizeAway(optionTick(price))
+	tick := optionTick(price)
+	return price.QuantizeAway(tick).Max(tick)
 }
 
 // optionTick returns the minimum tick size for a Penny Pilot option.

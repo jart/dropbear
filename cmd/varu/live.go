@@ -48,7 +48,7 @@ func live() {
 	defer heartbeat.Stop()
 
 	// how often to generate json for web dashboard
-	dumpTimer := clocky.NewTicker(250 * clocky.Millisecond)
+	dumpTimer := clocky.NewTicker(*slowdownFlag)
 	defer dumpTimer.Stop()
 
 	// we must wait for options chain to become available
@@ -67,6 +67,7 @@ func live() {
 			continue
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
+			broadcastState()
 			continue
 		case simulationUpdate := <-gSimulationUpdates:
 			onSimulationOrderID(simulationUpdate.Simulation, simulationUpdate.OrderID)
@@ -87,8 +88,7 @@ func live() {
 		if ready && !gPaused && !*dryFlag {
 			now := clocky.Now()
 			clock := now.ClockInt()
-			if clock >= kStartOfDay && clock <= kStopTrading &&
-				now >= gNextTradeTime && gPendingOrders.Size() < *maxPendingFlag {
+			if clock >= kStartOfDay && now >= gNextTradeTime && gPendingOrders.Size() < *maxPendingFlag {
 				onThink(now)
 			}
 			cancelUnfilledOrders(now)
@@ -101,6 +101,7 @@ func live() {
 			onOptionTick(t)
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
+			broadcastState()
 		case simulationUpdate := <-gSimulationUpdates:
 			onSimulationOrderID(simulationUpdate.Simulation, simulationUpdate.OrderID)
 		case req := <-gWebRequests:
@@ -167,8 +168,10 @@ func loadSchwabOrder(order *schwab.Order) {
 				case schwab.InstructionBuyToOpen, schwab.InstructionBuyToClose:
 					price = price.Neg()
 				}
-				log.Printf("restoring filled leg for order id %d: %s %s @ %s", order.OrderID, leg.Instruction, option.OSI(), price)
-				for range execLeg.Quantity.Int() {
+				qty := execLeg.Quantity.Int()
+				log.Printf("restoring filled leg for order id %d: %dx %s %s @ %s",
+					order.OrderID, qty, leg.Instruction, option.OSI(), price)
+				for range qty {
 					cost := price.MulInt(kMultiplier)
 					gCash = gCash.Add(cost)
 					sym := option.OSI()

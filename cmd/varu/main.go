@@ -28,10 +28,11 @@ var (
 	dryFlag        = flag.Bool("dry", false, "don't send new orders in live mode")
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
-	sigmasFlag     = decimal.Flag("sigmas", "2", "number of sigmas of strikes to consider")
+	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
 	budgetFlag     = decimal.Flag("budget", "5_000", "maximum acceptable loss at current price")
 	floorFlag      = decimal.Flag("floor", "50_000", "maximum acceptable loss in catastrophic scenario")
 	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
+	slowdownFlag   = clocky.DurationFlag("slowdown", "200ms", "polling limit for web dashboard")
 	cooldownFlag   = clocky.DurationFlag("cooldown", "10s", "interval between trading decisions")
 	patienceFlag   = clocky.DurationFlag("patience", "9s", "how long to wait before canceling live orders")
 	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
@@ -143,8 +144,10 @@ func onThink(now clocky.Time) {
 	em := gChain.ExpectedMove().Mul(*sigmasFlag)
 	lo := gChain.Price.Sub(em)
 	hi := gChain.Price.Add(em)
-	simulateBuyPuts(lo)
-	simulateBuyCalls(hi)
+	simulateSellPuts()
+	simulateSellCalls()
+	simulateBuyPuts()
+	simulateBuyCalls()
 	simulateBuyCombo(lo, hi)
 	simulateSellCombo(lo, hi)
 	simulateSellCallVerticals(hi)
@@ -168,6 +171,19 @@ func beginSimulations() bool {
 func sendBestOrder(now clocky.Time) {
 	if gSimulations.Empty() {
 		return
+	}
+	isPowerHour := now.ClockInt() >= kStopTrading
+	if isPowerHour {
+		var remove []*Simulation
+		for it := gSimulations.Iterator(); it.Next(); {
+			if !gStrategyEnabledEOD[it.Value().Strategy] {
+				remove = append(remove, it.Value())
+			}
+		}
+		gSimulations.Remove(remove...)
+		if gSimulations.Empty() {
+			return
+		}
 	}
 	log.Printf("%d out of %d simulated orders were reasonable",
 		gSimulations.Size(), gSimulationCounter)
@@ -216,15 +232,17 @@ func sell(option *options.Option) {
 }
 
 func canBuy(option *options.Option) bool {
-	pos1, _ := gPositions.Get(option.OSI())
-	pos2, _ := gStagedPositions.Get(option.OSI())
-	return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
+	return true
+	// pos1, _ := gPositions.Get(option.OSI())
+	// pos2, _ := gStagedPositions.Get(option.OSI())
+	// return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
 }
 
 func canSell(option *options.Option) bool {
-	pos1, _ := gPositions.Get(option.OSI())
-	pos2, _ := gStagedPositions.Get(option.OSI())
-	return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
+	return true
+	// pos1, _ := gPositions.Get(option.OSI())
+	// pos2, _ := gStagedPositions.Get(option.OSI())
+	// return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
 }
 
 func endSimulation(strategy string) bool {

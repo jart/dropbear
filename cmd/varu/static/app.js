@@ -3,6 +3,13 @@
 var pollTimer = null;
 
 function startPolling() {
+  fetch('/api/config')
+    .then(function(r) { return r.json(); })
+    .then(function(cfg) { beginPolling(cfg.pollInterval || 250); })
+    .catch(function() { beginPolling(250); });
+}
+
+function beginPolling(interval) {
   var status = document.getElementById('status');
   function poll() {
     fetch('/api/state')
@@ -18,7 +25,7 @@ function startPolling() {
       });
   }
   poll();
-  pollTimer = setInterval(poll, 250);
+  pollTimer = setInterval(poll, interval);
 }
 
 function render(d) {

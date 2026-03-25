@@ -367,6 +367,14 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+func handleConfigAPI(w http.ResponseWriter, r *http.Request) {
+	noCache(w)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{
+		"pollInterval": int((*slowdownFlag).Milliseconds()),
+	})
+}
+
 func handleStateAPI(w http.ResponseWriter, r *http.Request) {
 	lastSnapshotMu.RLock()
 	data := lastSnapshotJSON
@@ -504,6 +512,7 @@ func startWeb() {
 
 	// protected dashboard routes
 	http.HandleFunc("/", a.RequireAuth(handleIndex))
+	http.HandleFunc("/api/config", a.RequireAuth(handleConfigAPI))
 	http.HandleFunc("/api/state", a.RequireAuth(handleStateAPI))
 	http.HandleFunc("/api/events", a.RequireAuth(handleEventsAPI))
 	http.HandleFunc("/api/flags", a.RequireAuth(handleFlagsAPI))

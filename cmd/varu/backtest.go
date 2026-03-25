@@ -9,27 +9,26 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"time"
 )
 
 var (
-	defsFlag   = flag.String("defs", "", "path to DBN file containing SPX definitions")
-	quotesFlag = flag.String("quotes", "", "path to DBN file containing SPX quotes")
-	thinkFlag  = clocky.DurationFlag("think", "250ms", "interval between trading analysis")
+	dbnFlag   = flag.String("dbn", "", "path to DBN file containing SPX definitions and quotes")
+	thinkFlag = clocky.DurationFlag("think", "250ms", "interval between trading analysis")
 )
 
 func backtest() {
-	loadDefinitions(*defsFlag)
-	quoteReader, err := databento.OpenFileReader(*quotesFlag)
+	quoteReader, err := databento.OpenFileReader(*dbnFlag)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", *quotesFlag, err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", *dbnFlag, err)
 		os.Exit(1)
 	}
 	defer quoteReader.Close()
 	if quoteReader.Metadata.Schema != databento.SchemaCMBP1 {
 		fmt.Fprintf(os.Stderr, "%s: expected quotes DBN file with schema %d, got %d\n",
-			*quotesFlag, databento.SchemaCMBP1, quoteReader.Metadata.Schema)
+			*dbnFlag, databento.SchemaCMBP1, quoteReader.Metadata.Schema)
 		os.Exit(1)
 	}
 	clocky.Now = clocky.FakeNow
@@ -38,89 +37,14 @@ func backtest() {
 	var nextDump time.Time
 	var rtBaseData clocky.Time
 	var nextThought, nextHeartbeat clocky.Time
+	wantYear, wantMonth, wantDay := dateFlag.Date()
 	for {
 		rec, err := quoteReader.Read()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			fmt.Fprintf(os.Stderr, "%s: read quote error: %v\n", *quotesFlag, err)
-			os.Exit(1)
-		}
-		m := rec.(*databento.CMBP1)
-		now := m.TSRecv
-		clocky.SetNow(now)
-		onOptionTick(m)
-		clock := now.ClockInt()
-		var realNow time.Time
-		if *rtFlag || *webFlag {
-			realNow = time.Now()
-		}
-		if *rtFlag {
-			if rtBaseData == 0 && clock >= kStartOfDay {
-				rtBase = realNow
-				rtBaseData = now
-			}
-			if rtBaseData != 0 {
-				dataElapsed := time.Duration(now - rtBaseData)
-				wallElapsed := time.Since(rtBase)
-				if dataElapsed > wallElapsed {
-					time.Sleep(dataElapsed - wallElapsed)
-				}
-			}
-		}
-		if clock >= kEndOfDay {
-			break
-		}
-		if clock < kStartOfDay {
-			continue
-		}
-		if now >= nextThought && now >= gNextTradeTime && clock <= kStopTrading {
-			nextThought = now.Add(*thinkFlag)
-			onThink(now)
-		}
-		if *webFlag {
-			for {
-				select {
-				case req := <-gWebRequests:
-					processWebRequest(req)
-				default:
-					goto doneWebRequests
-				}
-			}
-		doneWebRequests:
-			if realNow.After(nextDump) {
-				nextDump = realNow.Add(100 * time.Millisecond)
-				broadcastState()
-			}
-		}
-		if now.After(nextHeartbeat) {
-			nextHeartbeat = now.Add(*heartbeatFlag)
-			onHeartbeat()
-		}
-	}
-	onEndOfDay()
-}
-
-func loadDefinitions(path string) {
-	defReader, err := databento.OpenFileReader(path)
-	if err != nil {
-		fmt.Printf("%s: %v\n", path, err)
-		os.Exit(1)
-	}
-	defer defReader.Close()
-	if defReader.Metadata.Schema != databento.SchemaDefinition {
-		fmt.Printf("%s: expected definitions DBN file with schema %d, got %d\n", path, databento.SchemaDefinition, defReader.Metadata.Schema)
-		os.Exit(1)
-	}
-	wantYear, wantMonth, wantDay := dateFlag.Date()
-	for {
-		rec, err := defReader.Read()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			fmt.Printf("%s: read error: %v\n", path, err)
+			fmt.Fprintf(os.Stderr, "%s: read quote error: %v\n", *dbnFlag, err)
 			os.Exit(1)
 		}
 		switch m := rec.(type) {
@@ -142,13 +66,70 @@ func loadDefinitions(path string) {
 					Day:    day,
 				}
 				onOptionDef(option)
+			} else {
+				log.Printf("skipping instrument %s expiring on %04d-%02d-%02d\n", sym, year, month, day)
 			}
+		case *databento.CMBP1:
+			if len(gOptionsByID) == 0 {
+				fmt.Fprintf(os.Stderr, "no %s 0dte definitions found\n", gSymbol)
+				os.Exit(1)
+			}
+			now := m.TSRecv
+			clocky.SetNow(now)
+			onOptionTick(m)
+			clock := now.ClockInt()
+			var realNow time.Time
+			if *rtFlag || *webFlag {
+				realNow = time.Now()
+			}
+			if *rtFlag {
+				if rtBaseData == 0 && clock >= kStartOfDay {
+					rtBase = realNow
+					rtBaseData = now
+				}
+				if rtBaseData != 0 {
+					dataElapsed := time.Duration(now - rtBaseData)
+					wallElapsed := time.Since(rtBase)
+					if dataElapsed > wallElapsed {
+						time.Sleep(dataElapsed - wallElapsed)
+					}
+				}
+			}
+			if clock >= kEndOfDay {
+				break
+			}
+			if clock < kStartOfDay {
+				continue
+			}
+			if now >= nextThought && now >= gNextTradeTime {
+				nextThought = now.Add(*thinkFlag)
+				onThink(now)
+			}
+			if *webFlag {
+				for {
+					select {
+					case req := <-gWebRequests:
+						processWebRequest(req)
+					default:
+						goto doneWebRequests
+					}
+				}
+			doneWebRequests:
+				if realNow.After(nextDump) {
+					nextDump = realNow.Add(slowdownFlag.Go())
+					broadcastState()
+				}
+			}
+			if now.After(nextHeartbeat) {
+				nextHeartbeat = now.Add(*heartbeatFlag)
+				onHeartbeat()
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "%s: unexpected record type %T\n", *dbnFlag, rec)
+			os.Exit(1)
 		}
 	}
-	if len(gOptionsByID) == 0 {
-		fmt.Fprintf(os.Stderr, "no %s 0dte definitions found\n", gSymbol)
-		os.Exit(1)
-	}
+	onEndOfDay()
 }
 
 func simulateOrder(sim *Simulation) {

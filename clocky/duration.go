@@ -3,6 +3,7 @@ package clocky
 import (
 	"dropbear/decimal"
 	"fmt"
+	"time"
 )
 
 // Duration represents a length of time in nanoseconds.
@@ -27,6 +28,7 @@ func (d Duration) Milliseconds() int64    { return int64(d) / int64(Millisecond)
 func (d Duration) Seconds() int64         { return int64(d) / int64(Second) }
 func (d Duration) Hours() decimal.Decimal { return d.Div(Hour) }
 func (d Duration) Days() decimal.Decimal  { return d.Div(Day) }
+func (d Duration) Go() time.Duration      { return time.Duration(d) }
 
 func (d Duration) Div(u Duration) decimal.Decimal {
 	num := int64(d) / int64(u)
