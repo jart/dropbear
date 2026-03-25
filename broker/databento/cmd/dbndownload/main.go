@@ -15,7 +15,6 @@ package main
 
 import (
 	"bufio"
-	"container/heap"
 	"flag"
 	"fmt"
 	"io"
@@ -26,6 +25,8 @@ import (
 
 	"dropbear/broker/databento"
 	"dropbear/clocky"
+
+	"github.com/emirpasic/gods/v2/trees/binaryheap"
 )
 
 var (
@@ -34,7 +35,7 @@ var (
 	symFlag    = flag.String("sym", "", "parent symbol (e.g. SPXW, BTI)")
 	schemaFlag = flag.String("schema", "cmbp-1", "data schema to download (e.g. cmbp-1, cbbo-1s, trades)")
 	outputFlag = flag.String("o", "", "output file path")
-	jobsFlag   = flag.Int("j", 10, "max concurrent downloads")
+	jobsFlag   = flag.Int("j", 50, "max concurrent downloads")
 )
 
 func main() {
@@ -83,7 +84,7 @@ func main() {
 		rawSym := inst.GetRawSymbol()
 		tmpPath := filepath.Join(tmpDir, fmt.Sprintf("%06d.dbn", i))
 		wg.Add(1)
-		go func() {
+		go func(rawSym, tmpPath string) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -91,7 +92,7 @@ func main() {
 			if count >= 0 {
 				results <- downloadResult{path: tmpPath, rawSym: rawSym, count: count}
 			}
-		}()
+		}(rawSym, tmpPath)
 	}
 
 	// Wait for all downloads, then close results channel
@@ -150,10 +151,8 @@ func main() {
 		readers[i] = r
 	}
 
-	h := &recordHeap{}
-	heap.Init(h)
-
 	// Seed the heap with the first record from each file
+	heap := binaryheap.NewWith(compareHeapItems)
 	for i, r := range readers {
 		rec, err := r.Read()
 		if err == io.EOF {
@@ -162,7 +161,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("read temp file: %v", err)
 		}
-		heap.Push(h, heapItem{
+		heap.Push(&heapItem{
 			tsRecv: getTSRecv(rec),
 			dbn:    rec.(databento.DBN),
 			idx:    i,
@@ -170,8 +169,8 @@ func main() {
 	}
 
 	written := 0
-	for h.Len() > 0 {
-		item := heap.Pop(h).(heapItem)
+	for heap.Size() > 0 {
+		item, _ := heap.Pop()
 		if _, err := out.Write(item.dbn.Encode()); err != nil {
 			log.Fatal("write record:", err)
 		}
@@ -187,7 +186,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("read temp file: %v", err)
 		}
-		heap.Push(h, heapItem{
+		heap.Push(&heapItem{
 			tsRecv: getTSRecv(rec),
 			dbn:    rec.(databento.DBN),
 			idx:    item.idx,
@@ -217,16 +216,17 @@ func downloadInstrument(client *databento.HistoricalClient, schema databento.Sch
 	}
 	defer resp.Close()
 
+	// create temp file and buffered writer
 	f, err := os.Create(path)
 	if err != nil {
 		log.Printf("error creating temp file for %s: %v", rawSym, err)
 		return -1
 	}
+	defer f.Close()
 	w := bufio.NewWriterSize(f, 1024*1024)
 
 	// Write metadata so FileReader can open it later
 	if _, err := w.Write(resp.Metadata.Encode()); err != nil {
-		f.Close()
 		log.Printf("error writing metadata for %s: %v", rawSym, err)
 		return -1
 	}
@@ -238,13 +238,11 @@ func downloadInstrument(client *databento.HistoricalClient, schema databento.Sch
 			if err == io.EOF {
 				break
 			}
-			f.Close()
 			log.Printf("error reading %s: %v", rawSym, err)
 			return -1
 		}
 		dbn := rec.(databento.DBN)
 		if _, err := w.Write(dbn.Encode()); err != nil {
-			f.Close()
 			log.Printf("error writing %s: %v", rawSym, err)
 			return -1
 		}
@@ -252,11 +250,9 @@ func downloadInstrument(client *databento.HistoricalClient, schema databento.Sch
 	}
 
 	if err := w.Flush(); err != nil {
-		f.Close()
 		log.Printf("error flushing %s: %v", rawSym, err)
 		return -1
 	}
-	f.Close()
 	return count
 }
 
@@ -321,24 +317,18 @@ func getTSRecv(rec any) clocky.Time {
 	}
 }
 
-// heapItem is a record tagged with its source file index.
 type heapItem struct {
 	tsRecv clocky.Time
 	dbn    databento.DBN
 	idx    int
 }
 
-// recordHeap implements a min-heap on TSRecv for k-way merging.
-type recordHeap []heapItem
-
-func (h recordHeap) Len() int           { return len(h) }
-func (h recordHeap) Less(i, j int) bool { return h[i].tsRecv < h[j].tsRecv }
-func (h recordHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-func (h *recordHeap) Push(x any)        { *h = append(*h, x.(heapItem)) }
-func (h *recordHeap) Pop() any {
-	old := *h
-	n := len(old)
-	item := old[n-1]
-	*h = old[:n-1]
-	return item
+func compareHeapItems(a, b *heapItem) int {
+	if a.tsRecv.Before(b.tsRecv) {
+		return -1
+	}
+	if a.tsRecv.After(b.tsRecv) {
+		return +1
+	}
+	return 0
 }

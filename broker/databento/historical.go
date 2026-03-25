@@ -85,7 +85,7 @@ func (c *HistoricalClient) getMetadataJSON(path string, params map[string]string
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("databento: http %d: %s", resp.StatusCode, body)
 	}

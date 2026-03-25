@@ -64,10 +64,9 @@ func (c *HistoricalClient) GetRange(params GetRangeParams) (*GetRangeResponse, e
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
 		resp.Body.Close()
-		return nil, fmt.Errorf("databento: http %d: %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("databento: request failed with %d %s", resp.StatusCode, resp.Status)
 	}
 	zreader, err := zstd.NewReader(resp.Body)
 	if err != nil {

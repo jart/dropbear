@@ -53,10 +53,12 @@ function renderStats(d) {
   setText('statGamma', d.greeks.gamma);
   setText('statTheta', d.greeks.theta);
   setText('statVega', d.greeks.vega);
+  setText('statRealized', d.stats.realized);
   colorize('statPayoff', d.stats.payoff);
   colorize('statWorst', d.stats.worst);
   colorize('statEOD', d.stats.eod);
   colorize('statBias', d.stats.bias);
+  colorize('statRealized', d.stats.realized);
 }
 
 function setText(id, val) {

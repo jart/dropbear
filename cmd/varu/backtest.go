@@ -138,5 +138,7 @@ func simulateOrder(sim *Simulation) {
 		sym, pos := legIt.Key(), legIt.Value()
 		existing, _ := gPositions.Get(sym)
 		gPositions.Put(sym, existing.Add(pos))
+		fillPrice := gOptionsByOSI[sym].MarketPrice()
+		recordTrade(sym, pos, fillPrice)
 	}
 }

@@ -4,6 +4,16 @@ import (
 	"dropbear/decimal"
 )
 
+// minTick returns the minimum tick size.
+func minTick() decimal.Decimal {
+	switch gSymbol {
+	case kSPXW:
+		return kTick05
+	default:
+		return kTick01
+	}
+}
+
 // incTick increases an spx option's price by one tick.
 func incTick(price decimal.Decimal) decimal.Decimal {
 	switch gSymbol {

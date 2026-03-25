@@ -436,9 +436,10 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	}
 	gCash = gCash.Add(cash)
 
-	// update position for this filled leg
+	// update position and cost basis for this filled leg
 	existing, _ := gPositions.Get(sym)
 	gPositions.Put(sym, existing.Add(qty))
+	recordTrade(sym, qty, fillPrice)
 	log.Printf("#%d leg filled for order id %d: %s %s @ %s, route: %s, improvement: %s, fee: %s",
 		sim.ID, orderID, fill.OrderInfoForTransactionPosting.BuySellCode, sym, fillPrice, routeName, priceImprovement, fee)
 

@@ -123,6 +123,7 @@ type StatsData struct {
 	EOD         string `json:"eod"`
 	Sigma       string `json:"sigma"`
 	Bias        string `json:"bias"`
+	Realized    string `json:"realized"`
 }
 
 type FlagsData struct {
@@ -164,6 +165,7 @@ func buildStateSnapshot() StateSnapshot {
 			EOD:         computeSettlementAt(gChain.Price).Format(2),
 			Sigma:       gChain.ExpectedMove().Format(2),
 			Bias:        computeBias().Format(2),
+			Realized:    gRealizedPnL.Format(2),
 		},
 		Flags: FlagsData{
 			Sigmas:   (*sigmasFlag).String(),

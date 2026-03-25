@@ -31,7 +31,7 @@ var BulkHttpClient = &http.Client{
 	Transport: &http.Transport{
 		DialContext:           Dialer.DialContext,
 		DialTLSContext:        bulkTLSDialer.DialTLSContext,
-		MaxConnsPerHost:       20,
+		MaxConnsPerHost:       100,
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   20,
 		IdleConnTimeout:       45 * time.Second,

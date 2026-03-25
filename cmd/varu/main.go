@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"runtime/pprof"
@@ -144,16 +145,16 @@ func onThink(now clocky.Time) {
 	em := gChain.ExpectedMove().Mul(*sigmasFlag)
 	lo := gChain.Price.Sub(em)
 	hi := gChain.Price.Add(em)
-	simulateSellPuts()
-	simulateSellCalls()
-	simulateBuyPuts()
-	simulateBuyCalls()
-	simulateBuyCombo(lo, hi)
-	simulateSellCombo(lo, hi)
-	simulateSellCallVerticals(hi)
-	simulateSellPutVerticals(lo)
-	simulateBuyCallVerticals(hi)
-	simulateBuyPutVerticals(lo)
+	buyPut()
+	sellCall()
+	buyPut()
+	buyCall()
+	buyCombo(lo, hi)
+	sellCombo(lo, hi)
+	sellCallVertical(hi)
+	sellPutVertical(lo)
+	buyCallVertical(hi)
+	buyPutVertical(lo)
 	sendBestOrder(now)
 }
 
@@ -245,7 +246,7 @@ func canSell(option *options.Option) bool {
 	// return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
 }
 
-func endSimulation(strategy string) bool {
+func end(strategy string) bool {
 	if gAbortSimulation || !gStrategyEnabled[strategy] {
 		gAbortSimulation = false
 		gStagedPositions.Clear()
@@ -388,8 +389,8 @@ func checkRiskTolerance() bool {
 		sigmas := movement / em
 		// NormCDF(0)=0.5, NormCDF(3)≈0.999. We want 0σ→budget, ∞σ→floor.
 		// Scale so: 0σ→0, ∞σ→1
-		blend := (prob.NormCDF(sigmas) - .5) * 2                // 0 at 0σ, ~1 at 3+σ
-		maxLoss := gRiskBudget + (gRiskFloor-gRiskBudget)*blend // lerp budget→floor
+		blend := (prob.NormCDF(sigmas) - .5) * 2                        // 0 at 0σ, ~1 at 3+σ
+		maxLoss := math.FMA(gRiskFloor-gRiskBudget, blend, gRiskBudget) // lerp budget→floor
 		if settlement < -maxLoss {
 			return false
 		}
@@ -445,22 +446,22 @@ func computeExpectedPayoff() decimal.Decimal {
 	return payoff.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
 }
 
+// computeBias returns what direction options market thinks underlying will move.
+func computeBias() decimal.Decimal {
+	atm := gChain.AtTheMoney
+	if atm == nil || !atm.IsReady() {
+		return decimal.Zero
+	}
+	return atm.Call.MarketPrice().Sub(atm.Put.MarketPrice()).MulInt(100)
+}
+
 // computeDelta calculates the delta for all positions.
 func computeDelta() decimal.Decimal {
-	var delta decimal.Decimal
+	delta := decimal.Zero
 	iteratePositions(func(sym string, pos decimal.Decimal) {
 		delta = delta.Add(gOptionsByOSI[sym].Delta.Mul(pos))
 	})
 	return delta.MulInt(kMultiplier)
-}
-
-// computeGreeks calculates greeks for all positions.
-func computeBias() decimal.Decimal {
-	atm := gChain.AtTheMoney
-	if atm == nil || atm.Call == nil || atm.Put == nil {
-		return decimal.Zero
-	}
-	return atm.Call.MarketPrice().Sub(atm.Put.MarketPrice())
 }
 
 func computeGreeks() (delta, gamma, theta, vega decimal.Decimal) {
