@@ -35,9 +35,10 @@ func live() {
 
 	// subscribe to databento data
 	key := databento.MustLoadDefaultKey()
-	optionDefs := make(chan *options.Option, 64)
+	databentoHistoricalClient := databento.NewHistoricalClient(key)
+	fetchDefinitions(databentoHistoricalClient)
 	optionTicks := make(chan *databento.CMBP1, 256)
-	go streamOptions(key, optionDefs, optionTicks)
+	go streamOptions(key, optionTicks)
 
 	// connect to schwab api
 	gSchwabClient = schwab.NewClient()
@@ -59,9 +60,6 @@ func live() {
 	for {
 		// drain all pending events
 		select {
-		case o := <-optionDefs:
-			onOptionDef(o)
-			continue
 		case t := <-optionTicks:
 			onOptionTick(t)
 			continue
@@ -95,8 +93,6 @@ func live() {
 		}
 		// block until next event
 		select {
-		case o := <-optionDefs:
-			onOptionDef(o)
 		case t := <-optionTicks:
 			onOptionTick(t)
 		case update := <-orderUpdates:
@@ -247,7 +243,7 @@ func loadSchwabOrder(order *schwab.Order) {
 	}
 }
 
-func streamOptions(key databento.ApiKey, defs chan<- *options.Option, ticks chan<- *databento.CMBP1) {
+func streamOptions(key databento.ApiKey, ticks chan<- *databento.CMBP1) {
 	client, err := databento.Dial("OPRA.PILLAR", key)
 	if err != nil {
 		log.Fatalf("dial: %v", err)
@@ -277,6 +273,8 @@ func streamOptions(key databento.ApiKey, defs chan<- *options.Option, ticks chan
 			log.Printf("option system message: %s", m.Msg)
 		case *databento.CMBP1:
 			ticks <- m
+		case *databento.SymbolMappingMsg:
+			// todo: maybe?
 		default:
 			log.Printf("unknown record type: %T", m)
 		}

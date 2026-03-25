@@ -19,12 +19,12 @@ const (
 )
 
 var gStrategyEnabled = map[string]bool{
-	kStrategyBuyCall:          true,
-	kStrategyBuyPut:           true,
-	kStrategySellCall:         true,
-	kStrategySellPut:          true,
-	kStrategyBuyCombo:         true,
-	kStrategySellCombo:        true,
+	kStrategyBuyCall:          false,
+	kStrategyBuyPut:           false,
+	kStrategySellCall:         false,
+	kStrategySellPut:          false,
+	kStrategyBuyCombo:         false,
+	kStrategySellCombo:        false,
 	kStrategySellCallVertical: true,
 	kStrategySellPutVertical:  true,
 	kStrategyBuyCallVertical:  true,
@@ -115,8 +115,8 @@ func sellPutVertical(lo, hi decimal.Decimal) {
 }
 
 func buyCallVertical(lo, hi decimal.Decimal) {
-	for _, ss, _ := gChain.Strikes.Ceiling(lo); ss != nil && ss.Price.Cmp(hi) <= 0; ss = ss.Next {
-		for sb := ss.Next; sb != nil && sb.Price.Cmp(hi) <= 0; sb = sb.Next {
+	for _, sb, _ := gChain.Strikes.Ceiling(lo); sb != nil && sb.Price.Cmp(hi) <= 0; sb = sb.Next {
+		for ss := sb.Next; ss != nil && ss.Price.Cmp(hi) <= 0; ss = ss.Next {
 			buy(sb.Call)
 			sell(ss.Call)
 			end(kStrategyBuyCallVertical)
