@@ -14,6 +14,10 @@ import (
 )
 
 func backtest() {
+	if *dbnFlag == "" {
+		fmt.Fprintln(os.Stderr, "missing required -dbn flag")
+		os.Exit(1)
+	}
 	quoteReader, err := databento.OpenFileReader(*dbnFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", *dbnFlag, err)
@@ -127,6 +131,9 @@ func backtest() {
 			fmt.Fprintf(os.Stderr, "%s: unexpected record type %T\n", *dbnFlag, rec)
 			os.Exit(1)
 		}
+	}
+	if *webFlag {
+		broadcastState()
 	}
 	onEndOfDay()
 }
