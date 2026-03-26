@@ -249,7 +249,7 @@ func sendBestOrder(now clocky.Time) {
 	if gSimulations.Empty() {
 		return
 	}
-	log.Printf("%d out of %d simulated orders were reasonable",
+	loggy.Hint("%d out of %d simulated orders were reasonable",
 		gSimulations.Size(), gSimulationCounter)
 	it := gSimulations.Iterator()
 	it.Next()
