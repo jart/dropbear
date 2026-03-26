@@ -32,7 +32,6 @@ function render(d) {
   document.getElementById('symbol').textContent = d.symbol;
   document.getElementById('price').textContent = d.price;
   document.getElementById('time').textContent = d.time;
-  document.getElementById('cash').textContent = '$' + d.cash;
   document.getElementById('pauseBtn').disabled = d.paused;
   document.getElementById('resumeBtn').disabled = !d.paused;
   renderStats(d);
@@ -54,13 +53,16 @@ function renderStats(d) {
   setText('statTheta', d.greeks.theta);
   setText('statVega', d.greeks.vega);
   setText('statRealized', d.stats.realized);
+  setText('statCash', d.cash);
+  setText('statNotional', d.stats.notional);
   colorize('statPayoff', d.stats.payoff);
   colorize('statWorst', d.stats.worst);
   colorize('statEOD', d.stats.eod);
   colorize('statBias', d.stats.bias);
   colorize('statRealized', d.stats.realized);
-  setText('statDrift', d.stats.drift);
-  colorize('statDrift', d.stats.drift);
+  setText('statError', d.stats.error);
+  var errEl = document.getElementById('statError');
+  errEl.className = parseFloat(d.stats.error) === 0 ? 'zero' : 'neg';
 }
 
 function setText(id, val) {

@@ -38,7 +38,7 @@ var (
 	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
 	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
 	wPayoffFlag    = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
-	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
+	wRiskFlag      = decimal.Flag("w-risk", ".25", "scoring weight for risk reduction")
 	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
 	maxDriftFlag   = decimal.Flag("max-drift", "1", "maximum acceptable accounting drift before panic")
 	thinkFlag      = clocky.DurationFlag("think", "1000ms", "interval between backtest trading analysis")
@@ -440,6 +440,16 @@ func computeLiquidationValue() decimal.Decimal {
 		value = value.Add(mid.Mul(pos))
 	})
 	return value.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
+}
+
+// computeNotional returns the total underlying notional value controlled
+// by all positions: sum(abs(qty)) * underlying_price * 100.
+func computeNotional() decimal.Decimal {
+	var totalQty decimal.Decimal
+	iteratePositions(func(sym string, pos decimal.Decimal) {
+		totalQty = totalQty.Add(pos.Abs())
+	})
+	return totalQty.Mul(gChain.Price).MulInt(kMultiplier)
 }
 
 func computeExpectedPayoff() decimal.Decimal {

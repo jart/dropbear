@@ -12,7 +12,7 @@ import (
 var (
 	gTotalCashIn  decimal.Decimal
 	gTotalCashOut decimal.Decimal
-	gDrift        decimal.Decimal
+	gError        decimal.Decimal
 )
 
 // sanityCheck validates internal consistency of the accounting state.
@@ -87,9 +87,9 @@ func sanityCheck(context string) {
 		unrealizedCost = unrealizedCost.Sub(cost.Mul(qty).MulInt(kMultiplier))
 	}
 	expectedFromBooks := gRealizedPnL.Add(unrealizedCost)
-	gDrift = gCash.Sub(expectedFromBooks)
-	if gDrift.Abs().Cmp(*maxDriftFlag) > 0 {
-		panic(fmt.Sprintf("sanity(%s): drift=%s exceeds max %s (cash=%s realized=%s unrealized_cost=%s)",
-			context, gDrift, *maxDriftFlag, gCash, gRealizedPnL, unrealizedCost))
+	gError = gCash.Sub(expectedFromBooks)
+	if gError.Abs().Cmp(*maxDriftFlag) > 0 {
+		panic(fmt.Sprintf("sanity(%s): error=%s exceeds max %s (cash=%s realized=%s unrealized_cost=%s)",
+			context, gError, *maxDriftFlag, gCash, gRealizedPnL, unrealizedCost))
 	}
 }

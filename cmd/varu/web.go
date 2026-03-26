@@ -20,7 +20,7 @@ import (
 var staticFiles embed.FS
 
 var (
-	listenFlag = flag.String("listen", "localhost:8484", "web dashboard bind address")
+	listenFlag = flag.String("listen", "0.0.0.0:8484", "web dashboard bind address")
 	rpIDFlag   = flag.String("rpid", "varu.justinestreet.capital", "WebAuthn relying party ID (domain)")
 	originFlag = flag.String("origin", "https://varu.justinestreet.capital", "WebAuthn origin URL")
 )
@@ -121,11 +121,12 @@ type StatsData struct {
 	Payoff      string `json:"payoff"`
 	Worst       string `json:"worst"`
 	Liquidation string `json:"liquidation"`
+	Notional    string `json:"notional"`
 	EOD         string `json:"eod"`
 	Sigma       string `json:"sigma"`
 	Bias        string `json:"bias"`
 	Realized    string `json:"realized"`
-	Drift       string `json:"drift"`
+	Error       string `json:"error"`
 }
 
 type FlagsData struct {
@@ -168,11 +169,12 @@ func buildStateSnapshot() StateSnapshot {
 			Payoff:      computeExpectedPayoff().Format(2),
 			Worst:       computeRisk().Format(2),
 			Liquidation: computeLiquidationValue().Truncate().Format(2),
+			Notional:    computeNotional().Format(2),
 			EOD:         computeSettlementAt(gChain.Price).Format(2),
 			Sigma:       gChain.ExpectedMove().Format(2),
 			Bias:        computeBias().Format(2),
 			Realized:    gRealizedPnL.Format(2),
-			Drift:       gDrift.String(),
+			Error:       gError.String(),
 		},
 		Flags: FlagsData{
 			Sigmas:   (*sigmasFlag).String(),

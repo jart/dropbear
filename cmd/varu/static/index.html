@@ -10,7 +10,6 @@
   <h1 id="symbol">--</h1>
   <span id="price">--</span>
   <span id="time">--</span>
-  <span id="cash">--</span>
   <button id="pauseBtn" onclick="pause()">Pause</button>
   <button id="resumeBtn" onclick="resume()" disabled>Resume</button>
   <span id="status"></span>
@@ -29,6 +28,8 @@
       <tr><td>payoff</td><td id="statPayoff">--</td></tr>
       <tr><td>worst</td><td id="statWorst">--</td></tr>
       <tr><td>liquidation</td><td id="statLiq">--</td></tr>
+      <tr><td>cash</td><td id="statCash">--</td></tr>
+      <tr><td>notional</td><td id="statNotional">--</td></tr>
       <tr><td>eod</td><td id="statEOD">--</td></tr>
       <tr><td>sigma</td><td id="statSigma">--</td></tr>
       <tr><td>bias</td><td id="statBias">--</td></tr>
@@ -36,7 +37,7 @@
       <tr><td>gamma</td><td id="statGamma">--</td></tr>
       <tr><td>theta</td><td id="statTheta">--</td></tr>
       <tr><td>vega</td><td id="statVega">--</td></tr>
-      <tr><td>drift</td><td id="statDrift">--</td></tr>
+      <tr><td>error</td><td id="statError">--</td></tr>
     </table>
   </section>
 
