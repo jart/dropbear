@@ -535,11 +535,11 @@ func handleChainAPI(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "strike %s", strike.Price)
 		if strike.Call != nil {
 			c := strike.Call
-			fmt.Fprintf(w, "  call id=%d bid=%s ask=%s delta=%s", c.ID, c.Bid, c.Ask, c.Delta)
+			fmt.Fprintf(w, "  call id=%d bid=%s ask=%s delta=%s mode=%s", c.ID, c.Bid, c.Ask, c.Delta, c.Mode)
 		}
 		if strike.Put != nil {
 			p := strike.Put
-			fmt.Fprintf(w, "  put id=%d bid=%s ask=%s delta=%s", p.ID, p.Bid, p.Ask, p.Delta)
+			fmt.Fprintf(w, "  put id=%d bid=%s ask=%s delta=%s mode=%s", p.ID, p.Bid, p.Ask, p.Delta, p.Mode)
 		}
 		fmt.Fprintf(w, "\n")
 	}

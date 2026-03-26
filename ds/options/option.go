@@ -16,6 +16,7 @@ type Option struct {
 	ID      uint32                    // instrument id
 	Class   databento.InstrumentClass // option class, e.g. 'C' for call, 'P' for put
 	Got     Got                       // ready steady go
+	Mode    Mode                      // restriction
 	Sym     symbol.Symbol             // option symbol, e.g. SPXW, SPY
 	Strike  *Strike                   // option strike price
 	Year    int                       // option expiration year

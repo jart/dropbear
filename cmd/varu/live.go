@@ -128,6 +128,7 @@ func live() {
 		case <-readySteadyGo.C:
 			if !ready && gChain.LastPopulate != 0 && clocky.Now().After(gChain.LastPopulate.Add(clocky.Second)) {
 				restorePortfolio()
+				onOptionDefEnd()
 				broadcastState()
 				ready = true
 			}
@@ -275,7 +276,6 @@ func loadSchwabOrder(order *schwab.Order) {
 	}
 	sanityCheck("loadSchwabOrders")
 }
-
 
 func sendLiveOrder(sim *Simulation) {
 	orderType := schwab.OrderTypeNetCredit

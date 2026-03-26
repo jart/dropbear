@@ -185,20 +185,21 @@ func onThink(now clocky.Time) {
 		return
 	}
 	benchStartTime := time.Now()
-	em_near := gChain.ExpectedMove()
+	em_near := gChain.ExpectedMove().DivInt(2)
 	lo_near := gChain.Price.Sub(em_near)
 	hi_near := gChain.Price.Add(em_near)
 	em_wide := gChain.ExpectedMove().Mul(*sigmasFlag)
 	lo_wide := gChain.Price.Sub(em_wide)
 	hi_wide := gChain.Price.Add(em_wide)
+	log.Printf("price=%s em=%s near=[%s,%s] wide=[%s,%s]", gChain.Price, em_near, lo_near, hi_near, lo_wide, hi_wide)
 	buyPut()
 	buyCall()
 	sellPut()
 	sellCall()
 	buyCombo(lo_near, hi_near)
 	sellCombo(lo_near, hi_near)
-	sellCallVertical(lo_wide, hi_wide)
-	sellPutVertical(lo_wide, hi_wide)
+	sellCallVertical(lo_near, hi_wide)
+	sellPutVertical(lo_wide, hi_near)
 	buyCallVertical(lo_near, hi_wide)
 	buyPutVertical(lo_wide, hi_near)
 	liquidatePut()
@@ -266,13 +267,23 @@ func sendBestOrder(now clocky.Time) {
 	gSimulations.Clear()
 }
 
-// buy simulates buying an option.
+// buy simulates buying an option. Aborts if we're already short this
+// contract, to prevent churning (buying back what we sold).
 func buy(option *options.Option) {
+	if option.Mode == options.ModeShort {
+		gAbortSimulation = true
+		return
+	}
 	gStagedPositions.Put(option.OSI(), decimal.One)
 }
 
-// sell simulates selling an option.
+// sell simulates selling an option. Aborts if we're already long this
+// contract, to prevent churning (selling what we bought).
 func sell(option *options.Option) {
+	if option.Mode == options.ModeLong {
+		gAbortSimulation = true
+		return
+	}
 	gStagedPositions.Put(option.OSI(), decimal.NegOne)
 }
 
@@ -655,6 +666,60 @@ func onOptionDef(o *options.Option) {
 }
 
 func onOptionDefEnd() {
+
+	// initialize options restrictions after loading schwab order history
+	for it := gPositions.Iterator(); it.Next(); {
+		sym, pos := it.Key(), it.Value()
+		option := gOptionsByOSI[sym]
+		if pos.IsPositive() {
+			option.Mode = options.ModeLong
+		} else if pos.IsNegative() {
+			option.Mode = options.ModeShort
+		}
+	}
+
+	// ensure puts and calls at same strike have opposite restriction
+	for it := gChain.Strikes.Iterator(); it.Next(); {
+		strike := it.Value()
+		switch strike.Call.Mode {
+		case options.ModeNone:
+			if strike.Put.Mode != options.ModeNone {
+				strike.Call.Mode = strike.Put.Mode.Invert()
+			}
+		case options.ModeLong:
+			if strike.Put.Mode == options.ModeNone {
+				strike.Put.Mode = options.ModeShort
+			}
+		case options.ModeShort:
+			if strike.Put.Mode == options.ModeNone {
+				strike.Put.Mode = options.ModeLong
+			}
+		}
+	}
+
+	// ensure at-the-money has a restriction
+	if gChain.AtTheMoney.Call.Mode == options.ModeNone {
+		gChain.AtTheMoney.Call.Mode = options.ModeShort
+		gChain.AtTheMoney.Put.Mode = options.ModeLong
+	}
+
+	// now color remaining strikes as checkered as possible
+	for s := gChain.AtTheMoney.Next; s != nil; s = s.Next {
+		if s.Call.Mode == options.ModeNone {
+			s.Call.Mode = s.Prev.Call.Mode.Invert()
+		}
+		if s.Put.Mode == options.ModeNone {
+			s.Put.Mode = s.Prev.Put.Mode.Invert()
+		}
+	}
+	for s := gChain.AtTheMoney.Prev; s != nil; s = s.Prev {
+		if s.Call.Mode == options.ModeNone {
+			s.Call.Mode = s.Next.Call.Mode.Invert()
+		}
+		if s.Put.Mode == options.ModeNone {
+			s.Put.Mode = s.Next.Put.Mode.Invert()
+		}
+	}
 }
 
 func onOptionTick(t *databento.CMBP1) {

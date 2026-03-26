@@ -31,7 +31,7 @@ func backtest() {
 	}
 	clocky.Now = clocky.FakeNow
 	clocky.Sleep = clocky.FakeSleep
-	loadedOptionDefs := false
+	ready := false
 	var rtBase time.Time
 	var nextDump time.Time
 	var rtBaseData clocky.Time
@@ -69,14 +69,6 @@ func backtest() {
 				log.Printf("skipping instrument %s expiring on %04d-%02d-%02d\n", sym, year, month, day)
 			}
 		case *databento.CMBP1:
-			if !loadedOptionDefs {
-				if len(gOptionsByID) == 0 {
-					fmt.Fprintf(os.Stderr, "no %s 0dte definitions found\n", gSymbol)
-					os.Exit(1)
-				}
-				onOptionDefEnd()
-				loadedOptionDefs = true
-			}
 			now := m.TSRecv
 			clocky.SetNow(now)
 			onOptionTick(m)
@@ -104,7 +96,11 @@ func backtest() {
 			if clock < kStartOfDay {
 				continue
 			}
-			if now >= nextThought && now >= gNextTradeTime {
+			if !ready && gChain.AtTheMoney != nil {
+				onOptionDefEnd()
+				ready = true
+			}
+			if ready && now >= nextThought && now >= gNextTradeTime {
 				nextThought = now.Add(*thinkFlag)
 				onThink(now)
 			}
