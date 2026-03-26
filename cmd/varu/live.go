@@ -4,7 +4,6 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
 	"dropbear/clocky"
-	"dropbear/decimal"
 	"dropbear/ds/options"
 	"dropbear/ds/osi"
 	"dropbear/ds/symbol"
@@ -19,7 +18,6 @@ import (
 )
 
 var (
-	gTotalFees         decimal.Decimal
 	gSchwabClient      *schwab.Client
 	gSimulationUpdates = make(chan SimulationUpdate, 20)
 	gPendingOrders     = treeset.NewWith(compareSimulations)
@@ -241,6 +239,9 @@ func loadSchwabOrder(order *schwab.Order) {
 				if price.IsPositive() {
 					fillQty = fillQty.Neg() // sold
 				}
+				qty := execLeg.Quantity.Abs().Int()
+				gVolume += qty
+				gTotalFees = gTotalFees.Add(kFeePerContract.MulInt(qty))
 				log.Printf("restoring filled leg for order id %d: %s %s %s @ %s",
 					order.OrderID, fillQty, leg.Instruction, sym, execLeg.Price)
 				cashFlow := price.Mul(execLeg.Quantity).MulInt(kMultiplier)
@@ -486,6 +487,7 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	existing, _ := gPositions.Get(sym)
 	gPositions.Put(sym, existing.Add(qty))
 	recordFill(sym, qty, fillPrice)
+	gVolume += qty.Abs().Int()
 	sanityCheck("onFillEvent")
 	log.Printf("#%d leg filled for order id %d: %s %s @ %s, route: %s, improvement: %s, fee: %s",
 		sim.ID, orderID, fill.OrderInfoForTransactionPosting.BuySellCode, sym, fillPrice, routeName, priceImprovement, fee)

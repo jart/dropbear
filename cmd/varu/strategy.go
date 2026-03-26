@@ -2,38 +2,45 @@ package main
 
 import (
 	"dropbear/decimal"
+	"dropbear/ds/options"
 	"dropbear/ds/osi"
 )
 
 const (
-	kStrategyBuyCall          = "buy call"
-	kStrategyBuyPut           = "buy put"
-	kStrategySellCall         = "sell call"
-	kStrategySellPut          = "sell put"
-	kStrategyBuyCombo         = "buy combo"
-	kStrategySellCombo        = "sell combo"
-	kStrategySellCallVertical = "sell call vertical"
-	kStrategySellPutVertical  = "sell put vertical"
-	kStrategyBuyCallVertical  = "buy call vertical"
-	kStrategyBuyPutVertical   = "buy put vertical"
+	kStrategyBuyCall               = "buy call"
+	kStrategyBuyPut                = "buy put"
+	kStrategyBuyCombo              = "buy combo"
+	kStrategySellCombo             = "sell combo"
+	kStrategySellCallVertical      = "sell call vertical"
+	kStrategySellPutVertical       = "sell put vertical"
+	kStrategyBuyCallVertical       = "buy call vertical"
+	kStrategyBuyPutVertical        = "buy put vertical"
+	kStrategyLiquidateCall         = "liquidate call"
+	kStrategyLiquidatePut          = "liquidate put"
+	kStrategyLiquidateCallVertical = "liquidate call vertical"
+	kStrategyLiquidatePutVertical  = "liquidate put vertical"
 )
 
 var gStrategyEnabled = map[string]bool{
-	kStrategyBuyCall:          false,
-	kStrategyBuyPut:           false,
-	kStrategySellCall:         false,
-	kStrategySellPut:          false,
-	kStrategyBuyCombo:         false,
-	kStrategySellCombo:        false,
-	kStrategySellCallVertical: true,
-	kStrategySellPutVertical:  true,
-	kStrategyBuyCallVertical:  false,
-	kStrategyBuyPutVertical:   false,
+	kStrategyBuyCall:               false,
+	kStrategyBuyPut:                false,
+	kStrategyBuyCombo:              false,
+	kStrategySellCombo:             false,
+	kStrategySellCallVertical:      true,
+	kStrategySellPutVertical:       true,
+	kStrategyBuyCallVertical:       false,
+	kStrategyBuyPutVertical:        false,
+	kStrategyLiquidateCall:         false,
+	kStrategyLiquidatePut:          false,
+	kStrategyLiquidateCallVertical: true,
+	kStrategyLiquidatePutVertical:  true,
 }
 
 var gStrategyEnabledEOD = map[string]bool{
-	kStrategySellCall: true,
-	kStrategySellPut:  true,
+	kStrategyLiquidateCall:         true,
+	kStrategyLiquidatePut:          true,
+	kStrategyLiquidateCallVertical: true,
+	kStrategyLiquidatePutVertical:  true,
 }
 
 func buyCall() {
@@ -63,52 +70,6 @@ func buyPut() {
 		}
 		buyWithTheForce(strike.Put)
 		end(kStrategyBuyPut)
-	}
-}
-
-func sellCall() {
-	if !gStrategyEnabled[kStrategySellCall] {
-		return
-	}
-	// only sell calls we purchased earlier
-	for it := gPositions.Iterator(); it.Next(); {
-		sym, qty := it.Key(), it.Value()
-		if qty <= 0 {
-			continue
-		}
-		_, strikePrice, class, _, _, _, _ := osi.Parse(sym)
-		if class != 'C' {
-			continue
-		}
-		strike, _ := gChain.Strikes.Get(strikePrice)
-		if strike == nil {
-			continue
-		}
-		sellWithTheForce(strike.Call)
-		end(kStrategySellCall)
-	}
-}
-
-func sellPut() {
-	if !gStrategyEnabled[kStrategySellPut] {
-		return
-	}
-	// only sell puts we purchased earlier
-	for it := gPositions.Iterator(); it.Next(); {
-		sym, qty := it.Key(), it.Value()
-		if qty <= 0 {
-			continue
-		}
-		_, strikePrice, class, _, _, _, _ := osi.Parse(sym)
-		if class != 'P' {
-			continue
-		}
-		strike, _ := gChain.Strikes.Get(strikePrice)
-		if strike == nil {
-			continue
-		}
-		sellWithTheForce(strike.Put)
-		end(kStrategySellPut)
 	}
 }
 
@@ -206,4 +167,114 @@ func sellCombo(lo, hi decimal.Decimal) {
 			break
 		}
 	}
+}
+
+func liquidateCall() {
+	if !gStrategyEnabled[kStrategyLiquidateCall] {
+		return
+	}
+	// only sell calls we purchased earlier
+	for it := gPositions.Iterator(); it.Next(); {
+		sym, qty := it.Key(), it.Value()
+		if qty <= 0 {
+			continue
+		}
+		_, strikePrice, class, _, _, _, _ := osi.Parse(sym)
+		if class != 'C' {
+			continue
+		}
+		strike, _ := gChain.Strikes.Get(strikePrice)
+		if strike == nil {
+			continue
+		}
+		sellWithTheForce(strike.Call)
+		end(kStrategyLiquidateCall)
+	}
+}
+
+func liquidatePut() {
+	if !gStrategyEnabled[kStrategyLiquidatePut] {
+		return
+	}
+	// only sell puts we purchased earlier
+	for it := gPositions.Iterator(); it.Next(); {
+		sym, qty := it.Key(), it.Value()
+		if qty <= 0 {
+			continue
+		}
+		_, strikePrice, class, _, _, _, _ := osi.Parse(sym)
+		if class != 'P' {
+			continue
+		}
+		strike, _ := gChain.Strikes.Get(strikePrice)
+		if strike == nil {
+			continue
+		}
+		sellWithTheForce(strike.Put)
+		end(kStrategyLiquidatePut)
+	}
+}
+
+// liquidateCallVertical closes an existing call vertical by buying back the
+// short leg and selling the long leg. Iterates over all pairs of held call
+// positions where one is short and one is long.
+func liquidateCallVertical() {
+	if !gStrategyEnabled[kStrategyLiquidateCallVertical] {
+		return
+	}
+	shorts, longs := collectPositions('C')
+	for _, s := range shorts {
+		for _, l := range longs {
+			if prune() {
+				continue
+			}
+			buy(s)  // buy back short
+			sell(l) // sell the long
+			end(kStrategyLiquidateCallVertical)
+		}
+	}
+}
+
+// liquidatePutVertical closes an existing put vertical by buying back the
+// short leg and selling the long leg.
+func liquidatePutVertical() {
+	if !gStrategyEnabled[kStrategyLiquidatePutVertical] {
+		return
+	}
+	shorts, longs := collectPositions('P')
+	for _, s := range shorts {
+		for _, l := range longs {
+			if prune() {
+				continue
+			}
+			buy(s)  // buy back short
+			sell(l) // sell the long
+			end(kStrategyLiquidatePutVertical)
+		}
+	}
+}
+
+// collectPositions returns the short and long options of the given class
+// from current positions.
+func collectPositions(class byte) (shorts, longs []*options.Option) {
+	for it := gPositions.Iterator(); it.Next(); {
+		sym, qty := it.Key(), it.Value()
+		if qty.IsZero() {
+			continue
+		}
+		_, _, c, _, _, _, _ := osi.Parse(sym)
+		if c != class {
+			continue
+		}
+		opt := gOptionsByOSI[sym]
+		if opt == nil {
+			continue
+		}
+		if qty.IsNegative() {
+			shorts = append(shorts, opt)
+		} else {
+			longs = append(longs, opt)
+		}
+	}
+	return
 }

@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/pprof"
+	"time"
 
 	"github.com/emirpasic/gods/v2/maps/treemap"
 	"github.com/emirpasic/gods/v2/sets/treeset"
@@ -33,12 +34,12 @@ var (
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
 	sigmasFlag     = decimal.Flag("sigmas", "2", "number of sigmas of strikes to consider")
-	budgetFlag     = decimal.Flag("budget", "5_000", "maximum acceptable loss at current price")
-	floorFlag      = decimal.Flag("floor", "40_000", "maximum acceptable loss in catastrophic scenario")
+	budgetFlag     = flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
+	floorFlag      = flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
 	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
 	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
 	wPayoffFlag    = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
-	wRiskFlag      = decimal.Flag("w-risk", ".25", "scoring weight for risk reduction")
+	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
 	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
 	maxDriftFlag   = decimal.Flag("max-drift", "1", "maximum acceptable accounting drift before panic")
 	thinkFlag      = clocky.DurationFlag("think", "1000ms", "interval between backtest trading analysis")
@@ -74,8 +75,10 @@ var (
 )
 
 var (
+	gVolume            int
 	gRiskFloor         float64
 	gRiskBudget        float64
+	gTotalFees         decimal.Decimal
 	gStagedCash        decimal.Decimal
 	gStagedPositions   = treemap.New[string, decimal.Decimal]()
 	gSimulations       = treeset.NewWith(compareSimulations)
@@ -87,11 +90,12 @@ var (
 )
 
 var (
-	kRiskFreeRate = decimal.Parse("0.035")
-	kTick01       = decimal.Parse("0.01")
-	kTick05       = decimal.Parse("0.05")
-	kTick10       = decimal.Parse("0.10")
-	kThree        = decimal.FromInt(3)
+	kFeePerContract = decimal.Parse("1.2")
+	kRiskFreeRate   = decimal.Parse("0.035")
+	kTick01         = decimal.Parse("0.01")
+	kTick05         = decimal.Parse("0.05")
+	kTick10         = decimal.Parse("0.10")
+	kThree          = decimal.FromInt(3)
 )
 
 type Simulation struct {
@@ -117,8 +121,6 @@ func main() {
 	black76.DaysPerYear = 252
 	black76.HoursPerDay = 6.5
 	gSymbol = symbol.MustParse(*symbolFlag)
-	gRiskFloor = (*floorFlag).Float64()
-	gRiskBudget = (*budgetFlag).Float64()
 	if *webFlag {
 		startWeb()
 	}
@@ -152,14 +154,13 @@ func onThink(now clocky.Time) {
 	if !beginSimulations(now) {
 		return
 	}
+	benchStartTime := time.Now()
 	em_near := gChain.ExpectedMove()
 	lo_near := gChain.Price.Sub(em_near)
 	hi_near := gChain.Price.Add(em_near)
 	em_wide := gChain.ExpectedMove().Mul(*sigmasFlag)
 	lo_wide := gChain.Price.Sub(em_wide)
 	hi_wide := gChain.Price.Add(em_wide)
-	buyPut()
-	sellCall()
 	buyPut()
 	buyCall()
 	buyCombo(lo_near, hi_near)
@@ -168,6 +169,11 @@ func onThink(now clocky.Time) {
 	sellPutVertical(lo_wide, hi_wide)
 	buyCallVertical(lo_near, hi_wide)
 	buyPutVertical(lo_wide, hi_near)
+	liquidatePut()
+	liquidateCall()
+	liquidateCallVertical()
+	liquidatePutVertical()
+	log.Printf("thought for %s (%d simulations)", time.Since(benchStartTime), gSimulationCounter)
 	sendBestOrder(now)
 }
 

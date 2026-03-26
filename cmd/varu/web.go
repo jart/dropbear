@@ -8,6 +8,7 @@ import (
 	"embed"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net"
@@ -127,6 +128,8 @@ type StatsData struct {
 	Bias        string `json:"bias"`
 	Realized    string `json:"realized"`
 	Error       string `json:"error"`
+	Fees        string `json:"fees"`
+	Volume      string `json:"volume"`
 }
 
 type FlagsData struct {
@@ -170,16 +173,18 @@ func buildStateSnapshot() StateSnapshot {
 			Worst:       computeRisk().Format(2),
 			Liquidation: computeLiquidationValue().Truncate().Format(2),
 			Notional:    computeNotional().Format(2),
+			Fees:        gTotalFees.Format(2),
 			EOD:         computeSettlementAt(gChain.Price).Format(2),
 			Sigma:       gChain.ExpectedMove().Format(2),
 			Bias:        computeBias().Format(2),
 			Realized:    gRealizedPnL.Format(2),
 			Error:       gError.String(),
+			Volume:      strconv.Itoa(gVolume),
 		},
 		Flags: FlagsData{
 			Sigmas:   (*sigmasFlag).String(),
-			Budget:   (*budgetFlag).String(),
-			Floor:    (*floorFlag).String(),
+			Budget:   fmt.Sprintf("%g", *budgetFlag),
+			Floor:    fmt.Sprintf("%g", *floorFlag),
 			Spread:   (*spreadFlag).String(),
 			Cooldown: (*cooldownFlag).String(),
 			Patience: (*patienceFlag).String(),
@@ -336,14 +341,18 @@ func applyFlags(f *FlagsData) {
 		log.Printf("web: sigmas = %s", f.Sigmas)
 	}
 	if f.Budget != "" {
-		*budgetFlag = decimal.Parse(f.Budget)
-		gRiskBudget = (*budgetFlag).Float64()
-		log.Printf("web: budget = %s", f.Budget)
+		v, err := strconv.ParseFloat(f.Budget, 64)
+		if err == nil {
+			*budgetFlag = v
+			log.Printf("web: budget = %s", f.Budget)
+		}
 	}
 	if f.Floor != "" {
-		*floorFlag = decimal.Parse(f.Floor)
-		gRiskFloor = (*floorFlag).Float64()
-		log.Printf("web: floor = %s", f.Floor)
+		v, err := strconv.ParseFloat(f.Floor, 64)
+		if err == nil {
+			*floorFlag = v
+			log.Printf("web: floor = %s", f.Floor)
+		}
 	}
 	if f.Spread != "" {
 		*spreadFlag = decimal.Parse(f.Spread)

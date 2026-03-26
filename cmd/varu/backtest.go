@@ -132,6 +132,8 @@ func backtest() {
 }
 
 func simulateOrder(sim *Simulation) {
+	gVolume += sim.Legs.Size()
+	gTotalFees = gTotalFees.Add(kFeePerContract.MulInt(sim.Legs.Size()))
 	spread := *spreadFlag
 	for legIt := sim.Legs.Iterator(); legIt.Next(); {
 		sym, pos := legIt.Key(), legIt.Value()

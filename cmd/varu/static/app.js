@@ -55,14 +55,15 @@ function renderStats(d) {
   setText('statRealized', d.stats.realized);
   setText('statCash', d.cash);
   setText('statNotional', d.stats.notional);
+  setText('statFees', d.stats.fees);
   colorize('statPayoff', d.stats.payoff);
   colorize('statWorst', d.stats.worst);
   colorize('statEOD', d.stats.eod);
   colorize('statBias', d.stats.bias);
-  colorize('statRealized', d.stats.realized);
   setText('statError', d.stats.error);
   var errEl = document.getElementById('statError');
   errEl.className = parseFloat(d.stats.error) === 0 ? 'zero' : 'neg';
+  setText('statVolume', d.stats.volume);
 }
 
 function setText(id, val) {
