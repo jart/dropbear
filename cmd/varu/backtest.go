@@ -132,11 +132,28 @@ func backtest() {
 }
 
 func simulateOrder(sim *Simulation) {
-	gCash = gCash.Add(sim.Price.MulInt(kMultiplier))
+	spread := *spreadFlag
 	for legIt := sim.Legs.Iterator(); legIt.Next(); {
 		sym, pos := legIt.Key(), legIt.Value()
+		opt := gOptionsByOSI[sym]
+		mid := opt.MarketPrice()
+		hlf := opt.Ask.Sub(opt.Bid).DivInt(2)
+		var fillPrice decimal.Decimal
+		if pos.IsPositive() {
+			fillPrice = quantizeTruncate(mid.Add(hlf.Mul(spread)))
+		} else {
+			fillPrice = quantizeAway(mid.Sub(hlf.Mul(spread)))
+		}
+		cashFlow := fillPrice.Mul(pos.Neg()).MulInt(kMultiplier)
+		gCash = gCash.Add(cashFlow)
+		if cashFlow.IsPositive() {
+			gTotalCashIn = gTotalCashIn.Add(cashFlow)
+		} else {
+			gTotalCashOut = gTotalCashOut.Add(cashFlow.Neg())
+		}
 		existing, _ := gPositions.Get(sym)
 		gPositions.Put(sym, existing.Add(pos))
-		recordFill(sym, pos, gOptionsByOSI[sym].MarketPrice())
+		recordFill(sym, pos, fillPrice)
 	}
+	sanityCheck("simulateOrder")
 }

@@ -243,13 +243,20 @@ func loadSchwabOrder(order *schwab.Order) {
 				}
 				log.Printf("restoring filled leg for order id %d: %s %s %s @ %s",
 					order.OrderID, fillQty, leg.Instruction, sym, execLeg.Price)
-				gCash = gCash.Add(price.Mul(execLeg.Quantity).MulInt(kMultiplier))
+				cashFlow := price.Mul(execLeg.Quantity).MulInt(kMultiplier)
+				gCash = gCash.Add(cashFlow)
+				if cashFlow.IsPositive() {
+					gTotalCashIn = gTotalCashIn.Add(cashFlow)
+				} else {
+					gTotalCashOut = gTotalCashOut.Add(cashFlow.Neg())
+				}
 				pos, _ := gPositions.Get(sym)
 				gPositions.Put(sym, pos.Add(fillQty))
 				recordFill(sym, fillQty, execLeg.Price)
 			}
 		}
 	}
+	sanityCheck("loadSchwabOrders")
 }
 
 func streamOptions(key databento.ApiKey, ticks chan<- *databento.CMBP1) {
@@ -469,11 +476,17 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 		cash = cash.Neg() // bought: we pay cash
 	}
 	gCash = gCash.Add(cash)
+	if cash.IsPositive() {
+		gTotalCashIn = gTotalCashIn.Add(cash)
+	} else {
+		gTotalCashOut = gTotalCashOut.Add(cash.Neg())
+	}
 
 	// update position and cost basis for this filled leg
 	existing, _ := gPositions.Get(sym)
 	gPositions.Put(sym, existing.Add(qty))
 	recordFill(sym, qty, fillPrice)
+	sanityCheck("onFillEvent")
 	log.Printf("#%d leg filled for order id %d: %s %s @ %s, route: %s, improvement: %s, fee: %s",
 		sim.ID, orderID, fill.OrderInfoForTransactionPosting.BuySellCode, sym, fillPrice, routeName, priceImprovement, fee)
 

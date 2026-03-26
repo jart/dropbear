@@ -59,6 +59,8 @@ function renderStats(d) {
   colorize('statEOD', d.stats.eod);
   colorize('statBias', d.stats.bias);
   colorize('statRealized', d.stats.realized);
+  setText('statDrift', d.stats.drift);
+  colorize('statDrift', d.stats.drift);
 }
 
 function setText(id, val) {

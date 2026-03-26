@@ -36,6 +36,7 @@ var (
 	floorFlag      = decimal.Flag("floor", "40_000", "maximum acceptable loss in catastrophic scenario")
 	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
 	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
+	maxDriftFlag   = decimal.Flag("max-drift", "1", "maximum acceptable accounting drift before panic")
 	thinkFlag      = clocky.DurationFlag("think", "1000ms", "interval between backtest trading analysis")
 	patienceFlag   = clocky.DurationFlag("patience", "9s", "how long to wait before canceling live orders")
 	cooldownFlag   = clocky.DurationFlag("cooldown", "10s", "interval between trading decisions")
@@ -345,8 +346,9 @@ func onHeartbeat() {
 		gCash, liq.Truncate(), eod, bad, gRealizedPnL.Truncate(), pay.Truncate(),
 		delta.Format(2), gamma.Format(2), theta.Format(2), vega.Format(2))
 }
-,
+
 func onEndOfDay() {
+	sanityCheck("preSettlement")
 	log.Printf("end of day settlement time")
 	iteratePositions(func(sym string, pos decimal.Decimal) {
 		intrinsic := gOptionsByOSI[sym].IntrinsicValue(gChain.Price)
