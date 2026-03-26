@@ -244,6 +244,12 @@ func liquidatePut() {
 // liquidateCallVertical closes an existing call vertical by buying back the
 // short leg and selling the long leg. Iterates over all pairs of held call
 // positions where one is short and one is long.
+// liquidateCallVertical closes an existing call vertical by buying back
+// the short leg and selling the long leg. Only considers spreads where
+// closing is profitable: the net cost to close (buy back short, sell
+// long) must be less than the net credit we originally received. This
+// prevents churning while allowing the robot to take profits on spreads
+// where theta has decayed in our favor.
 func liquidateCallVertical() {
 	if !gStrategyEnabled[kStrategyLiquidateCallVertical] {
 		return
@@ -254,15 +260,18 @@ func liquidateCallVertical() {
 			if prune() {
 				continue
 			}
-			buy(s)  // buy back short
-			sell(l) // sell the long
+			if !isSpreadProfitableToClose(s, l) {
+				continue
+			}
+			gStagedPositions.Put(s.OSI(), decimal.One)   // buy back short
+			gStagedPositions.Put(l.OSI(), decimal.NegOne) // sell the long
 			end(kStrategyLiquidateCallVertical)
 		}
 	}
 }
 
-// liquidatePutVertical closes an existing put vertical by buying back the
-// short leg and selling the long leg.
+// liquidatePutVertical closes an existing put vertical by buying back
+// the short leg and selling the long leg.
 func liquidatePutVertical() {
 	if !gStrategyEnabled[kStrategyLiquidatePutVertical] {
 		return
@@ -273,11 +282,27 @@ func liquidatePutVertical() {
 			if prune() {
 				continue
 			}
-			buy(s)  // buy back short
-			sell(l) // sell the long
+			if !isSpreadProfitableToClose(s, l) {
+				continue
+			}
+			gStagedPositions.Put(s.OSI(), decimal.One)   // buy back short
+			gStagedPositions.Put(l.OSI(), decimal.NegOne) // sell the long
 			end(kStrategyLiquidatePutVertical)
 		}
 	}
+}
+
+// isSpreadProfitableToClose checks whether closing a spread (buying back
+// the short leg, selling the long leg) would be profitable based on cost
+// basis. We originally received: shortCost - longCost (net credit).
+// To close we pay: shortMid - longMid (net debit to buy back short,
+// minus credit from selling long). Profitable when close cost < open credit.
+func isSpreadProfitableToClose(short, long *options.Option) bool {
+	shortCost := gCostPerContract[short.OSI()]
+	longCost := gCostPerContract[long.OSI()]
+	openCredit := shortCost.Sub(longCost)
+	closeCost := short.MarketPrice().Sub(long.MarketPrice())
+	return closeCost.Cmp(openCredit) < 0
 }
 
 // collectPositions returns the short and long options of the given class

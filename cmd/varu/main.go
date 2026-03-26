@@ -40,6 +40,7 @@ var (
 	floorFlag      = flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
 	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
 	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
+	closeFlag      = flag.Float64("closer", .1, "random probability that closing will be allowed")
 	wPayoffFlag    = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
 	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
 	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
@@ -101,6 +102,7 @@ var (
 	gIdentifierCounter int
 	gAbortSimulation   bool
 	gEODTransitioned   bool
+	gAllowClosing      bool
 )
 
 var (
@@ -221,6 +223,7 @@ func beginSimulations(now clocky.Time) bool {
 	}
 	gBaselineWorst = computeRisk()
 	gBaselineDelta = computeDelta()
+	gAllowClosing = rando() < *closeFlag
 	if !gEODTransitioned {
 		isPowerHour := now.ClockInt() >= kStopTrading
 		if isPowerHour {
@@ -228,6 +231,7 @@ func beginSimulations(now clocky.Time) bool {
 			clear(gStrategyEnabled)
 			maps.Copy(gStrategyEnabled, gStrategyEnabledEOD)
 			gEODTransitioned = true
+			gAllowClosing = true
 		}
 	}
 	return true
@@ -270,7 +274,7 @@ func sendBestOrder(now clocky.Time) {
 // buy simulates buying an option. Aborts if we're already short this
 // contract, to prevent churning (buying back what we sold).
 func buy(option *options.Option) {
-	if option.Mode == options.ModeShort {
+	if !gAllowClosing && option.Mode == options.ModeShort {
 		gAbortSimulation = true
 		return
 	}
@@ -280,7 +284,7 @@ func buy(option *options.Option) {
 // sell simulates selling an option. Aborts if we're already long this
 // contract, to prevent churning (selling what we bought).
 func sell(option *options.Option) {
-	if option.Mode == options.ModeLong {
+	if !gAllowClosing && option.Mode == options.ModeLong {
 		gAbortSimulation = true
 		return
 	}
