@@ -21,9 +21,31 @@ func (s *Strike) IsReady() bool {
 	return s.Call != nil && s.Put != nil
 }
 
-// Probability returns the chance (e.g. 0.01 for 1%) that options expire at this strike.
-// This should return a positive value. If the data is missing or toxic that might change.
+// Probability returns the smoothed chance (e.g. 0.01 for 1%) that
+// options expire at this strike. Raw Breeden-Litzenberger probabilities
+// are quantized to ~1% steps due to tick size relative to strike spacing.
+// We apply a [1,2,1]/4 kernel to reconstruct the smooth underlying
+// distribution that the exchange tick sizes obscure.
 func (s *Strike) Probability() decimal.Decimal {
+	c := s.rawProbability()
+	if !c.IsPositive() {
+		return decimal.Zero
+	}
+	l := decimal.Zero
+	r := decimal.Zero
+	if s.Prev != nil {
+		l = s.Prev.rawProbability()
+	}
+	if s.Next != nil {
+		r = s.Next.rawProbability()
+	}
+	// [1, 2, 1] / 4 Gaussian kernel
+	return l.Add(c.MulInt(2)).Add(r).DivInt(4)
+}
+
+// rawProbability returns the unsmoothed probability at this strike,
+// interpolating from neighbors if the local butterfly is non-positive.
+func (s *Strike) rawProbability() decimal.Decimal {
 	p := s.computeProbability()
 	if p.IsPositive() {
 		return p
@@ -34,7 +56,6 @@ func (s *Strike) Probability() decimal.Decimal {
 	l := s.Prev.computeProbability()
 	r := s.Next.computeProbability()
 	if l.IsPositive() && r.IsPositive() {
-		// interpolate missing probability as the average of neighbors
 		return l.Add(r).DivInt(2)
 	}
 	return decimal.Zero

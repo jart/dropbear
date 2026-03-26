@@ -37,11 +37,11 @@ var (
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
 	sigmasFlag     = decimal.Flag("sigmas", "2", "number of sigmas of strikes to consider")
 	budgetFlag     = flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
-	floorFlag      = flag.Float64("floor", 20_000, "maximum acceptable loss in catastrophic scenario")
-	spreadFlag     = decimal.Flag("spread", "0", "spread crossing (-1=make, 0=mid, 1=take)")
+	floorFlag      = flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
+	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
 	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
 	closeFlag      = flag.Float64("closer", .1, "random probability that closing will be allowed")
-	demandFlag     = decimal.Flag("demand", "1.3", "minimum ratio of open credit to close cost for liquidation")
+	demandFlag     = decimal.Flag("demand", "1.1", "minimum ratio of open credit to close cost for liquidation")
 	wPayoffFlag    = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
 	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
 	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
@@ -194,7 +194,7 @@ func onThink(now clocky.Time) {
 	em_wide := gChain.ExpectedMove().Mul(*sigmasFlag)
 	lo_wide := gChain.Price.Sub(em_wide)
 	hi_wide := gChain.Price.Add(em_wide)
-	log.Printf("price=%s em=%s near=[%s,%s] wide=[%s,%s]", gChain.Price, em_near, lo_near, hi_near, lo_wide, hi_wide)
+	loggy.Hint("price=%s em=%s near=[%s,%s] wide=[%s,%s]", gChain.Price, em_near, lo_near, hi_near, lo_wide, hi_wide)
 	buyPut()
 	buyCall()
 	sellPut()
@@ -209,7 +209,7 @@ func onThink(now clocky.Time) {
 	liquidateCall()
 	liquidateCallVertical()
 	liquidatePutVertical()
-	log.Printf("thought for %s (%d simulations)", time.Since(benchStartTime), gSimulationCounter)
+	loggy.Hint("thought for %s (%d simulations)", time.Since(benchStartTime), gSimulationCounter)
 	sendBestOrder(now)
 }
 
@@ -224,7 +224,7 @@ func beginSimulations(now clocky.Time) bool {
 	}
 	gBaselineWorst = computeRisk()
 	gBaselineDelta = computeDelta()
-	gAllowClosing = rando() < *closeFlag
+	// gAllowClosing = rando() < *closeFlag
 	if !gEODTransitioned {
 		isPowerHour := now.ClockInt() >= kStopTrading
 		if isPowerHour {

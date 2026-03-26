@@ -36,8 +36,8 @@ var gStrategyEnabled = map[string]bool{
 	kStrategyBuyPutVertical:        false,
 	kStrategyLiquidateCall:         false,
 	kStrategyLiquidatePut:          false,
-	kStrategyLiquidateCallVertical: true,
-	kStrategyLiquidatePutVertical:  true,
+	kStrategyLiquidateCallVertical: false,
+	kStrategyLiquidatePutVertical:  false,
 }
 
 var gStrategyEnabledEOD = map[string]bool{
