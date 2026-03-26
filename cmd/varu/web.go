@@ -136,6 +136,9 @@ type FlagsData struct {
 	Cooldown string `json:"cooldown"`
 	Patience string `json:"patience"`
 	Prune    string `json:"prune"`
+	WPayoff  string `json:"wPayoff"`
+	WRisk    string `json:"wRisk"`
+	WDelta   string `json:"wDelta"`
 }
 
 type StrategyInfo struct {
@@ -179,6 +182,9 @@ func buildStateSnapshot() StateSnapshot {
 			Cooldown: (*cooldownFlag).String(),
 			Patience: (*patienceFlag).String(),
 			Prune:    strconv.FormatFloat(*pruneFlag, 'f', -1, 64),
+			WPayoff:  (*wPayoffFlag).String(),
+			WRisk:    (*wRiskFlag).String(),
+			WDelta:   (*wDeltaFlag).String(),
 		},
 		Strategies: make(map[string]StrategyInfo),
 	}
@@ -361,6 +367,18 @@ func applyFlags(f *FlagsData) {
 			*pruneFlag = v
 			log.Printf("web: prune = %s", f.Prune)
 		}
+	}
+	if f.WPayoff != "" {
+		*wPayoffFlag = decimal.Parse(f.WPayoff)
+		log.Printf("web: w-payoff = %s", f.WPayoff)
+	}
+	if f.WRisk != "" {
+		*wRiskFlag = decimal.Parse(f.WRisk)
+		log.Printf("web: w-risk = %s", f.WRisk)
+	}
+	if f.WDelta != "" {
+		*wDeltaFlag = decimal.Parse(f.WDelta)
+		log.Printf("web: w-delta = %s", f.WDelta)
 	}
 }
 

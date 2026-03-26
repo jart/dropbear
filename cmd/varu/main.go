@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"os"
 	"os/signal"
@@ -36,6 +37,9 @@ var (
 	floorFlag      = decimal.Flag("floor", "40_000", "maximum acceptable loss in catastrophic scenario")
 	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
 	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
+	wPayoffFlag    = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
+	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
+	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
 	maxDriftFlag   = decimal.Flag("max-drift", "1", "maximum acceptable accounting drift before panic")
 	thinkFlag      = clocky.DurationFlag("think", "1000ms", "interval between backtest trading analysis")
 	patienceFlag   = clocky.DurationFlag("patience", "9s", "how long to wait before canceling live orders")
@@ -79,6 +83,7 @@ var (
 	gSimulationCounter int
 	gIdentifierCounter int
 	gAbortSimulation   bool
+	gEODTransitioned   bool
 )
 
 var (
@@ -144,7 +149,7 @@ func main() {
 }
 
 func onThink(now clocky.Time) {
-	if !beginSimulations() {
+	if !beginSimulations(now) {
 		return
 	}
 	em_near := gChain.ExpectedMove()
@@ -166,7 +171,7 @@ func onThink(now clocky.Time) {
 	sendBestOrder(now)
 }
 
-func beginSimulations() bool {
+func beginSimulations(now clocky.Time) bool {
 	gSimulationCounter = 0
 	gBaselinePayoff = computeExpectedPayoff()
 	if gBaselinePayoff.Cmp(decimal.NegOne) == 0 {
@@ -174,25 +179,20 @@ func beginSimulations() bool {
 	}
 	gBaselineWorst = computeRisk()
 	gBaselineDelta = computeDelta()
+	if !gEODTransitioned {
+		isPowerHour := now.ClockInt() >= kStopTrading
+		if isPowerHour {
+			clear(gStrategyEnabled)
+			maps.Copy(gStrategyEnabled, gStrategyEnabledEOD)
+			gEODTransitioned = true
+		}
+	}
 	return true
 }
 
 func sendBestOrder(now clocky.Time) {
 	if gSimulations.Empty() {
 		return
-	}
-	isPowerHour := now.ClockInt() >= kStopTrading
-	if isPowerHour {
-		var remove []*Simulation
-		for it := gSimulations.Iterator(); it.Next(); {
-			if !gStrategyEnabledEOD[it.Value().Strategy] {
-				remove = append(remove, it.Value())
-			}
-		}
-		gSimulations.Remove(remove...)
-		if gSimulations.Empty() {
-			return
-		}
 	}
 	log.Printf("%d out of %d simulated orders were reasonable",
 		gSimulations.Size(), gSimulationCounter)
@@ -227,7 +227,7 @@ func sendBestOrder(now clocky.Time) {
 // buy simulates buying an option.
 func buy(option *options.Option) {
 	if canBuy(option) {
-		gStagedPositions.Put(option.OSI(), decimal.One)
+		buyWithTheForce(option)
 	} else {
 		gAbortSimulation = true
 	}
@@ -236,7 +236,7 @@ func buy(option *options.Option) {
 // sell simulates selling an option.
 func sell(option *options.Option) {
 	if canSell(option) {
-		gStagedPositions.Put(option.OSI(), decimal.NegOne)
+		sellWithTheForce(option)
 	} else {
 		gAbortSimulation = true
 	}
@@ -260,9 +260,6 @@ func canBuy(option *options.Option) bool {
 		return false
 	}
 	return true
-	// pos1, _ := gPositions.Get(option.OSI())
-	// pos2, _ := gStagedPositions.Get(option.OSI())
-	// return pos1.Cmp(decimal.Zero) >= 0 && pos2.Cmp(decimal.Zero) >= 0
 }
 
 func canSell(option *options.Option) bool {
@@ -270,9 +267,6 @@ func canSell(option *options.Option) bool {
 		return false
 	}
 	return true
-	// pos1, _ := gPositions.Get(option.OSI())
-	// pos2, _ := gStagedPositions.Get(option.OSI())
-	// return pos1.Cmp(decimal.Zero) <= 0 && pos2.Cmp(decimal.Zero) <= 0
 }
 
 func end(strategy string) bool {
@@ -299,7 +293,7 @@ func end(strategy string) bool {
 			riskReduction := sim.Worst.Sub(gBaselineWorst).Max(decimal.Zero)
 			simDelta := computeDelta()
 			deltaImprovement := gBaselineDelta.Abs().Sub(simDelta.Abs()).Max(decimal.Zero)
-			sim.Score = payoffImprovement.Add(riskReduction.DivInt(10)).Add(deltaImprovement)
+			sim.Score = payoffImprovement.Mul(*wPayoffFlag).Add(riskReduction.Mul(*wRiskFlag)).Add(deltaImprovement.Mul(*wDeltaFlag))
 			if sim.Score.IsPositive() {
 				gSimulations.Add(sim)
 				gStagedPositions = treemap.New[string, decimal.Decimal]()
@@ -394,6 +388,7 @@ func iterateStrikes(f func(*options.Strike)) {
 	}
 }
 
+// computeRisk calculates the worst possible outcome of the current portfolio.
 func computeRisk() decimal.Decimal {
 	worst := decimal.Zero
 	for it := gChain.Strikes.Iterator(); it.Next(); {
