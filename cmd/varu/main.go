@@ -30,7 +30,6 @@ var (
 	webFlag        = flag.Bool("web", false, "enable web dashboard feature")
 	rtFlag         = flag.Bool("rt", false, "run backtest in real time mode")
 	dryFlag        = flag.Bool("dry", false, "don't send new orders in live mode")
-	colorFlag      = flag.Bool("color", false, "enable option chain strike coloring")
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
 	sigmasFlag     = decimal.Flag("sigmas", "2", "number of sigmas of strikes to consider")
@@ -61,24 +60,36 @@ const (
 )
 
 var (
-	gCash           decimal.Decimal
-	gChain          = options.NewOptions()
-	gSymbol         symbol.Symbol
-	gPositions      = treemap.New[string, decimal.Decimal]()
-	gOptionsByID    = map[uint32]*options.Option{}
-	gOptionsByOSI   = map[string]*options.Option{}
-	gStrategiesUsed = treemap.New[string, int]()
-	gNextTradeTime  clocky.Time
-	gBaselinePayoff decimal.Decimal
-	gBaselineWorst  decimal.Decimal
-	gBaselineDelta  decimal.Decimal
+	gVolume              int
+	gCash                decimal.Decimal
+	gTotalFees           decimal.Decimal
+	gChain               = options.NewOptions()
+	gSymbol              symbol.Symbol
+	gPositions           = treemap.New[string, decimal.Decimal]()
+	gOptionsByID         = map[uint32]*options.Option{}
+	gOptionsByOSI        = map[string]*options.Option{}
+	gStrategiesUsed      = treemap.New[string, int]()
+	gNextTradeTime       clocky.Time
+	gBaselinePayoff      decimal.Decimal
+	gBaselineWorst       decimal.Decimal
+	gBaselineDelta       decimal.Decimal
+	gBaselineSettlements []strikeSettlement // precomputed per think cycle
 )
 
+// strikeSettlement caches the baseline portfolio settlement value at a
+// given strike. Precomputed once per think cycle so that each simulation
+// only needs to add the delta from its 2 staged legs, turning O(strikes ×
+// positions × simulations) into O(strikes × simulations × 2).
+type strikeSettlement struct {
+	strike   *options.Strike
+	baseline decimal.Decimal // settlement from gPositions only (no cash)
+	movement float64         // |price - strike| for risk tolerance
+	sigmas   float64         // movement / expectedMove
+	blend    float64         // NormCDF blend for risk interpolation
+	maxLoss  float64         // interpolated max acceptable loss
+}
+
 var (
-	gVolume            int
-	gRiskFloor         float64
-	gRiskBudget        float64
-	gTotalFees         decimal.Decimal
 	gStagedCash        decimal.Decimal
 	gStagedPositions   = treemap.New[string, decimal.Decimal]()
 	gSimulations       = treeset.NewWith(compareSimulations)
@@ -179,6 +190,7 @@ func onThink(now clocky.Time) {
 
 func beginSimulations(now clocky.Time) bool {
 	gSimulationCounter = 0
+	precomputeSettlements()
 	gBaselinePayoff = computeExpectedPayoff()
 	if gBaselinePayoff.Cmp(decimal.NegOne) == 0 {
 		return false
@@ -232,47 +244,17 @@ func sendBestOrder(now clocky.Time) {
 
 // buy simulates buying an option.
 func buy(option *options.Option) {
-	if canBuy(option) {
-		buyWithTheForce(option)
-	} else {
-		gAbortSimulation = true
-	}
+	gStagedPositions.Put(option.OSI(), decimal.One)
 }
 
 // sell simulates selling an option.
 func sell(option *options.Option) {
-	if canSell(option) {
-		sellWithTheForce(option)
-	} else {
-		gAbortSimulation = true
-	}
+	gStagedPositions.Put(option.OSI(), decimal.NegOne)
 }
 
 // prune returns true if we should skip this branch of the search.
 func prune() bool {
 	return rando() < *pruneFlag
-}
-
-func buyWithTheForce(option *options.Option) {
-	gStagedPositions.Put(option.OSI(), decimal.One)
-}
-
-func sellWithTheForce(option *options.Option) {
-	gStagedPositions.Put(option.OSI(), decimal.NegOne)
-}
-
-func canBuy(option *options.Option) bool {
-	if option.Mode == options.ModeSellOnly {
-		return false
-	}
-	return true
-}
-
-func canSell(option *options.Option) bool {
-	if option.Mode == options.ModeBuyOnly {
-		return false
-	}
-	return true
 }
 
 func end(strategy string) bool {
@@ -394,12 +376,57 @@ func iterateStrikes(f func(*options.Strike)) {
 	}
 }
 
+// precomputeSettlements caches baseline settlement values at every strike
+// so that simulations only need to add the delta from their 2 staged legs.
+func precomputeSettlements() {
+	em := gChain.ExpectedMove().Float64()
+	gBaselineSettlements = gBaselineSettlements[:0]
+	for it := gChain.Strikes.Iterator(); it.Next(); {
+		strike := it.Value()
+		value := decimal.Zero
+		for pit := gPositions.Iterator(); pit.Next(); {
+			sym, pos := pit.Key(), pit.Value()
+			if !pos.IsZero() {
+				intrinsic := gOptionsByOSI[sym].IntrinsicValue(strike.Price)
+				value = value.Add(intrinsic.Mul(pos))
+			}
+		}
+		ss := strikeSettlement{
+			strike:   strike,
+			baseline: value.MulInt(kMultiplier),
+		}
+		if em > 0 {
+			ss.movement = gChain.Price.Sub(strike.Price).Abs().Float64()
+			ss.sigmas = ss.movement / em
+			ss.blend = (prob.NormCDF(ss.sigmas) - .5) * 2
+			ss.maxLoss = math.FMA(*floorFlag-*budgetFlag, ss.blend, *budgetFlag)
+		}
+		gBaselineSettlements = append(gBaselineSettlements, ss)
+	}
+}
+
+// stagedSettlementDelta computes the incremental settlement contribution
+// from only the staged positions at the given underlying price.
+func stagedSettlementDelta(underlyingPrice decimal.Decimal) decimal.Decimal {
+	value := decimal.Zero
+	for sit := gStagedPositions.Iterator(); sit.Next(); {
+		sym, pos := sit.Key(), sit.Value()
+		if !pos.IsZero() {
+			intrinsic := gOptionsByOSI[sym].IntrinsicValue(underlyingPrice)
+			value = value.Add(intrinsic.Mul(pos))
+		}
+	}
+	return value.MulInt(kMultiplier)
+}
+
 // computeRisk calculates the worst possible outcome of the current portfolio.
 func computeRisk() decimal.Decimal {
 	worst := decimal.Zero
-	for it := gChain.Strikes.Iterator(); it.Next(); {
-		strike := it.Value()
-		settlement := computeSettlementAt(strike.Price)
+	for _, ss := range gBaselineSettlements {
+		settlement := ss.baseline.Add(gCash)
+		if gStagedPositions.Size() > 0 {
+			settlement = settlement.Add(stagedSettlementDelta(ss.strike.Price)).Add(gStagedCash)
+		}
 		worst = worst.Min(settlement)
 	}
 	return worst
@@ -407,23 +434,17 @@ func computeRisk() decimal.Decimal {
 
 // checkRiskTolerance verifies that the simulated position's loss at every
 // strike is within the acceptable risk tolerance for that probability level.
-// Uses the normal CDF to smoothly interpolate between the everyday budget
-// (at current price) and the catastrophic floor (at extreme moves).
 func checkRiskTolerance() bool {
 	em := gChain.ExpectedMove().Float64()
 	if em <= 0 {
 		return false
 	}
-	for it := gChain.Strikes.Iterator(); it.Next(); {
-		strike := it.Value()
-		settlement := computeSettlementAt(strike.Price).Float64()
-		movement := gChain.Price.Sub(strike.Price).Abs().Float64()
-		sigmas := movement / em
-		// NormCDF(0)=0.5, NormCDF(3)≈0.999. We want 0σ→budget, ∞σ→floor.
-		// Scale so: 0σ→0, ∞σ→1
-		blend := (prob.NormCDF(sigmas) - .5) * 2                        // 0 at 0σ, ~1 at 3+σ
-		maxLoss := math.FMA(gRiskFloor-gRiskBudget, blend, gRiskBudget) // lerp budget→floor
-		if settlement < -maxLoss {
+	for _, ss := range gBaselineSettlements {
+		settlement := ss.baseline.Add(gCash)
+		if gStagedPositions.Size() > 0 {
+			settlement = settlement.Add(stagedSettlementDelta(ss.strike.Price)).Add(gStagedCash)
+		}
+		if settlement.Float64() < -ss.maxLoss {
 			return false
 		}
 	}
@@ -437,6 +458,46 @@ func computeSettlementAt(underlyingPrice decimal.Decimal) decimal.Decimal {
 		value = value.Add(intrinsic.Mul(pos))
 	})
 	return value.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
+}
+
+// computeRiskSlow is the non-cached version for the dashboard.
+func computeRiskSlow() decimal.Decimal {
+	worst := decimal.Zero
+	for it := gChain.Strikes.Iterator(); it.Next(); {
+		strike := it.Value()
+		settlement := computeSettlementAt(strike.Price)
+		worst = worst.Min(settlement)
+	}
+	return worst
+}
+
+// computePayoffSlow is the non-cached version for the dashboard.
+func computePayoffSlow() decimal.Decimal {
+	type strikeProb struct {
+		strike *options.Strike
+		prob   decimal.Decimal
+	}
+	var probs []strikeProb
+	var probSum decimal.Decimal
+	iterateStrikes(func(strike *options.Strike) {
+		p := strike.Probability()
+		if p.IsPositive() {
+			probs = append(probs, strikeProb{strike, p})
+			probSum = probSum.Add(p)
+		}
+	})
+	if len(probs) == 0 || !probSum.IsPositive() {
+		return decimal.NegOne
+	}
+	payoff := decimal.Zero
+	for _, sp := range probs {
+		p := sp.prob.Div(probSum)
+		iteratePositions(func(sym string, pos decimal.Decimal) {
+			intrinsic := gOptionsByOSI[sym].IntrinsicValue(sp.strike.Price)
+			payoff = payoff.Add(intrinsic.Mul(pos).Mul(p))
+		})
+	}
+	return payoff.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
 }
 
 func computeLiquidationValue() decimal.Decimal {
@@ -459,33 +520,40 @@ func computeNotional() decimal.Decimal {
 }
 
 func computeExpectedPayoff() decimal.Decimal {
-	// collect probabilities and sum them
-	type strikeProb struct {
-		strike *options.Strike
-		prob   decimal.Decimal
+	// collect probabilities from cached settlements
+	type cachedProb struct {
+		idx  int
+		prob decimal.Decimal
 	}
-	var probs []strikeProb
+	em := gChain.ExpectedMove().Mul(*sigmasFlag)
+	lo := gChain.Price.Sub(em)
+	hi := gChain.Price.Add(em)
+	var probs []cachedProb
 	var probSum decimal.Decimal
-	iterateStrikes(func(strike *options.Strike) {
-		prob := strike.Probability()
-		if prob.IsPositive() {
-			probs = append(probs, strikeProb{strike, prob})
-			probSum = probSum.Add(prob)
+	for i, ss := range gBaselineSettlements {
+		if ss.strike.Price.Cmp(lo) < 0 || ss.strike.Price.Cmp(hi) > 0 {
+			continue
 		}
-	})
+		p := ss.strike.Probability()
+		if p.IsPositive() {
+			probs = append(probs, cachedProb{i, p})
+			probSum = probSum.Add(p)
+		}
+	}
 	if len(probs) == 0 || !probSum.IsPositive() {
 		return decimal.NegOne
 	}
-	// compute expected payoff with normalized probabilities
+	// compute expected payoff using cached baselines
 	payoff := decimal.Zero
-	for _, sp := range probs {
-		prob := sp.prob.Div(probSum)
-		iteratePositions(func(sym string, pos decimal.Decimal) {
-			intrinsic := gOptionsByOSI[sym].IntrinsicValue(sp.strike.Price)
-			payoff = payoff.Add(intrinsic.Mul(pos).Mul(prob))
-		})
+	for _, cp := range probs {
+		ss := &gBaselineSettlements[cp.idx]
+		settlement := ss.baseline
+		if gStagedPositions.Size() > 0 {
+			settlement = settlement.Add(stagedSettlementDelta(ss.strike.Price))
+		}
+		payoff = payoff.Add(settlement.Mul(cp.prob.Div(probSum)))
 	}
-	return payoff.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
+	return payoff.Add(gCash).Add(gStagedCash)
 }
 
 // computeBias returns what direction options market thinks underlying will move.
@@ -526,19 +594,6 @@ func onOptionDef(o *options.Option) {
 }
 
 func onOptionDefEnd() {
-	if *colorFlag {
-		colorStrikes()
-	}
-}
-
-func colorStrikes() {
-	mode := options.ModeBuyOnly
-	for it := gChain.Strikes.Iterator(); it.Next(); {
-		strike := it.Value()
-		strike.Call.Mode = mode
-		strike.Put.Mode = mode.Flip()
-		mode = mode.Flip()
-	}
 }
 
 func onOptionTick(t *databento.CMBP1) {

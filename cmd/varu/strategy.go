@@ -53,7 +53,7 @@ func buyCall() {
 		if prune() {
 			continue
 		}
-		buyWithTheForce(strike.Call)
+		buy(strike.Call)
 		end(kStrategyBuyCall)
 	}
 }
@@ -68,7 +68,7 @@ func buyPut() {
 		if prune() {
 			continue
 		}
-		buyWithTheForce(strike.Put)
+		buy(strike.Put)
 		end(kStrategyBuyPut)
 	}
 }
@@ -187,7 +187,7 @@ func liquidateCall() {
 		if strike == nil {
 			continue
 		}
-		sellWithTheForce(strike.Call)
+		sell(strike.Call)
 		end(kStrategyLiquidateCall)
 	}
 }
@@ -210,7 +210,7 @@ func liquidatePut() {
 		if strike == nil {
 			continue
 		}
-		sellWithTheForce(strike.Put)
+		sell(strike.Put)
 		end(kStrategyLiquidatePut)
 	}
 }

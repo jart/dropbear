@@ -169,8 +169,8 @@ func buildStateSnapshot() StateSnapshot {
 			Vega:  vega.Format(3),
 		},
 		Stats: StatsData{
-			Payoff:      computeExpectedPayoff().Format(2),
-			Worst:       computeRisk().Format(2),
+			Payoff:      computePayoffSlow().Format(2),
+			Worst:       computeRiskSlow().Format(2),
 			Liquidation: computeLiquidationValue().Truncate().Format(2),
 			Notional:    computeNotional().Format(2),
 			Fees:        gTotalFees.Format(2),
