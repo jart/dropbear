@@ -38,10 +38,10 @@ var (
 	sigmasFlag     = decimal.Flag("sigmas", "2", "number of sigmas of strikes to consider")
 	budgetFlag     = flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
 	floorFlag      = flag.Float64("floor", 20_000, "maximum acceptable loss in catastrophic scenario")
-	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
+	spreadFlag     = decimal.Flag("spread", "0", "spread crossing (-1=make, 0=mid, 1=take)")
 	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
 	closeFlag      = flag.Float64("closer", .1, "random probability that closing will be allowed")
-	demandFlag     = decimal.Flag("demand", "1.1", "minimum ratio of open credit to close cost for liquidation (1.1 = 10% profit)")
+	demandFlag     = decimal.Flag("demand", "1.3", "minimum ratio of open credit to close cost for liquidation")
 	wPayoffFlag    = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
 	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
 	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
@@ -122,7 +122,7 @@ type Simulation struct {
 	Strategy  string
 	Price     decimal.Decimal
 	Worst     decimal.Decimal
-	Payoff    decimal.Decimal
+	Payoff    decimal.Decimal // expected payoff at midpoint when order was created
 	Score     decimal.Decimal // payoff improvement + risk reduction
 	Created   clocky.Time
 	Canceling bool
@@ -304,14 +304,15 @@ func end(strategy string) bool {
 		gStagedCash = decimal.Zero
 		return false
 	}
-	price := choosePriceForSimulation()
-	if !checkSpreadWidth(price) {
+	// evaluate at midpoint for scoring (spread=0)
+	midPrice := chooseMidPrice()
+	if !checkSpreadWidth(midPrice) {
 		gStagedPositions.Clear()
 		gStagedCash = decimal.Zero
 		gSimulationCounter++
 		return true
 	}
-	gStagedCash = price.MulInt(kMultiplier)
+	gStagedCash = midPrice.MulInt(kMultiplier)
 	if checkRiskTolerance() {
 		payoff := computeExpectedPayoff()
 		if payoff.Cmp(decimal.NegOne) != 0 {
@@ -319,7 +320,7 @@ func end(strategy string) bool {
 				ID:       gSimulationCounter,
 				Legs:     gStagedPositions,
 				Strategy: strategy,
-				Price:    price,
+				Price:    choosePriceForSimulation(),
 				Worst:    computeRisk(),
 				Payoff:   payoff,
 			}
@@ -338,6 +339,23 @@ func end(strategy string) bool {
 	gStagedCash = decimal.Zero
 	gStagedPositions.Clear()
 	return true
+}
+
+// chooseMidPrice computes the net price at midpoint for all staged legs.
+// Used for evaluating trade merit independent of spread demands.
+func chooseMidPrice() decimal.Decimal {
+	price := decimal.Zero
+	for it := gStagedPositions.Iterator(); it.Next(); {
+		sym, pos := it.Key(), it.Value()
+		opt := gOptionsByOSI[sym]
+		mid := opt.MarketPrice()
+		if pos.IsPositive() {
+			price = price.Sub(mid)
+		} else {
+			price = price.Add(mid)
+		}
+	}
+	return price
 }
 
 func choosePriceForSimulation() decimal.Decimal {

@@ -21,6 +21,7 @@ var (
 	gSchwabClient      *schwab.Client
 	gSimulationUpdates = make(chan SimulationUpdate, 20)
 	gPendingOrders     = treeset.NewWith(compareSimulations)
+	gToxicity int // positive = toxic, negative = favorable
 )
 
 type SimulationUpdate struct {
@@ -528,6 +529,24 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	sim.Legs.Remove(sym)
 	if sim.Legs.Empty() {
 		deleteOrder(sim)
+		midPayoffAfter := computePayoffSlow()
+		if midPayoffAfter.Cmp(sim.Payoff) < 0 {
+			gToxicity++
+			log.Printf("#%d adverse fill: mid payoff %s -> %s (toxicity %d, spread %s)",
+				sim.ID, sim.Payoff.Truncate(), midPayoffAfter.Truncate(), gToxicity, *spreadFlag)
+		} else {
+			gToxicity--
+			log.Printf("#%d favorable fill: mid payoff %s -> %s (toxicity %d, spread %s)",
+				sim.ID, sim.Payoff.Truncate(), midPayoffAfter.Truncate(), gToxicity, *spreadFlag)
+		}
+		// retaliate against toxic fills by demanding more spread
+		if gToxicity > 0 {
+			*spreadFlag = spreadFlag.Sub(decimal.Parse("0.1"))
+			log.Printf("widening spread to %s due to toxicity", *spreadFlag)
+		} else if gToxicity < 0 {
+			*spreadFlag = spreadFlag.Add(decimal.Parse("0.1")).Min(decimal.Zero)
+			log.Printf("tightening spread to %s due to favorable fills", *spreadFlag)
+		}
 		log.Printf("#%d order complete for order id %d: %s", sim.ID, sim.OrderID, sim.Strategy)
 		// trade instantly without delay once an order is filled
 		gNextTradeTime = clocky.Now()
