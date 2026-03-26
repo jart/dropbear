@@ -64,6 +64,25 @@ func (a *Auth) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// RequireAuthReadOnly requires auth to view, admin to change.
+func (a *Auth) RequireAuthReadOnly(next http.HandlerFunc) http.HandlerFunc {
+	if *Unsecure {
+		return next
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := a.GetUser(r)
+		if u == nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		if !u.IsAdmin && r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
+}
+
 // RequireAdmin middleware requires admin user
 func (a *Auth) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	if *Unsecure {

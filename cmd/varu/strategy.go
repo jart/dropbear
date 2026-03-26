@@ -9,6 +9,8 @@ import (
 const (
 	kStrategyBuyCall               = "buy call"
 	kStrategyBuyPut                = "buy put"
+	kStrategySellCall              = "sell call"
+	kStrategySellPut               = "sell put"
 	kStrategyBuyCombo              = "buy combo"
 	kStrategySellCombo             = "sell combo"
 	kStrategySellCallVertical      = "sell call vertical"
@@ -24,6 +26,8 @@ const (
 var gStrategyEnabled = map[string]bool{
 	kStrategyBuyCall:               false,
 	kStrategyBuyPut:                false,
+	kStrategySellCall:              false,
+	kStrategySellPut:               false,
 	kStrategyBuyCombo:              false,
 	kStrategySellCombo:             false,
 	kStrategySellCallVertical:      true,
@@ -37,8 +41,8 @@ var gStrategyEnabled = map[string]bool{
 }
 
 var gStrategyEnabledEOD = map[string]bool{
-	kStrategyLiquidateCall:         true,
-	kStrategyLiquidatePut:          true,
+	kStrategyLiquidateCall:         false,
+	kStrategyLiquidatePut:          false,
 	kStrategyLiquidateCallVertical: true,
 	kStrategyLiquidatePutVertical:  true,
 }
@@ -47,8 +51,6 @@ func buyCall() {
 	if !gStrategyEnabled[kStrategyBuyCall] {
 		return
 	}
-	// buying calls make sense at the money
-	// all the way otm to when they hit minimum cost
 	for strike := gChain.AtTheMoney.Prev; strike != nil && strike.Call.Ask.Cmp(minTick()) >= 0; strike = strike.Next {
 		if prune() {
 			continue
@@ -62,14 +64,38 @@ func buyPut() {
 	if !gStrategyEnabled[kStrategyBuyPut] {
 		return
 	}
-	// buying puts make sense at the money
-	// all the way otm to when they hit minimum cost
 	for strike := gChain.AtTheMoney.Next; strike != nil && strike.Put.Ask.Cmp(minTick()) >= 0; strike = strike.Prev {
 		if prune() {
 			continue
 		}
 		buy(strike.Put)
 		end(kStrategyBuyPut)
+	}
+}
+
+func sellCall() {
+	if !gStrategyEnabled[kStrategySellCall] {
+		return
+	}
+	for strike := gChain.AtTheMoney.Prev; strike != nil && strike.Call.Ask.Cmp(minTick()) >= 0; strike = strike.Next {
+		if prune() {
+			continue
+		}
+		sell(strike.Call)
+		end(kStrategySellCall)
+	}
+}
+
+func sellPut() {
+	if !gStrategyEnabled[kStrategySellPut] {
+		return
+	}
+	for strike := gChain.AtTheMoney.Next; strike != nil && strike.Put.Ask.Cmp(minTick()) >= 0; strike = strike.Prev {
+		if prune() {
+			continue
+		}
+		sell(strike.Put)
+		end(kStrategySellPut)
 	}
 }
 

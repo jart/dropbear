@@ -1,21 +1,15 @@
 <!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Login - Dropbear</title>
-    <link rel="stylesheet" href="/auth/static/auth.css">
-</head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Login - Dropbear</title>
+<link rel="stylesheet" href="/auth/static/auth.css">
 <body>
-    <div class="container">
-        <h1>Login</h1>
-        <div id="error" class="error"></div>
+<div class="container">
+    <h1>Login</h1>
+    <div id="error" class="error"></div>
+    <form id="loginForm" onsubmit="webauthnLogin(); return false;">
         <input type="text" id="name" placeholder="Your name" autofocus>
-        <button id="login">Login with Security Key</button>
-    </div>
-    <script src="/auth/static/webauthn.js"></script>
-    <script>
-        document.getElementById('login').onclick = webauthnLogin;
-    </script>
-</body>
-</html>
+        <button type="submit" id="login">Login with Security Key</button>
+    </form>
+</div>
+<script src="/auth/static/webauthn.js"></script>

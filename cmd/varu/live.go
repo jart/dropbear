@@ -4,6 +4,8 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
 	"dropbear/clocky"
+	"dropbear/decimal"
+	"fmt"
 	"dropbear/ds/options"
 	"dropbear/ds/osi"
 	"dropbear/ds/symbol"
@@ -367,19 +369,69 @@ func onOrderUpdate(event *schwab.OrderEvent) {
 func cancelUnfilledOrders(now clocky.Time) {
 	for it := gPendingOrders.Iterator(); it.Next(); {
 		sim := it.Value()
-		if sim.OrderID != 0 && !sim.Canceling && now.Sub(sim.Created) >= *patienceFlag {
+		if sim.OrderID == 0 || sim.Canceling {
+			continue
+		}
+		elapsed := now.Sub(sim.Created)
+		if elapsed >= *patienceFlag {
 			sim.Canceling = true
+			log.Printf("#%d canceling order id %d: unfilled after %s", sim.ID, sim.OrderID, *patienceFlag)
+			go cancelOrder(sim)
+		} else if reason := invalidateOrder(sim); reason != "" {
+			sim.Canceling = true
+			log.Printf("#%d canceling order id %d: %s (after %s)", sim.ID, sim.OrderID, reason, clocky.Duration(elapsed))
 			go cancelOrder(sim)
 		}
 	}
 }
 
+// invalidateOrder re-evaluates a pending order against current market
+// conditions. Returns a reason string if the order should be canceled,
+// or empty string if it's still valid.
+func invalidateOrder(sim *Simulation) string {
+	// stage the order's legs to re-score against current prices
+	gStagedPositions.Clear()
+	gStagedCash = decimal.Zero
+	for legIt := sim.Legs.Iterator(); legIt.Next(); {
+		gStagedPositions.Put(legIt.Key(), legIt.Value())
+	}
+	price := choosePriceForSimulation()
+	gStagedCash = price.MulInt(kMultiplier)
+
+	// check if risk tolerance is still satisfied
+	if !checkRiskTolerance() {
+		gStagedPositions.Clear()
+		gStagedCash = decimal.Zero
+		return "risk tolerance violated"
+	}
+
+	// check if the score has gone negative
+	payoff := computeExpectedPayoff()
+	if payoff.Cmp(decimal.NegOne) == 0 {
+		gStagedPositions.Clear()
+		gStagedCash = decimal.Zero
+		return "payoff undefined"
+	}
+	worst := computeRisk()
+	payoffImprovement := payoff.Sub(gBaselinePayoff)
+	riskReduction := worst.Sub(gBaselineWorst).Max(decimal.Zero)
+	simDelta := computeDelta()
+	deltaImprovement := gBaselineDelta.Abs().Sub(simDelta.Abs()).Max(decimal.Zero)
+	score := payoffImprovement.Mul(*wPayoffFlag).Add(riskReduction.Mul(*wRiskFlag)).Add(deltaImprovement.Mul(*wDeltaFlag))
+
+	gStagedPositions.Clear()
+	gStagedCash = decimal.Zero
+
+	if !score.IsPositive() {
+		return fmt.Sprintf("score went negative: %s", score)
+	}
+	return ""
+}
+
 func cancelOrder(sim *Simulation) {
-	log.Printf("#%d canceling order id %d for being unfilled after %s: %s", sim.ID, sim.OrderID, *patienceFlag, sim)
 	err := gSchwabClient.CancelOrder(sim.OrderID)
 	if err != nil {
 		log.Printf("warning: #%d failed to cancel order id %d: %v", sim.ID, sim.OrderID, err)
-		// could legitimately fail, e.g. "Order in state FILLED cannot be canceled"
 	}
 }
 

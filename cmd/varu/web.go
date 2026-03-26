@@ -464,7 +464,7 @@ func handleEventsAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleFlagsAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -481,7 +481,7 @@ func handleFlagsAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePauseAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -493,7 +493,7 @@ func handlePauseAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleResumeAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -505,7 +505,7 @@ func handleResumeAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleStrategiesAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -558,10 +558,10 @@ func startWeb() {
 	http.HandleFunc("/api/config", a.RequireAuth(handleConfigAPI))
 	http.HandleFunc("/api/state", a.RequireAuth(handleStateAPI))
 	http.HandleFunc("/api/events", a.RequireAuth(handleEventsAPI))
-	http.HandleFunc("/api/flags", a.RequireAuth(handleFlagsAPI))
-	http.HandleFunc("/api/pause", a.RequireAuth(handlePauseAPI))
-	http.HandleFunc("/api/resume", a.RequireAuth(handleResumeAPI))
-	http.HandleFunc("/api/strategies", a.RequireAuth(handleStrategiesAPI))
+	http.HandleFunc("/api/flags", a.RequireAuthReadOnly(handleFlagsAPI))
+	http.HandleFunc("/api/pause", a.RequireAuthReadOnly(handlePauseAPI))
+	http.HandleFunc("/api/resume", a.RequireAuthReadOnly(handleResumeAPI))
+	http.HandleFunc("/api/strategies", a.RequireAuthReadOnly(handleStrategiesAPI))
 
 	sock, err := net.Listen("tcp", *listenFlag)
 	if err != nil {

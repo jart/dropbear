@@ -11,13 +11,14 @@
         <h1>Register</h1>
         <p class="info">You'll need a security key with biometric (like YubiKey Bio) to register.</p>
         <div id="error" class="error"></div>
-        <input type="text" id="name" placeholder="Your name" autofocus>
-        <button id="register">Register with Security Key</button>
+        <form id="registerForm" onsubmit="webauthnRegister(inviteToken); return false;">
+            <input type="text" id="name" placeholder="Your name" autofocus>
+            <button type="submit" id="register">Register with Security Key</button>
+        </form>
     </div>
     <script src="/auth/static/webauthn.js"></script>
     <script>
         const inviteToken = new URLSearchParams(window.location.search).get('token') || '';
-        document.getElementById('register').onclick = () => webauthnRegister(inviteToken);
     </script>
 </body>
 </html>

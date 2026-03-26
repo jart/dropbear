@@ -25,6 +25,9 @@ import (
 )
 
 var (
+	allFlag        = flag.Bool("all", false, "enable all strategies")
+	noneFlag       = flag.Bool("none", false, "disable all strategies")
+	comboFlag      = flag.Bool("combo", false, "enable buying and selling combos")
 	dbnFlag        = flag.String("dbn", "", "path to backtest data")
 	liveFlag       = flag.Bool("live", false, "run in live trading mode")
 	webFlag        = flag.Bool("web", false, "enable web dashboard feature")
@@ -132,6 +135,22 @@ func main() {
 	black76.DaysPerYear = 252
 	black76.HoursPerDay = 6.5
 	gSymbol = symbol.MustParse(*symbolFlag)
+	if *noneFlag {
+		for k := range gStrategyEnabled {
+			gStrategyEnabled[k] = false
+		}
+	}
+	if *comboFlag {
+		gStrategyEnabled[kStrategyBuyCombo] = true
+		gStrategyEnabled[kStrategySellCombo] = true
+		gStrategyEnabledEOD[kStrategyLiquidateCall] = true
+		gStrategyEnabledEOD[kStrategyLiquidatePut] = true
+	}
+	if *allFlag {
+		for k := range gStrategyEnabled {
+			gStrategyEnabled[k] = true
+		}
+	}
 	if *webFlag {
 		startWeb()
 	}
@@ -174,6 +193,8 @@ func onThink(now clocky.Time) {
 	hi_wide := gChain.Price.Add(em_wide)
 	buyPut()
 	buyCall()
+	sellPut()
+	sellCall()
 	buyCombo(lo_near, hi_near)
 	sellCombo(lo_near, hi_near)
 	sellCallVertical(lo_wide, hi_wide)
@@ -200,6 +221,7 @@ func beginSimulations(now clocky.Time) bool {
 	if !gEODTransitioned {
 		isPowerHour := now.ClockInt() >= kStopTrading
 		if isPowerHour {
+			*wRiskFlag *= 10
 			clear(gStrategyEnabled)
 			maps.Copy(gStrategyEnabled, gStrategyEnabledEOD)
 			gEODTransitioned = true
@@ -343,7 +365,8 @@ func onEndOfDay() {
 		strategy, count := it.Key(), it.Value()
 		log.Printf("%30s %4d", strategy, count)
 	}
-	log.Printf("ending balance %s at %s price %s", gCash.Format(2), gSymbol, gChain.Price)
+	log.Printf("ending balance %s less %s fees winning %s at %s price %s",
+		gCash.Format(2), gTotalFees.Format(2), gCash.Sub(gTotalFees).Format(2), gSymbol, gChain.Price)
 }
 
 // iteratePositions calls f for all positions.
