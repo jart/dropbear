@@ -263,7 +263,7 @@ func liquidateCallVertical() {
 			if !isSpreadProfitableToClose(s, l) {
 				continue
 			}
-			gStagedPositions.Put(s.OSI(), decimal.One)   // buy back short
+			gStagedPositions.Put(s.OSI(), decimal.One)    // buy back short
 			gStagedPositions.Put(l.OSI(), decimal.NegOne) // sell the long
 			end(kStrategyLiquidateCallVertical)
 		}
@@ -285,7 +285,7 @@ func liquidatePutVertical() {
 			if !isSpreadProfitableToClose(s, l) {
 				continue
 			}
-			gStagedPositions.Put(s.OSI(), decimal.One)   // buy back short
+			gStagedPositions.Put(s.OSI(), decimal.One)    // buy back short
 			gStagedPositions.Put(l.OSI(), decimal.NegOne) // sell the long
 			end(kStrategyLiquidatePutVertical)
 		}
@@ -302,7 +302,7 @@ func isSpreadProfitableToClose(short, long *options.Option) bool {
 	longCost := gCostPerContract[long.OSI()]
 	openCredit := shortCost.Sub(longCost)
 	closeCost := short.MarketPrice().Sub(long.MarketPrice())
-	return closeCost.Cmp(openCredit) < 0
+	return closeCost.Mul(*demandFlag).Cmp(openCredit) < 0
 }
 
 // collectPositions returns the short and long options of the given class

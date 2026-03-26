@@ -292,6 +292,7 @@ function renderFlags(flags) {
   setIfEmpty(form.wPayoff, flags.wPayoff);
   setIfEmpty(form.wRisk, flags.wRisk);
   setIfEmpty(form.wDelta, flags.wDelta);
+  setIfEmpty(form.demand, flags.demand);
 }
 
 function setIfEmpty(input, val) {
@@ -321,7 +322,8 @@ function submitFlags(e) {
     prune: form.prune.value,
     wPayoff: form.wPayoff.value,
     wRisk: form.wRisk.value,
-    wDelta: form.wDelta.value
+    wDelta: form.wDelta.value,
+    demand: form.demand.value
   };
   fetch('/api/flags', {
     method: 'POST',

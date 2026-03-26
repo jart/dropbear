@@ -143,6 +143,7 @@ type FlagsData struct {
 	WPayoff  string `json:"wPayoff"`
 	WRisk    string `json:"wRisk"`
 	WDelta   string `json:"wDelta"`
+	Demand   string `json:"demand"`
 }
 
 type StrategyInfo struct {
@@ -192,6 +193,7 @@ func buildStateSnapshot() StateSnapshot {
 			WPayoff:  (*wPayoffFlag).String(),
 			WRisk:    (*wRiskFlag).String(),
 			WDelta:   (*wDeltaFlag).String(),
+			Demand:   (*demandFlag).String(),
 		},
 		Strategies: make(map[string]StrategyInfo),
 	}
@@ -390,6 +392,10 @@ func applyFlags(f *FlagsData) {
 	if f.WDelta != "" {
 		*wDeltaFlag = decimal.Parse(f.WDelta)
 		log.Printf("web: w-delta = %s", f.WDelta)
+	}
+	if f.Demand != "" {
+		*demandFlag = decimal.Parse(f.Demand)
+		log.Printf("web: demand = %s", f.Demand)
 	}
 }
 
