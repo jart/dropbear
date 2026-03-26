@@ -521,6 +521,30 @@ func handleStrategiesAPI(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+func handleChainAPI(w http.ResponseWriter, r *http.Request) {
+	noCache(w)
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, "price: %s\n", gChain.Price)
+	fmt.Fprintf(w, "expected_move: %s\n", gChain.ExpectedMove())
+	fmt.Fprintf(w, "atm: %v\n", gChain.AtTheMoney != nil)
+	fmt.Fprintf(w, "options_by_id: %d\n", len(gOptionsByID))
+	fmt.Fprintf(w, "options_by_osi: %d\n", len(gOptionsByOSI))
+	fmt.Fprintf(w, "\n")
+	for it := gChain.Strikes.Iterator(); it.Next(); {
+		strike := it.Value()
+		fmt.Fprintf(w, "strike %s", strike.Price)
+		if strike.Call != nil {
+			c := strike.Call
+			fmt.Fprintf(w, "  call id=%d bid=%s ask=%s delta=%s", c.ID, c.Bid, c.Ask, c.Delta)
+		}
+		if strike.Put != nil {
+			p := strike.Put
+			fmt.Fprintf(w, "  put id=%d bid=%s ask=%s delta=%s", p.ID, p.Bid, p.Ask, p.Delta)
+		}
+		fmt.Fprintf(w, "\n")
+	}
+}
+
 func startWeb() {
 	go sseBroadcaster()
 
@@ -562,6 +586,9 @@ func startWeb() {
 	http.HandleFunc("/api/pause", a.RequireAuthReadOnly(handlePauseAPI))
 	http.HandleFunc("/api/resume", a.RequireAuthReadOnly(handleResumeAPI))
 	http.HandleFunc("/api/strategies", a.RequireAuthReadOnly(handleStrategiesAPI))
+
+	// expose internals
+	http.HandleFunc("/chainz", a.RequireAuth(handleChainAPI))
 
 	sock, err := net.Listen("tcp", *listenFlag)
 	if err != nil {

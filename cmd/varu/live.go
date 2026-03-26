@@ -7,14 +7,12 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds/options"
 	"dropbear/ds/osi"
-	"dropbear/ds/symbol"
 	"dropbear/loggy"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"strconv"
 
 	"github.com/emirpasic/gods/v2/sets/treeset"
 )
@@ -40,10 +38,9 @@ func live() {
 
 	// subscribe to databento data
 	key := databento.MustLoadDefaultKey()
-	databentoHistoricalClient := databento.NewHistoricalClient(key)
-	fetchDefinitions(databentoHistoricalClient)
+	optionDefs := make(chan *options.Option, 256)
 	optionTicks := make(chan *databento.CMBP1, 256)
-	go streamOptions(key, optionTicks)
+	go streamOptions(key, optionDefs, optionTicks)
 
 	// connect to schwab api
 	gSchwabClient = schwab.NewClient()
@@ -65,6 +62,9 @@ func live() {
 	for {
 		// drain all pending events
 		select {
+		case o := <-optionDefs:
+			onOptionDef(o)
+			continue
 		case t := <-optionTicks:
 			onOptionTick(t)
 			continue
@@ -110,6 +110,8 @@ func live() {
 		}
 		// block until next event
 		select {
+		case o := <-optionDefs:
+			onOptionDef(o)
 		case t := <-optionTicks:
 			onOptionTick(t)
 		case update := <-orderUpdates:
@@ -133,71 +135,71 @@ func live() {
 	}
 }
 
-func fetchDefinitions(client *databento.HistoricalClient) {
-	now := clocky.Now()
-	yesterday := now.Add(-clocky.Day)
-	start := clocky.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, clocky.UTC)
-	end := clocky.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 23, 59, 59, 0, clocky.UTC)
-	resp, err := client.GetRange(databento.GetRangeParams{
-		Dataset: "OPRA.PILLAR",
-		Schema:  databento.SchemaDefinition,
-		STypeIn: databento.STypeParent,
-		Symbols: []string{gSymbol.String() + ".OPT"},
-		Start:   start,
-		End:     end,
-	})
+// streamOptions subscribes to both definitions and quotes on a single
+// live gateway connection. Definitions arrive via SymbolMappingMsg which
+// maps parent symbols to instrument IDs with OSI names. This avoids the
+// historical API which can time out.
+func streamOptions(key databento.ApiKey, defs chan<- *options.Option, ticks chan<- *databento.CMBP1) {
+	client, err := databento.Dial("OPRA.PILLAR", key)
 	if err != nil {
-		log.Fatal("fetch definitions:", err)
+		log.Fatalf("dial: %v", err)
 	}
-	defer resp.Close()
-	wantYear, wantMonth, wantDay := now.Date()
+	defer client.Close()
+	dbSymbol := fmt.Sprintf("%s.OPT", gSymbol)
+	client.MustSubscribe(databento.Subscription{
+		Schema:  databento.SchemaDefinition,
+		SType:   databento.STypeParent,
+		Symbols: []string{dbSymbol},
+	})
+	client.MustSubscribe(databento.Subscription{
+		Schema:  databento.SchemaCMBP1,
+		SType:   databento.STypeParent,
+		Symbols: []string{dbSymbol},
+	})
+	meta := client.MustStart()
+	log.Printf("streaming %s (dbn v%d)", dbSymbol, meta.Version)
+	wantYear, wantMonth, wantDay := clocky.Now().Date()
 	for {
-		rec, err := resp.Read()
+		rec, err := client.Read()
 		if err != nil {
 			if err == io.EOF {
-				break
+				return
 			}
-			log.Fatal("read definition:", err)
+			log.Fatalf("decode: %v", err)
 		}
-		inst, ok := rec.(*databento.Instrument)
-		if !ok {
-			continue
-		}
-		str := inst.GetRawSymbol()
-		sym, strike, class, year, monthy, day, err := osi.Parse(str)
-		if err != nil {
-			log.Printf("failed to parse OSI: %v", err)
-			continue
-		}
-		month := clocky.Month(monthy)
-		if sym == gSymbol && year == wantYear && monthy == wantMonth && day == wantDay {
-			log.Printf("got option definition: %s (id %d, raw symbol: %s)", str, inst.Header.InstrumentID, inst.GetRawSymbol())
-			onOptionDef(&options.Option{
-				ID:     inst.Header.InstrumentID,
+		switch m := rec.(type) {
+		case *databento.ErrorMsg:
+			log.Fatalf("option gateway error: %s", m.Err)
+		case *databento.SystemMsg:
+			log.Printf("option system message: %s", m.Msg)
+		case *databento.SymbolMappingMsg:
+			id := m.Header.InstrumentID
+			str := m.GetSTypeOutSymbol()
+			sym, strike, class, year, monthy, day, err := osi.Parse(str)
+			if err != nil {
+				continue
+			}
+			if sym != gSymbol || year != wantYear || clocky.Month(monthy) != wantMonth || day != wantDay {
+				continue
+			}
+			log.Printf("got option definition: %s (id %d)", str, id)
+			defs <- &options.Option{
+				ID:     id,
 				Class:  databento.InstrumentClass(class),
 				Strike: &options.Strike{Price: strike},
-				Sym:    symbol.MustParse(inst.GetUnderlying()),
+				Sym:    sym,
 				Year:   year,
-				Month:  month,
+				Month:  clocky.Month(monthy),
 				Day:    day,
-			})
+			}
+		case *databento.CMBP1:
+			ticks <- m
+		case *databento.Instrument:
+			// ignore raw definitions; we use SymbolMappingMsg instead
+		default:
+			log.Printf("unknown record type: %T", m)
 		}
 	}
-	if len(gOptionsByID) == 0 {
-		log.Fatalf("no instruments found for %s expiring on %04d-%02d-%02d", gSymbol, wantYear, wantMonth, wantDay)
-	}
-	onOptionDefEnd()
-}
-
-func getOptionInstrumentIDs() []string {
-	ids := make([]string, 0, len(gOptionsByID))
-	for id := range gOptionsByID {
-		ids = append(ids, strconv.FormatInt(int64(id), 10))
-	}
-	if len(ids) == 0 {
-		panic("no option instrument ids found")
-	}
-	return ids
 }
 
 // restorePortfolio reloads portfolio across command invocations.
@@ -274,40 +276,6 @@ func loadSchwabOrder(order *schwab.Order) {
 	sanityCheck("loadSchwabOrders")
 }
 
-func streamOptions(key databento.ApiKey, ticks chan<- *databento.CMBP1) {
-	client, err := databento.Dial("OPRA.PILLAR", key)
-	if err != nil {
-		log.Fatalf("dial: %v", err)
-	}
-	defer client.Close()
-	client.MustSubscribe(databento.Subscription{
-		Schema:  databento.SchemaCMBP1,
-		SType:   databento.STypeInstrumentID,
-		Symbols: getOptionInstrumentIDs(),
-	})
-	client.MustStart()
-	for {
-		rec, err := client.Read()
-		if err != nil {
-			if err == io.EOF {
-				return
-			}
-			log.Fatalf("decode: %v", err)
-		}
-		switch m := rec.(type) {
-		case *databento.ErrorMsg:
-			log.Fatalf("option gateway error: %s", m.Err)
-		case *databento.SystemMsg:
-			log.Printf("option system message: %s", m.Msg)
-		case *databento.CMBP1:
-			ticks <- m
-		case *databento.SymbolMappingMsg:
-			// dropout
-		default:
-			log.Printf("unknown record type: %T", m)
-		}
-	}
-}
 
 func sendLiveOrder(sim *Simulation) {
 	orderType := schwab.OrderTypeNetCredit
