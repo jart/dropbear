@@ -36,7 +36,7 @@ var (
 	dryFlag        = flag.Bool("dry", false, "don't send new orders in live mode")
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
-	sigmasFlag     = decimal.Flag("sigmas", "2", "number of sigmas of strikes to consider")
+	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
 	budgetFlag     = flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
 	floorFlag      = flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
 	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
