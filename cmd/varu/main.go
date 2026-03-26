@@ -27,6 +27,7 @@ import (
 var (
 	allFlag        = flag.Bool("all", false, "enable all strategies")
 	noneFlag       = flag.Bool("none", false, "disable all strategies")
+	noliqFlag      = flag.Bool("noliq", false, "disable liquidation strategies")
 	comboFlag      = flag.Bool("combo", false, "enable buying and selling combos")
 	dbnFlag        = flag.String("dbn", "", "path to backtest data")
 	liveFlag       = flag.Bool("live", false, "run in live trading mode")
@@ -153,6 +154,12 @@ func main() {
 		for k := range gStrategyEnabled {
 			gStrategyEnabled[k] = true
 		}
+	}
+	if *noliqFlag {
+		gStrategyEnabled[kStrategyLiquidateCall] = false
+		gStrategyEnabled[kStrategyLiquidatePut] = false
+		gStrategyEnabled[kStrategyLiquidateCallVertical] = false
+		gStrategyEnabled[kStrategyLiquidatePutVertical] = false
 	}
 	if *webFlag {
 		startWeb()
