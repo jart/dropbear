@@ -5,12 +5,12 @@ import (
 	"dropbear/broker/schwab"
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"fmt"
 	"dropbear/ds/options"
 	"dropbear/ds/osi"
 	"dropbear/ds/symbol"
 	"dropbear/loggy"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -88,10 +88,22 @@ func live() {
 			// all channels empty
 		}
 		// let's go
-		if ready && !gPaused && !*dryFlag {
+		if !ready {
+			loggy.Hint("not trading: waiting for market data")
+		} else if gPaused {
+			loggy.Hint("not trading: paused")
+		} else if *dryFlag {
+			loggy.Hint("not trading: dry run mode")
+		} else {
 			now := clocky.Now()
 			clock := now.ClockInt()
-			if clock >= kStartOfDay && now >= gNextTradeTime && gPendingOrders.Size() < *maxPendingFlag {
+			if clock < kStartOfDay {
+				loggy.Hint("not trading: before market open (%d < %d)", clock, kStartOfDay)
+			} else if now < gNextTradeTime {
+				loggy.Hint("not trading: cooldown (%s remaining)", clocky.Duration(gNextTradeTime-now))
+			} else if gPendingOrders.Size() >= *maxPendingFlag {
+				loggy.Hint("not trading: %d pending orders (max %d)", gPendingOrders.Size(), *maxPendingFlag)
+			} else {
 				onThink(now)
 			}
 			cancelUnfilledOrders(now)

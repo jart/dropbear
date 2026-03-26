@@ -214,6 +214,8 @@ func beginSimulations(now clocky.Time) bool {
 	precomputeSettlements()
 	gBaselinePayoff = computeExpectedPayoff()
 	if gBaselinePayoff.Cmp(decimal.NegOne) == 0 {
+		loggy.Hint("not thinking: no strikes with positive probability (price=%s em=%s atm=%v)",
+			gChain.Price, gChain.ExpectedMove(), gChain.AtTheMoney != nil)
 		return false
 	}
 	gBaselineWorst = computeRisk()
@@ -287,6 +289,12 @@ func end(strategy string) bool {
 		return false
 	}
 	price := choosePriceForSimulation()
+	if !checkSpreadWidth(price) {
+		gStagedPositions.Clear()
+		gStagedCash = decimal.Zero
+		gSimulationCounter++
+		return true
+	}
 	gStagedCash = price.MulInt(kMultiplier)
 	if checkRiskTolerance() {
 		payoff := computeExpectedPayoff()
@@ -338,6 +346,36 @@ func choosePriceForSimulation() decimal.Decimal {
 		}
 	}
 	return price
+}
+
+// checkSpreadWidth rejects orders where the net price exceeds the maximum
+// possible value of the spread. Schwab will reject these with "Credit
+// spreads cannot equal or exceed the strike difference." This happens when
+// the robot looks at deep ITM options where individual bid/ask prices
+// reflect intrinsic value, making a spread look absurdly profitable. In
+// reality no one will fill a $10-wide spread for $18 credit — the spread
+// price is bounded by the width between strikes. The same logic applies
+// to debits: paying more than the spread width is equally nonsensical.
+func checkSpreadWidth(price decimal.Decimal) bool {
+	if gStagedPositions.Size() < 2 {
+		return true // not a spread
+	}
+	// find the min and max strike prices among staged legs
+	first := true
+	var lo, hi decimal.Decimal
+	for it := gStagedPositions.Iterator(); it.Next(); {
+		opt := gOptionsByOSI[it.Key()]
+		sp := opt.Strike.Price
+		if first {
+			lo, hi = sp, sp
+			first = false
+		} else {
+			lo = lo.Min(sp)
+			hi = hi.Max(sp)
+		}
+	}
+	maxValue := hi.Sub(lo)
+	return price.Abs().Cmp(maxValue) < 0
 }
 
 func onHeartbeat() {
@@ -631,6 +669,8 @@ func onOptionTick(t *databento.CMBP1) {
 		default:
 			panic("unexpected option tick action: " + t.Action.String())
 		}
+	} else {
+		loggy.Hint("tick for unknown instrument id %d", t.Header.InstrumentID)
 	}
 }
 
