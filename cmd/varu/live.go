@@ -21,7 +21,7 @@ var (
 	gSchwabClient      *schwab.Client
 	gSimulationUpdates = make(chan SimulationUpdate, 20)
 	gPendingOrders     = treeset.NewWith(compareSimulations)
-	gToxicity int // positive = toxic, negative = favorable
+	gToxicity          int // positive = toxic, negative = favorable
 )
 
 type SimulationUpdate struct {
@@ -321,8 +321,9 @@ func sendLiveOrder(sim *Simulation) {
 	go func() {
 		orderID, err := gSchwabClient.CreateOrder(order)
 		if err != nil {
-			log.Printf("failed to place order: %v", err)
-			os.Exit(1)
+			log.Printf("#%d failed to place order: %v", sim.ID, err)
+			deleteOrder(sim)
+			return
 		}
 		gSimulationUpdates <- SimulationUpdate{
 			Simulation: sim,
@@ -541,10 +542,10 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 		}
 		// retaliate against toxic fills by demanding more spread
 		if gToxicity > 0 {
-			*spreadFlag = spreadFlag.Sub(decimal.Parse("0.1"))
+			*spreadFlag = decTick(*spreadFlag)
 			log.Printf("widening spread to %s due to toxicity", *spreadFlag)
 		} else if gToxicity < 0 {
-			*spreadFlag = spreadFlag.Add(decimal.Parse("0.1")).Min(decimal.Zero)
+			*spreadFlag = incTick(*spreadFlag).Min(decimal.Zero)
 			log.Printf("tightening spread to %s due to favorable fills", *spreadFlag)
 		}
 		log.Printf("#%d order complete for order id %d: %s", sim.ID, sim.OrderID, sim.Strategy)

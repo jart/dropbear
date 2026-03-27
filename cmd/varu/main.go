@@ -323,11 +323,22 @@ func end(strategy string) bool {
 	if checkRiskTolerance() {
 		payoff := computeExpectedPayoff()
 		if payoff.Cmp(decimal.NegOne) != 0 {
+			orderPrice := choosePriceForSimulation()
+			if orderPrice.IsZero() {
+				for it := gStagedPositions.Iterator(); it.Next(); {
+					opt := gOptionsByOSI[it.Key()]
+					loggy.Hint("zero price %s: %s bid=%s ask=%s", strategy, opt, opt.Bid, opt.Ask)
+				}
+				gStagedPositions.Clear()
+				gStagedCash = decimal.Zero
+				gSimulationCounter++
+				return true
+			}
 			sim := &Simulation{
 				ID:       gSimulationCounter,
 				Legs:     gStagedPositions,
 				Strategy: strategy,
-				Price:    choosePriceForSimulation(),
+				Price:    orderPrice,
 				Worst:    computeRisk(),
 				Payoff:   payoff,
 			}
