@@ -145,9 +145,27 @@ func simulateOrder(sim *Simulation) {
 		hlf := opt.Ask.Sub(opt.Bid).DivInt(2)
 		var fillPrice decimal.Decimal
 		if pos.IsPositive() {
+			// buying: compute spread-adjusted price, apply generosity,
+			// but never pay more than the ask (price improvement)
 			fillPrice = quantizeTruncate(mid.Add(hlf.Mul(spread)))
+			for i := 0; i < gGenerosity; i++ {
+				fillPrice = incTick(fillPrice)
+			}
+			for i := 0; i > gGenerosity; i-- {
+				fillPrice = decTick(fillPrice)
+			}
+			fillPrice = fillPrice.Min(opt.Ask).Max(minTick())
 		} else {
+			// selling: compute spread-adjusted price, apply generosity,
+			// but never receive less than the bid (price improvement)
 			fillPrice = quantizeAway(mid.Sub(hlf.Mul(spread)))
+			for i := 0; i < gGenerosity; i++ {
+				fillPrice = decTick(fillPrice)
+			}
+			for i := 0; i > gGenerosity; i-- {
+				fillPrice = incTick(fillPrice)
+			}
+			fillPrice = fillPrice.Max(opt.Bid).Max(minTick())
 		}
 		cashFlow := fillPrice.Mul(pos.Neg()).MulInt(kMultiplier)
 		gCash = gCash.Add(cashFlow)
@@ -160,5 +178,6 @@ func simulateOrder(sim *Simulation) {
 		gPositions.Put(sym, existing.Add(pos))
 		recordFill(sym, pos, fillPrice)
 	}
+	gFilledOrders = append(gFilledOrders, sim)
 	sanityCheck("simulateOrder")
 }

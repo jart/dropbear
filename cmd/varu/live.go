@@ -530,6 +530,7 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	sim.Legs.Remove(sym)
 	if sim.Legs.Empty() {
 		deleteOrder(sim)
+		gFilledOrders = append(gFilledOrders, sim)
 		midPayoffAfter := computePayoffSlow()
 		if midPayoffAfter.Cmp(sim.Payoff) < 0 {
 			gToxicity++

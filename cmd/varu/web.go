@@ -130,6 +130,7 @@ type StatsData struct {
 	Error       string `json:"error"`
 	Fees        string `json:"fees"`
 	Volume      string `json:"volume"`
+	Generosity  string `json:"generosity"`
 }
 
 type FlagsData struct {
@@ -181,6 +182,7 @@ func buildStateSnapshot() StateSnapshot {
 			Bias:        computeBias().Format(2),
 			Error:       gError.String(),
 			Volume:      strconv.Itoa(gVolume),
+			Generosity:  strconv.Itoa(gGenerosity),
 		},
 		Flags: FlagsData{
 			Sigmas:   (*sigmasFlag).String(),

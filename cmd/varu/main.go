@@ -105,6 +105,8 @@ var (
 	gAbortSimulation   bool
 	gEODTransitioned   bool
 	gAllowClosing      bool
+	gGenerosity        int              // ticks of spread generosity (positive = generous, negative = greedy)
+	gFilledOrders      []*Simulation    // filled orders for generosity review
 )
 
 var (
@@ -231,7 +233,7 @@ func beginSimulations(now clocky.Time) bool {
 	}
 	gBaselineWorst = computeRisk()
 	gBaselineDelta = computeDelta()
-	// gAllowClosing = rando() < *closeFlag
+	reviewGenerosity()
 	if !gEODTransitioned {
 		isPowerHour := now.ClockInt() >= kStopTrading
 		if isPowerHour {
@@ -359,6 +361,31 @@ func end(strategy string) bool {
 	return true
 }
 
+// reviewGenerosity adjusts the generosity level by reviewing all past
+// filled orders. For each filled order, compare the current portfolio
+// payoff to the payoff at the time the order was created. If things
+// improved, the fill was good — add a tick of generosity. If things
+// got worse, add a tick of greed. The net effect converges on the
+// optimal spread: generous enough to get fills, greedy enough to
+// not give away edge.
+func reviewGenerosity() {
+	if len(gFilledOrders) == 0 {
+		return
+	}
+	gen := 0
+	for _, sim := range gFilledOrders {
+		if gBaselinePayoff.Cmp(sim.Payoff) > 0 {
+			gen++ // payoff improved since this fill — be more generous
+		} else {
+			gen-- // payoff declined since this fill — be more greedy
+		}
+	}
+	if gen != gGenerosity {
+		gGenerosity = gen
+		loggy.Hint("generosity=%d (%d filled orders reviewed)", gGenerosity, len(gFilledOrders))
+	}
+}
+
 // chooseMidPrice computes the net price at midpoint for all staged legs.
 // Used for evaluating trade merit independent of spread demands.
 func chooseMidPrice() decimal.Decimal {
@@ -384,6 +411,7 @@ func choosePriceForSimulation() decimal.Decimal {
 	// values beyond ±1 go past the spread
 	spread := *spreadFlag
 	price := decimal.Zero
+	slippage := decimal.Parse("0.2")
 	for it := gStagedPositions.Iterator(); it.Next(); {
 		sym, pos := it.Key(), it.Value()
 		opt := gOptionsByOSI[sym]
@@ -391,12 +419,28 @@ func choosePriceForSimulation() decimal.Decimal {
 		hlf := opt.Ask.Sub(opt.Bid).DivInt(2)
 		if pos.IsPositive() {
 			// buying: mid + halfSpread * spread (round down = cheaper for us)
-			price = price.Sub(quantizeTruncate(mid.Add(hlf.Mul(spread))))
+			legPrice := quantizeTruncate(mid.Add(hlf.Mul(spread)))
+			price = price.Sub(legPrice)
 		} else {
 			// selling: mid - halfSpread * spread (round up = more credit for us)
-			price = price.Add(quantizeAway(mid.Sub(hlf.Mul(spread))))
+			legPrice := quantizeAway(mid.Sub(hlf.Mul(spread)))
+			price = price.Add(legPrice)
 		}
 	}
+	// apply generosity: positive = we give ticks to the counterparty
+	// (reduce credit or increase debit). This makes fills more likely
+	// when we're doing well and tightens up when fills go against us.
+	for i := 0; i < gGenerosity; i++ {
+		price = decTick(price)
+	}
+	for i := 0; i > gGenerosity; i-- {
+		price = incTick(price)
+	}
+	// clamp: never go more than 20 cents past the quoted spread per
+	// leg, to avoid order rejection from runaway generosity/greed.
+	midPrice := chooseMidPrice()
+	maxSlip := slippage.MulInt(gStagedPositions.Size())
+	price = price.Max(midPrice.Sub(maxSlip)).Min(midPrice.Add(maxSlip))
 	return price
 }
 
