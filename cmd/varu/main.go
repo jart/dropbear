@@ -260,8 +260,10 @@ func sendBestOrder(now clocky.Time) {
 	sim.ID = gIdentifierCounter
 	gIdentifierCounter++
 	gNextTradeTime = now.Add(*cooldownFlag)
-	c, _ := gStrategiesUsed.Get(sim.Strategy)
-	gStrategiesUsed.Put(sim.Strategy, c+1)
+	if !*liveFlag {
+		c, _ := gStrategiesUsed.Get(sim.Strategy)
+		gStrategiesUsed.Put(sim.Strategy, c+1)
+	}
 	if *liveFlag {
 		sendLiveOrder(sim)
 	} else {

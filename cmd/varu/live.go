@@ -549,6 +549,8 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 			*spreadFlag = incTick(*spreadFlag).Min(decimal.Zero)
 			log.Printf("tightening spread to %s due to favorable fills", *spreadFlag)
 		}
+		c, _ := gStrategiesUsed.Get(sim.Strategy)
+		gStrategiesUsed.Put(sim.Strategy, c+1)
 		log.Printf("#%d order complete for order id %d: %s", sim.ID, sim.OrderID, sim.Strategy)
 		// trade instantly without delay once an order is filled
 		gNextTradeTime = clocky.Now()
