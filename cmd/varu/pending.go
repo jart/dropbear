@@ -22,7 +22,12 @@ func removePendingOrder(order *Order) {
 		orders := gPendingOrdersByOption[leg.Option]
 		for i, o := range orders {
 			if o == order {
-				gPendingOrdersByOption[leg.Option] = append(orders[:i], orders[i+1:]...)
+				orders = append(orders[:i], orders[i+1:]...)
+				if len(orders) == 0 {
+					delete(gPendingOrdersByOption, leg.Option)
+				} else {
+					gPendingOrdersByOption[leg.Option] = orders
+				}
 				break
 			}
 		}

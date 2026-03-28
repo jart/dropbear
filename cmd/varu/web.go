@@ -268,10 +268,9 @@ func buildStateSnapshot() StateSnapshot {
 
 	// strategies
 	for name, enabled := range gStrategyEnabled {
-		count, _ := gStrategiesUsed.Get(name)
 		snap.Strategies[name] = StrategyInfo{
 			Enabled: enabled,
-			Count:   count,
+			Count:   gStrategiesUsed[name],
 		}
 	}
 

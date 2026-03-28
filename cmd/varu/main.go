@@ -16,9 +16,9 @@ import (
 	"os"
 	"os/signal"
 	"runtime/pprof"
+	"slices"
 	"time"
 
-	"github.com/emirpasic/gods/v2/maps/treemap"
 	"github.com/emirpasic/gods/v2/sets/treeset"
 )
 
@@ -27,6 +27,7 @@ var (
 	noneFlag       = flag.Bool("none", false, "disable all strategies")
 	noliqFlag      = flag.Bool("noliq", false, "disable liquidation strategies")
 	comboFlag      = flag.Bool("combo", false, "enable buying and selling combos")
+	hostileFlag    = flag.Bool("hostile", false, "simulate maximum hostility on fills")
 	eodFlag        = flag.Bool("eod", false, "enable end-of-day liquidation strategies")
 	dbnFlag        = flag.String("dbn", "", "path to backtest data")
 	liveFlag       = flag.Bool("live", false, "run in live trading mode")
@@ -44,11 +45,11 @@ var (
 	demandFlag     = decimal.Flag("demand", "1.1", "minimum ratio of open credit to close cost for liquidation")
 	wPayoffFlag    = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
 	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
-	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
+	wDeltaFlag     = decimal.Flag("w-delta", "10", "scoring weight for delta neutrality improvement")
 	maxErrorFlag   = decimal.Flag("max-error", "1", "maximum acceptable accounting error before panic")
-	thinkFlag      = clocky.DurationFlag("think", "300ms", "interval between backtest trading analysis")
+	thinkFlag      = clocky.DurationFlag("think", "1000ms", "interval between backtest trading analysis")
 	patienceFlag   = clocky.DurationFlag("patience", "30s", "how long to wait before canceling live orders")
-	cooldownFlag   = clocky.DurationFlag("cooldown", "3s", "interval between trading decisions")
+	cooldownFlag   = clocky.DurationFlag("cooldown", "1s", "interval between trading decisions")
 	slowdownFlag   = clocky.DurationFlag("slowdown", "200ms", "polling limit for web dashboard")
 	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
 	maxPendingFlag = flag.Int("max-pending", 1, "maximum number of pending orders")
@@ -68,7 +69,7 @@ var (
 	gHoldings            = Holdings{Positions: map[*options.Option]*Holding{}}
 	gOptionsByID         = map[uint32]*options.Option{}
 	gOptionsByOSI        = map[string]*options.Option{}
-	gStrategiesUsed      = treemap.New[string, int]()
+	gStrategiesUsed      = map[string]int{}
 	gNextTradeTime       clocky.Time
 	gBaselineRisk        decimal.Decimal
 	gBaselinePayoff      decimal.Decimal
@@ -159,9 +160,8 @@ func main() {
 	}
 }
 
-func onData(now clocky.Time) {
+func onThought(now clocky.Time) {
 	clock := now.ClockInt()
-	loggy.Hint("yo yo yo")
 	if clock < kStartOfDay {
 		loggy.Hint("not trading: before market open (%d < %d)", clock, kStartOfDay)
 		return
@@ -177,7 +177,6 @@ func onData(now clocky.Time) {
 	} else {
 		trade(now)
 	}
-	cancelUnfilledOrders(now)
 }
 
 func trade(now clocky.Time) {
@@ -240,9 +239,7 @@ func sendBestOrder(now clocky.Time) {
 	}
 	loggy.Hint("%d out of %d simulated orders were reasonable",
 		gSimulations.Size(), gOrderCounter)
-	for !gSimulations.Empty() {
-		it := gSimulations.Iterator()
-		it.Next()
+	for it := gSimulations.Iterator(); it.Next(); {
 		order := it.Value()
 		order.Created = now
 		order.ID = gIdentifierCounter
@@ -250,8 +247,8 @@ func sendBestOrder(now clocky.Time) {
 		gNextTradeTime = now.Add(*cooldownFlag)
 		err := order.Send()
 		if err != nil {
-			log.Printf("#%d failed to send order: %v", order.ID, err)
-			continue
+			loggy.Hint("#%d failed to send order: %v", order.ID, err)
+			break
 		}
 		log.Printf("#%d %s: price=%s natural=%s maker=%s score=%s payoff=%s->%s risk=%s->%s",
 			order.ID, order.Strategy, order.Price, order.NaturalPrice(), order.MakerPrice(), order.Score,
@@ -263,9 +260,9 @@ func sendBestOrder(now clocky.Time) {
 				log.Printf("  sell %s", leg.Option)
 			}
 		}
-		gSimulations.Clear()
 		break
 	}
+	gSimulations.Clear()
 }
 
 // buy simulates buying an option. Aborts if we're already short this
@@ -442,8 +439,8 @@ func onEndOfDay() {
 		log.Printf("have %4s of %s worth %8s", pos, option.StringAligned(), settlement.Truncate())
 	})
 	log.Printf("strategies used")
-	for it := gStrategiesUsed.Iterator(); it.Next(); {
-		strategy, count := it.Key(), it.Value()
+	for _, strategy := range slices.Sorted(maps.Keys(gStrategiesUsed)) {
+		count := gStrategiesUsed[strategy]
 		log.Printf("%30s %4d", strategy, count)
 	}
 	totalFees := gHoldings.TotalFees

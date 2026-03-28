@@ -93,9 +93,12 @@ func (order *Order) Send() error {
 	if len(order.Legs) == 0 {
 		return errors.New("cannot send order with no legs")
 	}
-	width := order.Width()
-	if !width.IsZero() && order.Price.Abs().Cmp(width) >= 0 {
-		return fmt.Errorf("order price exceeds spread width: price=%s width=%s", order.Price, width)
+	if order.Vertical() {
+		width := order.Width()
+		if order.Price.Abs().Cmp(width) >= 0 {
+			return fmt.Errorf("vertical order price must be beneath spread width: price=%s width=%s mid=%s natural=%s maker=%s underlying=%s",
+				order.Price, width, order.MidPrice(), order.NaturalPrice(), order.MakerPrice(), gChain.Price)
+		}
 	}
 	for _, leg := range order.Legs {
 		if leg.Quantity.IsZero() {
@@ -176,4 +179,8 @@ func (order *Order) HasFill() bool {
 		}
 	}
 	return false
+}
+
+func (order *Order) Vertical() bool {
+	return len(order.Legs) == 2 && order.Legs[0].Option.Class == order.Legs[1].Option.Class
 }

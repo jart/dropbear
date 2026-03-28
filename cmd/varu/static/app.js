@@ -64,7 +64,6 @@ function renderStats(d) {
   var errEl = document.getElementById('statError');
   errEl.className = parseFloat(d.stats.error) === 0 ? 'zero' : 'neg';
   setText('statVolume', d.stats.volume);
-  setText('statGenerosity', d.stats.generosity);
 }
 
 function setText(id, val) {

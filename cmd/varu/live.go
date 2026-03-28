@@ -64,7 +64,10 @@ func live() {
 			onOptionDef(o)
 			continue
 		case t := <-optionTicks:
-			onOptionTick(t)
+			o := onOptionTick(t)
+			if _, ok := gPendingOrdersByOption[o]; ok {
+				cancelUnfilledOrders(clocky.Now())
+			}
 			continue
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
@@ -89,14 +92,17 @@ func live() {
 		if !ready {
 			loggy.Hint("not trading: waiting for market data")
 		} else {
-			onData(clocky.Now())
+			onThought(clocky.Now())
 		}
 		// block until next event
 		select {
 		case o := <-optionDefs:
 			onOptionDef(o)
 		case t := <-optionTicks:
-			onOptionTick(t)
+			o := onOptionTick(t)
+			if _, ok := gPendingOrdersByOption[o]; ok {
+				cancelUnfilledOrders(clocky.Now())
+			}
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
 			broadcastState()
@@ -424,8 +430,7 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	// remove fully filled orders
 	if order.Filled() {
 		deleteSchwabOrder(order)
-		c, _ := gStrategiesUsed.Get(order.Strategy)
-		gStrategiesUsed.Put(order.Strategy, c+1)
+		gStrategiesUsed[order.Strategy] += 1
 		log.Printf("#%d order complete for order id %d: %s", order.ID, order.OrderID, order.Strategy)
 		// trade instantly without delay once an order is filled
 		gNextTradeTime = clocky.Now()

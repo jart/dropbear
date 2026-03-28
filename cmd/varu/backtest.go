@@ -15,6 +15,7 @@ import (
 )
 
 func backtest() {
+	log.Printf("starting backtest for %s on %04d-%02d-%02d", gSymbol, dateFlag.Year(), dateFlag.Month(), dateFlag.Day())
 	if *dbnFlag == "" {
 		fmt.Fprintln(os.Stderr, "missing required -dbn flag")
 		os.Exit(1)
@@ -73,7 +74,13 @@ func backtest() {
 			now := m.TSRecv
 			clocky.SetNow(now)
 			o := onOptionTick(m)
+			if o == nil {
+				continue
+			}
 			simulateFills(o)
+			if _, ok := gPendingOrdersByOption[o]; ok {
+				cancelUnfilledOrders(now)
+			}
 			clock := now.ClockInt()
 			var realNow time.Time
 			if *rtFlag || *webFlag {
@@ -104,7 +111,7 @@ func backtest() {
 			}
 			if ready && now >= nextThought {
 				nextThought = now.Add(*thinkFlag)
-				onData(now)
+				onThought(now)
 			}
 			if *webFlag {
 				for {
@@ -157,12 +164,27 @@ func simulateFillOrder(order *Order) bool {
 		panic("order already filled")
 	}
 
+	// choose execution price
+	var priceThatMarketDemands decimal.Decimal
+	if *hostileFlag {
+		priceThatMarketDemands = order.NaturalPrice()
+	} else {
+		priceThatMarketDemands = order.MidPrice()
+		if len(order.Legs) > 1 {
+			tick, _ := getTicks(order.Legs[0].Option.Symbol)
+			priceThatMarketDemands = priceThatMarketDemands.QuantizeFloor(tick)
+		} else {
+			tick, bigTick := getTicks(order.Legs[0].Option.Symbol)
+			if priceThatMarketDemands.Abs().Cmp(kThree) >= 0 {
+				tick = bigTick
+			}
+			priceThatMarketDemands = priceThatMarketDemands.QuantizeFloor(tick)
+		}
+	}
+
 	// determine if this order is able to be filled
-	// we assume maximally hostile market that requires crossing the spread
-	// if you order at the mid, you'll have to wait for market to move toward you
 	// e.g. order.price is -.5 (debit/buy) would fill when market moves from -.6 to -.4
 	// e.g. order.price is +.5 (credit/sell) would fill when market moves from +.4 to +.6
-	priceThatMarketDemands := order.NaturalPrice()
 	if priceThatMarketDemands.Cmp(order.Price) < 0 {
 		return false // market hasn't reached our limit yet
 	}
@@ -170,6 +192,7 @@ func simulateFillOrder(order *Order) bool {
 	// simulate fill by updating holdings and cash
 	log.Printf("simulated fill of order #%d at price %s -> %s\n",
 		order.ID, order.Price, priceThatMarketDemands)
+	gStrategiesUsed[order.Strategy] += 1
 	for _, leg := range order.Legs {
 		var fillPrice decimal.Decimal
 		if leg.Quantity.IsPositive() {
