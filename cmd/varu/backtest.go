@@ -189,6 +189,16 @@ func simulateFillOrder(order *Order) bool {
 		return false // market hasn't reached our limit yet
 	}
 
+	// check all legs have valid fill prices before committing
+	for _, leg := range order.Legs {
+		if leg.Quantity.IsPositive() && !leg.Option.Ask.IsPositive() {
+			return false // can't buy at zero ask
+		}
+		if leg.Quantity.IsNegative() && !leg.Option.Bid.IsPositive() {
+			return false // can't sell at zero bid
+		}
+	}
+
 	// simulate fill by updating holdings and cash
 	log.Printf("simulated fill of order #%d at price %s -> %s\n",
 		order.ID, order.Price, priceThatMarketDemands)

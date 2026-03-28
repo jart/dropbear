@@ -223,11 +223,20 @@ func beginOrders(now clocky.Time) bool {
 	if !gEODTransitioned && *eodFlag {
 		isPowerHour := now.ClockInt() >= kStopTrading
 		if isPowerHour {
-			*wRiskFlag *= 10
-			clear(gStrategyEnabled)
-			maps.Copy(gStrategyEnabled, gStrategyEnabledEOD)
-			gEODTransitioned = true
-			gAllowClosing = true
+			liq := computeLiquidationValue()
+			pay := gBaselinePayoff
+			threshold := pay.DivInt(2)
+			if !pay.IsPositive() {
+				loggy.Hint("not liquidating: payoff %s is not positive", pay.Truncate())
+			} else if liq.Cmp(threshold) < 0 {
+				loggy.Hint("not liquidating: liquidation value %s < 50%% of payoff %s", liq.Truncate(), pay.Truncate())
+			} else {
+				*wRiskFlag *= 10
+				clear(gStrategyEnabled)
+				maps.Copy(gStrategyEnabled, gStrategyEnabledEOD)
+				gEODTransitioned = true
+				gAllowClosing = true
+			}
 		}
 	}
 	return true
