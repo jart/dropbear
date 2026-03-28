@@ -58,8 +58,6 @@ var (
 )
 
 const (
-	kXSP         = symbol.Symbol('X' | 'S'<<8 | 'P'<<16)
-	kSPXW        = symbol.Symbol('S' | 'P'<<8 | 'X'<<16 | 'W'<<24)
 	kStartOfDay  = 9_45_00
 	kStopTrading = 14_30_00
 	kMarketClose = 16_00_00
@@ -113,10 +111,6 @@ var (
 var (
 	kFeePerContract = decimal.Parse("1.2")
 	kRiskFreeRate   = decimal.Parse("0.035")
-	kTick01         = decimal.Parse("0.01")
-	kTick05         = decimal.Parse("0.05")
-	kTick10         = decimal.Parse("0.10")
-	kThree          = decimal.FromInt(3)
 )
 
 type Simulation struct {
