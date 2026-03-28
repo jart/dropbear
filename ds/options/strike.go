@@ -76,13 +76,13 @@ func (s *Strike) computeProbability() decimal.Decimal {
 	var a, b, c decimal.Decimal
 	// out of the money strikes tend to have more reliable prices
 	if s.Price.Cmp(s.bestUnderlyingPrice()) > 0 {
-		a = s.Prev.Call.MarketPrice()
-		b = s.Call.MarketPrice()
-		c = s.Next.Call.MarketPrice()
+		a = s.Prev.Call.MidPrice()
+		b = s.Call.MidPrice()
+		c = s.Next.Call.MidPrice()
 	} else {
-		a = s.Prev.Put.MarketPrice()
-		b = s.Put.MarketPrice()
-		c = s.Next.Put.MarketPrice()
+		a = s.Prev.Put.MidPrice()
+		b = s.Put.MidPrice()
+		c = s.Next.Put.MidPrice()
 	}
 	// we compute butterfly
 	//   a/l - b*(1/l + 1/r) + c/r
@@ -107,5 +107,5 @@ func (s *Strike) underlyingPrice() decimal.Decimal {
 	if !s.IsReady() || !s.Call.HasQuotes() || !s.Put.HasQuotes() {
 		return decimal.Zero
 	}
-	return s.Price.Add(s.Call.MarketPrice()).Sub(s.Put.MarketPrice())
+	return s.Price.Add(s.Call.MidPrice()).Sub(s.Put.MidPrice())
 }

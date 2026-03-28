@@ -3,7 +3,6 @@ package main
 import (
 	"dropbear/decimal"
 	"dropbear/ds/options"
-	"dropbear/ds/osi"
 )
 
 const (
@@ -51,7 +50,7 @@ func buyCall() {
 	if !gStrategyEnabled[kStrategyBuyCall] {
 		return
 	}
-	for strike := gChain.AtTheMoney.Prev; strike != nil && strike.Call.Ask.Cmp(minTick()) >= 0; strike = strike.Next {
+	for strike := gChain.AtTheMoney.Prev; strike != nil && strike.Call.Ask.Cmp(minTick(gSymbol)) >= 0; strike = strike.Next {
 		if prune() {
 			continue
 		}
@@ -64,7 +63,7 @@ func buyPut() {
 	if !gStrategyEnabled[kStrategyBuyPut] {
 		return
 	}
-	for strike := gChain.AtTheMoney.Next; strike != nil && strike.Put.Ask.Cmp(minTick()) >= 0; strike = strike.Prev {
+	for strike := gChain.AtTheMoney.Next; strike != nil && strike.Put.Ask.Cmp(minTick(gSymbol)) >= 0; strike = strike.Prev {
 		if prune() {
 			continue
 		}
@@ -77,7 +76,7 @@ func sellCall() {
 	if !gStrategyEnabled[kStrategySellCall] {
 		return
 	}
-	for strike := gChain.AtTheMoney.Prev; strike != nil && strike.Call.Ask.Cmp(minTick()) >= 0; strike = strike.Next {
+	for strike := gChain.AtTheMoney.Prev; strike != nil && strike.Call.Ask.Cmp(minTick(gSymbol)) >= 0; strike = strike.Next {
 		if prune() {
 			continue
 		}
@@ -90,7 +89,7 @@ func sellPut() {
 	if !gStrategyEnabled[kStrategySellPut] {
 		return
 	}
-	for strike := gChain.AtTheMoney.Next; strike != nil && strike.Put.Ask.Cmp(minTick()) >= 0; strike = strike.Prev {
+	for strike := gChain.AtTheMoney.Next; strike != nil && strike.Put.Ask.Cmp(minTick(gSymbol)) >= 0; strike = strike.Prev {
 		if prune() {
 			continue
 		}
@@ -199,21 +198,11 @@ func liquidateCall() {
 	if !gStrategyEnabled[kStrategyLiquidateCall] {
 		return
 	}
-	// only sell calls we purchased earlier
-	for it := gPositions.Iterator(); it.Next(); {
-		sym, qty := it.Key(), it.Value()
-		if qty <= 0 {
+	for option := range gHoldings.Positions {
+		if option.Class != 'C' {
 			continue
 		}
-		_, strikePrice, class, _, _, _, _ := osi.Parse(sym)
-		if class != 'C' {
-			continue
-		}
-		strike, _ := gChain.Strikes.Get(strikePrice)
-		if strike == nil {
-			continue
-		}
-		sell(strike.Call)
+		sell(option)
 		end(kStrategyLiquidateCall)
 	}
 }
@@ -222,110 +211,67 @@ func liquidatePut() {
 	if !gStrategyEnabled[kStrategyLiquidatePut] {
 		return
 	}
-	// only sell puts we purchased earlier
-	for it := gPositions.Iterator(); it.Next(); {
-		sym, qty := it.Key(), it.Value()
-		if qty <= 0 {
+	for option := range gHoldings.Positions {
+		if option.Class != 'P' {
 			continue
 		}
-		_, strikePrice, class, _, _, _, _ := osi.Parse(sym)
-		if class != 'P' {
-			continue
-		}
-		strike, _ := gChain.Strikes.Get(strikePrice)
-		if strike == nil {
-			continue
-		}
-		sell(strike.Put)
+		sell(option)
 		end(kStrategyLiquidatePut)
 	}
 }
 
-// liquidateCallVertical closes an existing call vertical by buying back the
-// short leg and selling the long leg. Iterates over all pairs of held call
-// positions where one is short and one is long.
-// liquidateCallVertical closes an existing call vertical by buying back
-// the short leg and selling the long leg. Only considers spreads where
-// closing is profitable: the net cost to close (buy back short, sell
-// long) must be less than the net credit we originally received. This
-// prevents churning while allowing the robot to take profits on spreads
-// where theta has decayed in our favor.
 func liquidateCallVertical() {
 	if !gStrategyEnabled[kStrategyLiquidateCallVertical] {
 		return
 	}
-	shorts, longs := collectPositions('C')
-	for _, s := range shorts {
-		for _, l := range longs {
+	for s, sh := range gHoldings.Positions {
+		if s.Class != 'C' || sh.Quantity.IsPositive() {
+			continue // need a short call
+		}
+		for l, lh := range gHoldings.Positions {
+			if l.Class != 'C' || lh.Quantity.IsNegative() {
+				continue // need a long call
+			}
 			if prune() {
 				continue
 			}
-			if !isSpreadProfitableToClose(s, l) {
+			if !isSpreadProfitableToClose(s, sh, l, lh) {
 				continue
 			}
-			gStagedPositions.Put(s.OSI(), decimal.One)    // buy back short
-			gStagedPositions.Put(l.OSI(), decimal.NegOne) // sell the long
+			buy(s)
+			sell(l)
 			end(kStrategyLiquidateCallVertical)
 		}
 	}
 }
 
-// liquidatePutVertical closes an existing put vertical by buying back
-// the short leg and selling the long leg.
 func liquidatePutVertical() {
 	if !gStrategyEnabled[kStrategyLiquidatePutVertical] {
 		return
 	}
-	shorts, longs := collectPositions('P')
-	for _, s := range shorts {
-		for _, l := range longs {
+	for s, sh := range gHoldings.Positions {
+		if s.Class != 'P' || sh.Quantity.IsPositive() {
+			continue // need a short put
+		}
+		for l, lh := range gHoldings.Positions {
+			if l.Class != 'P' || lh.Quantity.IsNegative() {
+				continue // need a long put
+			}
 			if prune() {
 				continue
 			}
-			if !isSpreadProfitableToClose(s, l) {
+			if !isSpreadProfitableToClose(s, sh, l, lh) {
 				continue
 			}
-			gStagedPositions.Put(s.OSI(), decimal.One)    // buy back short
-			gStagedPositions.Put(l.OSI(), decimal.NegOne) // sell the long
+			buy(s)
+			sell(l)
 			end(kStrategyLiquidatePutVertical)
 		}
 	}
 }
 
-// isSpreadProfitableToClose checks whether closing a spread (buying back
-// the short leg, selling the long leg) would be profitable based on cost
-// basis. We originally received: shortCost - longCost (net credit).
-// To close we pay: shortMid - longMid (net debit to buy back short,
-// minus credit from selling long). Profitable when close cost < open credit.
-func isSpreadProfitableToClose(short, long *options.Option) bool {
-	shortCost := gCostPerContract[short.OSI()]
-	longCost := gCostPerContract[long.OSI()]
-	openCredit := shortCost.Sub(longCost)
-	closeCost := short.MarketPrice().Sub(long.MarketPrice())
+func isSpreadProfitableToClose(short *options.Option, sh *Holding, long *options.Option, lh *Holding) bool {
+	openCredit := sh.AverageCost.Sub(lh.AverageCost)
+	closeCost := short.MidPrice().Sub(long.MidPrice())
 	return closeCost.Mul(*demandFlag).Cmp(openCredit) < 0
-}
-
-// collectPositions returns the short and long options of the given class
-// from current positions.
-func collectPositions(class byte) (shorts, longs []*options.Option) {
-	for it := gPositions.Iterator(); it.Next(); {
-		sym, qty := it.Key(), it.Value()
-		if qty.IsZero() {
-			continue
-		}
-		_, _, c, _, _, _, _ := osi.Parse(sym)
-		if c != class {
-			continue
-		}
-		opt := gOptionsByOSI[sym]
-		if opt == nil {
-			continue
-		}
-		if qty.IsNegative() {
-			shorts = append(shorts, opt)
-		} else {
-			longs = append(longs, opt)
-		}
-	}
-	return
 }

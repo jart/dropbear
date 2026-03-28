@@ -2,7 +2,6 @@ package main
 
 import (
 	"dropbear/broker/databento"
-	"dropbear/broker/schwab"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds/black76"
@@ -11,7 +10,6 @@ import (
 	"dropbear/ds/symbol"
 	"dropbear/loggy"
 	"flag"
-	"fmt"
 	"log"
 	"maps"
 	"math"
@@ -40,17 +38,17 @@ var (
 	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
 	budgetFlag     = flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
 	floorFlag      = flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
-	spreadFlag     = decimal.Flag("spread", "-.5", "spread crossing (-1=make, 0=mid, 1=take)")
+	spreadFlag     = decimal.Flag("spread", "-1", "spread crossing (-1=make, 0=mid, 1=take)")
 	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
 	closeFlag      = flag.Float64("closer", .1, "random probability that closing will be allowed")
 	demandFlag     = decimal.Flag("demand", "1.1", "minimum ratio of open credit to close cost for liquidation")
 	wPayoffFlag    = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
 	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
 	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
-	maxDriftFlag   = decimal.Flag("max-drift", "1", "maximum acceptable accounting drift before panic")
-	thinkFlag      = clocky.DurationFlag("think", "1000ms", "interval between backtest trading analysis")
-	patienceFlag   = clocky.DurationFlag("patience", "9s", "how long to wait before canceling live orders")
-	cooldownFlag   = clocky.DurationFlag("cooldown", "10s", "interval between trading decisions")
+	maxErrorFlag   = decimal.Flag("max-error", "1", "maximum acceptable accounting error before panic")
+	thinkFlag      = clocky.DurationFlag("think", "300ms", "interval between backtest trading analysis")
+	patienceFlag   = clocky.DurationFlag("patience", "30s", "how long to wait before canceling live orders")
+	cooldownFlag   = clocky.DurationFlag("cooldown", "3s", "interval between trading decisions")
 	slowdownFlag   = clocky.DurationFlag("slowdown", "200ms", "polling limit for web dashboard")
 	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
 	maxPendingFlag = flag.Int("max-pending", 1, "maximum number of pending orders")
@@ -65,70 +63,44 @@ const (
 )
 
 var (
-	gVolume              int
-	gCash                decimal.Decimal
-	gTotalFees           decimal.Decimal
 	gChain               = options.NewOptions()
 	gSymbol              symbol.Symbol
-	gPositions           = treemap.New[string, decimal.Decimal]()
+	gHoldings            = Holdings{Positions: map[*options.Option]*Holding{}}
 	gOptionsByID         = map[uint32]*options.Option{}
 	gOptionsByOSI        = map[string]*options.Option{}
 	gStrategiesUsed      = treemap.New[string, int]()
 	gNextTradeTime       clocky.Time
+	gBaselineRisk        decimal.Decimal
 	gBaselinePayoff      decimal.Decimal
-	gBaselineWorst       decimal.Decimal
 	gBaselineDelta       decimal.Decimal
 	gBaselineSettlements []strikeSettlement // precomputed per think cycle
 )
 
 // strikeSettlement caches the baseline portfolio settlement value at a
-// given strike. Precomputed once per think cycle so that each simulation
+// given strike. Precomputed once per think cycle so that each order
 // only needs to add the delta from its 2 staged legs, turning O(strikes ×
-// positions × simulations) into O(strikes × simulations × 2).
+// positions × orders) into O(strikes × orders × 2).
 type strikeSettlement struct {
 	strike   *options.Strike
 	baseline decimal.Decimal // settlement from gPositions only (no cash)
-	movement float64         // |price - strike| for risk tolerance
-	sigmas   float64         // movement / expectedMove
-	blend    float64         // NormCDF blend for risk interpolation
 	maxLoss  float64         // interpolated max acceptable loss
 }
 
 var (
 	gStagedCash        decimal.Decimal
-	gStagedPositions   = treemap.New[string, decimal.Decimal]()
-	gSimulations       = treeset.NewWith(compareSimulations)
-	gSimulationsByID   = map[schwab.OrderID]*Simulation{}
-	gSimulationCounter int
+	gStagedLegs        []*Leg
+	gSimulations       = treeset.NewWith(compareOrders)
+	gOrderCounter      int
 	gIdentifierCounter int
-	gAbortSimulation   bool
+	gAbortOrder        bool
 	gEODTransitioned   bool
 	gAllowClosing      bool
-	gGenerosity        int           // ticks of spread generosity (positive = generous, negative = greedy)
-	gFilledOrders      []*Simulation // filled orders for generosity review
 )
 
 var (
 	kFeePerContract = decimal.Parse("1.2")
 	kRiskFreeRate   = decimal.Parse("0.035")
 )
-
-type Simulation struct {
-	ID        int
-	OrderID   schwab.OrderID
-	Legs      *treemap.Map[string, decimal.Decimal]
-	Strategy  string
-	Price     decimal.Decimal
-	Worst     decimal.Decimal
-	Payoff    decimal.Decimal // expected payoff at midpoint when order was created
-	Score     decimal.Decimal // payoff improvement + risk reduction
-	Created   clocky.Time
-	Canceling bool
-}
-
-func (s *Simulation) String() string {
-	return fmt.Sprintf("#%d %s", s.ID, s.Strategy)
-}
 
 func main() {
 	loggy.Init()
@@ -187,8 +159,29 @@ func main() {
 	}
 }
 
-func onThink(now clocky.Time) {
-	if !beginSimulations(now) {
+func onData(now clocky.Time) {
+	clock := now.ClockInt()
+	loggy.Hint("yo yo yo")
+	if clock < kStartOfDay {
+		loggy.Hint("not trading: before market open (%d < %d)", clock, kStartOfDay)
+		return
+	}
+	if now < gNextTradeTime {
+		loggy.Hint("not trading: cooldown (%s remaining)", clocky.Duration(gNextTradeTime-now))
+	} else if clock >= kMarketClose {
+		loggy.Hint("not trading: market closed (%d >= %d)", clock, kMarketClose)
+	} else if len(gPendingOrders) >= *maxPendingFlag {
+		loggy.Hint("not trading: %d pending orders (max %d)", len(gPendingOrders), *maxPendingFlag)
+	} else if gPaused {
+		loggy.Hint("not trading: paused")
+	} else {
+		trade(now)
+	}
+	cancelUnfilledOrders(now)
+}
+
+func trade(now clocky.Time) {
+	if !beginOrders(now) {
 		return
 	}
 	benchStartTime := time.Now()
@@ -213,22 +206,21 @@ func onThink(now clocky.Time) {
 	liquidateCall()
 	liquidateCallVertical()
 	liquidatePutVertical()
-	loggy.Hint("thought for %s (%d simulations)", time.Since(benchStartTime), gSimulationCounter)
+	loggy.Hint("thought for %s (%d orders)", time.Since(benchStartTime), gOrderCounter)
 	sendBestOrder(now)
 }
 
-func beginSimulations(now clocky.Time) bool {
-	gSimulationCounter = 0
+func beginOrders(now clocky.Time) bool {
+	gOrderCounter = 0
 	precomputeSettlements()
 	gBaselinePayoff = computeExpectedPayoff()
-	if gBaselinePayoff.Cmp(decimal.NegOne) == 0 {
+	if gBaselinePayoff.Cmp(decimal.Min) == 0 {
 		loggy.Hint("not thinking: no strikes with positive probability (price=%s em=%s atm=%v)",
 			gChain.Price, gChain.ExpectedMove(), gChain.AtTheMoney != nil)
 		return false
 	}
-	gBaselineWorst = computeRisk()
+	gBaselineRisk = computeRisk()
 	gBaselineDelta = computeDelta()
-	reviewGenerosity()
 	if !gEODTransitioned && *eodFlag {
 		isPowerHour := now.ClockInt() >= kStopTrading
 		if isPowerHour {
@@ -247,55 +239,59 @@ func sendBestOrder(now clocky.Time) {
 		return
 	}
 	loggy.Hint("%d out of %d simulated orders were reasonable",
-		gSimulations.Size(), gSimulationCounter)
-	it := gSimulations.Iterator()
-	it.Next()
-	sim := it.Value()
-	sim.Created = now
-	sim.ID = gIdentifierCounter
-	gIdentifierCounter++
-	gNextTradeTime = now.Add(*cooldownFlag)
-	if !*liveFlag {
-		c, _ := gStrategiesUsed.Get(sim.Strategy)
-		gStrategiesUsed.Put(sim.Strategy, c+1)
-	}
-	if *liveFlag {
-		sendLiveOrder(sim)
-	} else {
-		simulateOrder(sim)
-	}
-	log.Printf("#%d %s: price=%s score=%s payoff=%s worst=%s",
-		sim.ID, sim.Strategy, sim.Price, sim.Score, sim.Payoff.Truncate(), sim.Worst)
-	for legIt := sim.Legs.Iterator(); legIt.Next(); {
-		sym, pos := legIt.Key(), legIt.Value()
-		option := gOptionsByOSI[sym]
-		if pos.IsPositive() {
-			log.Printf("  buy  %s", option)
-		} else {
-			log.Printf("  sell %s", option)
+		gSimulations.Size(), gOrderCounter)
+	for !gSimulations.Empty() {
+		it := gSimulations.Iterator()
+		it.Next()
+		order := it.Value()
+		order.Created = now
+		order.ID = gIdentifierCounter
+		gIdentifierCounter++
+		gNextTradeTime = now.Add(*cooldownFlag)
+		err := order.Send()
+		if err != nil {
+			log.Printf("#%d failed to send order: %v", order.ID, err)
+			continue
 		}
+		log.Printf("#%d %s: price=%s natural=%s maker=%s score=%s payoff=%s->%s risk=%s->%s",
+			order.ID, order.Strategy, order.Price, order.NaturalPrice(), order.MakerPrice(), order.Score,
+			gBaselinePayoff.Format(2), order.Payoff.Format(2), gBaselineRisk.Format(2), order.Risk.Format(2))
+		for _, leg := range order.Legs {
+			if leg.Quantity.IsPositive() {
+				log.Printf("  buy  %s", leg.Option)
+			} else {
+				log.Printf("  sell %s", leg.Option)
+			}
+		}
+		gSimulations.Clear()
+		break
 	}
-	gSimulations.Clear()
 }
 
 // buy simulates buying an option. Aborts if we're already short this
 // contract, to prevent churning (buying back what we sold).
 func buy(option *options.Option) {
 	if !gAllowClosing && option.Mode == options.ModeShort {
-		gAbortSimulation = true
+		gAbortOrder = true
 		return
 	}
-	gStagedPositions.Put(option.OSI(), decimal.One)
+	gStagedLegs = append(gStagedLegs, &Leg{
+		Option:   option,
+		Quantity: decimal.One,
+	})
 }
 
 // sell simulates selling an option. Aborts if we're already long this
 // contract, to prevent churning (selling what we bought).
 func sell(option *options.Option) {
 	if !gAllowClosing && option.Mode == options.ModeLong {
-		gAbortSimulation = true
+		gAbortOrder = true
 		return
 	}
-	gStagedPositions.Put(option.OSI(), decimal.NegOne)
+	gStagedLegs = append(gStagedLegs, &Leg{
+		Option:   option,
+		Quantity: decimal.NegOne,
+	})
 }
 
 // prune returns true if we should skip this branch of the search.
@@ -304,103 +300,98 @@ func prune() bool {
 }
 
 func end(strategy string) bool {
-	if gAbortSimulation {
-		gAbortSimulation = false
-		gStagedPositions.Clear()
+	defer func() {
+		gStagedLegs = nil
 		gStagedCash = decimal.Zero
+	}()
+	if gAbortOrder {
+		gAbortOrder = false
 		return false
 	}
-	// evaluate at midpoint for scoring (spread=0)
-	midPrice := chooseMidPrice()
-	if !checkSpreadWidth(midPrice) {
-		gStagedPositions.Clear()
-		gStagedCash = decimal.Zero
-		gSimulationCounter++
-		return true
+	gOrderCounter++
+	price := choosePriceForOrder()
+	if price.IsZero() {
+		return false
 	}
-	gStagedCash = midPrice.MulInt(kMultiplier)
-	if checkRiskTolerance() {
-		payoff := computeExpectedPayoff()
-		if payoff.Cmp(decimal.NegOne) != 0 {
-			orderPrice := choosePriceForSimulation()
-			if orderPrice.IsZero() {
-				for it := gStagedPositions.Iterator(); it.Next(); {
-					opt := gOptionsByOSI[it.Key()]
-					loggy.Hint("zero price %s: %s bid=%s ask=%s", strategy, opt, opt.Bid, opt.Ask)
-				}
-				gStagedPositions.Clear()
-				gStagedCash = decimal.Zero
-				gSimulationCounter++
-				return true
-			}
-			sim := &Simulation{
-				ID:       gSimulationCounter,
-				Legs:     gStagedPositions,
-				Strategy: strategy,
-				Price:    orderPrice,
-				Worst:    computeRisk(),
-				Payoff:   payoff,
-			}
-			payoffImprovement := sim.Payoff.Sub(gBaselinePayoff)
-			riskReduction := sim.Worst.Sub(gBaselineWorst).Max(decimal.Zero)
-			simDelta := computeDelta()
-			deltaImprovement := gBaselineDelta.Abs().Sub(simDelta.Abs()).Max(decimal.Zero)
-			sim.Score = payoffImprovement.Mul(*wPayoffFlag).Add(riskReduction.Mul(*wRiskFlag)).Add(deltaImprovement.Mul(*wDeltaFlag))
-			if sim.Score.IsPositive() {
-				gSimulations.Add(sim)
-				gStagedPositions = treemap.New[string, decimal.Decimal]()
-			}
-		}
+	gStagedCash = price.MulInt(kMultiplier)
+	if !checkRiskTolerance() {
+		return false
 	}
-	gSimulationCounter++
-	gStagedCash = decimal.Zero
-	gStagedPositions.Clear()
+	payoff := computeExpectedPayoff()
+	payoffImprovement := payoff.Sub(gBaselinePayoff)
+	if payoffImprovement.IsNegative() {
+		return false
+	}
+	risk := computeRisk()
+	score := scoreOrder(payoff, risk)
+	if !score.IsPositive() {
+		return false
+	}
+	gSimulations.Add(&Order{
+		ID:       gOrderCounter,
+		Legs:     gStagedLegs,
+		Strategy: strategy,
+		Price:    price,
+		Risk:     risk,
+		Payoff:   payoff,
+		Score:    score,
+	})
 	return true
 }
 
-// reviewGenerosity adjusts the generosity level by reviewing all past
-// filled orders. For each filled order, compare the current portfolio
-// payoff to the payoff at the time the order was created. If things
-// improved, the fill was good — add a tick of generosity. If things
-// got worse, add a tick of greed. The net effect converges on the
-// optimal spread: generous enough to get fills, greedy enough to
-// not give away edge.
-func reviewGenerosity() {
-	if len(gFilledOrders) == 0 {
-		return
-	}
-	gen := 0
-	for _, sim := range gFilledOrders {
-		if gBaselinePayoff.Cmp(sim.Payoff) > 0 {
-			gen++ // payoff improved since this fill — be more generous
-		} else {
-			gen-- // payoff declined since this fill — be more greedy
+func scoreOrder(payoff, risk decimal.Decimal) decimal.Decimal {
+	payoffImprovement := payoff.Sub(gBaselinePayoff)
+	riskReduction := risk.Sub(gBaselineRisk).Max(decimal.Zero)
+	delta := computeDelta()
+	deltaImprovement := gBaselineDelta.Abs().Sub(delta.Abs()).Max(decimal.Zero)
+	a := payoffImprovement.Mul(*wPayoffFlag)
+	b := riskReduction.Mul(*wRiskFlag)
+	c := deltaImprovement.Mul(*wDeltaFlag)
+	return a.Add(b).Add(c)
+}
+
+func cancelUnfilledOrders(now clocky.Time) {
+	precomputeSettlements()
+	gBaselinePayoff = computeExpectedPayoff()
+	for order := range gPendingOrders {
+		if order.Canceling {
+			continue
 		}
-	}
-	if gen != gGenerosity {
-		gGenerosity = gen
-		loggy.Hint("generosity=%d (%d filled orders reviewed)", gGenerosity, len(gFilledOrders))
+		elapsed := now.Sub(order.Created)
+		if elapsed >= *patienceFlag || isPendingOrderToxic(order) {
+			err := order.Cancel()
+			if err == nil {
+				log.Printf("#%d canceling order id %d after %s", order.ID, order.OrderID, elapsed)
+			} else {
+				log.Printf("#%d failed to cancel order id %d after %s: %v", order.ID, order.OrderID, elapsed, err)
+			}
+		}
 	}
 }
 
-// chooseMidPrice computes the net price at midpoint for all staged legs.
-// Used for evaluating trade merit independent of spread demands.
-func chooseMidPrice() decimal.Decimal {
-	price := decimal.Zero
-	for it := gStagedPositions.Iterator(); it.Next(); {
-		sym, pos := it.Key(), it.Value()
-		opt := gOptionsByOSI[sym]
-		mid := opt.MarketPrice()
-		if pos.IsPositive() {
-			price = price.Sub(mid)
-		} else {
-			price = price.Add(mid)
-		}
+// isPendingOrderToxic returns true if market conditions have changed in
+// such a way that it's no longer desirable to place an order.
+func isPendingOrderToxic(order *Order) bool {
+	gStagedLegs = order.Legs
+	gStagedCash = order.Price.MulInt(kMultiplier)
+	toxic := false
+	if !checkRiskTolerance() {
+		log.Printf("#%d order is toxic: risk tolerance exceeded", order.ID)
+		toxic = true
 	}
-	return price
+	newPayoff := computeExpectedPayoff()
+	payoffImprovement := newPayoff.Sub(gBaselinePayoff)
+	if payoffImprovement.IsNegative() {
+		log.Printf("#%d order has gone toxic because it would decrease payoff from %s to %s",
+			order.ID, gBaselinePayoff.Format(2), newPayoff.Format(2))
+		toxic = true
+	}
+	gStagedLegs = nil
+	gStagedCash = decimal.Zero
+	return toxic
 }
 
-func choosePriceForSimulation() decimal.Decimal {
+func choosePriceForOrder() decimal.Decimal {
 	// exec controls where in the spread we price:
 	//   -1 = make (bid for buys, ask for sells — most favorable)
 	//    0 = mid
@@ -408,67 +399,27 @@ func choosePriceForSimulation() decimal.Decimal {
 	// values beyond ±1 go past the spread
 	spread := *spreadFlag
 	price := decimal.Zero
-	slippage := decimal.Parse("0.2")
-	for it := gStagedPositions.Iterator(); it.Next(); {
-		sym, pos := it.Key(), it.Value()
-		opt := gOptionsByOSI[sym]
-		mid := opt.MarketPrice()
+	for _, leg := range gStagedLegs {
+		opt := leg.Option
+		mid := opt.MidPrice()
 		hlf := opt.Ask.Sub(opt.Bid).DivInt(2)
-		if pos.IsPositive() {
-			// buying: mid + halfSpread * spread (round down = cheaper for us)
-			legPrice := quantizeTruncate(mid.Add(hlf.Mul(spread)))
-			price = price.Sub(legPrice)
+		if leg.Quantity.IsPositive() {
+			// buying: mid + halfSpread * spread
+			price = price.Sub(mid.Add(hlf.Mul(spread)))
 		} else {
-			// selling: mid - halfSpread * spread (round up = more credit for us)
-			legPrice := quantizeAway(mid.Sub(hlf.Mul(spread)))
-			price = price.Add(legPrice)
+			// selling: mid - halfSpread * spread
+			price = price.Add(mid.Sub(hlf.Mul(spread)))
 		}
 	}
-	// apply generosity: positive = we give ticks to the counterparty
-	// (reduce credit or increase debit). This makes fills more likely
-	// when we're doing well and tightens up when fills go against us.
-	for i := 0; i < gGenerosity; i++ {
-		price = decTick(price)
+	// apply our read on penny pilot program rules
+	tick, bigTick := getTicks(gSymbol)
+	if len(gStagedLegs) == 1 && price.Abs().Cmp(kThree) >= 0 {
+		tick = bigTick // spreads always quantize on minimum tick size
 	}
-	for i := 0; i > gGenerosity; i-- {
-		price = incTick(price)
-	}
-	// clamp: never go more than 20 cents past the quoted spread per
-	// leg, to avoid order rejection from runaway generosity/greed.
-	midPrice := chooseMidPrice()
-	maxSlip := slippage.MulInt(gStagedPositions.Size())
-	price = price.Max(midPrice.Sub(maxSlip)).Min(midPrice.Add(maxSlip))
-	return price
-}
-
-// checkSpreadWidth rejects orders where the net price exceeds the maximum
-// possible value of the spread. Schwab will reject these with "Credit
-// spreads cannot equal or exceed the strike difference." This happens when
-// the robot looks at deep ITM options where individual bid/ask prices
-// reflect intrinsic value, making a spread look absurdly profitable. In
-// reality no one will fill a $10-wide spread for $18 credit — the spread
-// price is bounded by the width between strikes. The same logic applies
-// to debits: paying more than the spread width is equally nonsensical.
-func checkSpreadWidth(price decimal.Decimal) bool {
-	if gStagedPositions.Size() < 2 {
-		return true // not a spread
-	}
-	// find the min and max strike prices among staged legs
-	first := true
-	var lo, hi decimal.Decimal
-	for it := gStagedPositions.Iterator(); it.Next(); {
-		opt := gOptionsByOSI[it.Key()]
-		sp := opt.Strike.Price
-		if first {
-			lo, hi = sp, sp
-			first = false
-		} else {
-			lo = lo.Min(sp)
-			hi = hi.Max(sp)
-		}
-	}
-	maxValue := hi.Sub(lo)
-	return price.Abs().Cmp(maxValue) < 0
+	// buying is negative (debit) and selling is positive (credit)
+	// the ceiling function rounds towards positive infinity
+	// therefore we buy low and sell high
+	return price.QuantizeCeil(tick)
 }
 
 func onHeartbeat() {
@@ -478,40 +429,35 @@ func onHeartbeat() {
 	bad := computeRisk()
 	delta, gamma, theta, vega := computeGreeks()
 	log.Printf("cash:%s liq:%s eod:%s worst:%s realized:%s payoff:%s delta:%s gamma:%s theta:%s vega:%s",
-		gCash, liq.Truncate(), eod, bad, gRealizedPnL.Truncate(), pay.Truncate(),
+		gHoldings.Cash, liq.Truncate(), eod, bad, gHoldings.RealizedPnL.Truncate(), pay.Truncate(),
 		delta.Format(2), gamma.Format(2), theta.Format(2), vega.Format(2))
 }
 
 func onEndOfDay() {
-	sanityCheck("preSettlement")
 	log.Printf("end of day settlement time")
-	iteratePositions(func(sym string, pos decimal.Decimal) {
-		intrinsic := gOptionsByOSI[sym].IntrinsicValue(gChain.Price)
+	iteratePositions(func(option *options.Option, pos decimal.Decimal) {
+		intrinsic := option.IntrinsicValue(gChain.Price)
 		settlement := intrinsic.Mul(pos).MulInt(kMultiplier)
-		gCash = gCash.Add(settlement)
-		log.Printf("have %4s of %s worth %8s", pos, sym, settlement.Truncate())
+		gHoldings.Cash = gHoldings.Cash.Add(settlement)
+		log.Printf("have %4s of %s worth %8s", pos, option.StringAligned(), settlement.Truncate())
 	})
 	log.Printf("strategies used")
 	for it := gStrategiesUsed.Iterator(); it.Next(); {
 		strategy, count := it.Key(), it.Value()
 		log.Printf("%30s %4d", strategy, count)
 	}
+	totalFees := gHoldings.TotalFees
 	log.Printf("ending balance %s less %s fees winning %s at %s price %s",
-		gCash.Format(2), gTotalFees.Format(2), gCash.Sub(gTotalFees).Format(2), gSymbol, gChain.Price)
+		gHoldings.Cash, totalFees, gHoldings.Cash.Sub(totalFees), gSymbol, gChain.Price)
 }
 
 // iteratePositions calls f for all positions.
-func iteratePositions(f func(string, decimal.Decimal)) {
-	iteratePositionsImpl(gPositions, f)
-	iteratePositionsImpl(gStagedPositions, f)
-}
-
-func iteratePositionsImpl(positions *treemap.Map[string, decimal.Decimal], f func(string, decimal.Decimal)) {
-	for it := positions.Iterator(); it.Next(); {
-		sym, pos := it.Key(), it.Value()
-		if !pos.IsZero() {
-			f(sym, pos)
-		}
+func iteratePositions(f func(*options.Option, decimal.Decimal)) {
+	for option, position := range gHoldings.Positions {
+		f(option, position.Quantity)
+	}
+	for _, leg := range gStagedLegs {
+		f(leg.Option, leg.Quantity)
 	}
 }
 
@@ -531,29 +477,26 @@ func iterateStrikes(f func(*options.Strike)) {
 }
 
 // precomputeSettlements caches baseline settlement values at every strike
-// so that simulations only need to add the delta from their 2 staged legs.
+// so that orders only need to add the delta from their 2 staged legs.
 func precomputeSettlements() {
 	em := gChain.ExpectedMove().Float64()
 	gBaselineSettlements = gBaselineSettlements[:0]
 	for it := gChain.Strikes.Iterator(); it.Next(); {
 		strike := it.Value()
 		value := decimal.Zero
-		for pit := gPositions.Iterator(); pit.Next(); {
-			sym, pos := pit.Key(), pit.Value()
-			if !pos.IsZero() {
-				intrinsic := gOptionsByOSI[sym].IntrinsicValue(strike.Price)
-				value = value.Add(intrinsic.Mul(pos))
-			}
+		for option, holding := range gHoldings.Positions {
+			intrinsic := option.IntrinsicValue(strike.Price)
+			value = value.Add(intrinsic.Mul(holding.Quantity))
 		}
 		ss := strikeSettlement{
 			strike:   strike,
 			baseline: value.MulInt(kMultiplier),
 		}
 		if em > 0 {
-			ss.movement = gChain.Price.Sub(strike.Price).Abs().Float64()
-			ss.sigmas = ss.movement / em
-			ss.blend = (prob.NormCDF(ss.sigmas) - .5) * 2
-			ss.maxLoss = math.FMA(*floorFlag-*budgetFlag, ss.blend, *budgetFlag)
+			movement := gChain.Price.Sub(strike.Price).Abs().Float64()
+			sigmas := movement / em
+			blend := (prob.NormCDF(sigmas) - .5) * 2
+			ss.maxLoss = math.FMA(*floorFlag-*budgetFlag, blend, *budgetFlag)
 		}
 		gBaselineSettlements = append(gBaselineSettlements, ss)
 	}
@@ -563,11 +506,10 @@ func precomputeSettlements() {
 // from only the staged positions at the given underlying price.
 func stagedSettlementDelta(underlyingPrice decimal.Decimal) decimal.Decimal {
 	value := decimal.Zero
-	for sit := gStagedPositions.Iterator(); sit.Next(); {
-		sym, pos := sit.Key(), sit.Value()
-		if !pos.IsZero() {
-			intrinsic := gOptionsByOSI[sym].IntrinsicValue(underlyingPrice)
-			value = value.Add(intrinsic.Mul(pos))
+	for _, leg := range gStagedLegs {
+		if !leg.Quantity.IsZero() {
+			intrinsic := leg.Option.IntrinsicValue(underlyingPrice)
+			value = value.Add(intrinsic.Mul(leg.Quantity))
 		}
 	}
 	return value.MulInt(kMultiplier)
@@ -577,8 +519,8 @@ func stagedSettlementDelta(underlyingPrice decimal.Decimal) decimal.Decimal {
 func computeRisk() decimal.Decimal {
 	worst := decimal.Zero
 	for _, ss := range gBaselineSettlements {
-		settlement := ss.baseline.Add(gCash)
-		if gStagedPositions.Size() > 0 {
+		settlement := ss.baseline.Add(gHoldings.Cash)
+		if len(gStagedLegs) > 0 {
 			settlement = settlement.Add(stagedSettlementDelta(ss.strike.Price)).Add(gStagedCash)
 		}
 		worst = worst.Min(settlement)
@@ -594,8 +536,8 @@ func checkRiskTolerance() bool {
 		return false
 	}
 	for _, ss := range gBaselineSettlements {
-		settlement := ss.baseline.Add(gCash)
-		if gStagedPositions.Size() > 0 {
+		settlement := ss.baseline.Add(gHoldings.Cash)
+		if len(gStagedLegs) > 0 {
 			settlement = settlement.Add(stagedSettlementDelta(ss.strike.Price)).Add(gStagedCash)
 		}
 		if settlement.Float64() < -ss.maxLoss {
@@ -607,11 +549,11 @@ func checkRiskTolerance() bool {
 
 func computeSettlementAt(underlyingPrice decimal.Decimal) decimal.Decimal {
 	value := decimal.Zero
-	iteratePositions(func(sym string, pos decimal.Decimal) {
-		intrinsic := gOptionsByOSI[sym].IntrinsicValue(underlyingPrice)
+	iteratePositions(func(option *options.Option, pos decimal.Decimal) {
+		intrinsic := option.IntrinsicValue(underlyingPrice)
 		value = value.Add(intrinsic.Mul(pos))
 	})
-	return value.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
+	return value.MulInt(kMultiplier).Add(gHoldings.Cash).Add(gStagedCash)
 }
 
 // computeRiskSlow is the non-cached version for the dashboard.
@@ -625,49 +567,20 @@ func computeRiskSlow() decimal.Decimal {
 	return worst
 }
 
-// computePayoffSlow is the non-cached version for the dashboard.
-func computePayoffSlow() decimal.Decimal {
-	type strikeProb struct {
-		strike *options.Strike
-		prob   decimal.Decimal
-	}
-	var probs []strikeProb
-	var probSum decimal.Decimal
-	iterateStrikes(func(strike *options.Strike) {
-		p := strike.Probability()
-		if p.IsPositive() {
-			probs = append(probs, strikeProb{strike, p})
-			probSum = probSum.Add(p)
-		}
-	})
-	if len(probs) == 0 || !probSum.IsPositive() {
-		return decimal.NegOne
-	}
-	payoff := decimal.Zero
-	for _, sp := range probs {
-		p := sp.prob.Div(probSum)
-		iteratePositions(func(sym string, pos decimal.Decimal) {
-			intrinsic := gOptionsByOSI[sym].IntrinsicValue(sp.strike.Price)
-			payoff = payoff.Add(intrinsic.Mul(pos).Mul(p))
-		})
-	}
-	return payoff.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
-}
-
 func computeLiquidationValue() decimal.Decimal {
 	value := decimal.Zero
-	iteratePositions(func(sym string, pos decimal.Decimal) {
-		mid := gOptionsByOSI[sym].MarketPrice()
+	iteratePositions(func(option *options.Option, pos decimal.Decimal) {
+		mid := option.MidPrice()
 		value = value.Add(mid.Mul(pos))
 	})
-	return value.MulInt(kMultiplier).Add(gCash).Add(gStagedCash)
+	return value.MulInt(kMultiplier).Add(gHoldings.Cash).Add(gStagedCash)
 }
 
 // computeNotional returns the total underlying notional value controlled
 // by all positions: sum(abs(qty)) * underlying_price * 100.
 func computeNotional() decimal.Decimal {
 	var totalQty decimal.Decimal
-	iteratePositions(func(sym string, pos decimal.Decimal) {
+	iteratePositions(func(option *options.Option, pos decimal.Decimal) {
 		totalQty = totalQty.Add(pos.Abs())
 	})
 	return totalQty.Mul(gChain.Price).MulInt(kMultiplier)
@@ -695,19 +608,19 @@ func computeExpectedPayoff() decimal.Decimal {
 		}
 	}
 	if len(probs) == 0 || !probSum.IsPositive() {
-		return decimal.NegOne
+		return decimal.Min
 	}
 	// compute expected payoff using cached baselines
 	payoff := decimal.Zero
 	for _, cp := range probs {
 		ss := &gBaselineSettlements[cp.idx]
 		settlement := ss.baseline
-		if gStagedPositions.Size() > 0 {
+		if len(gStagedLegs) > 0 {
 			settlement = settlement.Add(stagedSettlementDelta(ss.strike.Price))
 		}
 		payoff = payoff.Add(settlement.Mul(cp.prob.Div(probSum)))
 	}
-	return payoff.Add(gCash).Add(gStagedCash)
+	return payoff.Add(gHoldings.Cash).Add(gStagedCash)
 }
 
 // computeBias returns what direction options market thinks underlying will move.
@@ -716,24 +629,24 @@ func computeBias() decimal.Decimal {
 	if atm == nil || !atm.IsReady() {
 		return decimal.Zero
 	}
-	return atm.Call.MarketPrice().Sub(atm.Put.MarketPrice()).MulInt(100)
+	return atm.Call.MidPrice().Sub(atm.Put.MidPrice()).MulInt(kMultiplier)
 }
 
 // computeDelta calculates the delta for all positions.
 func computeDelta() decimal.Decimal {
 	delta := decimal.Zero
-	iteratePositions(func(sym string, pos decimal.Decimal) {
-		delta = delta.Add(gOptionsByOSI[sym].Delta.Mul(pos))
+	iteratePositions(func(option *options.Option, pos decimal.Decimal) {
+		delta = delta.Add(option.Delta.Mul(pos))
 	})
 	return delta.MulInt(kMultiplier)
 }
 
 func computeGreeks() (delta, gamma, theta, vega decimal.Decimal) {
-	iteratePositions(func(sym string, pos decimal.Decimal) {
-		delta = delta.Add(gOptionsByOSI[sym].Delta.Mul(pos))
-		gamma = gamma.Add(gOptionsByOSI[sym].Gamma.Mul(pos))
-		theta = theta.Add(gOptionsByOSI[sym].Theta.Mul(pos))
-		vega = vega.Add(gOptionsByOSI[sym].Vega.Mul(pos))
+	iteratePositions(func(option *options.Option, pos decimal.Decimal) {
+		delta = delta.Add(option.Delta.Mul(pos))
+		gamma = gamma.Add(option.Gamma.Mul(pos))
+		theta = theta.Add(option.Theta.Mul(pos))
+		vega = vega.Add(option.Vega.Mul(pos))
 	})
 	delta = delta.MulInt(kMultiplier)
 	gamma = gamma.MulInt(kMultiplier)
@@ -750,12 +663,10 @@ func onOptionDef(o *options.Option) {
 func onOptionDefEnd() {
 
 	// initialize options restrictions after loading schwab order history
-	for it := gPositions.Iterator(); it.Next(); {
-		sym, pos := it.Key(), it.Value()
-		option := gOptionsByOSI[sym]
-		if pos.IsPositive() {
+	for option, holding := range gHoldings.Positions {
+		if holding.Quantity.IsPositive() {
 			option.Mode = options.ModeLong
-		} else if pos.IsNegative() {
+		} else if holding.Quantity.IsNegative() {
 			option.Mode = options.ModeShort
 		}
 	}
@@ -804,8 +715,9 @@ func onOptionDefEnd() {
 	}
 }
 
-func onOptionTick(t *databento.CMBP1) {
-	if o := gOptionsByID[t.Header.InstrumentID]; o != nil {
+func onOptionTick(t *databento.CMBP1) *options.Option {
+	o := gOptionsByID[t.Header.InstrumentID]
+	if o != nil {
 		switch t.Action {
 		case databento.ActionTrade:
 			onOptionTrade(o, t)
@@ -817,6 +729,7 @@ func onOptionTick(t *databento.CMBP1) {
 			panic("unexpected option tick action: " + t.Action.String())
 		}
 	}
+	return o
 }
 
 func onOptionTrade(o *options.Option, t *databento.CMBP1) {
@@ -861,7 +774,7 @@ func onOptionQuote(o *options.Option, t *databento.CMBP1) {
 	}
 }
 
-func compareSimulations(a, b *Simulation) int {
+func compareOrders(a, b *Order) int {
 	res := a.Score.Cmp(b.Score)
 	if res != 0 {
 		return -res // highest score first

@@ -5,6 +5,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/db"
 	"dropbear/decimal"
+	"dropbear/ds/options"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -26,9 +27,6 @@ var (
 	originFlag = flag.String("origin", "https://varu.justinestreet.capital", "WebAuthn origin URL")
 )
 
-// gPaused controls whether onThink runs.
-var gPaused bool
-
 // WebRequest is a command sent from the web server to the main goroutine.
 type WebRequest struct {
 	Type     string          // "flags", "pause", "resume", "strategies"
@@ -37,16 +35,14 @@ type WebRequest struct {
 	Response chan struct{}   // closed when processed
 }
 
-// gWebRequests is the channel for web requests to the main goroutine.
-var gWebRequests = make(chan WebRequest, 8)
-
-// gSSEBroadcast is the channel for state snapshots to SSE clients.
-var gSSEBroadcast = make(chan []byte, 4)
-
-// SSE subscriber management
 var (
-	sseMu          sync.Mutex
-	sseSubscribers = map[chan []byte]struct{}{}
+	gPaused          bool
+	gWebRequests     = make(chan WebRequest, 8)
+	gSSEBroadcast    = make(chan []byte, 4)
+	sseMu            sync.Mutex
+	sseSubscribers   = map[chan []byte]struct{}{}
+	lastSnapshotMu   sync.RWMutex
+	lastSnapshotJSON []byte
 )
 
 func sseSubscribe() chan []byte {
@@ -130,7 +126,6 @@ type StatsData struct {
 	Error       string `json:"error"`
 	Fees        string `json:"fees"`
 	Volume      string `json:"volume"`
-	Generosity  string `json:"generosity"`
 }
 
 type FlagsData struct {
@@ -157,12 +152,14 @@ type StrategyInfo struct {
 func buildStateSnapshot() StateSnapshot {
 	now := clocky.Now()
 	delta, gamma, theta, vega := computeGreeks()
+	precomputeSettlements()
+	payoff := computeExpectedPayoff()
 	snap := StateSnapshot{
 		Time:   now.String(),
 		Symbol: gSymbol.String(),
 		Price:  gChain.Price.Format(2),
 		Sigma:  gChain.ExpectedMove().Format(2),
-		Cash:   gCash.FormatThousand(2),
+		Cash:   gHoldings.Cash.FormatThousand(2),
 		Paused: gPaused,
 		Greeks: GreeksData{
 			Delta: delta.Format(3),
@@ -171,18 +168,17 @@ func buildStateSnapshot() StateSnapshot {
 			Vega:  vega.Format(3),
 		},
 		Stats: StatsData{
-			Payoff:      computePayoffSlow().FormatThousand(2),
+			Payoff:      payoff.FormatThousand(2),
 			Liquidation: computeLiquidationValue().Truncate().FormatThousand(2),
-			Realized:    gRealizedPnL.FormatThousand(2),
+			Realized:    gHoldings.RealizedPnL.FormatThousand(2),
 			Worst:       computeRiskSlow().FormatThousand(2),
 			Notional:    computeNotional().FormatThousand(2),
-			Fees:        gTotalFees.FormatThousand(2),
+			Fees:        gHoldings.TotalFees.FormatThousand(2),
 			EOD:         computeSettlementAt(gChain.Price).FormatThousand(2),
 			Sigma:       gChain.ExpectedMove().Format(2),
 			Bias:        computeBias().Format(2),
-			Error:       gError.String(),
-			Volume:      strconv.Itoa(gVolume),
-			Generosity:  strconv.Itoa(gGenerosity),
+			Error:       gHoldings.TotalError.String(),
+			Volume:      gHoldings.Volume.String(),
 		},
 		Flags: FlagsData{
 			Sigmas:   (*sigmasFlag).String(),
@@ -204,9 +200,8 @@ func buildStateSnapshot() StateSnapshot {
 	price := gChain.Price
 	var minStrike, maxStrike decimal.Decimal
 	first := true
-	iteratePositions(func(sym string, pos decimal.Decimal) {
-		o := gOptionsByOSI[sym]
-		sp := o.Strike.Price
+	iteratePositions(func(option *options.Option, pos decimal.Decimal) {
+		sp := option.Strike.Price
 		if first || sp.Cmp(minStrike) < 0 {
 			minStrike = sp
 		}
@@ -214,12 +209,6 @@ func buildStateSnapshot() StateSnapshot {
 			maxStrike = sp
 		}
 		first = false
-	})
-
-	// build position lookup
-	posMap := map[string]decimal.Decimal{}
-	iteratePositions(func(sym string, pos decimal.Decimal) {
-		posMap[sym] = pos
 	})
 
 	// emit all strikes in the range with call/put data
@@ -231,30 +220,28 @@ func buildStateSnapshot() StateSnapshot {
 			}
 			prob := strike.Probability().MulInt(100).Format(2)
 			if strike.Call != nil {
-				callQty := posMap[strike.Call.OSI()]
 				snap.Positions = append(snap.Positions, PositionRow{
 					OSI:    strike.Call.OSI(),
 					Strike: strike.Price.String(),
 					Class:  "C",
-					Qty:    callQty.String(),
+					Qty:    gHoldings.GetQuantity(strike.Call).String(),
 					Bid:    strike.Call.Bid.Format(2),
 					Ask:    strike.Call.Ask.Format(2),
-					Mid:    strike.Call.MarketPrice().Format(2),
+					Mid:    strike.Call.MidPrice().Format(2),
 					Delta:  strike.Call.Delta.Format(4),
 					Prob:   prob,
 					ITM:    price.Cmp(strike.Price) > 0,
 				})
 			}
 			if strike.Put != nil {
-				putQty := posMap[strike.Put.OSI()]
 				snap.Positions = append(snap.Positions, PositionRow{
 					OSI:    strike.Put.OSI(),
 					Strike: strike.Price.String(),
 					Class:  "P",
-					Qty:    putQty.String(),
+					Qty:    gHoldings.GetQuantity(strike.Put).String(),
 					Bid:    strike.Put.Bid.Format(2),
 					Ask:    strike.Put.Ask.Format(2),
-					Mid:    strike.Put.MarketPrice().Format(2),
+					Mid:    strike.Put.MidPrice().Format(2),
 					Delta:  strike.Put.Delta.Format(4),
 					Prob:   prob,
 					ITM:    price.Cmp(strike.Price) < 0,
@@ -290,11 +277,6 @@ func buildStateSnapshot() StateSnapshot {
 
 	return snap
 }
-
-var (
-	lastSnapshotMu   sync.RWMutex
-	lastSnapshotJSON []byte
-)
 
 // broadcastState builds a snapshot and caches it for polling.
 // Must be called from the main goroutine.

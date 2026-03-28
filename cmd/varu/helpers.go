@@ -18,8 +18,8 @@ var (
 )
 
 // getTicks returns the minimum tick size.
-func getTicks() (decimal.Decimal, decimal.Decimal) {
-	switch gSymbol {
+func getTicks(symbol symbol.Symbol) (decimal.Decimal, decimal.Decimal) {
+	switch symbol {
 	case kSPXW, kNDX:
 		return kTick05, kTick10
 	default:
@@ -28,14 +28,14 @@ func getTicks() (decimal.Decimal, decimal.Decimal) {
 }
 
 // minTick returns the minimum tick size.
-func minTick() decimal.Decimal {
-	minTick, _ := getTicks()
+func minTick(symbol symbol.Symbol) decimal.Decimal {
+	minTick, _ := getTicks(symbol)
 	return minTick
 }
 
 // incTick increases an spx option's price by one tick.
-func incTick(price decimal.Decimal) decimal.Decimal {
-	minTick, maxTick := getTicks()
+func incTick(symbol symbol.Symbol, price decimal.Decimal) decimal.Decimal {
+	minTick, maxTick := getTicks(symbol)
 	if price.Abs().Cmp(kThree) < 0 {
 		return price.Add(minTick)
 	}
@@ -43,8 +43,8 @@ func incTick(price decimal.Decimal) decimal.Decimal {
 }
 
 // decTick reduces an spx option's price by one tick.
-func decTick(price decimal.Decimal) decimal.Decimal {
-	minTick, maxTick := getTicks()
+func decTick(symbol symbol.Symbol, price decimal.Decimal) decimal.Decimal {
+	minTick, maxTick := getTicks(symbol)
 	if price.Abs().Cmp(kThree) <= 0 {
 		return price.Sub(minTick)
 	}
@@ -52,21 +52,21 @@ func decTick(price decimal.Decimal) decimal.Decimal {
 }
 
 // quantizeTruncate rounds to the SPX tick size for buying.
-func quantizeTruncate(price decimal.Decimal) decimal.Decimal {
-	tick := optionTick(price)
+func quantizeTruncate(symbol symbol.Symbol, price decimal.Decimal) decimal.Decimal {
+	tick := optionTick(symbol, price)
 	return price.QuantizeTruncate(tick).Max(tick)
 }
 
 // quantizeAway rounds to the SPX tick size for selling.
-func quantizeAway(price decimal.Decimal) decimal.Decimal {
-	tick := optionTick(price)
+func quantizeAway(symbol symbol.Symbol, price decimal.Decimal) decimal.Decimal {
+	tick := optionTick(symbol, price)
 	return price.QuantizeAway(tick).Max(tick)
 }
 
 // optionTick returns the minimum tick size for a Penny Pilot option.
 // Options priced under $3 tick in $0.05; $3 and over tick in $0.10.
-func optionTick(price decimal.Decimal) decimal.Decimal {
-	minTick, maxTick := getTicks()
+func optionTick(symbol symbol.Symbol, price decimal.Decimal) decimal.Decimal {
+	minTick, maxTick := getTicks(symbol)
 	if price.Abs().Cmp(kThree) < 0 {
 		return minTick
 	}

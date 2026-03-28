@@ -38,8 +38,8 @@ func (oc *Options) ExpectedMove() decimal.Decimal {
 	if oc.AtTheMoney == nil || !oc.AtTheMoney.IsReady() {
 		return decimal.Zero
 	}
-	x := oc.AtTheMoney.Call.MarketPrice()
-	y := oc.AtTheMoney.Put.MarketPrice()
+	x := oc.AtTheMoney.Call.MidPrice()
+	y := oc.AtTheMoney.Put.MidPrice()
 	if !x.IsPositive() || !y.IsPositive() {
 		return decimal.Zero
 	}

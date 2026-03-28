@@ -22,7 +22,7 @@ type Option struct {
 	Class   databento.InstrumentClass // option class, e.g. 'C' for call, 'P' for put
 	Got     Got                       // ready steady go
 	Mode    Mode                      // restriction
-	Sym     symbol.Symbol             // option symbol, e.g. SPXW, SPY
+	Symbol  symbol.Symbol             // underlying symbol, e.g. SPXW, SPY
 	Year    int                       // option expiration year
 	Month   clocky.Month              // option expiration month
 	Day     int                       // option expiration day
@@ -50,9 +50,9 @@ func (o *Option) HasGreeks() bool {
 	return (o.Got & GotGreeks) == GotGreeks
 }
 
-// MarketPrice returns the mid price of the option, or zero if no quote is available.
+// MidPrice returns the mid price of the option, or zero if no quote is available.
 // This might not be a legal price for an order or quote, e.g. SPX ticks at 0.10 or 0.05 increments.
-func (o *Option) MarketPrice() decimal.Decimal {
+func (o *Option) MidPrice() decimal.Decimal {
 	return o.Bid.Add(o.Ask).DivInt(2)
 }
 
@@ -71,7 +71,7 @@ func (o *Option) Expiry() clocky.Time {
 // Returns the stale market mid if delta hasn't been computed yet.
 func (o *Option) FairPrice(futuresPrice decimal.Decimal) decimal.Decimal {
 	if !o.HasGreeks() || futuresPrice.IsZero() || o.fut.IsZero() {
-		return o.MarketPrice()
+		return o.MidPrice()
 	}
 	dES := futuresPrice.Sub(o.fut)
 	adj := o.Delta.Mul(dES)
@@ -95,7 +95,12 @@ func (c *Option) IntrinsicValue(underlyingPrice decimal.Decimal) decimal.Decimal
 
 // String returns a human friendly string representation of the option, e.g. "SPXW 4000.00 C 2024-06-21".
 func (o *Option) String() string {
-	return fmt.Sprintf("%s %s %4s %d-%02d-%02d", o.Sym, o.Strike, o.Class, o.Year, o.Month, o.Day)
+	return fmt.Sprintf("%s %s %4s %d-%02d-%02d", o.Symbol, o.Strike, o.Class, o.Year, o.Month, o.Day)
+}
+
+// StringAligned returns a human friendly string representation of the option with aligned fields for better readability in tables, e.g. "SPXW 4000.00 C 2024-06-21".
+func (o *Option) StringAligned() string {
+	return fmt.Sprintf("%6s %-8s %-4s %d-%02d-%02d", o.Symbol, o.Strike, o.Class, o.Year, o.Month, o.Day)
 }
 
 // OSI returns the OSI code for the option, e.g. "SPXW240621C04000000".
@@ -103,7 +108,7 @@ func (o *Option) OSI() string {
 	if o.osi != "" {
 		return o.osi
 	}
-	o.osi = osi.Encode(o.Sym, o.Strike.Price, byte(o.Class), o.Year, o.Month, o.Day)
+	o.osi = osi.Encode(o.Symbol, o.Strike.Price, byte(o.Class), o.Year, o.Month, o.Day)
 	return o.osi
 }
 
@@ -115,7 +120,7 @@ func (o *Option) ComputeGreeks(underlyingPrice, riskFreeRate, futuresPrice decim
 		return
 	}
 	o.fut = futuresPrice
-	o.mid = o.MarketPrice()
+	o.mid = o.MidPrice()
 	F := underlyingPrice.Float64()
 	K := o.Strike.Price.Float64()
 	r := riskFreeRate.Float64()

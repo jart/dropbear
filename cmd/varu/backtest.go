@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"slices"
 	"time"
 )
 
@@ -48,10 +49,10 @@ func backtest() {
 		}
 		switch m := rec.(type) {
 		case *databento.Instrument:
-			sym := symbol.MustParse(m.GetAsset())
+			symbol := symbol.MustParse(m.GetAsset())
 			year, timeMonth, day := m.Expiration.In(clocky.UTC).Date()
 			month := clocky.Month(timeMonth)
-			if sym == gSymbol && year == wantYear && month == wantMonth && day == wantDay {
+			if symbol == gSymbol && year == wantYear && month == wantMonth && day == wantDay {
 				id := m.Header.InstrumentID
 				strike := decimal.Decimal(m.StrikePrice / 1000)
 				class := m.InstrumentClass
@@ -59,19 +60,20 @@ func backtest() {
 					ID:     id,
 					Class:  class,
 					Strike: &options.Strike{Price: strike},
-					Sym:    sym,
+					Symbol: symbol,
 					Year:   year,
 					Month:  month,
 					Day:    day,
 				}
 				onOptionDef(option)
 			} else {
-				log.Printf("skipping instrument %s expiring on %04d-%02d-%02d\n", sym, year, month, day)
+				log.Printf("skipping instrument %s expiring on %04d-%02d-%02d\n", symbol, year, month, day)
 			}
 		case *databento.CMBP1:
 			now := m.TSRecv
 			clocky.SetNow(now)
-			onOptionTick(m)
+			o := onOptionTick(m)
+			simulateFills(o)
 			clock := now.ClockInt()
 			var realNow time.Time
 			if *rtFlag || *webFlag {
@@ -100,9 +102,9 @@ func backtest() {
 				onOptionDefEnd()
 				ready = true
 			}
-			if ready && now >= nextThought && now >= gNextTradeTime {
+			if ready && now >= nextThought {
 				nextThought = now.Add(*thinkFlag)
-				onThink(now)
+				onData(now)
 			}
 			if *webFlag {
 				for {
@@ -134,50 +136,57 @@ func backtest() {
 	onEndOfDay()
 }
 
-func simulateOrder(sim *Simulation) {
-	gVolume += sim.Legs.Size()
-	gTotalFees = gTotalFees.Add(kFeePerContract.MulInt(sim.Legs.Size()))
-	spread := *spreadFlag
-	for legIt := sim.Legs.Iterator(); legIt.Next(); {
-		sym, pos := legIt.Key(), legIt.Value()
-		opt := gOptionsByOSI[sym]
-		mid := opt.MarketPrice()
-		hlf := opt.Ask.Sub(opt.Bid).DivInt(2)
-		var fillPrice decimal.Decimal
-		if pos.IsPositive() {
-			// buying: compute spread-adjusted price, apply generosity,
-			// but never pay more than the ask (price improvement)
-			fillPrice = quantizeTruncate(mid.Add(hlf.Mul(spread)))
-			for i := 0; i < gGenerosity; i++ {
-				fillPrice = incTick(fillPrice)
-			}
-			for i := 0; i > gGenerosity; i-- {
-				fillPrice = decTick(fillPrice)
-			}
-			fillPrice = fillPrice.Min(opt.Ask).Max(minTick())
-		} else {
-			// selling: compute spread-adjusted price, apply generosity,
-			// but never receive less than the bid (price improvement)
-			fillPrice = quantizeAway(mid.Sub(hlf.Mul(spread)))
-			for i := 0; i < gGenerosity; i++ {
-				fillPrice = decTick(fillPrice)
-			}
-			for i := 0; i > gGenerosity; i-- {
-				fillPrice = incTick(fillPrice)
-			}
-			fillPrice = fillPrice.Max(opt.Bid).Max(minTick())
-		}
-		cashFlow := fillPrice.Mul(pos.Neg()).MulInt(kMultiplier)
-		gCash = gCash.Add(cashFlow)
-		if cashFlow.IsPositive() {
-			gTotalCashIn = gTotalCashIn.Add(cashFlow)
-		} else {
-			gTotalCashOut = gTotalCashOut.Add(cashFlow.Neg())
-		}
-		existing, _ := gPositions.Get(sym)
-		gPositions.Put(sym, existing.Add(pos))
-		recordFill(sym, pos, fillPrice)
+func simulateOrder(order *Order) {
+	// order will be filled immediately if it crosses the spread
+	if !simulateFillOrder(order) {
+		// otherwise we wait for market to move towards limit price
+		addPendingOrder(order)
 	}
-	gFilledOrders = append(gFilledOrders, sim)
-	sanityCheck("simulateOrder")
+}
+
+func simulateFills(option *options.Option) {
+	for _, order := range slices.Clone(gPendingOrdersByOption[option]) {
+		if simulateFillOrder(order) {
+			removePendingOrder(order)
+		}
+	}
+}
+
+func simulateFillOrder(order *Order) bool {
+	if order.Filled() {
+		panic("order already filled")
+	}
+
+	// determine if this order is able to be filled
+	// we assume maximally hostile market that requires crossing the spread
+	// if you order at the mid, you'll have to wait for market to move toward you
+	// e.g. order.price is -.5 (debit/buy) would fill when market moves from -.6 to -.4
+	// e.g. order.price is +.5 (credit/sell) would fill when market moves from +.4 to +.6
+	priceThatMarketDemands := order.NaturalPrice()
+	if priceThatMarketDemands.Cmp(order.Price) < 0 {
+		return false // market hasn't reached our limit yet
+	}
+
+	// simulate fill by updating holdings and cash
+	log.Printf("simulated fill of order #%d at price %s -> %s\n",
+		order.ID, order.Price, priceThatMarketDemands)
+	for _, leg := range order.Legs {
+		var fillPrice decimal.Decimal
+		if leg.Quantity.IsPositive() {
+			fillPrice = leg.Option.Ask // buy high :'(
+		} else {
+			fillPrice = leg.Option.Bid // sell low :'(
+		}
+		gHoldings.Add(leg.Option, leg.Quantity, fillPrice)
+		fee := kFeePerContract.Mul(leg.Quantity.Abs())
+		gHoldings.TotalFees = gHoldings.TotalFees.Add(fee)
+		leg.Filled = true
+	}
+
+	// caller should now call removePendingOrder if it was added
+	return true
+}
+
+func simulateCancelOrder(order *Order) {
+	removePendingOrder(order)
 }
