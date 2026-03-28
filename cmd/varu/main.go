@@ -49,7 +49,7 @@ var (
 	maxErrorFlag   = decimal.Flag("max-error", "1", "maximum acceptable accounting error before panic")
 	thinkFlag      = clocky.DurationFlag("think", "1000ms", "interval between backtest trading analysis")
 	patienceFlag   = clocky.DurationFlag("patience", "30s", "how long to wait before canceling live orders")
-	cooldownFlag   = clocky.DurationFlag("cooldown", "5s", "interval between trading decisions")
+	cooldownFlag   = clocky.DurationFlag("cooldown", "10s", "interval between trading decisions")
 	slowdownFlag   = clocky.DurationFlag("slowdown", "200ms", "polling limit for web dashboard")
 	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
 	maxPendingFlag = flag.Int("max-pending", 1, "maximum number of pending orders")
@@ -57,8 +57,8 @@ var (
 )
 
 const (
-	kStartOfDay  = 9_45_00
-	kStopTrading = 14_30_00
+	kStartOfDay  = 9_35_00
+	kStopTrading = 13_00_00
 	kMarketClose = 16_00_00
 	kMultiplier  = 100
 )
@@ -223,19 +223,21 @@ func beginOrders(now clocky.Time) bool {
 	if !gEODTransitioned && *eodFlag {
 		isPowerHour := now.ClockInt() >= kStopTrading
 		if isPowerHour {
-			liq := computeLiquidationValue()
 			pay := gBaselinePayoff
-			threshold := pay.DivInt(2)
+			liq := computeLiquidationValue()
+			threshold := computeSettlementAt(gChain.Price)
 			if !pay.IsPositive() {
 				loggy.Hint("not liquidating: payoff %s is not positive", pay.Truncate())
-			} else if liq.Cmp(threshold) < 0 {
-				loggy.Hint("not liquidating: liquidation value %s < 50%% of payoff %s", liq.Truncate(), pay.Truncate())
+			} else if liq.Cmp(threshold.DivInt(2)) < 0 {
+				loggy.Hint("not liquidating: liquidation value %s < 50%% of payoff %s", liq.Truncate(), threshold.Truncate())
 			} else {
-				*wRiskFlag *= 10
 				clear(gStrategyEnabled)
 				maps.Copy(gStrategyEnabled, gStrategyEnabledEOD)
+				*patienceFlag = 10 * clocky.Second
+				*cooldownFlag = 3 * clocky.Second
 				gEODTransitioned = true
 				gAllowClosing = true
+				log.Printf("LIQUIDATION MODE ENABLED")
 			}
 		}
 	}

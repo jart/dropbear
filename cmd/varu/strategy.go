@@ -40,8 +40,8 @@ var gStrategyEnabled = map[string]bool{
 }
 
 var gStrategyEnabledEOD = map[string]bool{
-	kStrategyLiquidateCall:         false,
-	kStrategyLiquidatePut:          false,
+	kStrategyLiquidateCall:         true,
+	kStrategyLiquidatePut:          true,
 	kStrategyLiquidateCallVertical: true,
 	kStrategyLiquidatePutVertical:  true,
 }
@@ -232,10 +232,7 @@ func liquidateCallVertical() {
 			if l.Class != 'C' || lh.Quantity.IsNegative() {
 				continue // need a long call
 			}
-			if prune() {
-				continue
-			}
-			if !isSpreadProfitableToClose(s, sh, l, lh) {
+			if !gEODTransitioned && !isSpreadProfitableToClose(s, sh, l, lh) {
 				continue
 			}
 			buy(s)
@@ -257,10 +254,7 @@ func liquidatePutVertical() {
 			if l.Class != 'P' || lh.Quantity.IsNegative() {
 				continue // need a long put
 			}
-			if prune() {
-				continue
-			}
-			if !isSpreadProfitableToClose(s, sh, l, lh) {
+			if !gEODTransitioned && !isSpreadProfitableToClose(s, sh, l, lh) {
 				continue
 			}
 			buy(s)
