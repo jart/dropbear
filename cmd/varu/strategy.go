@@ -104,7 +104,7 @@ func sellCallVertical(lo, hi decimal.Decimal) {
 		return
 	}
 	for _, ss, _ := gChain.Strikes.Ceiling(lo); ss != nil && ss.Price.Cmp(hi) <= 0; ss = ss.Next {
-		for sb := ss.Prev; sb != nil && sb.Price.Cmp(hi) <= 0; sb = sb.Next {
+		for sb := ss.Next; sb != nil && sb.Price.Cmp(hi) <= 0; sb = sb.Next {
 			if prune() {
 				continue
 			}

@@ -29,6 +29,7 @@ var (
 	noneFlag       = flag.Bool("none", false, "disable all strategies")
 	noliqFlag      = flag.Bool("noliq", false, "disable liquidation strategies")
 	comboFlag      = flag.Bool("combo", false, "enable buying and selling combos")
+	eodFlag        = flag.Bool("eod", false, "enable end-of-day liquidation strategies")
 	dbnFlag        = flag.String("dbn", "", "path to backtest data")
 	liveFlag       = flag.Bool("live", false, "run in live trading mode")
 	webFlag        = flag.Bool("web", false, "enable web dashboard feature")
@@ -59,7 +60,7 @@ var (
 const (
 	kXSP         = symbol.Symbol('X' | 'S'<<8 | 'P'<<16)
 	kSPXW        = symbol.Symbol('S' | 'P'<<8 | 'X'<<16 | 'W'<<24)
-	kStartOfDay  = 9_35_00
+	kStartOfDay  = 9_45_00
 	kStopTrading = 14_30_00
 	kMarketClose = 16_00_00
 	kMultiplier  = 100
@@ -105,8 +106,8 @@ var (
 	gAbortSimulation   bool
 	gEODTransitioned   bool
 	gAllowClosing      bool
-	gGenerosity        int              // ticks of spread generosity (positive = generous, negative = greedy)
-	gFilledOrders      []*Simulation    // filled orders for generosity review
+	gGenerosity        int           // ticks of spread generosity (positive = generous, negative = greedy)
+	gFilledOrders      []*Simulation // filled orders for generosity review
 )
 
 var (
@@ -234,7 +235,7 @@ func beginSimulations(now clocky.Time) bool {
 	gBaselineWorst = computeRisk()
 	gBaselineDelta = computeDelta()
 	reviewGenerosity()
-	if !gEODTransitioned {
+	if !gEODTransitioned && *eodFlag {
 		isPowerHour := now.ClockInt() >= kStopTrading
 		if isPowerHour {
 			*wRiskFlag *= 10
@@ -821,8 +822,6 @@ func onOptionTick(t *databento.CMBP1) {
 		default:
 			panic("unexpected option tick action: " + t.Action.String())
 		}
-	} else {
-		loggy.Hint("tick for unknown instrument id %d", t.Header.InstrumentID)
 	}
 }
 

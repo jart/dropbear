@@ -13,19 +13,20 @@ import (
 )
 
 type Option struct {
+	Bid     decimal.Decimal           // bid price, e.g. 0.10 (or zero if undefined)
+	Ask     decimal.Decimal           // ask price, e.g. 0.15 (or zero if undefined)
+	BidSize uint32                    // number of contracts available at the best bid price
+	AskSize uint32                    // number of contracts available at the best ask price
+	Strike  *Strike                   // option strike price
 	ID      uint32                    // instrument id
 	Class   databento.InstrumentClass // option class, e.g. 'C' for call, 'P' for put
 	Got     Got                       // ready steady go
 	Mode    Mode                      // restriction
 	Sym     symbol.Symbol             // option symbol, e.g. SPXW, SPY
-	Strike  *Strike                   // option strike price
 	Year    int                       // option expiration year
 	Month   clocky.Month              // option expiration month
 	Day     int                       // option expiration day
-	Bid     decimal.Decimal           // bid price, e.g. 0.10 (or zero if undefined)
-	Ask     decimal.Decimal           // ask price, e.g. 0.15 (or zero if undefined)
-	BidSize uint32                    // number of contracts available at the best bid price
-	AskSize uint32                    // number of contracts available at the best ask price
+	Chain   *Options                  // parent options chain
 	TS      clocky.Time               // timestamp of when Bid / Ask was last updated
 	IV      decimal.Decimal           // implied volatility at last tick
 	Delta   decimal.Decimal           // Black-76 delta at last tick (dPrice/dES)

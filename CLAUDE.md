@@ -1,6 +1,6 @@
 # dropbear coding guidelines
 
-this project does equities trading using go.
+this project does options and equities trading using go.
 
 ## commands
 
@@ -18,30 +18,17 @@ this project does equities trading using go.
 
 ## packages
 
-- `cubby/` is our QuantConnect-like framework for writing equity trading algorithms
-- `teddy/` is our QuantConnect-like framework for writing crypto trading algorithms
+- `cmd/varu/` our flagship options trading program
 - `clocky/` is our time library
 - `loggy/` is our logging utilities
 - `decimal/` our fixed point number library with 8 decimal places
 - `db/` use `db.Get()` to get a WAL2 SQLite singleton into `~/.dropbear.sqlite3`
 - `indicators/` has indicators similar quantconnect but better, defines candles
+- `broker/schwab/` is our client library for schwab brokerage
 - `broker/alpaca/` is our client library for alpaca brokerage
 - `broker/databento/` is our client library for getting order book data
+- `cubby/` is our QuantConnect-like framework for writing equity trading algorithms
 - `auth/` lets the dropbear https server support yubikey authentication
-
-## equity bars
-
-Files like `~/equitydata/minutes/AAPL` can be read using `ds.Bars` which mmaps them into
-memory one great big array that can be seeked, indexed, etc. They contain OHLC / VWAP data.
-This is *the* data that drives all our equities trading backtests and algorithms. This code
-is the reason why dropbear goes infinitely faster than quantconnect.
-
-If you need data for a stock that hasn't been downloaded yet, all you have to do is run a
-command like `go run ./broker/alpaca/cmd/download GOOG SPY QQQ TSLA PLTR GOOGL`. If the bars
-have already been downloaded, then this command will sync the latest data.
-
-If you want to do analysis on equity bars, then sqlite is easier to use than the binary format.
-You can run `go run ./broker/alpaca/cmd/sqlifybars SPY` to copy the bars to `~/.dropbear.sqlite3`.
 
 ## style
 
@@ -80,33 +67,3 @@ unix nanoseconds in a single `int64` word.
 - `clocky.Duration`
 - Use `clocky.Now()` becasue it can be mocked for backtesting.
 
-## running backtests
-
-our best equities trading strategy is
-
-```bash
-go run ./cmd/holder -backtest -start 2025-10-01 -symbol "GOOG JNJ LLY GILD GLD SLV" -bench "JNJ" -momo
-```
-
-which says
-
-```
-2026-01-23T11:20:00.000000000 backtest completed: 72888 iterations
-2026-01-23T11:20:00.000000000 summary:
-2026-01-23T11:20:00.000000000   start:    $100,000.00
-2026-01-23T11:20:00.000000000   end:      $269,570.88
-2026-01-23T11:20:00.000000000   fees:     $812.26
-2026-01-23T11:20:00.000000000   interest: $2,134.52
-2026-01-23T11:20:00.000000000   max dd:   60.12%
-2026-01-23T11:20:00.000000000   return:   169.57% (540.86% annualized)
-2026-01-23T11:20:00.000000000   bench:    19.36% (61.76% annualized) [JNJ]
-2026-01-23T11:20:00.000000000   period:   114.5 days (0.31 years)
-2026-01-23T11:20:00.000000000 holdings:
-2026-01-23T11:20:00.000000000      USD $-176,388.93 margin $133,787.94
-2026-01-23T11:20:00.000000000     GOOG      308 shares @ $329.04 = $101,344.32
-2026-01-23T11:20:00.000000000      JNJ      584 shares @ $219.74 = $128,327.23
-2026-01-23T11:20:00.000000000      LLY       47 shares @ $1068.08 = $50,199.76
-2026-01-23T11:20:00.000000000     GILD      545 shares @ $136.11 = $74,179.95
-2026-01-23T11:20:00.000000000      GLD      110 shares @ $457.57 = $50,332.98
-2026-01-23T11:20:00.000000000      SLV     -455 shares @ $91.37 = $-41,575.58
-```

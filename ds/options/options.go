@@ -107,6 +107,7 @@ func (oc *Options) populateStrike(o *Option, strikePrice decimal.Decimal) *Strik
 		oc.pendingStrikes.Put(strikePrice, strike)
 	}
 	o.Strike = strike
+	o.Chain = oc
 	if o.Class == databento.InstrumentClassCall {
 		strike.Call = o
 	} else {

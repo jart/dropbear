@@ -1,15 +1,12 @@
 package symbol
 
 import (
-	"errors"
 	"fmt"
 	"unsafe"
 )
 
 // Symbol represents a stock symbol.
 type Symbol int64
-
-var ErrInvalidSymbol = errors.New("invalid stock symbol")
 
 func Parse(ticker string) (Symbol, error) {
 	return ParseBytes(unsafe.Slice(unsafe.StringData(ticker), len(ticker)))
@@ -34,7 +31,7 @@ func ParseBytes(ticker []byte) (Symbol, error) {
 	case 8:
 		return Symbol(uint64(ticker[0]) | uint64(ticker[1])<<8 | uint64(ticker[2])<<16 | uint64(ticker[3])<<24 | uint64(ticker[4])<<32 | uint64(ticker[5])<<40 | uint64(ticker[6])<<48 | uint64(ticker[7])<<56), nil
 	default:
-		return 0, ErrInvalidSymbol
+		return 0, fmt.Errorf("invalid stock symbol: %q", ticker)
 	}
 }
 
@@ -99,7 +96,7 @@ func (s Symbol) MarshalJSON() ([]byte, error) {
 
 func (s *Symbol) UnmarshalJSON(data []byte) error {
 	if data[0] != '"' {
-		return ErrInvalidSymbol
+		return fmt.Errorf("invalid stock symbol: %q", data)
 	}
 	switch len(data) {
 	case 3:
@@ -127,7 +124,7 @@ func (s *Symbol) UnmarshalJSON(data []byte) error {
 		*s = Symbol(uint64(data[1]) | uint64(data[2])<<8 | uint64(data[3])<<16 | uint64(data[4])<<24 | uint64(data[5])<<32 | uint64(data[6])<<40 | uint64(data[7])<<48 | uint64(data[8])<<56)
 		return nil
 	default:
-		return ErrInvalidSymbol
+		return fmt.Errorf("invalid stock symbol: %q", data)
 	}
 }
 

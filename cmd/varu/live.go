@@ -31,6 +31,7 @@ type SimulationUpdate struct {
 
 func live() {
 	loggy.AlsoLogToFile()
+	log.Printf("varu is on the prowl")
 
 	// avoid confusion if we woke up too late
 	if clocky.Now().ClockInt() >= kStopTrading {
