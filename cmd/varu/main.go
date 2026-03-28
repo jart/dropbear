@@ -36,20 +36,20 @@ var (
 	dryFlag        = flag.Bool("dry", false, "don't send new orders in live mode")
 	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
-	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
+	sigmasFlag     = decimal.Flag("sigmas", "2", "number of sigmas of strikes to consider")
 	budgetFlag     = flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
 	floorFlag      = flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
-	spreadFlag     = decimal.Flag("spread", "-1", "spread crossing (-1=make, 0=mid, 1=take)")
+	spreadFlag     = decimal.Flag("spread", "0", "spread crossing (-1=make, 0=mid, 1=take)")
 	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
 	closeFlag      = flag.Float64("closer", .1, "random probability that closing will be allowed")
 	demandFlag     = decimal.Flag("demand", "1.1", "minimum ratio of open credit to close cost for liquidation")
 	wPayoffFlag    = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
 	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
-	wDeltaFlag     = decimal.Flag("w-delta", "10", "scoring weight for delta neutrality improvement")
+	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
 	maxErrorFlag   = decimal.Flag("max-error", "1", "maximum acceptable accounting error before panic")
 	thinkFlag      = clocky.DurationFlag("think", "1000ms", "interval between backtest trading analysis")
 	patienceFlag   = clocky.DurationFlag("patience", "30s", "how long to wait before canceling live orders")
-	cooldownFlag   = clocky.DurationFlag("cooldown", "1s", "interval between trading decisions")
+	cooldownFlag   = clocky.DurationFlag("cooldown", "5s", "interval between trading decisions")
 	slowdownFlag   = clocky.DurationFlag("slowdown", "200ms", "polling limit for web dashboard")
 	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
 	maxPendingFlag = flag.Int("max-pending", 1, "maximum number of pending orders")
@@ -315,10 +315,10 @@ func end(strategy string) bool {
 		return false
 	}
 	payoff := computeExpectedPayoff()
-	payoffImprovement := payoff.Sub(gBaselinePayoff)
-	if payoffImprovement.IsNegative() {
-		return false
-	}
+	// payoffImprovement := payoff.Sub(gBaselinePayoff)
+	// if payoffImprovement.IsNegative() {
+	// 	return false
+	// }
 	risk := computeRisk()
 	score := scoreOrder(payoff, risk)
 	if !score.IsPositive() {
@@ -340,7 +340,7 @@ func scoreOrder(payoff, risk decimal.Decimal) decimal.Decimal {
 	payoffImprovement := payoff.Sub(gBaselinePayoff)
 	riskReduction := risk.Sub(gBaselineRisk).Max(decimal.Zero)
 	delta := computeDelta()
-	deltaImprovement := gBaselineDelta.Abs().Sub(delta.Abs()).Max(decimal.Zero)
+	deltaImprovement := gBaselineDelta.Abs().Sub(delta.Abs())
 	a := payoffImprovement.Mul(*wPayoffFlag)
 	b := riskReduction.Mul(*wRiskFlag)
 	c := deltaImprovement.Mul(*wDeltaFlag)
