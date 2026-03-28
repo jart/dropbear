@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"runtime/pprof"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/emirpasic/gods/v2/sets/treeset"
@@ -47,8 +48,8 @@ var (
 	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
 	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
 	maxErrorFlag   = decimal.Flag("max-error", "1", "maximum acceptable accounting error before panic")
-	thinkFlag      = clocky.DurationFlag("think", "1000ms", "interval between backtest trading analysis")
-	patienceFlag   = clocky.DurationFlag("patience", "30s", "how long to wait before canceling live orders")
+	thinkFlag      = clocky.DurationFlag("think", "50ms", "interval between backtest trading analysis")
+	patienceFlag   = clocky.DurationFlag("patience", "10s", "how long to wait before canceling live orders")
 	cooldownFlag   = clocky.DurationFlag("cooldown", "10s", "interval between trading decisions")
 	slowdownFlag   = clocky.DurationFlag("slowdown", "200ms", "polling limit for web dashboard")
 	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
@@ -57,10 +58,11 @@ var (
 )
 
 const (
-	kStartOfDay  = 9_35_00
-	kStopTrading = 13_00_00
-	kMarketClose = 16_00_00
-	kMultiplier  = 100
+	kStartOfDay   = 9_30_00
+	kFullRiskTime = 12_00_00
+	kStopTrading  = 13_00_00
+	kMarketClose  = 16_00_00
+	kMultiplier   = 100
 )
 
 var (
@@ -106,6 +108,7 @@ var (
 func main() {
 	loggy.Init()
 	flag.Parse()
+	log.Println(strings.Join(os.Args, " "))
 	black76.DaysPerYear = 252
 	black76.HoursPerDay = 6.5
 	gSymbol = symbol.MustParse(*symbolFlag)
@@ -203,6 +206,7 @@ func trade(now clocky.Time) {
 	buyPutVertical(lo_wide, hi_near)
 	liquidatePut()
 	liquidateCall()
+	liquidatePair()
 	liquidateCallVertical()
 	liquidatePutVertical()
 	loggy.Hint("thought for %s (%d orders)", time.Since(benchStartTime), gOrderCounter)
@@ -225,11 +229,13 @@ func beginOrders(now clocky.Time) bool {
 		if isPowerHour {
 			pay := gBaselinePayoff
 			liq := computeLiquidationValue()
-			threshold := computeSettlementAt(gChain.Price)
-			if !pay.IsPositive() {
-				loggy.Hint("not liquidating: payoff %s is not positive", pay.Truncate())
-			} else if liq.Cmp(threshold.DivInt(2)) < 0 {
-				loggy.Hint("not liquidating: liquidation value %s < 50%% of payoff %s", liq.Truncate(), threshold.Truncate())
+			eod := computeSettlementAt(gChain.Price)
+			if liq.Cmp(pay) < 0 {
+				loggy.Hint("not liquidating: liquidation value %s is less than payoff %s", liq.Truncate(), pay.Truncate())
+			} else if pay.Cmp(decimal.FromInt(3000)) < 0 {
+				loggy.Hint("not liquidating: payoff %s is too low", pay.Truncate())
+			} else if liq.Cmp(eod.DivInt(2)) < 0 {
+				loggy.Hint("not liquidating: not enough theta gained; liquidation value %s < 50%% of payoff %s", liq.Truncate(), eod.Truncate())
 			} else {
 				clear(gStrategyEnabled)
 				maps.Copy(gStrategyEnabled, gStrategyEnabledEOD)
@@ -486,6 +492,22 @@ func iterateStrikes(f func(*options.Strike)) {
 
 // precomputeSettlements caches baseline settlement values at every strike
 // so that orders only need to add the delta from their 2 staged legs.
+// riskRamp returns a factor from 0.1 to 1.0 that linearly ramps risk
+// tolerance from market open (9:45) to noon (12:00). This prevents the
+// robot from maxing out its risk budget in the first few minutes.
+func riskRamp() float64 {
+	const rampStart = kStartOfDay
+	const rampEnd = kFullRiskTime
+	clock := float64(clocky.Now().ClockInt())
+	if clock <= rampStart {
+		return 0.1
+	}
+	if clock >= rampEnd {
+		return 1.0
+	}
+	return 0.1 + 0.9*(clock-rampStart)/(rampEnd-rampStart)
+}
+
 func precomputeSettlements() {
 	em := gChain.ExpectedMove().Float64()
 	gBaselineSettlements = gBaselineSettlements[:0]
@@ -504,7 +526,7 @@ func precomputeSettlements() {
 			movement := gChain.Price.Sub(strike.Price).Abs().Float64()
 			sigmas := movement / em
 			blend := (prob.NormCDF(sigmas) - .5) * 2
-			ss.maxLoss = math.FMA(*floorFlag-*budgetFlag, blend, *budgetFlag)
+			ss.maxLoss = math.FMA(*floorFlag-*budgetFlag, blend, *budgetFlag) * riskRamp()
 		}
 		gBaselineSettlements = append(gBaselineSettlements, ss)
 	}

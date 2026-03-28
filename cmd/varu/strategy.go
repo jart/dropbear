@@ -20,6 +20,7 @@ const (
 	kStrategyLiquidatePut          = "liquidate put"
 	kStrategyLiquidateCallVertical = "liquidate call vertical"
 	kStrategyLiquidatePutVertical  = "liquidate put vertical"
+	kStrategyLiquidatePair         = "liquidate pair"
 )
 
 var gStrategyEnabled = map[string]bool{
@@ -37,13 +38,15 @@ var gStrategyEnabled = map[string]bool{
 	kStrategyLiquidatePut:          false,
 	kStrategyLiquidateCallVertical: false,
 	kStrategyLiquidatePutVertical:  false,
+	kStrategyLiquidatePair:         false,
 }
 
 var gStrategyEnabledEOD = map[string]bool{
+	kStrategyLiquidatePair:         true,
 	kStrategyLiquidateCall:         true,
 	kStrategyLiquidatePut:          true,
-	kStrategyLiquidateCallVertical: true,
-	kStrategyLiquidatePutVertical:  true,
+	kStrategyLiquidateCallVertical: false,
+	kStrategyLiquidatePutVertical:  false,
 }
 
 func buyCall() {
@@ -198,11 +201,15 @@ func liquidateCall() {
 	if !gStrategyEnabled[kStrategyLiquidateCall] {
 		return
 	}
-	for option := range gHoldings.Positions {
-		if option.Class != 'C' {
+	for x, xh := range gHoldings.Positions {
+		if x.Class != 'C' {
 			continue
 		}
-		sell(option)
+		if xh.Quantity.IsPositive() {
+			sell(x)
+		} else {
+			buy(x)
+		}
 		end(kStrategyLiquidateCall)
 	}
 }
@@ -211,11 +218,15 @@ func liquidatePut() {
 	if !gStrategyEnabled[kStrategyLiquidatePut] {
 		return
 	}
-	for option := range gHoldings.Positions {
-		if option.Class != 'P' {
+	for x, xh := range gHoldings.Positions {
+		if x.Class != 'P' {
 			continue
 		}
-		sell(option)
+		if xh.Quantity.IsPositive() {
+			sell(x)
+		} else {
+			buy(x)
+		}
 		end(kStrategyLiquidatePut)
 	}
 }
@@ -229,6 +240,9 @@ func liquidateCallVertical() {
 			continue // need a short call
 		}
 		for l, lh := range gHoldings.Positions {
+			if s == l {
+				continue
+			}
 			if l.Class != 'C' || lh.Quantity.IsNegative() {
 				continue // need a long call
 			}
@@ -251,6 +265,9 @@ func liquidatePutVertical() {
 			continue // need a short put
 		}
 		for l, lh := range gHoldings.Positions {
+			if s == l {
+				continue
+			}
 			if l.Class != 'P' || lh.Quantity.IsNegative() {
 				continue // need a long put
 			}
@@ -260,6 +277,33 @@ func liquidatePutVertical() {
 			buy(s)
 			sell(l)
 			end(kStrategyLiquidatePutVertical)
+		}
+	}
+}
+
+func liquidatePair() {
+	if !gStrategyEnabled[kStrategyLiquidatePair] {
+		return
+	}
+	for x, xh := range gHoldings.Positions {
+		for y, yh := range gHoldings.Positions {
+			if x == y {
+				continue
+			}
+			if x.OSI() >= y.OSI() {
+				continue
+			}
+			if xh.Quantity.IsPositive() {
+				sell(x)
+			} else {
+				buy(x)
+			}
+			if yh.Quantity.IsPositive() {
+				sell(y)
+			} else {
+				buy(y)
+			}
+			end(kStrategyLiquidatePair)
 		}
 	}
 }
