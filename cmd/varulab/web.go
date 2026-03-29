@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -175,15 +176,16 @@ func queryGrid(database *sql.DB) []GridCell {
 }
 
 type FlagSummary struct {
-	Flags      string `json:"flags"`
-	AvgWinning string `json:"avg_winning"`
-	BestWin    string `json:"best_win"`
-	WorstLoss  string `json:"worst_loss"`
-	Median     string `json:"median"`
-	StdDev     string `json:"std_dev"`
-	Sharpe     string `json:"sharpe"`
-	WinRate    string `json:"win_rate"`
-	Count      int    `json:"count"`
+	Flags      string    `json:"flags"`
+	AvgWinning string    `json:"avg_winning"`
+	BestWin    string    `json:"best_win"`
+	WorstLoss  string    `json:"worst_loss"`
+	Median     string    `json:"median"`
+	StdDev     string    `json:"std_dev"`
+	Sharpe     string    `json:"sharpe"`
+	WinRate    string    `json:"win_rate"`
+	Count      int       `json:"count"`
+	Histogram  []float64 `json:"histogram"` // individual winning values in dollars for sparkline
 }
 
 type SymbolSummary struct {
@@ -219,34 +221,51 @@ func querySummary(database *sql.DB) ([]FlagSummary, []SymbolSummary) {
 			flagSummaries = append(flagSummaries, fs)
 		}
 	}
-	// second pass: compute stddev and sharpe per flag combo
+	// second pass: compute stddev, sharpe, median per flag combo
 	for i := range flagSummaries {
 		fs := &flagSummaries[i]
-		var stddev float64
-		database.QueryRow(`
-			SELECT COALESCE(SQRT(AVG((winning - ?) * (winning - ?))), 0)
-			FROM varulab_runs WHERE status = 'done' AND flags = ?
-		`, fs.AvgWinning, fs.AvgWinning, fs.Flags).Scan(&stddev) // note: this uses string avg, close enough
-		// recompute properly with float avg
-		var avgF float64
-		database.QueryRow(`SELECT AVG(winning) FROM varulab_runs WHERE status = 'done' AND flags = ?`, fs.Flags).Scan(&avgF)
-		database.QueryRow(`
-			SELECT COALESCE(SQRT(AVG((winning - ?) * (winning - ?))), 0)
-			FROM varulab_runs WHERE status = 'done' AND flags = ?
-		`, avgF, avgF, fs.Flags).Scan(&stddev)
-		fs.StdDev = decimal.Decimal(int64(stddev)).Format(2)
+		// collect all winning values for this flag combo
+		var values []float64
+		vrows, _ := database.Query(`SELECT winning FROM varulab_runs WHERE status = 'done' AND flags = ? ORDER BY winning`, fs.Flags)
+		if vrows != nil {
+			for vrows.Next() {
+				var v float64
+				vrows.Scan(&v)
+				values = append(values, v)
+			}
+			vrows.Close()
+		}
+		if len(values) == 0 {
+			continue
+		}
+		// mean
+		var sum float64
+		for _, v := range values {
+			sum += v
+		}
+		mean := sum / float64(len(values))
+		// stddev
+		var variance float64
+		for _, v := range values {
+			d := v - mean
+			variance += d * d
+		}
+		stddev := math.Sqrt(variance / float64(len(values)))
+		fs.StdDev = strconv.FormatFloat(stddev/1e6, 'f', 2, 64)
 		if stddev > 0 {
-			fs.Sharpe = strconv.FormatFloat(avgF/stddev, 'f', 2, 64)
+			fs.Sharpe = strconv.FormatFloat(mean/stddev, 'f', 2, 64)
 		} else {
 			fs.Sharpe = "-"
 		}
 		// median
-		var median float64
-		database.QueryRow(`
-			SELECT winning FROM varulab_runs WHERE status = 'done' AND flags = ?
-			ORDER BY winning LIMIT 1 OFFSET ?
-		`, fs.Flags, fs.Count/2).Scan(&median)
+		median := values[len(values)/2]
 		fs.Median = decimal.Decimal(int64(median)).Format(2)
+		// histogram: convert to dollars (values are decimal int64 with 6 places)
+		hist := make([]float64, len(values))
+		for j, v := range values {
+			hist[j] = v / 1e6
+		}
+		fs.Histogram = hist
 	}
 
 	var symbolSummaries []SymbolSummary

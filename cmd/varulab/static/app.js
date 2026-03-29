@@ -119,17 +119,43 @@
     return 'cell-red-3';
   }
 
+  // Spark histogram: sorted values rendered as vertical bars
+  function sparkHist(values) {
+    if (!values || values.length === 0) return '';
+    var w = 200, h = 40;
+    var sorted = values.slice().sort(function(a, b) { return a - b; });
+    var maxAbs = Math.max(Math.abs(sorted[0]), Math.abs(sorted[sorted.length - 1]), 1);
+    var mid = h / 2;
+    var barW = Math.max(1, Math.floor(w / sorted.length));
+    var bars = '';
+    for (var i = 0; i < sorted.length; i++) {
+      var v = sorted[i];
+      var barH = Math.abs(v) / maxAbs * mid;
+      var x = i * barW;
+      var color = v >= 0 ? '#98c379' : '#e06c75';
+      if (v >= 0) {
+        bars += '<rect x="' + x + '" y="' + (mid - barH) + '" width="' + barW + '" height="' + barH + '" fill="' + color + '"/>';
+      } else {
+        bars += '<rect x="' + x + '" y="' + mid + '" width="' + barW + '" height="' + barH + '" fill="' + color + '"/>';
+      }
+    }
+    return '<svg width="' + (sorted.length * barW) + '" height="' + h + '" style="vertical-align:middle">' +
+      '<line x1="0" y1="' + mid + '" x2="' + (sorted.length * barW) + '" y2="' + mid + '" stroke="#333" stroke-width="1"/>' +
+      bars + '</svg>';
+  }
+
   // Summary
   function loadSummary() {
     fetch('/api/summary').then(r => r.json()).then(data => {
       const el = document.getElementById('summary');
-      let html = '<h2>Best Flags</h2><table><tr><th>Flags</th><th>Avg</th><th>Median</th><th>Best</th><th>Worst</th><th>StdDev</th><th>Sharpe</th><th>Win Rate</th><th>Count</th></tr>';
+      let html = '<h2>Best Flags</h2><table><tr><th>Flags</th><th>Distribution</th><th>Avg</th><th>Median</th><th>Best</th><th>Worst</th><th>StdDev</th><th>Sharpe</th><th>Win Rate</th><th>Count</th></tr>';
       (data.flags || []).forEach(f => {
         const cls = parseFloat(f.avg_winning) >= 0 ? 'positive' : 'negative';
         const bcls = parseFloat(f.best_win) >= 0 ? 'positive' : 'negative';
         const wcls = parseFloat(f.worst_loss) >= 0 ? 'positive' : 'negative';
         const mcls = parseFloat(f.median) >= 0 ? 'positive' : 'negative';
         html += '<tr><td style="text-align:left">' + (f.flags || '(baseline)') + '</td>' +
+          '<td style="padding:2px">' + sparkHist(f.histogram || []) + '</td>' +
           '<td class="' + cls + '">' + f.avg_winning + '</td>' +
           '<td class="' + mcls + '">' + f.median + '</td>' +
           '<td class="' + bcls + '">' + f.best_win + '</td>' +
