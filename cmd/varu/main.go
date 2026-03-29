@@ -28,6 +28,8 @@ var (
 	noneFlag       = flag.Bool("none", false, "disable all strategies")
 	noliqFlag      = flag.Bool("noliq", false, "disable liquidation strategies")
 	comboFlag      = flag.Bool("combo", false, "enable buying and selling combos")
+	bearishFlag    = flag.Bool("bearish", false, "only sell call verticals (bearish bias)")
+	bullishFlag    = flag.Bool("bullish", false, "only sell put verticals (bullish bias)")
 	hostileFlag    = flag.Bool("hostile", false, "simulate maximum hostility on fills")
 	eodFlag        = flag.Bool("eod", false, "enable end-of-day liquidation strategies")
 	dbnFlag        = flag.String("dbn", "", "path to backtest data")
@@ -127,6 +129,14 @@ func main() {
 		for k := range gStrategyEnabled {
 			gStrategyEnabled[k] = true
 		}
+	}
+	if *bearishFlag {
+		gStrategyEnabled[kStrategySellPutVertical] = false
+		gStrategyEnabled[kStrategyBuyPutVertical] = false
+	}
+	if *bullishFlag {
+		gStrategyEnabled[kStrategySellCallVertical] = false
+		gStrategyEnabled[kStrategyBuyCallVertical] = false
 	}
 	if *noliqFlag {
 		gStrategyEnabled[kStrategyLiquidateCall] = false

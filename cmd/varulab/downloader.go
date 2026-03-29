@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -94,13 +95,15 @@ func downloadDbn(sym, date, outputPath string) error {
 	tmpPath := outputPath + ".tmp"
 	defer os.Remove(tmpPath)
 
-	cmd := exec.Command("go", "run", "./broker/databento/cmd/dbndownload",
+	args := []string{"run", "./broker/databento/cmd/dbndownload",
 		"-date", date,
 		"-sym", sym,
 		"-schema", "cmbp-1",
 		"-j", "50",
 		"-o", tmpPath,
-	)
+	}
+	log.Printf("exec: go %s", strings.Join(args, " "))
+	cmd := exec.Command("go", args...)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("dbndownload: %w", err)

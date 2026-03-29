@@ -13,8 +13,15 @@
   });
 
   // Modal
+  var modal = document.getElementById('modal');
   document.querySelector('.modal-close').addEventListener('click', () => {
-    document.getElementById('modal').classList.add('hidden');
+    modal.classList.add('hidden');
+  });
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') modal.classList.add('hidden');
   });
 
   function showLog(runId) {

@@ -111,7 +111,7 @@ func main() {
 	log.Printf("downloaded %d instrument files", len(files))
 
 	// Phase 3: write output file
-	outFile, err := os.Create(*outputFlag)
+	outFile, err := os.Create(*outputFlag + ".tmp")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -199,6 +199,7 @@ func main() {
 	if err := out.Flush(); err != nil {
 		log.Fatal("flush:", err)
 	}
+	os.Rename(*outputFlag+".tmp", *outputFlag)
 	log.Printf("done: %d records written to %s", written, *outputFlag)
 }
 

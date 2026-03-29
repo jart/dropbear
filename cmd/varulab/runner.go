@@ -40,6 +40,7 @@ func executeRun(ctx context.Context, db *sql.DB, run *Run) {
 		args = append(args, flags...)
 	}
 
+	log.Printf("exec: go %s", strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
