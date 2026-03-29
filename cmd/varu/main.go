@@ -43,6 +43,7 @@ var (
 	budgetFlag     = flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
 	floorFlag      = flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
 	spreadFlag     = decimal.Flag("spread", "0", "spread crossing (-1=make, 0=mid, 1=take)")
+	evalFlag       = decimal.Flag("eval", "2", "spread aggressiveness for scoring (0=same as -spread)")
 	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
 	closeFlag      = flag.Float64("closer", .1, "random probability that closing will be allowed")
 	demandFlag     = decimal.Flag("demand", "1.1", "minimum ratio of open credit to close cost for liquidation")
@@ -339,15 +340,21 @@ func end(strategy string) bool {
 	if price.IsZero() {
 		return false
 	}
-	gStagedCash = price.MulInt(kMultiplier)
+	// evaluate at the pessimistic eval spread for scoring
+	// this filters out marginal trades that only work at mid
+	evalPrice := chooseEvalPrice()
+	if evalPrice.IsZero() {
+		return false
+	}
+	gStagedCash = evalPrice.MulInt(kMultiplier)
 	if !checkRiskTolerance() {
 		return false
 	}
 	payoff := computeExpectedPayoff()
-	// payoffImprovement := payoff.Sub(gBaselinePayoff)
-	// if payoffImprovement.IsNegative() {
-	// 	return false
-	// }
+	payoffImprovement := payoff.Sub(gBaselinePayoff)
+	if payoffImprovement.IsNegative() {
+		return false
+	}
 	risk := computeRisk()
 	score := scoreOrder(payoff, risk)
 	if !score.IsPositive() {
@@ -418,12 +425,18 @@ func isPendingOrderToxic(order *Order) bool {
 }
 
 func choosePriceForOrder() decimal.Decimal {
-	// exec controls where in the spread we price:
-	//   -1 = make (bid for buys, ask for sells — most favorable)
-	//    0 = mid
-	//    1 = take (ask for buys, bid for sells — least favorable)
-	// values beyond ±1 go past the spread
-	spread := *spreadFlag
+	return choosePriceAtSpread(*spreadFlag)
+}
+
+func chooseEvalPrice() decimal.Decimal {
+	eval := *evalFlag
+	if eval.IsZero() {
+		eval = *spreadFlag
+	}
+	return choosePriceAtSpread(eval)
+}
+
+func choosePriceAtSpread(spread decimal.Decimal) decimal.Decimal {
 	price := decimal.Zero
 	for _, leg := range gStagedLegs {
 		opt := leg.Option

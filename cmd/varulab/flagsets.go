@@ -8,17 +8,18 @@ import (
 )
 
 // kBaseFlags are included in every backtest run.
-var kBaseFlags = "-think 50ms"
+var kBaseFlags = "-think=50ms"
 
 // kFlagDimensions defines the search space. Each inner slice is a dimension;
 // the Cartesian product of all dimensions (plus a baseline with each dimension
 // absent) generates the full set of flag combinations to test.
 var kFlagDimensions = [][]string{
+	{"-hostile"},
 	{"-bearish"},
-	{"-spread -.1", "-spread 0", "-spread .1", "-spread 1"},
-	{"-sigmas 1", "-sigmas 1.5", "-sigmas 2", "-sigmas 2.5", "-sigmas 3"},
-	{"-floor 20_000", "-floor 80_000"},
-	{"-budget 1_000"},
+	{"-spread=-1"},
+	{"-sigmas=1.5", "-sigmas=2.5"},
+	{"-floor=100_000"},
+	{"-combo"},
 	{"-eod"},
 }
 
