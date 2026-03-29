@@ -1,15 +1,19 @@
 (function() {
   'use strict';
 
-  // Tab switching
+  // Tab switching with hash persistence
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    var btn = document.querySelector('.tab[data-tab="' + tab + '"]');
+    if (btn) btn.classList.add('active');
+    var panel = document.getElementById(tab);
+    if (panel) panel.classList.add('active');
+    location.hash = tab;
+    loadTab(tab);
+  }
   document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(btn.dataset.tab).classList.add('active');
-      loadTab(btn.dataset.tab);
-    });
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
   // Modal
@@ -55,7 +59,6 @@
     switch (tab) {
       case 'grid': loadGrid(); break;
       case 'summary': loadSummary(); break;
-      case 'flags': loadFlags(); break;
       case 'status': loadStatus(); break;
     }
   }
@@ -223,6 +226,7 @@
 
   window.showRunLog = function(id) { showLog(id); };
 
-  // Initial load
-  loadGrid();
+  // Initial load — restore tab from hash or default to summary
+  var initTab = location.hash.replace('#', '') || 'summary';
+  switchTab(initTab);
 })();

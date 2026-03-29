@@ -76,7 +76,7 @@ type DashboardState struct {
 	Counts   RunCounts    `json:"counts"`
 	Active   []RunSummary `json:"active"`
 	Recent   []RunSummary `json:"recent"`
-	FlagSets []FlagSet    `json:"flag_sets"`
+	Flags    []string     `json:"flags"`
 }
 
 type RunCounts struct {
@@ -129,7 +129,7 @@ func buildDashboardState(database *sql.DB) DashboardState {
 		}
 	}
 
-	state.FlagSets, _ = listFlagSets(database)
+	state.Flags, _ = generateFlagCombinations()
 	return state
 }
 
@@ -369,37 +369,13 @@ func handleRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleFlagSets(w http.ResponseWriter, r *http.Request) {
-	database := db.Get()
-	switch r.Method {
-	case "GET":
-		sets, _ := listFlagSets(database)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(sets)
-
-	case "POST":
-		var req struct {
-			Name  string `json:"name"`
-			Flag  string `json:"flag"`
-			Value string `json:"value"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		id, err := addFlagSet(database, req.Name, req.Flag, req.Value)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]int64{"id": id})
-
-	case "DELETE":
-		idStr := r.URL.Query().Get("id")
-		id, _ := strconv.ParseInt(idStr, 10, 64)
-		deleteFlagSet(database, id)
-		w.WriteHeader(204)
-	}
+	noCache(w)
+	w.Header().Set("Content-Type", "application/json")
+	combos, _ := generateFlagCombinations()
+	json.NewEncoder(w).Encode(map[string]any{
+		"dimensions":   kFlagDimensions,
+		"combinations": len(combos),
+	})
 }
 
 func handleRegenerate(w http.ResponseWriter, r *http.Request) {

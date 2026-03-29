@@ -1,107 +1,51 @@
 package main
 
 import (
-	"database/sql"
 	"dropbear/decimal"
 	"slices"
 	"sort"
 	"strings"
 )
 
-type FlagSet struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Flag    string `json:"flag"`
-	Value   string `json:"value"`
-	Enabled bool   `json:"enabled"`
-}
+// kBaseFlags are included in every backtest run.
+var kBaseFlags = "-think 50ms"
 
-func listFlagSets(db *sql.DB) ([]FlagSet, error) {
-	rows, err := db.Query(`SELECT id, name, flag, value, enabled FROM varulab_flag_sets ORDER BY name, flag, value`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var sets []FlagSet
-	for rows.Next() {
-		var fs FlagSet
-		if err := rows.Scan(&fs.ID, &fs.Name, &fs.Flag, &fs.Value, &fs.Enabled); err != nil {
-			return nil, err
-		}
-		sets = append(sets, fs)
-	}
-	return sets, rows.Err()
-}
-
-func addFlagSet(db *sql.DB, name, flag, value string) (int64, error) {
-	res, err := db.Exec(`INSERT OR IGNORE INTO varulab_flag_sets (name, flag, value, enabled) VALUES (?, ?, ?, 1)`,
-		name, flag, value)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
-}
-
-func deleteFlagSet(db *sql.DB, id int64) error {
-	_, err := db.Exec(`DELETE FROM varulab_flag_sets WHERE id = ?`, id)
-	return err
-}
-
-func toggleFlagSet(db *sql.DB, id int64, enabled bool) error {
-	_, err := db.Exec(`UPDATE varulab_flag_sets SET enabled = ? WHERE id = ?`, enabled, id)
-	return err
+// kFlagDimensions defines the search space. Each inner slice is a dimension;
+// the Cartesian product of all dimensions (plus a baseline with each dimension
+// absent) generates the full set of flag combinations to test.
+var kFlagDimensions = [][]string{
+	{"-bearish"},
+	{"-spread -.1", "-spread 0", "-spread .1", "-spread 1"},
+	{"-sigmas 1", "-sigmas 1.5", "-sigmas 2", "-sigmas 2.5", "-sigmas 3"},
+	{"-floor 20_000", "-floor 80_000"},
+	{"-budget 1_000"},
+	{"-eod"},
 }
 
 // generateFlagCombinations returns all Cartesian product combinations of
-// enabled flag sets. Each combination is a canonical sorted flag string.
+// kFlagDimensions. Each combination is a canonical sorted flag string.
 // A baseline empty string is always included.
-func generateFlagCombinations(db *sql.DB) ([]string, error) {
-	rows, err := db.Query(`SELECT name, flag, value FROM varulab_flag_sets WHERE enabled = 1 ORDER BY name, flag, value`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	// group by dimension name
-	dimensions := map[string][][2]string{} // name -> []{"flag", "value"}
-	var dimOrder []string
-	for rows.Next() {
-		var name, flag, value string
-		if err := rows.Scan(&name, &flag, &value); err != nil {
-			return nil, err
-		}
-		if _, ok := dimensions[name]; !ok {
-			dimOrder = append(dimOrder, name)
-		}
-		dimensions[name] = append(dimensions[name], [2]string{flag, value})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	// Cartesian product
+func generateFlagCombinations() ([]string, error) {
 	combos := [][]string{{}} // start with one empty combo
-	for _, name := range dimOrder {
-		opts := dimensions[name]
+	for _, dim := range kFlagDimensions {
 		var next [][]string
 		for _, combo := range combos {
-			// include a version without this dimension (baseline)
+			// include a version without this dimension
 			next = append(next, combo)
-			for _, opt := range opts {
+			for _, opt := range dim {
 				extended := slices.Clone(combo)
-				if opt[1] == "" {
-					extended = append(extended, opt[0]) // boolean flag like -eod
-				} else {
-					extended = append(extended, opt[0], opt[1]) // -spread 2
-				}
+				extended = append(extended, strings.Fields(opt)...)
 				next = append(next, extended)
 			}
 		}
 		combos = next
 	}
-	// canonicalize each combo
+	base := strings.Fields(kBaseFlags)
 	seen := map[string]bool{}
 	var result []string
 	for _, combo := range combos {
-		canon := canonicalizeFlags(combo)
+		full := append(slices.Clone(base), combo...)
+		canon := canonicalizeFlags(full)
 		if !seen[canon] {
 			seen[canon] = true
 			result = append(result, canon)

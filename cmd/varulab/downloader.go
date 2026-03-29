@@ -125,13 +125,17 @@ type DbnFile struct {
 }
 
 func discoverDbnFiles() []DbnFile {
+	symbols := map[string]bool{}
+	for _, s := range parseSymbols() {
+		symbols[s] = true
+	}
 	var files []DbnFile
 	entries, err := os.ReadDir(*datadirFlag)
 	if err != nil {
 		return files
 	}
 	for _, symDir := range entries {
-		if !symDir.IsDir() {
+		if !symDir.IsDir() || !symbols[symDir.Name()] {
 			continue
 		}
 		sym := symDir.Name()

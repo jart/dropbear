@@ -20,7 +20,7 @@ var (
 	symbolsFlag  = flag.String("symbols", defaultSymbols, "comma-separated symbols to backtest")
 )
 
-const defaultSymbols = "AAPL,AMD,AMZN,GOOG,GOOGL,HOOD,INTC,IWM,META,MSFT,MU,NFLX,NVDA,ORCL,PLTR,QQQ,SHOP,SPXW,SPY,TSLA,TSM,VRT"
+const defaultSymbols = "SPXW"
 
 var (
 	gScheduler *Scheduler

@@ -31,7 +31,7 @@ func NewScheduler(db *sql.DB, maxJobs int) *Scheduler {
 // GenerateRuns creates pending run rows for all (symbol, date, flags)
 // combinations that haven't been run at the current git revision.
 func (s *Scheduler) GenerateRuns(gitRev string) int {
-	combos, err := generateFlagCombinations(s.db)
+	combos, err := generateFlagCombinations()
 	if err != nil {
 		log.Printf("generate flag combinations: %v", err)
 		return 0
