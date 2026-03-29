@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -157,5 +158,9 @@ func discoverDbnFiles() []DbnFile {
 			})
 		}
 	}
+	// sort newest first so recent dates get backtested first
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Date > files[j].Date
+	})
 	return files
 }

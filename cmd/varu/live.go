@@ -432,8 +432,6 @@ func onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 		deleteSchwabOrder(order)
 		gStrategiesUsed[order.Strategy] += 1
 		log.Printf("#%d order complete for order id %d: %s", order.ID, order.OrderID, order.Strategy)
-		// trade instantly without delay once an order is filled
-		gNextTradeTime = clocky.Now()
 	}
 }
 
