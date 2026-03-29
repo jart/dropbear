@@ -177,6 +177,11 @@ func queryGrid(database *sql.DB) []GridCell {
 type FlagSummary struct {
 	Flags      string `json:"flags"`
 	AvgWinning string `json:"avg_winning"`
+	BestWin    string `json:"best_win"`
+	WorstLoss  string `json:"worst_loss"`
+	Median     string `json:"median"`
+	StdDev     string `json:"std_dev"`
+	Sharpe     string `json:"sharpe"`
 	WinRate    string `json:"win_rate"`
 	Count      int    `json:"count"`
 }
@@ -191,7 +196,10 @@ type SymbolSummary struct {
 func querySummary(database *sql.DB) ([]FlagSummary, []SymbolSummary) {
 	var flagSummaries []FlagSummary
 	rows, _ := database.Query(`
-		SELECT flags, AVG(winning) as avg_w,
+		SELECT flags,
+			AVG(winning) as avg_w,
+			MAX(winning) as best_w,
+			MIN(winning) as worst_w,
 			CAST(SUM(CASE WHEN winning > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate,
 			COUNT(*) as n
 		FROM varulab_runs WHERE status = 'done'
@@ -201,13 +209,44 @@ func querySummary(database *sql.DB) ([]FlagSummary, []SymbolSummary) {
 		defer rows.Close()
 		for rows.Next() {
 			var fs FlagSummary
-			var avgW float64
+			var avgW, bestW, worstW float64
 			var winRate float64
-			rows.Scan(&fs.Flags, &avgW, &winRate, &fs.Count)
+			rows.Scan(&fs.Flags, &avgW, &bestW, &worstW, &winRate, &fs.Count)
 			fs.AvgWinning = decimal.Decimal(int64(avgW)).Format(2)
+			fs.BestWin = decimal.Decimal(int64(bestW)).Format(2)
+			fs.WorstLoss = decimal.Decimal(int64(worstW)).Format(2)
 			fs.WinRate = strconv.FormatFloat(winRate*100, 'f', 1, 64) + "%"
 			flagSummaries = append(flagSummaries, fs)
 		}
+	}
+	// second pass: compute stddev and sharpe per flag combo
+	for i := range flagSummaries {
+		fs := &flagSummaries[i]
+		var stddev float64
+		database.QueryRow(`
+			SELECT COALESCE(SQRT(AVG((winning - ?) * (winning - ?))), 0)
+			FROM varulab_runs WHERE status = 'done' AND flags = ?
+		`, fs.AvgWinning, fs.AvgWinning, fs.Flags).Scan(&stddev) // note: this uses string avg, close enough
+		// recompute properly with float avg
+		var avgF float64
+		database.QueryRow(`SELECT AVG(winning) FROM varulab_runs WHERE status = 'done' AND flags = ?`, fs.Flags).Scan(&avgF)
+		database.QueryRow(`
+			SELECT COALESCE(SQRT(AVG((winning - ?) * (winning - ?))), 0)
+			FROM varulab_runs WHERE status = 'done' AND flags = ?
+		`, avgF, avgF, fs.Flags).Scan(&stddev)
+		fs.StdDev = decimal.Decimal(int64(stddev)).Format(2)
+		if stddev > 0 {
+			fs.Sharpe = strconv.FormatFloat(avgF/stddev, 'f', 2, 64)
+		} else {
+			fs.Sharpe = "-"
+		}
+		// median
+		var median float64
+		database.QueryRow(`
+			SELECT winning FROM varulab_runs WHERE status = 'done' AND flags = ?
+			ORDER BY winning LIMIT 1 OFFSET ?
+		`, fs.Flags, fs.Count/2).Scan(&median)
+		fs.Median = decimal.Decimal(int64(median)).Format(2)
 	}
 
 	var symbolSummaries []SymbolSummary

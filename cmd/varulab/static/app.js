@@ -123,11 +123,19 @@
   function loadSummary() {
     fetch('/api/summary').then(r => r.json()).then(data => {
       const el = document.getElementById('summary');
-      let html = '<h2>Best Flags</h2><table><tr><th>Flags</th><th>Avg Winning</th><th>Win Rate</th><th>Count</th></tr>';
+      let html = '<h2>Best Flags</h2><table><tr><th>Flags</th><th>Avg</th><th>Median</th><th>Best</th><th>Worst</th><th>StdDev</th><th>Sharpe</th><th>Win Rate</th><th>Count</th></tr>';
       (data.flags || []).forEach(f => {
         const cls = parseFloat(f.avg_winning) >= 0 ? 'positive' : 'negative';
+        const bcls = parseFloat(f.best_win) >= 0 ? 'positive' : 'negative';
+        const wcls = parseFloat(f.worst_loss) >= 0 ? 'positive' : 'negative';
+        const mcls = parseFloat(f.median) >= 0 ? 'positive' : 'negative';
         html += '<tr><td style="text-align:left">' + (f.flags || '(baseline)') + '</td>' +
           '<td class="' + cls + '">' + f.avg_winning + '</td>' +
+          '<td class="' + mcls + '">' + f.median + '</td>' +
+          '<td class="' + bcls + '">' + f.best_win + '</td>' +
+          '<td class="' + wcls + '">' + f.worst_loss + '</td>' +
+          '<td>' + f.std_dev + '</td>' +
+          '<td>' + f.sharpe + '</td>' +
           '<td>' + f.win_rate + '</td><td>' + f.count + '</td></tr>';
       });
       html += '</table>';
