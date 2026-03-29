@@ -61,7 +61,7 @@ var (
 )
 
 const (
-	kStartOfDay   = 9_30_00
+	kStartOfDay   = 9_30_05
 	kFullRiskTime = 12_00_00
 	kStopTrading  = 13_00_00
 	kMarketClose  = 16_00_00
@@ -198,7 +198,7 @@ func trade(now clocky.Time) {
 		return
 	}
 	benchStartTime := time.Now()
-	em_near := gChain.ExpectedMove().DivInt(2)
+	em_near := gChain.ExpectedMove()
 	lo_near := gChain.Price.Sub(em_near)
 	hi_near := gChain.Price.Add(em_near)
 	em_wide := gChain.ExpectedMove().Mul(*sigmasFlag)
