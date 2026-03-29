@@ -4,6 +4,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/nyse"
 	"log"
 	"os"
 	"path"
@@ -195,8 +196,8 @@ func (m *backtest) setTime(now clocky.Time) {
 		m.opened = false
 		m.closed = false
 	}
-	openTime := getOpenTime(year, month, day)
-	closeTime := getCloseTime(year, month, day)
+	openTime := nyse.GetOpenTime(now)
+	closeTime := nyse.GetCloseTime(now)
 	if !m.opened && !now.Before(openTime) && now.Before(closeTime) {
 		m.onMarketOpen()
 	}
@@ -207,8 +208,7 @@ func (m *backtest) checkMarketClose(now clocky.Time) {
 	if m.closed {
 		return
 	}
-	year, month, day := now.Date()
-	closeTime := getCloseTime(year, month, day)
+	closeTime := nyse.GetCloseTime(now)
 	if !now.Before(closeTime) {
 		m.closed = true
 		m.onMarketClose(now)

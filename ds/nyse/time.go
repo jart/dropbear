@@ -1,4 +1,4 @@
-package cubby
+package nyse
 
 import (
 	"dropbear/clocky"

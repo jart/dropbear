@@ -5,6 +5,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/nyse"
 	"dropbear/ds/symbol"
 	"fmt"
 )
@@ -139,9 +140,8 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 	// check time
 	now := clocky.Now()
 	timeInForce := alpaca.TimeInForceDay
-	year, month, day := now.Date()
-	openTime := getOpenTime(year, month, day)
-	closeTime := getCloseTime(year, month, day)
+	openTime := nyse.GetOpenTime(now)
+	closeTime := nyse.GetCloseTime(now)
 	time := now.ClockInt()
 	if now.Before(openTime) || !now.Before(closeTime) {
 		// OPG orders submitted after 9:28am but before 7:00pm ET will be rejected

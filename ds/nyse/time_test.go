@@ -1,4 +1,4 @@
-package cubby
+package nyse
 
 import (
 	"dropbear/clocky"
@@ -465,13 +465,13 @@ func TestTradingDayCount(t *testing.T) {
 
 // Benchmark the holiday check
 func BenchmarkIsHoliday(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		isHoliday(2026, clocky.July, 4)
 	}
 }
 
 func BenchmarkEasterSunday(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		easterSunday(2026)
 	}
 }

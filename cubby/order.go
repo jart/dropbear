@@ -5,6 +5,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/nyse"
 	"fmt"
 	"log"
 
@@ -57,9 +58,8 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 	}
 
 	// check order time
-	year, month, day := now.Date()
-	openTime := getOpenTime(year, month, day)
-	closeTime := getCloseTime(year, month, day)
+	openTime := nyse.GetOpenTime(now)
+	closeTime := nyse.GetCloseTime(now)
 	if now.Before(openTime) {
 		return
 	}

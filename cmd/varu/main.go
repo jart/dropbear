@@ -277,7 +277,9 @@ func sendBestOrder(now clocky.Time) {
 				log.Printf("  sell %s", leg.Option)
 			}
 		}
-		break
+		if true {
+			break
+		}
 	}
 	gSimulations.Clear()
 }

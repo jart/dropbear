@@ -26,6 +26,7 @@ import (
 	"dropbear/cubby"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/ds/nyse"
 	"dropbear/ds/symbol"
 	"dropbear/indicators"
 	"dropbear/loggy"
@@ -200,8 +201,8 @@ func (h *Holding) onBar(bar *ds.Bar) {
 	}
 
 	now := clocky.Now()
-	openTime := cubby.GetOpenTime(now)
-	closeTime := cubby.GetCloseTime(now)
+	openTime := nyse.GetOpenTime(now)
+	closeTime := nyse.GetCloseTime(now)
 	if now < openTime || now >= closeTime {
 		return
 	}
@@ -232,7 +233,7 @@ func (h *Holding) onBar(bar *ds.Bar) {
 // rebalanceAll rebalances all holdings, allocating available BP proportionally by weight
 func rebalanceAll() {
 	now := clocky.Now()
-	closeTime := cubby.GetCloseTime(now)
+	closeTime := nyse.GetCloseTime(now)
 	inNoBuyWindow := closeTime.Sub(now) <= *flagNoBuyTime
 
 	for _, h := range gHoldings {

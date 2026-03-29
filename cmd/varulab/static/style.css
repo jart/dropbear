@@ -1,0 +1,176 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0e14;
+  color: #c8ccd4;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: #131820;
+  border-bottom: 1px solid #1e2430;
+}
+
+header h1 {
+  font-size: 16px;
+  color: #61afef;
+}
+
+nav { display: flex; gap: 4px; }
+
+.tab {
+  background: transparent;
+  border: 1px solid #1e2430;
+  color: #636d83;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.tab.active {
+  color: #c8ccd4;
+  border-color: #61afef;
+  background: #1a2030;
+}
+
+#counts {
+  margin-left: auto;
+  color: #636d83;
+  font-size: 12px;
+}
+
+main { padding: 16px; }
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+th, td {
+  padding: 4px 8px;
+  border: 1px solid #1e2430;
+  text-align: right;
+  white-space: nowrap;
+}
+
+th {
+  background: #131820;
+  color: #636d83;
+  font-weight: normal;
+  position: sticky;
+  top: 0;
+}
+
+td.symbol {
+  text-align: left;
+  font-weight: bold;
+  color: #c8ccd4;
+}
+
+td.positive { color: #98c379; }
+td.negative { color: #e06c75; }
+td.pending { color: #636d83; }
+td.running { color: #e5c07b; }
+td.clickable { cursor: pointer; }
+
+td.cell-green-1 { background: rgba(152, 195, 121, 0.1); color: #98c379; }
+td.cell-green-2 { background: rgba(152, 195, 121, 0.2); color: #98c379; }
+td.cell-green-3 { background: rgba(152, 195, 121, 0.3); color: #98c379; }
+td.cell-red-1 { background: rgba(224, 108, 117, 0.1); color: #e06c75; }
+td.cell-red-2 { background: rgba(224, 108, 117, 0.2); color: #e06c75; }
+td.cell-red-3 { background: rgba(224, 108, 117, 0.3); color: #e06c75; }
+
+.flag-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.flag-form input, .flag-form button {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  background: #131820;
+  border: 1px solid #1e2430;
+  color: #c8ccd4;
+}
+
+.flag-form button {
+  cursor: pointer;
+  background: #1a2030;
+}
+
+.flag-form button:hover {
+  border-color: #61afef;
+}
+
+button.delete-btn {
+  background: transparent;
+  border: none;
+  color: #e06c75;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+button.regen-btn {
+  background: #1a2030;
+  border: 1px solid #61afef;
+  color: #61afef;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  margin-top: 16px;
+}
+
+.modal {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal.hidden { display: none; }
+
+.modal-content {
+  background: #0a0e14;
+  border: 1px solid #1e2430;
+  padding: 16px;
+  width: 90%;
+  max-height: 80%;
+  overflow: auto;
+  position: relative;
+}
+
+.modal-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: #636d83;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+#modal-log {
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

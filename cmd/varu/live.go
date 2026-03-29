@@ -349,7 +349,7 @@ func onChangeEvent(event *schwab.OrderEvent, change *schwab.OrderChangeEvent) {
 	delete(gOrdersBySchwabID, oldID)
 }
 
-func onCancelAcknowledgement(event *schwab.OrderEvent, cancel *schwab.CancelAcknowledgement) {
+func onCancelAcknowledgement(_ *schwab.OrderEvent, cancel *schwab.CancelAcknowledgement) {
 	for _, info := range cancel.LegCancelRequestInfoList {
 		sim := gOrdersBySchwabID[info.LegID]
 		if sim == nil {
