@@ -2,7 +2,7 @@ package sip
 
 import (
 	"dropbear/clocky"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 	"unsafe"
 )
 

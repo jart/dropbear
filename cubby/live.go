@@ -4,7 +4,7 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/ds"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 	"log"
 
 	"github.com/emirpasic/gods/v2/trees/binaryheap"

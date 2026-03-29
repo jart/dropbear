@@ -1,8 +1,8 @@
 package main
 
 import (
+	"dropbear/cboe"
 	"dropbear/clocky"
-	"dropbear/ds/nyse"
 	"fmt"
 	"log"
 	"os"
@@ -10,25 +10,62 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
-// zeroDTE symbols have 0DTE options every trading day.
-// All other symbols only have weekly options expiring on Fridays.
-var zeroDTESymbols = map[string]bool{
-	"SPXW": true,
-	"NDX":  true,
-	"XSP":  true,
-	"SPY":  true,
-	"QQQ":  true,
-	"IWM":  true,
+// activeDirs returns the subset of dataDirs that exist on disk.
+func activeDirs() []string {
+	var dirs []string
+	for _, d := range dataDirs {
+		if fi, err := os.Stat(d); err == nil && fi.IsDir() {
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
+}
+
+// diskUsagePercent returns the percentage of disk used for the filesystem
+// containing the given path.
+func diskUsagePercent(path string) float64 {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return 100 // assume full on error
+	}
+	total := stat.Blocks * uint64(stat.Bsize)
+	free := stat.Bavail * uint64(stat.Bsize)
+	if total == 0 {
+		return 100
+	}
+	return float64(total-free) / float64(total) * 100
+}
+
+// downloadDir returns the first active data dir with <90% disk usage,
+// or empty string if all are full.
+func downloadDir() string {
+	for _, d := range activeDirs() {
+		if diskUsagePercent(d) < 90 {
+			return d
+		}
+	}
+	return ""
+}
+
+// findDbnFile searches all active data dirs for a .dbn file.
+func findDbnFile(sym, date string) string {
+	for _, d := range activeDirs() {
+		path := filepath.Join(d, sym, date+".dbn")
+		if fileExists(path) {
+			return path
+		}
+	}
+	return ""
 }
 
 // runDownloader downloads .dbn files breadth-first backwards in time.
 // It iterates one day at a time across all symbols so that recent data
 // for every symbol is available before going deeper into history.
-func runDownloader(datadir string, symbols []string, quit <-chan struct{}) {
-	// start from yesterday (today's data may still be in-flight)
+func runDownloader(symbols []string, quit <-chan struct{}) {
 	day := clocky.Time(time.Now().Add(-24 * time.Hour).UnixNano())
 
 	for {
@@ -38,12 +75,19 @@ func runDownloader(datadir string, symbols []string, quit <-chan struct{}) {
 		default:
 		}
 
-		if !nyse.IsTradingDay(day) {
+		if day.Format("2006-01-02") < earliestDate {
+			log.Printf("downloader reached earliest date %s, stopping", earliestDate)
+			select {
+			case <-quit:
+				return
+			}
+		}
+
+		if !cboe.IsTradingDay(day) {
 			day = day.Add(-clocky.Day)
 			continue
 		}
 
-		downloaded := false
 		for _, sym := range symbols {
 			select {
 			case <-quit:
@@ -56,25 +100,35 @@ func runDownloader(datadir string, symbols []string, quit <-chan struct{}) {
 			}
 
 			dateStr := day.Format("2006-01-02")
-			path := filepath.Join(datadir, sym, dateStr+".dbn")
-
-			if fileExists(path) {
+			if findDbnFile(sym, dateStr) != "" {
 				continue
 			}
 
-			log.Printf("downloading %s %s", sym, dateStr)
+			dest := downloadDir()
+			if dest == "" {
+				log.Printf("all data dirs are >=90%% full, pausing downloads")
+				select {
+				case <-quit:
+					return
+				case <-time.After(10 * time.Minute):
+					continue
+				}
+			}
+
+			path := filepath.Join(dest, sym, dateStr+".dbn")
+			log.Printf("downloading %s %s -> %s", sym, dateStr, dest)
 			if err := downloadDbn(sym, dateStr, path); err != nil {
 				log.Printf("download failed %s %s: %v", sym, dateStr, err)
 				continue
 			}
 			log.Printf("downloaded %s %s", sym, dateStr)
-			downloaded = true
+			n := gScheduler.GenerateRuns(gGitRev)
+			if n > 0 {
+				log.Printf("generated %d new runs after download", n)
+			}
 			notifyScheduler()
 		}
 
-		if !downloaded {
-			// all files for this day exist or were skipped
-		}
 		day = day.Add(-clocky.Day)
 	}
 }
@@ -130,35 +184,42 @@ func discoverDbnFiles() []DbnFile {
 	for _, s := range parseSymbols() {
 		symbols[s] = true
 	}
+	seen := map[string]bool{} // dedup "SYM/DATE" across dirs
 	var files []DbnFile
-	entries, err := os.ReadDir(*datadirFlag)
-	if err != nil {
-		return files
-	}
-	for _, symDir := range entries {
-		if !symDir.IsDir() || !symbols[symDir.Name()] {
-			continue
-		}
-		sym := symDir.Name()
-		symPath := filepath.Join(*datadirFlag, sym)
-		dateEntries, err := os.ReadDir(symPath)
+	for _, datadir := range activeDirs() {
+		entries, err := os.ReadDir(datadir)
 		if err != nil {
 			continue
 		}
-		for _, de := range dateEntries {
-			name := de.Name()
-			if filepath.Ext(name) != ".dbn" {
+		for _, symDir := range entries {
+			if !symDir.IsDir() || !symbols[symDir.Name()] {
 				continue
 			}
-			date := name[:len(name)-4] // strip .dbn
-			files = append(files, DbnFile{
-				Symbol: sym,
-				Date:   date,
-				Path:   filepath.Join(symPath, name),
-			})
+			sym := symDir.Name()
+			symPath := filepath.Join(datadir, sym)
+			dateEntries, err := os.ReadDir(symPath)
+			if err != nil {
+				continue
+			}
+			for _, de := range dateEntries {
+				name := de.Name()
+				if filepath.Ext(name) != ".dbn" {
+					continue
+				}
+				date := name[:len(name)-4]
+				key := sym + "/" + date
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				files = append(files, DbnFile{
+					Symbol: sym,
+					Date:   date,
+					Path:   filepath.Join(symPath, name),
+				})
+			}
 		}
 	}
-	// sort newest first so recent dates get backtested first
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].Date > files[j].Date
 	})

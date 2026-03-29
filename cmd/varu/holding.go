@@ -2,7 +2,7 @@ package main
 
 import (
 	"dropbear/decimal"
-	"dropbear/ds/options"
+	"dropbear/options"
 )
 
 type Holding struct {

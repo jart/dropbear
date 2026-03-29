@@ -39,10 +39,15 @@ func (s *Scheduler) GenerateRuns(gitRev string) int {
 
 	// find all available dbn files
 	dbnFiles := discoverDbnFiles()
+	tx, err := s.db.Begin()
+	if err != nil {
+		log.Printf("begin tx: %v", err)
+		return 0
+	}
 	created := 0
 	for _, df := range dbnFiles {
 		for _, flags := range combos {
-			_, err := s.db.Exec(`INSERT OR IGNORE INTO varulab_runs (symbol, date, flags, dbn_path, git_rev, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+			_, err := tx.Exec(`INSERT OR IGNORE INTO varulab_runs (symbol, date, flags, dbn_path, git_rev, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
 				df.Symbol, df.Date, flags, df.Path, gitRev, now())
 			if err != nil {
 				log.Printf("insert run: %v", err)
@@ -51,6 +56,7 @@ func (s *Scheduler) GenerateRuns(gitRev string) int {
 			created++
 		}
 	}
+	tx.Commit()
 	return created
 }
 
@@ -144,7 +150,10 @@ func fetchPendingRun(db *sql.DB, preferPath string) *Run {
 		return nil
 	}
 	// mark as claimed to prevent double-dispatch
-	res, _ := db.Exec(`UPDATE varulab_runs SET status = 'claimed' WHERE id = ? AND status = 'pending'`, r.ID)
+	res, err := db.Exec(`UPDATE varulab_runs SET status = 'claimed' WHERE id = ? AND status = 'pending'`, r.ID)
+	if err != nil {
+		return nil
+	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return nil // someone else grabbed it
 	}

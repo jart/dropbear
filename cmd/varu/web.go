@@ -5,7 +5,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/db"
 	"dropbear/decimal"
-	"dropbear/ds/options"
+	"dropbear/options"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -171,7 +171,7 @@ func buildStateSnapshot() StateSnapshot {
 			Payoff:      payoff.FormatThousand(2),
 			Liquidation: computeLiquidationValue().Truncate().FormatThousand(2),
 			Realized:    gHoldings.RealizedPnL.FormatThousand(2),
-			Worst:       computeRiskSlow().FormatThousand(2),
+			Worst:       computeRisk().FormatThousand(2),
 			Notional:    computeNotional().FormatThousand(2),
 			Fees:        gHoldings.TotalFees.FormatThousand(2),
 			EOD:         computeSettlementAt(gChain.Price).FormatThousand(2),

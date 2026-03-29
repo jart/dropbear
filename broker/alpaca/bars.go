@@ -3,8 +3,8 @@ package alpaca
 import (
 	"dropbear/clocky"
 	"dropbear/ds"
-	"dropbear/ds/symbol"
 	"dropbear/netty"
+	"dropbear/symbol"
 	"errors"
 	"fmt"
 	"net/url"

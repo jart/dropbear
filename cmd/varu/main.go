@@ -1,14 +1,14 @@
 package main
 
 import (
+	"dropbear/black76"
 	"dropbear/broker/databento"
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/ds/black76"
-	"dropbear/ds/options"
-	"dropbear/ds/prob"
-	"dropbear/ds/symbol"
 	"dropbear/loggy"
+	"dropbear/options"
+	"dropbear/prob"
+	"dropbear/symbol"
 	"flag"
 	"log"
 	"maps"
@@ -24,47 +24,47 @@ import (
 )
 
 var (
-	allFlag        = flag.Bool("all", false, "enable all strategies")
-	noneFlag       = flag.Bool("none", false, "disable all strategies")
-	noliqFlag      = flag.Bool("noliq", false, "disable liquidation strategies")
-	comboFlag      = flag.Bool("combo", false, "enable buying and selling combos")
-	bearishFlag    = flag.Bool("bearish", false, "only sell call verticals (bearish bias)")
-	bullishFlag    = flag.Bool("bullish", false, "only sell put verticals (bullish bias)")
-	hostileFlag    = flag.Bool("hostile", false, "simulate maximum hostility on fills")
-	eodFlag        = flag.Bool("eod", false, "enable end-of-day liquidation strategies")
-	dbnFlag        = flag.String("dbn", "", "path to backtest data")
-	liveFlag       = flag.Bool("live", false, "run in live trading mode")
-	webFlag        = flag.Bool("web", false, "enable web dashboard feature")
-	rtFlag         = flag.Bool("rt", false, "run backtest in real time mode")
-	dryFlag        = flag.Bool("dry", false, "don't send new orders in live mode")
-	symbolFlag     = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
-	dateFlag       = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
-	sigmasFlag     = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
-	budgetFlag     = flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
-	floorFlag      = flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
-	spreadFlag     = decimal.Flag("spread", "0", "spread crossing (-1=make, 0=mid, 1=take)")
-	evalFlag       = decimal.Flag("eval", "2", "spread aggressiveness for scoring (0=same as -spread)")
-	pruneFlag      = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
-	demandFlag     = decimal.Flag("demand", "1.1", "minimum ratio of open credit to close cost for liquidation")
-	wPayoffFlag    = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
-	wRiskFlag      = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
-	wDeltaFlag     = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
-	maxErrorFlag   = decimal.Flag("max-error", "1", "maximum acceptable accounting error before panic")
-	thinkFlag      = clocky.DurationFlag("think", "50ms", "interval between backtest trading analysis")
-	patienceFlag   = clocky.DurationFlag("patience", "30s", "how long to wait before canceling live orders")
-	cooldownFlag   = clocky.DurationFlag("cooldown", "30s", "interval between trading decisions")
-	slowdownFlag   = clocky.DurationFlag("slowdown", "200ms", "polling limit for web dashboard")
-	heartbeatFlag  = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
-	maxPendingFlag = flag.Int("max-pending", 1, "maximum number of pending orders")
-	flagCPUProfile = flag.String("cpuprofile", "", "write cpu profile to file")
+	allFlag          = flag.Bool("all", false, "enable all strategies")
+	noneFlag         = flag.Bool("none", false, "disable all strategies")
+	noliqFlag        = flag.Bool("noliq", false, "disable liquidation strategies")
+	comboFlag        = flag.Bool("combo", false, "enable buying and selling combos")
+	bearishFlag      = flag.Bool("bearish", false, "only sell call verticals (bearish bias)")
+	bullishFlag      = flag.Bool("bullish", false, "only sell put verticals (bullish bias)")
+	hostileFlag      = flag.Bool("hostile", false, "simulate maximum hostility on fills")
+	eodFlag          = flag.Bool("eod", false, "enable end-of-day liquidation strategies")
+	dbnFlag          = flag.String("dbn", "", "path to backtest data")
+	liveFlag         = flag.Bool("live", false, "run in live trading mode")
+	webFlag          = flag.Bool("web", false, "enable web dashboard feature")
+	rtFlag           = flag.Bool("rt", false, "run backtest in real time mode")
+	dryFlag          = flag.Bool("dry", false, "don't send new orders in live mode")
+	symbolFlag       = flag.String("symbol", "XSP", "symbol to trade (e.g. XSP, SPXW)")
+	dateFlag         = clocky.TimeFlag("date", "2026-03-19", "date of the trades to report")
+	sigmasFlag       = decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
+	budgetFlag       = flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
+	floorFlag        = flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
+	spreadFlag       = decimal.Flag("spread", "0", "spread crossing (-1=make, 0=mid, 1=take)")
+	evalFlag         = decimal.Flag("eval", "2", "spread aggressiveness for scoring (0=same as -spread)")
+	pruneFlag        = flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
+	demandFlag       = decimal.Flag("demand", "1.1", "minimum ratio of open credit to close cost for liquidation")
+	wPayoffFlag      = decimal.Flag("w-payoff", "1", "scoring weight for expected payoff improvement")
+	wRiskFlag        = decimal.Flag("w-risk", "1", "scoring weight for risk reduction")
+	wDeltaFlag       = decimal.Flag("w-delta", "1", "scoring weight for delta neutrality improvement")
+	maxErrorFlag     = decimal.Flag("max-error", "1", "maximum acceptable accounting error before panic")
+	thinkFlag        = clocky.DurationFlag("think", "50ms", "interval between backtest trading analysis")
+	patienceFlag     = clocky.DurationFlag("patience", "30s", "how long to wait before canceling live orders")
+	cooldownFlag     = clocky.DurationFlag("cooldown", "30s", "interval between trading decisions")
+	slowdownFlag     = clocky.DurationFlag("slowdown", "200ms", "polling limit for web dashboard")
+	heartbeatFlag    = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
+	maxPendingFlag   = flag.Int("max-pending", 1, "maximum number of pending orders")
+	flagCPUProfile   = flag.String("cpuprofile", "", "write cpu profile to file")
+	startOfDayFlag   = flag.Int("sod", 9_30_05, "start of day in HHMMSS")
+	fullRiskTimeFlag = flag.Int("frt", 12_00_00, "full risk time in HHMMSS")
+	stopTradingFlag  = flag.Int("eodt", 13_00_00, "stop trading / begin EOD liquidation in HHMMSS")
 )
 
 const (
-	kStartOfDay   = 9_30_05
-	kFullRiskTime = 12_00_00
-	kStopTrading  = 13_00_00
-	kMarketClose  = 16_00_00
-	kMultiplier   = 100
+	kMarketClose = 16_00_00
+	kMultiplier  = 100
 )
 
 var (
@@ -103,8 +103,9 @@ var (
 )
 
 var (
-	kFeePerContract = decimal.Parse("1.2")
-	kRiskFreeRate   = decimal.Parse("0.035")
+	kFeePerContract     = decimal.Parse("1.2")
+	kExpectedPriceRange = decimal.Parse("0.15")
+	kRiskFreeRate       = decimal.Parse("0.035")
 )
 
 func main() {
@@ -132,11 +133,11 @@ func main() {
 	}
 	if *bearishFlag {
 		gStrategyEnabled[kStrategySellPutVertical] = false
-		gStrategyEnabled[kStrategyBuyPutVertical] = false
+		gStrategyEnabled[kStrategyBuyCallVertical] = false
 	}
 	if *bullishFlag {
 		gStrategyEnabled[kStrategySellCallVertical] = false
-		gStrategyEnabled[kStrategyBuyCallVertical] = false
+		gStrategyEnabled[kStrategyBuyPutVertical] = false
 	}
 	if *noliqFlag {
 		gStrategyEnabled[kStrategyLiquidateCall] = false
@@ -175,8 +176,8 @@ func main() {
 
 func onThought(now clocky.Time) {
 	clock := now.ClockInt()
-	if clock < kStartOfDay {
-		loggy.Hint("not trading: before market open (%d < %d)", clock, kStartOfDay)
+	if clock < *startOfDayFlag {
+		loggy.Hint("not trading: before market open (%d < %d)", clock, *startOfDayFlag)
 		return
 	}
 	if now < gNextTradeTime {
@@ -235,7 +236,7 @@ func beginOrders(now clocky.Time) bool {
 	gBaselineRisk = computeRisk()
 	gBaselineDelta = computeDelta()
 	if !gEODTransitioned && *eodFlag {
-		isPowerHour := now.ClockInt() >= kStopTrading
+		isPowerHour := now.ClockInt() >= *stopTradingFlag
 		if isPowerHour {
 			pay := gBaselinePayoff
 			liq := computeLiquidationValue()
@@ -473,12 +474,12 @@ func onHeartbeat() {
 
 func onEndOfDay() {
 	log.Printf("end of day settlement time")
-	iteratePositions(func(option *options.Option, pos decimal.Decimal) {
-		intrinsic := option.IntrinsicValue(gChain.Price)
-		settlement := intrinsic.Mul(pos).MulInt(kMultiplier)
+	for _, holding := range gHoldings.Sorted() {
+		intrinsic := holding.Option.IntrinsicValue(gChain.Price)
+		settlement := intrinsic.Mul(holding.Quantity).MulInt(kMultiplier)
 		gHoldings.Cash = gHoldings.Cash.Add(settlement)
-		log.Printf("have %4s of %s worth %8s", pos, option.StringAligned(), settlement.Truncate())
-	})
+		log.Printf("have %4s of %s worth %8s", holding.Quantity, holding.Option.StringAligned(), settlement.Truncate())
+	}
 	log.Printf("strategies used")
 	for _, strategy := range slices.Sorted(maps.Keys(gStrategiesUsed)) {
 		count := gStrategiesUsed[strategy]
@@ -520,16 +521,15 @@ func iterateStrikes(f func(*options.Strike)) {
 // tolerance from market open (9:45) to noon (12:00). This prevents the
 // robot from maxing out its risk budget in the first few minutes.
 func riskRamp() float64 {
-	const rampStart = kStartOfDay
-	const rampEnd = kFullRiskTime
-	clock := float64(clocky.Now().ClockInt())
-	if clock <= rampStart {
+	clock := clocky.Now().ClockInt()
+	if clock <= *startOfDayFlag {
 		return 0.1
 	}
-	if clock >= rampEnd {
+	frt := *fullRiskTimeFlag
+	if clock >= frt {
 		return 1.0
 	}
-	return 0.1 + 0.9*(clock-rampStart)/(rampEnd-rampStart)
+	return 0.1 + 0.9*float64(clock-*startOfDayFlag)/float64(frt-*startOfDayFlag)
 }
 
 func precomputeSettlements() {
@@ -608,17 +608,6 @@ func computeSettlementAt(underlyingPrice decimal.Decimal) decimal.Decimal {
 		value = value.Add(intrinsic.Mul(pos))
 	})
 	return value.MulInt(kMultiplier).Add(gHoldings.Cash).Add(gStagedCash)
-}
-
-// computeRiskSlow is the non-cached version for the dashboard.
-func computeRiskSlow() decimal.Decimal {
-	worst := decimal.Zero
-	for it := gChain.Strikes.Iterator(); it.Next(); {
-		strike := it.Value()
-		settlement := computeSettlementAt(strike.Price)
-		worst = worst.Min(settlement)
-	}
-	return worst
 }
 
 func computeLiquidationValue() decimal.Decimal {

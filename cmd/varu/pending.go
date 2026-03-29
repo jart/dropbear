@@ -1,7 +1,7 @@
 package main
 
 import (
-	"dropbear/ds/options"
+	"dropbear/options"
 )
 
 var (

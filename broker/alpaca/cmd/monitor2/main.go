@@ -5,8 +5,8 @@ package main
 import (
 	"bufio"
 	"dropbear/broker/alpaca/sip"
-	"dropbear/ds/symbol"
 	"dropbear/loggy"
+	"dropbear/symbol"
 	"flag"
 	"fmt"
 	"io"

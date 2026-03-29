@@ -12,9 +12,9 @@ import (
 
 	"dropbear/broker/schwab"
 	"dropbear/decimal"
-	"dropbear/ds/osi"
-	"dropbear/ds/symbol"
 	"dropbear/loggy"
+	"dropbear/osi"
+	"dropbear/symbol"
 )
 
 func main() {

@@ -1,9 +1,9 @@
 package options
 
 import (
+	"dropbear/black76"
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/ds/black76"
 	"testing"
 )
 

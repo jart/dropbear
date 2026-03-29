@@ -10,7 +10,8 @@ body {
 header {
   display: flex;
   align-items: center;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
   padding: 8px 16px;
   background: #131820;
   border-bottom: 1px solid #1e2430;
@@ -39,13 +40,76 @@ nav { display: flex; gap: 4px; }
   background: #1a2030;
 }
 
+#date-range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 16px;
+  color: #636d83;
+  font-size: 12px;
+}
+
+#symbol-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-left: 8px;
+  max-width: 600px;
+}
+
+.sym-btn {
+  background: transparent;
+  border: 1px solid #1e2430;
+  color: #636d83;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.sym-btn.active {
+  color: #c8ccd4;
+  border-color: #61afef;
+  background: #1a2030;
+}
+
+#date-range input[type="date"] {
+  background: #131820;
+  border: 1px solid #1e2430;
+  color: #c8ccd4;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
 #counts {
   margin-left: auto;
   color: #636d83;
   font-size: 12px;
 }
 
-main { padding: 16px; }
+main {
+  padding: 16px;
+  overflow-x: auto;
+}
+
+main::-webkit-scrollbar {
+  height: 14px;
+}
+
+main::-webkit-scrollbar-track {
+  background: #131820;
+}
+
+main::-webkit-scrollbar-thumb {
+  background: #636d83;
+  border-radius: 7px;
+  border: 2px solid #131820;
+}
+
+main::-webkit-scrollbar-thumb:hover {
+  background: #61afef;
+}
 
 .panel { display: none; }
 .panel.active { display: block; }

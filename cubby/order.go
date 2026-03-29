@@ -2,10 +2,10 @@ package cubby
 
 import (
 	"dropbear/broker/alpaca"
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/ds/nyse"
 	"fmt"
 	"log"
 
@@ -58,8 +58,8 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 	}
 
 	// check order time
-	openTime := nyse.GetOpenTime(now)
-	closeTime := nyse.GetCloseTime(now)
+	openTime := cboe.GetOpenTime(now)
+	closeTime := cboe.GetCloseTime(now)
 	if now.Before(openTime) {
 		return
 	}

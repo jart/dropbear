@@ -2,8 +2,11 @@ package main
 
 import (
 	"dropbear/decimal"
-	"dropbear/ds/options"
+	"dropbear/options"
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 )
 
 type Holdings struct {
@@ -15,6 +18,15 @@ type Holdings struct {
 	TotalError   decimal.Decimal              // total error from quantization, in dollars
 	TotalFees    decimal.Decimal              // total commissions, fees, and regulatory costs
 	Volume       decimal.Decimal              // total number of contracts traded
+}
+
+// Sorted returns holdings sorted by option OSI symbol.
+func (h *Holdings) Sorted() []*Holding {
+	holdings := slices.Collect(maps.Values(h.Positions))
+	slices.SortFunc(holdings, func(a, b *Holding) int {
+		return strings.Compare(a.Option.OSI(), b.Option.OSI())
+	})
+	return holdings
 }
 
 // Add updates holdings to reflect fill.

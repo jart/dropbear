@@ -1,25 +1,42 @@
 package main
 
 import (
+	"database/sql"
 	"dropbear/decimal"
+	"log"
 	"slices"
 	"sort"
 	"strings"
 )
 
-// kBaseFlags are included in every backtest run.
-var kBaseFlags = "-bearish -hostile"
-
-// kFlagDimensions defines the search space. Each inner slice is a dimension;
-// the Cartesian product of all dimensions (plus a baseline with each dimension
-// absent) generates the full set of flag combinations to test.
-var kFlagDimensions = [][]string{
-	{"-spread=1 -eval=3", "-eval=3"},
-}
-
 // generateFlagCombinations returns all Cartesian product combinations of
 // kFlagDimensions. Each combination is a canonical sorted flag string.
 // A baseline empty string is always included.
+// validateConfig panics if base flags overlap with any dimension flags.
+func validateConfig() {
+	baseFlags := map[string]bool{}
+	for _, tok := range strings.Fields(kBaseFlags) {
+		name := tok
+		if i := strings.IndexByte(name, '='); i >= 0 {
+			name = name[:i]
+		}
+		baseFlags[name] = true
+	}
+	for _, dim := range kFlagDimensions {
+		for _, opt := range dim {
+			for _, tok := range strings.Fields(opt) {
+				name := tok
+				if i := strings.IndexByte(name, '='); i >= 0 {
+					name = name[:i]
+				}
+				if baseFlags[name] {
+					panic("flag " + name + " is in both kBaseFlags and kFlagDimensions")
+				}
+			}
+		}
+	}
+}
+
 func generateFlagCombinations() ([]string, error) {
 	combos := [][]string{{}} // start with one empty combo
 	for _, dim := range kFlagDimensions {
@@ -75,6 +92,26 @@ func canonicalizeFlags(tokens []string) string {
 	sort.Slice(groups, func(i, j int) bool {
 		return groups[i].flag < groups[j].flag
 	})
+	// deduplicate: last value wins for same flag name
+	deduped := groups[:0]
+	for i, g := range groups {
+		name := g.flag
+		if j := strings.IndexByte(name, '='); j >= 0 {
+			name = name[:j]
+		}
+		if i > 0 {
+			prev := groups[i-1].flag
+			if j := strings.IndexByte(prev, '='); j >= 0 {
+				prev = prev[:j]
+			}
+			if name == prev {
+				deduped[len(deduped)-1] = g // overwrite with last value
+				continue
+			}
+		}
+		deduped = append(deduped, g)
+	}
+	groups = deduped
 	var parts []string
 	for _, g := range groups {
 		if g.value == "" {
@@ -115,4 +152,41 @@ func parseWinning(log string) (winning, balance, fees decimal.Decimal, ok bool) 
 		}
 	}
 	return decimal.Zero, decimal.Zero, decimal.Zero, false
+}
+
+// cleanupDuplicateFlags finds rows with duplicate flags and re-canonicalizes them.
+// Migration added 2026-03-29: fixes rows created with duplicate flags like
+// "-bearish -bearish -spread=.5 -spread=.5" due to base/dimension overlap.
+// Rows that become duplicates after cleanup are deleted (keeping the one with results).
+func cleanupDuplicateFlags(database *sql.DB) {
+	rows, err := database.Query(`SELECT id, flags FROM varulab_runs`)
+	if err != nil {
+		return
+	}
+	type fix struct {
+		id    int64
+		canon string
+	}
+	var fixes []fix
+	for rows.Next() {
+		var id int64
+		var flags string
+		rows.Scan(&id, &flags)
+		canon := canonicalizeFlags(strings.Fields(flags))
+		if canon != flags {
+			fixes = append(fixes, fix{id, canon})
+		}
+	}
+	rows.Close()
+	if len(fixes) == 0 {
+		return
+	}
+	log.Printf("fixing %d rows with duplicate flags", len(fixes))
+	for _, f := range fixes {
+		// try to update; if it violates the unique constraint, just delete
+		_, err := database.Exec(`UPDATE varulab_runs SET flags = ? WHERE id = ?`, f.canon, f.id)
+		if err != nil {
+			database.Exec(`DELETE FROM varulab_runs WHERE id = ?`, f.id)
+		}
+	}
 }

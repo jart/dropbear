@@ -15,14 +15,14 @@
 package main
 
 import (
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/cubby"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/ds/nyse"
-	"dropbear/ds/symbol"
 	"dropbear/indicators"
 	"dropbear/loggy"
+	"dropbear/symbol"
 	"flag"
 	"log"
 )
@@ -150,8 +150,8 @@ func (state *Trader) onBar(c *ds.Bar) {
 
 	// check time
 	now := clocky.Now()
-	openTime := nyse.GetOpenTime(now)
-	closeTime := nyse.GetCloseTime(now)
+	openTime := cboe.GetOpenTime(now)
+	closeTime := cboe.GetCloseTime(now)
 	if now < openTime || now >= closeTime {
 		return
 	}

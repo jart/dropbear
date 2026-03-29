@@ -1,7 +1,7 @@
 package sip
 
 import (
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 	"testing"
 )
 

@@ -3,7 +3,7 @@ package osi
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 	"errors"
 )
 

@@ -3,7 +3,7 @@ package sip
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 )
 
 // Quote represents a quote update from the SIP feed.

@@ -1,7 +1,8 @@
-package nyse
+package cboe
 
 import (
 	"dropbear/clocky"
+	"dropbear/greg"
 	"fmt"
 	"testing"
 )
@@ -27,7 +28,7 @@ func TestIsHoliday_2026_CBOE(t *testing.T) {
 	}
 
 	for _, h := range holidays {
-		if !isHoliday(h.year, h.month, h.day) {
+		if !IsHoliday(h.year, h.month, h.day) {
 			t.Errorf("%s (%d-%02d-%02d) should be a holiday", h.name, h.year, h.month, h.day)
 		}
 	}
@@ -47,7 +48,7 @@ func TestIsEarlyClose_2026_CBOE(t *testing.T) {
 	}
 
 	for _, ec := range earlycloses {
-		if !isEarlyClose(ec.year, ec.month, ec.day) {
+		if !IsEarlyCloseDay(ec.year, ec.month, ec.day) {
 			t.Errorf("%s (%d-%02d-%02d) should be an early close day", ec.name, ec.year, ec.month, ec.day)
 		}
 	}
@@ -132,7 +133,7 @@ func TestIsHoliday_MultiYear(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if !isHoliday(tt.year, tt.month, tt.day) {
+		if !IsHoliday(tt.year, tt.month, tt.day) {
 			t.Errorf("%s (%d-%02d-%02d) should be a holiday", tt.name, tt.year, tt.month, tt.day)
 		}
 	}
@@ -153,144 +154,8 @@ func TestIsHoliday_NotHoliday(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if isHoliday(tt.year, tt.month, tt.day) {
+		if IsHoliday(tt.year, tt.month, tt.day) {
 			t.Errorf("%d-%02d-%02d should NOT be a holiday", tt.year, tt.month, tt.day)
-		}
-	}
-}
-
-func TestEasterSunday(t *testing.T) {
-	// Known Easter dates
-	tests := []struct {
-		year      int
-		wantMonth clocky.Month
-		wantDay   int
-	}{
-		{2020, clocky.April, 12},
-		{2021, clocky.April, 4},
-		{2022, clocky.April, 17},
-		{2023, clocky.April, 9},
-		{2024, clocky.March, 31},
-		{2025, clocky.April, 20},
-		{2026, clocky.April, 5},
-		{2027, clocky.March, 28},
-		{2028, clocky.April, 16},
-		{2029, clocky.April, 1},
-		{2030, clocky.April, 21},
-	}
-
-	for _, tt := range tests {
-		gotMonth, gotDay := easterSunday(tt.year)
-		if gotMonth != tt.wantMonth || gotDay != tt.wantDay {
-			t.Errorf("easterSunday(%d) = %v %d, want %v %d",
-				tt.year, gotMonth, gotDay, tt.wantMonth, tt.wantDay)
-		}
-	}
-}
-
-func TestGoodFriday(t *testing.T) {
-	// Good Friday is always 2 days before Easter
-	tests := []struct {
-		year      int
-		wantMonth clocky.Month
-		wantDay   int
-	}{
-		{2020, clocky.April, 10},
-		{2021, clocky.April, 2},
-		{2022, clocky.April, 15},
-		{2023, clocky.April, 7},
-		{2024, clocky.March, 29}, // Easter is March 31, so Good Friday is March 29
-		{2025, clocky.April, 18},
-		{2026, clocky.April, 3},
-		{2027, clocky.March, 26}, // Easter is March 28
-	}
-
-	for _, tt := range tests {
-		gotMonth, gotDay := goodFriday(tt.year)
-		if gotMonth != tt.wantMonth || gotDay != tt.wantDay {
-			t.Errorf("goodFriday(%d) = %v %d, want %v %d",
-				tt.year, gotMonth, gotDay, tt.wantMonth, tt.wantDay)
-		}
-	}
-}
-
-func TestNthWeekday(t *testing.T) {
-	tests := []struct {
-		year    int
-		month   clocky.Month
-		weekday clocky.Weekday
-		n       int
-		want    int
-	}{
-		// MLK Day: 3rd Monday of January
-		{2026, clocky.January, clocky.Monday, 3, 19},
-		{2025, clocky.January, clocky.Monday, 3, 20},
-		{2024, clocky.January, clocky.Monday, 3, 15},
-
-		// Presidents' Day: 3rd Monday of February
-		{2026, clocky.February, clocky.Monday, 3, 16},
-		{2025, clocky.February, clocky.Monday, 3, 17},
-
-		// Labor Day: 1st Monday of September
-		{2026, clocky.September, clocky.Monday, 1, 7},
-		{2025, clocky.September, clocky.Monday, 1, 1},
-
-		// Thanksgiving: 4th Thursday of November
-		{2026, clocky.November, clocky.Thursday, 4, 26},
-		{2025, clocky.November, clocky.Thursday, 4, 27},
-	}
-
-	for _, tt := range tests {
-		got := nthWeekday(tt.year, tt.month, tt.weekday, tt.n)
-		if got != tt.want {
-			t.Errorf("nthWeekday(%d, %v, %d, %d) = %d, want %d",
-				tt.year, tt.month, tt.weekday, tt.n, got, tt.want)
-		}
-	}
-}
-
-func TestLastWeekday(t *testing.T) {
-	tests := []struct {
-		year    int
-		month   clocky.Month
-		weekday clocky.Weekday
-		want    int
-	}{
-		// Memorial Day: Last Monday of May
-		{2026, clocky.May, clocky.Monday, 25},
-		{2025, clocky.May, clocky.Monday, 26},
-		{2024, clocky.May, clocky.Monday, 27},
-		{2023, clocky.May, clocky.Monday, 29},
-	}
-
-	for _, tt := range tests {
-		got := lastWeekday(tt.year, tt.month, tt.weekday)
-		if got != tt.want {
-			t.Errorf("lastWeekday(%d, %v, %d) = %d, want %d",
-				tt.year, tt.month, tt.weekday, got, tt.want)
-		}
-	}
-}
-
-func TestWeekday(t *testing.T) {
-	tests := []struct {
-		year  int
-		month clocky.Month
-		day   int
-		want  clocky.Weekday
-	}{
-		{2026, clocky.January, 1, clocky.Thursday},
-		{2026, clocky.January, 19, clocky.Monday}, // MLK
-		{2026, clocky.July, 4, clocky.Saturday},
-		{2026, clocky.December, 25, clocky.Friday},
-		{2024, clocky.February, 29, clocky.Thursday}, // Leap day
-	}
-
-	for _, tt := range tests {
-		got := weekday(tt.year, tt.month, tt.day)
-		if got != tt.want {
-			t.Errorf("weekday(%d, %v, %d) = %d, want %d",
-				tt.year, tt.month, tt.day, got, tt.want)
 		}
 	}
 }
@@ -337,9 +202,9 @@ func TestIsEarlyClose_MultiYear(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := isEarlyClose(tt.year, tt.month, tt.day)
+		got := IsEarlyCloseDay(tt.year, tt.month, tt.day)
 		if got != tt.want {
-			t.Errorf("%s: isEarlyClose(%d, %v, %d) = %v, want %v",
+			t.Errorf("%s: IsEarlyCloseDay(%d, %v, %d) = %v, want %v",
 				tt.name, tt.year, tt.month, tt.day, got, tt.want)
 		}
 	}
@@ -347,32 +212,11 @@ func TestIsEarlyClose_MultiYear(t *testing.T) {
 
 func TestJTBeforeObservance(t *testing.T) {
 	// JT was not observed by NYSE before 2022
-	if isHoliday(2021, clocky.June, 18) {
+	if IsHoliday(2021, clocky.June, 18) {
 		t.Error("JT 2021 (observed June 18) should NOT be a holiday - NYSE didn't observe until 2022")
 	}
-	if isHoliday(2020, clocky.June, 19) {
+	if IsHoliday(2020, clocky.June, 19) {
 		t.Error("JT 2020 should NOT be a holiday - NYSE didn't observe until 2022")
-	}
-}
-
-func TestGetCloseTime(t *testing.T) {
-	tests := []struct {
-		name      string
-		date      clocky.Time
-		wantHour  int
-		wantEarly bool
-	}{
-		{"Day after Thanksgiving", clocky.Date(2026, clocky.November, 27, 13, 0, 0, 0, clocky.NYC), 13, true},
-		{"Christmas Eve", clocky.Date(2026, clocky.December, 24, 13, 0, 0, 0, clocky.NYC), 13, true},
-		{"Day before July 4 (Sat)", clocky.Date(2026, clocky.July, 2, 13, 0, 0, 0, clocky.NYC), 13, true},
-		{"Thanksgiving itself", clocky.Date(2026, clocky.November, 26, 13, 0, 0, 0, clocky.NYC), 16, false},
-		{"Random day", clocky.Date(2026, clocky.March, 15, 13, 0, 0, 0, clocky.NYC), 16, false},
-	}
-	for _, tt := range tests {
-		got := GetCloseTime(tt.date)
-		if got.Hour() != tt.wantHour {
-			t.Errorf("%s: GetCloseTime() hour = %d, want %d", tt.name, got.Hour(), tt.wantHour)
-		}
 	}
 }
 
@@ -403,9 +247,9 @@ func TestHolidayCount(t *testing.T) {
 		count := 0
 		var holidays []string
 		for month := clocky.January; month <= clocky.December; month++ {
-			days := daysIn(year, month)
+			days := greg.DaysIn(year, month)
 			for day := 1; day <= days; day++ {
-				if isHoliday(year, month, day) {
+				if IsHoliday(year, month, day) {
 					count++
 					holidays = append(holidays, fmt.Sprintf("%d-%02d-%02d", year, month, day))
 				}
@@ -427,9 +271,9 @@ func TestEarlyCloseCount(t *testing.T) {
 		count := 0
 		var earlycloses []string
 		for month := clocky.January; month <= clocky.December; month++ {
-			days := daysIn(year, month)
+			days := greg.DaysIn(year, month)
 			for day := 1; day <= days; day++ {
-				if isEarlyClose(year, month, day) {
+				if IsEarlyCloseDay(year, month, day) {
 					count++
 					earlycloses = append(earlycloses, fmt.Sprintf("%d-%02d-%02d", year, month, day))
 				}
@@ -438,40 +282,5 @@ func TestEarlyCloseCount(t *testing.T) {
 		if count != 3 {
 			t.Errorf("Year %d: got %d early close days, want 3\nEarly closes: %v", year, count, earlycloses)
 		}
-	}
-}
-
-func TestTradingDayCount(t *testing.T) {
-	// Count trading days per year - should be ~250-253
-	// Formula: 365 (or 366) - weekends (~104) - holidays (~9-10) = ~251-252
-	for year := 2016; year <= 2030; year++ {
-		count := 0
-		for month := clocky.January; month <= clocky.December; month++ {
-			days := daysIn(year, month)
-			for day := 1; day <= days; day++ {
-				dt := clocky.Date(year, month, day, 12, 0, 0, 0, clocky.NYC)
-				if IsTradingDay(dt) {
-					count++
-				}
-			}
-		}
-		// Sanity check: should be between 250 and 253
-		if count < 250 || count > 253 {
-			t.Errorf("Year %d: got %d trading days, expected 250-253", year, count)
-		}
-		t.Logf("Year %d: %d trading days", year, count)
-	}
-}
-
-// Benchmark the holiday check
-func BenchmarkIsHoliday(b *testing.B) {
-	for b.Loop() {
-		isHoliday(2026, clocky.July, 4)
-	}
-}
-
-func BenchmarkEasterSunday(b *testing.B) {
-	for b.Loop() {
-		easterSunday(2026)
 	}
 }

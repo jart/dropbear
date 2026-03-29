@@ -18,8 +18,8 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/ds"
-	"dropbear/ds/symbol"
 	"dropbear/loggy"
+	"dropbear/symbol"
 )
 
 var (

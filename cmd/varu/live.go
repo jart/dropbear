@@ -4,9 +4,9 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
 	"dropbear/clocky"
-	"dropbear/ds/options"
-	"dropbear/ds/osi"
 	"dropbear/loggy"
+	"dropbear/options"
+	"dropbear/osi"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,8 +30,8 @@ func live() {
 	log.Printf("varu is on the prowl")
 
 	// avoid confusion if we woke up too late
-	if clocky.Now().ClockInt() >= kStopTrading {
-		log.Printf("warning: varu stops day trading after %02d:%02d hours", kStopTrading/1_00_00, kStopTrading/1_00%1_00)
+	if clocky.Now().ClockInt() >= *stopTradingFlag {
+		log.Printf("warning: varu stops day trading after %02d:%02d hours", *stopTradingFlag/1_00_00, *stopTradingFlag/1_00%1_00)
 	}
 
 	// subscribe to databento data

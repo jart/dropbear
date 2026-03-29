@@ -16,8 +16,8 @@ import (
 
 	"dropbear/db"
 	"dropbear/ds"
-	"dropbear/ds/symbol"
 	"dropbear/loggy"
+	"dropbear/symbol"
 )
 
 func main() {

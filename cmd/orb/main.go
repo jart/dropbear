@@ -23,14 +23,14 @@ import (
 	"log"
 
 	"dropbear/broker/alpaca"
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/cubby"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/ds/nyse"
-	"dropbear/ds/symbol"
 	"dropbear/indicators"
 	"dropbear/loggy"
+	"dropbear/symbol"
 )
 
 var (
@@ -169,8 +169,8 @@ func (t *Trader) onBar(bar *ds.Bar) {
 	t.checkOrders(bar)
 
 	now := clocky.Now()
-	openTime := nyse.GetOpenTime(now)
-	closeTime := nyse.GetCloseTime(now)
+	openTime := cboe.GetOpenTime(now)
+	closeTime := cboe.GetCloseTime(now)
 
 	if now < openTime || now >= closeTime {
 		return

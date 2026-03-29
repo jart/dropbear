@@ -1,6 +1,66 @@
 (function() {
   'use strict';
 
+  // Date range filter with localStorage persistence
+  var dateFrom = document.getElementById('date-from');
+  var dateTo = document.getElementById('date-to');
+  var savedFrom = localStorage.getItem('varulab-date-from');
+  var savedTo = localStorage.getItem('varulab-date-to');
+
+  var symbolButtons = document.getElementById('symbol-buttons');
+  var selectedSymbol = localStorage.getItem('varulab-symbol') || '';
+
+  fetch('/api/dates').then(r => r.json()).then(data => {
+    if (data.min) dateFrom.min = data.min;
+    if (data.max) dateTo.max = data.max;
+    dateFrom.value = savedFrom || data.min || '';
+    dateTo.value = savedTo || data.max || '';
+    // populate symbol buttons
+    symbolButtons.innerHTML = '';
+    var allBtn = document.createElement('button');
+    allBtn.className = 'sym-btn' + (selectedSymbol === '' ? ' active' : '');
+    allBtn.textContent = 'All';
+    allBtn.addEventListener('click', function() { selectSymbol(''); });
+    symbolButtons.appendChild(allBtn);
+    (data.symbols || []).forEach(s => {
+      var btn = document.createElement('button');
+      btn.className = 'sym-btn' + (s === selectedSymbol ? ' active' : '');
+      btn.textContent = s;
+      btn.addEventListener('click', function() { selectSymbol(s); });
+      symbolButtons.appendChild(btn);
+    });
+    // now that filters are populated, load the active tab
+    var initTab = location.hash.replace('#', '') || 'summary';
+    switchTab(initTab);
+  });
+
+  function selectSymbol(s) {
+    selectedSymbol = s;
+    localStorage.setItem('varulab-symbol', s);
+    symbolButtons.querySelectorAll('.sym-btn').forEach(b => {
+      b.classList.toggle('active', (s === '' && b.textContent === 'All') || b.textContent === s);
+    });
+    var activeTab = location.hash.replace('#', '') || 'summary';
+    loadTab(activeTab);
+  }
+
+  function onFilterChange() {
+    localStorage.setItem('varulab-date-from', dateFrom.value);
+    localStorage.setItem('varulab-date-to', dateTo.value);
+    var activeTab = location.hash.replace('#', '') || 'summary';
+    loadTab(activeTab);
+  }
+  dateFrom.addEventListener('change', onFilterChange);
+  dateTo.addEventListener('change', onFilterChange);
+
+  function filterParams() {
+    var p = '';
+    if (dateFrom.value) p += '&from=' + dateFrom.value;
+    if (dateTo.value) p += '&to=' + dateTo.value;
+    if (selectedSymbol) p += '&symbol=' + selectedSymbol;
+    return p;
+  }
+
   // Tab switching with hash persistence
   function switchTab(tab) {
     document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
@@ -65,7 +125,7 @@
 
   // Grid
   function loadGrid() {
-    fetch('/api/grid').then(r => r.json()).then(cells => {
+    fetch('/api/grid?' + filterParams()).then(r => r.json()).then(cells => {
       const el = document.getElementById('grid');
       if (!cells || cells.length === 0) {
         el.innerHTML = '<p>No completed runs yet.</p>';
@@ -146,9 +206,9 @@
 
   // Summary
   function loadSummary() {
-    fetch('/api/summary').then(r => r.json()).then(data => {
+    fetch('/api/summary?' + filterParams()).then(r => r.json()).then(data => {
       const el = document.getElementById('summary');
-      let html = '<h2>Best Flags</h2><table><tr><th>Flags</th><th>Distribution</th><th>Avg</th><th>Median</th><th>Best</th><th>Worst</th><th>StdDev</th><th>Sharpe</th><th>Win Rate</th><th>Count</th></tr>';
+      let html = '<h2>Best Flags</h2><table><tr><th>Flags</th><th>Distribution</th><th>Avg</th><th>Fees</th><th>Median</th><th>Best</th><th>Worst</th><th>StdDev</th><th>Sharpe</th><th>Win Rate</th><th>Count</th></tr>';
       (data.flags || []).forEach(f => {
         const cls = parseFloat(f.avg_winning) >= 0 ? 'positive' : 'negative';
         const bcls = parseFloat(f.best_win) >= 0 ? 'positive' : 'negative';
@@ -157,6 +217,7 @@
         html += '<tr><td style="text-align:left">' + (f.flags || '(baseline)') + '</td>' +
           '<td style="padding:2px">' + sparkHist(f.histogram || []) + '</td>' +
           '<td class="' + cls + '">' + f.avg_winning + '</td>' +
+          '<td class="negative">' + f.avg_fees + '</td>' +
           '<td class="' + mcls + '">' + f.median + '</td>' +
           '<td class="' + bcls + '">' + f.best_win + '</td>' +
           '<td class="' + wcls + '">' + f.worst_loss + '</td>' +
@@ -228,26 +289,60 @@
   };
 
   // Status
+  function ago(nanos) {
+    if (!nanos) return '';
+    var ms = (Date.now() * 1e6 - nanos) / 1e6;
+    var s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's ago';
+    var m = Math.floor(s / 60);
+    s = s % 60;
+    if (m < 60) return m + 'm' + s + 's ago';
+    var h = Math.floor(m / 60);
+    m = m % 60;
+    return h + 'h' + m + 'm ago';
+  }
+
   function updateStatus(state) {
     const el = document.getElementById('status');
     if (!el.classList.contains('active')) return;
-    let html = '<h2>Running</h2><table><tr><th>ID</th><th>Symbol</th><th>Date</th><th>Flags</th></tr>';
+    let html = '<h2>Running (' + (state.active || []).length + ')</h2><table><tr><th>ID</th><th>Symbol</th><th>Date</th><th>Flags</th><th>Started</th></tr>';
     (state.active || []).forEach(r => {
+      html += '<tr><td>' + r.id + '</td><td class="symbol">' + r.symbol + '</td>' +
+        '<td>' + r.date + '</td><td style="text-align:left">' + r.flags + '</td>' +
+        '<td>' + ago(r.started_at) + '</td></tr>';
+    });
+    html += '</table>';
+
+    html += '<h2 style="margin-top:16px">Pending (' + (state.counts ? state.counts.pending : '?') + ')</h2><table><tr><th>ID</th><th>Symbol</th><th>Date</th><th>Flags</th></tr>';
+    (state.pending || []).forEach(r => {
       html += '<tr><td>' + r.id + '</td><td class="symbol">' + r.symbol + '</td>' +
         '<td>' + r.date + '</td><td style="text-align:left">' + r.flags + '</td></tr>';
     });
     html += '</table>';
 
-    html += '<h2 style="margin-top:16px">Recent</h2><table><tr><th>ID</th><th>Symbol</th><th>Date</th><th>Flags</th><th>Status</th><th>Winning</th></tr>';
+    html += '<h2 style="margin-top:16px">Recent Completed</h2><table><tr><th>ID</th><th>Symbol</th><th>Date</th><th>Flags</th><th>Status</th><th>Winning</th><th>Finished</th></tr>';
     (state.recent || []).forEach(r => {
       const cls = r.status === 'done' ? (parseFloat(r.winning) >= 0 ? 'positive' : 'negative') : 'pending';
       html += '<tr class="clickable" onclick="showRunLog(' + r.id + ')">' +
         '<td>' + r.id + '</td><td class="symbol">' + r.symbol + '</td>' +
         '<td>' + r.date + '</td><td style="text-align:left">' + r.flags + '</td>' +
         '<td class="' + r.status + '">' + r.status + '</td>' +
-        '<td class="' + cls + '">' + (r.winning || '-') + '</td></tr>';
+        '<td class="' + cls + '">' + (r.winning || '-') + '</td>' +
+        '<td>' + ago(r.finished_at) + '</td></tr>';
     });
     html += '</table>';
+
+    if ((state.failed || []).length > 0) {
+      html += '<h2 style="margin-top:16px">Failed (' + (state.counts ? state.counts.failed : '?') + ')</h2><table><tr><th>ID</th><th>Symbol</th><th>Date</th><th>Flags</th><th>Failed</th></tr>';
+      (state.failed || []).forEach(r => {
+        html += '<tr class="clickable" onclick="showRunLog(' + r.id + ')">' +
+          '<td>' + r.id + '</td><td class="symbol">' + r.symbol + '</td>' +
+          '<td>' + r.date + '</td><td style="text-align:left">' + r.flags + '</td>' +
+          '<td>' + ago(r.finished_at) + '</td></tr>';
+      });
+      html += '</table>';
+    }
+
     el.innerHTML = html;
   }
 
@@ -260,7 +355,5 @@
 
   window.showRunLog = function(id) { showLog(id); };
 
-  // Initial load — restore tab from hash or default to summary
-  var initTab = location.hash.replace('#', '') || 'summary';
-  switchTab(initTab);
+  // Initial load happens inside the /api/dates callback above
 })();

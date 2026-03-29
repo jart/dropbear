@@ -4,8 +4,8 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/ds/options"
-	"dropbear/ds/symbol"
+	"dropbear/options"
+	"dropbear/symbol"
 	"fmt"
 	"io"
 	"log"
@@ -87,7 +87,7 @@ func backtest() {
 				realNow = time.Now()
 			}
 			if *rtFlag {
-				if rtBaseData == 0 && clock >= kStartOfDay {
+				if rtBaseData == 0 && clock >= *startOfDayFlag {
 					rtBase = realNow
 					rtBaseData = now
 				}
@@ -102,7 +102,7 @@ func backtest() {
 			if clock >= kMarketClose {
 				break
 			}
-			if clock < kStartOfDay {
+			if clock < *startOfDayFlag {
 				continue
 			}
 			if !ready && gChain.AtTheMoney != nil {
@@ -205,10 +205,14 @@ func simulateFillOrder(order *Order) bool {
 	gStrategiesUsed[order.Strategy] += 1
 	for _, leg := range order.Legs {
 		var fillPrice decimal.Decimal
-		if leg.Quantity.IsPositive() {
-			fillPrice = leg.Option.Ask // buy high :'(
+		if *hostileFlag {
+			if leg.Quantity.IsPositive() {
+				fillPrice = leg.Option.Ask
+			} else {
+				fillPrice = leg.Option.Bid
+			}
 		} else {
-			fillPrice = leg.Option.Bid // sell low :'(
+			fillPrice = leg.Option.MidPrice()
 		}
 		gHoldings.Add(leg.Option, leg.Quantity, fillPrice)
 		fee := kFeePerContract.Mul(leg.Quantity.Abs())

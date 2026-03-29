@@ -6,9 +6,9 @@ import (
 	"dropbear/decimal"
 	"math"
 
-	"dropbear/ds/black76"
-	"dropbear/ds/osi"
-	"dropbear/ds/symbol"
+	"dropbear/black76"
+	"dropbear/osi"
+	"dropbear/symbol"
 	"fmt"
 )
 

@@ -3,7 +3,7 @@ package sip
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 )
 
 // LULD represents a Limit Up-Limit Down price band message.

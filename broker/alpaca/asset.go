@@ -3,7 +3,7 @@ package alpaca
 import (
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 )
 
 var (

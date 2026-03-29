@@ -2,11 +2,11 @@ package cubby
 
 import (
 	"dropbear/broker/alpaca"
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/ds/nyse"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 	"fmt"
 )
 
@@ -140,8 +140,8 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 	// check time
 	now := clocky.Now()
 	timeInForce := alpaca.TimeInForceDay
-	openTime := nyse.GetOpenTime(now)
-	closeTime := nyse.GetCloseTime(now)
+	openTime := cboe.GetOpenTime(now)
+	closeTime := cboe.GetCloseTime(now)
 	time := now.ClockInt()
 	if now.Before(openTime) || !now.Before(closeTime) {
 		// OPG orders submitted after 9:28am but before 7:00pm ET will be rejected

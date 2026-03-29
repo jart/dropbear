@@ -11,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"sync"
 )
@@ -73,11 +74,13 @@ func broadcastState(database *sql.DB) {
 }
 
 type DashboardState struct {
-	Type     string       `json:"type"`
-	Counts   RunCounts    `json:"counts"`
-	Active   []RunSummary `json:"active"`
-	Recent   []RunSummary `json:"recent"`
-	Flags    []string     `json:"flags"`
+	Type    string       `json:"type"`
+	Counts  RunCounts    `json:"counts"`
+	Active  []RunSummary `json:"active"`
+	Recent  []RunSummary `json:"recent"`
+	Pending []RunSummary `json:"pending"`
+	Failed  []RunSummary `json:"failed"`
+	Flags   []string     `json:"flags"`
 }
 
 type RunCounts struct {
@@ -88,45 +91,82 @@ type RunCounts struct {
 }
 
 type RunSummary struct {
-	ID      int64  `json:"id"`
-	Symbol  string `json:"symbol"`
-	Date    string `json:"date"`
-	Flags   string `json:"flags"`
-	Status  string `json:"status"`
-	Winning string `json:"winning,omitempty"`
+	ID         int64  `json:"id"`
+	Symbol     string `json:"symbol"`
+	Date       string `json:"date"`
+	Flags      string `json:"flags"`
+	Status     string `json:"status"`
+	Winning    string `json:"winning,omitempty"`
+	StartedAt  int64  `json:"started_at,omitempty"`
+	FinishedAt int64  `json:"finished_at,omitempty"`
 }
 
 func buildDashboardState(database *sql.DB) DashboardState {
 	state := DashboardState{Type: "state"}
 
-	database.QueryRow(`SELECT COUNT(*) FROM varulab_runs WHERE status IN ('pending','claimed')`).Scan(&state.Counts.Pending)
-	database.QueryRow(`SELECT COUNT(*) FROM varulab_runs WHERE status = 'running'`).Scan(&state.Counts.Running)
-	database.QueryRow(`SELECT COUNT(*) FROM varulab_runs WHERE status = 'done'`).Scan(&state.Counts.Done)
-	database.QueryRow(`SELECT COUNT(*) FROM varulab_runs WHERE status = 'failed'`).Scan(&state.Counts.Failed)
+	database.QueryRow(`SELECT
+		SUM(CASE WHEN status IN ('pending','claimed') THEN 1 ELSE 0 END),
+		SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)
+		FROM varulab_runs`).Scan(&state.Counts.Pending, &state.Counts.Running, &state.Counts.Done, &state.Counts.Failed)
 
 	// active runs
-	rows, _ := database.Query(`SELECT id, symbol, date, flags, status FROM varulab_runs WHERE status = 'running' ORDER BY started_at DESC LIMIT 50`)
+	rows, _ := database.Query(`SELECT id, symbol, date, flags, status, started_at FROM varulab_runs WHERE status = 'running' ORDER BY started_at DESC LIMIT 50`)
 	if rows != nil {
 		defer rows.Close()
 		for rows.Next() {
 			var r RunSummary
-			rows.Scan(&r.ID, &r.Symbol, &r.Date, &r.Flags, &r.Status)
+			var startedAt sql.NullInt64
+			rows.Scan(&r.ID, &r.Symbol, &r.Date, &r.Flags, &r.Status, &startedAt)
+			if startedAt.Valid {
+				r.StartedAt = startedAt.Int64
+			}
 			state.Active = append(state.Active, r)
 		}
 	}
 
 	// recent completed
-	rows2, _ := database.Query(`SELECT id, symbol, date, flags, status, winning FROM varulab_runs WHERE status IN ('done','failed') ORDER BY finished_at DESC LIMIT 20`)
+	rows2, _ := database.Query(`SELECT id, symbol, date, flags, status, winning, finished_at FROM varulab_runs WHERE status IN ('done','failed') ORDER BY finished_at DESC LIMIT 20`)
 	if rows2 != nil {
 		defer rows2.Close()
 		for rows2.Next() {
 			var r RunSummary
-			var winning sql.NullInt64
-			rows2.Scan(&r.ID, &r.Symbol, &r.Date, &r.Flags, &r.Status, &winning)
+			var winning, finishedAt sql.NullInt64
+			rows2.Scan(&r.ID, &r.Symbol, &r.Date, &r.Flags, &r.Status, &winning, &finishedAt)
 			if winning.Valid {
 				r.Winning = decimal.Decimal(winning.Int64).Format(2)
 			}
+			if finishedAt.Valid {
+				r.FinishedAt = finishedAt.Int64
+			}
 			state.Recent = append(state.Recent, r)
+		}
+	}
+
+	// pending runs
+	rows3, _ := database.Query(`SELECT id, symbol, date, flags, status FROM varulab_runs WHERE status IN ('pending','claimed') ORDER BY id LIMIT 20`)
+	if rows3 != nil {
+		defer rows3.Close()
+		for rows3.Next() {
+			var r RunSummary
+			rows3.Scan(&r.ID, &r.Symbol, &r.Date, &r.Flags, &r.Status)
+			state.Pending = append(state.Pending, r)
+		}
+	}
+
+	// recent failed runs
+	rows4, _ := database.Query(`SELECT id, symbol, date, flags, status, finished_at FROM varulab_runs WHERE status = 'failed' ORDER BY finished_at DESC LIMIT 20`)
+	if rows4 != nil {
+		defer rows4.Close()
+		for rows4.Next() {
+			var r RunSummary
+			var finishedAt sql.NullInt64
+			rows4.Scan(&r.ID, &r.Symbol, &r.Date, &r.Flags, &r.Status, &finishedAt)
+			if finishedAt.Valid {
+				r.FinishedAt = finishedAt.Int64
+			}
+			state.Failed = append(state.Failed, r)
 		}
 	}
 
@@ -145,7 +185,7 @@ type GridCell struct {
 	RunID   int64  `json:"run_id"`
 }
 
-func queryGrid(database *sql.DB) []GridCell {
+func queryGrid(database *sql.DB, dateFrom, dateTo, sym string) []GridCell {
 	// best winning per (symbol, date) across all flag combos
 	rows, err := database.Query(`
 		SELECT r.id, r.symbol, r.date, r.flags, r.status, r.winning
@@ -153,11 +193,11 @@ func queryGrid(database *sql.DB) []GridCell {
 		INNER JOIN (
 			SELECT symbol, date, MAX(winning) as max_winning
 			FROM varulab_runs
-			WHERE status = 'done'
+			WHERE status = 'done' AND date >= ? AND date <= ? AND symbol LIKE ?
 			GROUP BY symbol, date
 		) best ON r.symbol = best.symbol AND r.date = best.date AND r.winning = best.max_winning
 		ORDER BY r.date DESC, r.symbol
-	`)
+	`, dateFrom, dateTo, sym)
 	if err != nil {
 		return nil
 	}
@@ -178,6 +218,7 @@ func queryGrid(database *sql.DB) []GridCell {
 type FlagSummary struct {
 	Flags      string    `json:"flags"`
 	AvgWinning string    `json:"avg_winning"`
+	AvgFees    string    `json:"avg_fees"`
 	BestWin    string    `json:"best_win"`
 	WorstLoss  string    `json:"worst_loss"`
 	Median     string    `json:"median"`
@@ -185,7 +226,7 @@ type FlagSummary struct {
 	Sharpe     string    `json:"sharpe"`
 	WinRate    string    `json:"win_rate"`
 	Count      int       `json:"count"`
-	Histogram  []float64 `json:"histogram"` // individual winning values in dollars for sparkline
+	Histogram  []float64 `json:"histogram"`
 }
 
 type SymbolSummary struct {
@@ -195,86 +236,110 @@ type SymbolSummary struct {
 	Count      int    `json:"count"`
 }
 
-func querySummary(database *sql.DB) ([]FlagSummary, []SymbolSummary) {
-	var flagSummaries []FlagSummary
+func queryFilter(r *http.Request) (string, string, string) {
+	from := r.URL.Query().Get("from")
+	to := r.URL.Query().Get("to")
+	sym := r.URL.Query().Get("symbol")
+	if from == "" {
+		from = "2000-01-01"
+	}
+	if to == "" {
+		to = "2099-12-31"
+	}
+	if sym == "" {
+		sym = "%"
+	}
+	return from, to, sym
+}
+
+func querySummary(database *sql.DB, dateFrom, dateTo, sym string) ([]FlagSummary, []SymbolSummary) {
+	// single query: fetch all (flags, winning, fees) rows, group in Go
 	rows, _ := database.Query(`
-		SELECT flags,
-			AVG(winning) as avg_w,
-			MAX(winning) as best_w,
-			MIN(winning) as worst_w,
-			CAST(SUM(CASE WHEN winning > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as win_rate,
-			COUNT(*) as n
-		FROM varulab_runs WHERE status = 'done'
-		GROUP BY flags ORDER BY avg_w DESC
-	`)
+		SELECT flags, winning, fees
+		FROM varulab_runs WHERE status = 'done' AND date >= ? AND date <= ? AND symbol LIKE ?
+		ORDER BY flags, winning
+	`, dateFrom, dateTo, sym)
+	type bucket struct {
+		values []float64
+		feeSum float64
+		wins   int
+	}
+	buckets := map[string]*bucket{}
+	var bucketOrder []string
 	if rows != nil {
 		defer rows.Close()
 		for rows.Next() {
-			var fs FlagSummary
-			var avgW, bestW, worstW float64
-			var winRate float64
-			rows.Scan(&fs.Flags, &avgW, &bestW, &worstW, &winRate, &fs.Count)
-			fs.AvgWinning = decimal.Decimal(int64(avgW)).Format(2)
-			fs.BestWin = decimal.Decimal(int64(bestW)).Format(2)
-			fs.WorstLoss = decimal.Decimal(int64(worstW)).Format(2)
-			fs.WinRate = strconv.FormatFloat(winRate*100, 'f', 1, 64) + "%"
-			flagSummaries = append(flagSummaries, fs)
+			var flags string
+			var winning, fees float64
+			rows.Scan(&flags, &winning, &fees)
+			b := buckets[flags]
+			if b == nil {
+				b = &bucket{}
+				buckets[flags] = b
+				bucketOrder = append(bucketOrder, flags)
+			}
+			b.values = append(b.values, winning) // already sorted by ORDER BY
+			b.feeSum += fees
+			if winning > 0 {
+				b.wins++
+			}
 		}
 	}
-	// second pass: compute stddev, sharpe, median per flag combo
-	for i := range flagSummaries {
-		fs := &flagSummaries[i]
-		// collect all winning values for this flag combo
-		var values []float64
-		vrows, _ := database.Query(`SELECT winning FROM varulab_runs WHERE status = 'done' AND flags = ? ORDER BY winning`, fs.Flags)
-		if vrows != nil {
-			for vrows.Next() {
-				var v float64
-				vrows.Scan(&v)
-				values = append(values, v)
-			}
-			vrows.Close()
-		}
-		if len(values) == 0 {
+	var flagSummaries []FlagSummary
+	for _, flags := range bucketOrder {
+		b := buckets[flags]
+		values := b.values
+		n := len(values)
+		if n == 0 {
 			continue
 		}
-		// mean
 		var sum float64
 		for _, v := range values {
 			sum += v
 		}
-		mean := sum / float64(len(values))
-		// stddev
+		mean := sum / float64(n)
 		var variance float64
 		for _, v := range values {
 			d := v - mean
 			variance += d * d
 		}
-		stddev := math.Sqrt(variance / float64(len(values)))
-		fs.StdDev = strconv.FormatFloat(stddev/1e6, 'f', 2, 64)
+		stddev := math.Sqrt(variance / float64(n))
+		fs := FlagSummary{
+			Flags:      flags,
+			AvgWinning: decimal.Decimal(int64(mean)).Format(2),
+			AvgFees:    decimal.Decimal(int64(b.feeSum / float64(n))).Format(2),
+			BestWin:    decimal.Decimal(int64(values[n-1])).Format(2),
+			WorstLoss:  decimal.Decimal(int64(values[0])).Format(2),
+			Median:     decimal.Decimal(int64(values[n/2])).Format(2),
+			StdDev:     strconv.FormatFloat(stddev/1e6, 'f', 2, 64),
+			WinRate:    strconv.FormatFloat(float64(b.wins)/float64(n)*100, 'f', 1, 64) + "%",
+			Count:      n,
+		}
 		if stddev > 0 {
-			fs.Sharpe = strconv.FormatFloat(mean/stddev, 'f', 2, 64)
+			fs.Sharpe = strconv.FormatFloat(mean/stddev*math.Sqrt(252), 'f', 2, 64)
 		} else {
 			fs.Sharpe = "-"
 		}
-		// median
-		median := values[len(values)/2]
-		fs.Median = decimal.Decimal(int64(median)).Format(2)
-		// histogram: convert to dollars (values are decimal int64 with 6 places)
-		hist := make([]float64, len(values))
+		hist := make([]float64, n)
 		for j, v := range values {
 			hist[j] = v / 1e6
 		}
 		fs.Histogram = hist
+		flagSummaries = append(flagSummaries, fs)
 	}
+	sort.Slice(flagSummaries, func(i, j int) bool {
+		si, _ := strconv.ParseFloat(flagSummaries[i].Sharpe, 64)
+		sj, _ := strconv.ParseFloat(flagSummaries[j].Sharpe, 64)
+		return si > sj
+	})
 
 	var symbolSummaries []SymbolSummary
 	rows2, _ := database.Query(`
 		SELECT symbol, flags, AVG(winning) as avg_w, COUNT(*) as n
-		FROM varulab_runs WHERE status = 'done'
+		FROM varulab_runs WHERE status = 'done' AND date >= ? AND date <= ? AND symbol LIKE ?
 		GROUP BY symbol, flags
 		ORDER BY symbol, avg_w DESC
-	`)
+	`, dateFrom, dateTo, sym)
 	if rows2 != nil {
 		defer rows2.Close()
 		seen := map[string]bool{}
@@ -307,6 +372,7 @@ func startWeb() {
 	http.HandleFunc("/api/state", handleState)
 	http.HandleFunc("/api/grid", handleGrid)
 	http.HandleFunc("/api/summary", handleSummaryAPI)
+	http.HandleFunc("/api/dates", handleDatesAPI)
 	http.HandleFunc("/api/runs", handleRuns)
 	http.HandleFunc("/api/flagsets", handleFlagSets)
 	http.HandleFunc("/api/regenerate", handleRegenerate)
@@ -375,16 +441,51 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 func handleGrid(w http.ResponseWriter, r *http.Request) {
 	noCache(w)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(queryGrid(db.Get()))
+	from, to, sym := queryFilter(r)
+	json.NewEncoder(w).Encode(queryGrid(db.Get(), from, to, sym))
 }
 
 func handleSummaryAPI(w http.ResponseWriter, r *http.Request) {
 	noCache(w)
 	w.Header().Set("Content-Type", "application/json")
-	flagS, symS := querySummary(db.Get())
+	from, to, sym := queryFilter(r)
+	flagS, symS := querySummary(db.Get(), from, to, sym)
 	json.NewEncoder(w).Encode(map[string]any{
 		"flags":   flagS,
 		"symbols": symS,
+	})
+}
+
+func handleDatesAPI(w http.ResponseWriter, r *http.Request) {
+	noCache(w)
+	w.Header().Set("Content-Type", "application/json")
+	var minDate, maxDate string
+	db.Get().QueryRow(`SELECT MIN(date), MAX(date) FROM varulab_runs WHERE status = 'done'`).Scan(&minDate, &maxDate)
+	var dates []string
+	rows, _ := db.Get().Query(`SELECT DISTINCT date FROM varulab_runs WHERE status = 'done' ORDER BY date`)
+	if rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var d string
+			rows.Scan(&d)
+			dates = append(dates, d)
+		}
+	}
+	var symbols []string
+	srows, _ := db.Get().Query(`SELECT DISTINCT symbol FROM varulab_runs WHERE status = 'done' ORDER BY symbol`)
+	if srows != nil {
+		defer srows.Close()
+		for srows.Next() {
+			var s string
+			srows.Scan(&s)
+			symbols = append(symbols, s)
+		}
+	}
+	json.NewEncoder(w).Encode(map[string]any{
+		"min":     minDate,
+		"max":     maxDate,
+		"dates":   dates,
+		"symbols": symbols,
 	})
 }
 

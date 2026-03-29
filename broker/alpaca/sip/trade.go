@@ -3,7 +3,7 @@ package sip
 import (
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 )
 
 // Trade represents a trade execution from the SIP feed.

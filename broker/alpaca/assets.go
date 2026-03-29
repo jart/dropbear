@@ -5,8 +5,8 @@ import (
 	"sync"
 
 	"dropbear/decimal"
-	"dropbear/ds/symbol"
 	"dropbear/netty"
+	"dropbear/symbol"
 )
 
 var Lock sync.RWMutex

@@ -2,7 +2,7 @@ package main
 
 import (
 	"dropbear/decimal"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 )
 
 const (

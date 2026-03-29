@@ -38,7 +38,7 @@ func Open(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	// this is needed to avoid "database is locked" errors
-	if _, err = conn.Exec("PRAGMA busy_timeout=1000"); err != nil {
+	if _, err = conn.Exec("PRAGMA busy_timeout=10000"); err != nil {
 		return nil, err
 	}
 	// wal2 is fast like wal but ensures readers never block writers

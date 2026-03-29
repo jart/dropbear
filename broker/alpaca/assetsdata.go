@@ -4,7 +4,7 @@ package alpaca
 
 import (
 	"dropbear/ds"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 )
 
 var Assets = map[symbol.Symbol]*Asset{

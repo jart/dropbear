@@ -2,7 +2,7 @@ package cme
 
 import (
 	"dropbear/clocky"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 	"errors"
 )
 

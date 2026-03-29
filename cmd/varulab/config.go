@@ -1,0 +1,63 @@
+package main
+
+import "os"
+
+// defaultSymbols is the default set of symbols to backtest if -symbols is not provided.
+const defaultSymbols = "NVDA TSLA ORCL ADBE META AMZN COIN BAC INTC NFLX SHOP XSP"
+
+// earliestDate is the oldest date the downloader will fetch.
+const earliestDate = "2026-01-01"
+
+// dataDirs is the list of databento directories in order of preference.
+// Downloads go to the first one that exists and has <90% disk usage.
+// These directories are not created automatically.
+var dataDirs = []string{
+	"/fast/databento",
+	"/disk/databento",
+	os.ExpandEnv("$HOME/databento"),
+}
+
+// zeroDTE symbols have 0DTE options every trading day.
+// All other symbols only have weekly options expiring on Fridays.
+var zeroDTESymbols = map[string]bool{
+	"SPXW": true,
+	"NDX":  true,
+	"XSP":  true,
+	"SPY":  true,
+	"QQQ":  true,
+}
+
+// kBaseFlags are included in every backtest run.
+// var kBaseFlags = "-bearish -eval=3 -hostile -spread=.5 -w-delta=0 -w-risk=0 -sod=100000"
+var kBaseFlags = "-hostile"
+
+// kFlagDimensions defines the search space. Each inner slice is a dimension;
+// the Cartesian product of all dimensions (plus a baseline with each dimension
+// absent) generates the full set of flag combinations to test.
+var kFlagDimensions = [][]string{
+
+	{"-bullish  -w-delta=0 -w-risk=0", "-bearish  -w-delta=0 -w-risk=0"},
+	{"-eval=3", "-eval=4"},
+	{"-spread=.5", "-spread=1"},
+	{"-floor=20_000 -budget=2_500"},
+	{"-sigmas=2", "-sigmas=1.5"},
+
+	// 2026-03-29 (find good time flags)
+	// winner: -sod=100000 helps a bit
+	// {"-sod=94500", "-sod=100000"},
+	// {"-frt=110000", "-frt=130000"},
+	// {"-eodt=120000", "-eodt=140000"},
+
+	// 2026-03-29 (find optimal -w-foo flags)
+	// winner: -w-delta=0 -w-risk=0
+	// {"-w-delta=0", "-w-delta=3", "-w-delta=10"},
+	// {"-w-risk=0", "-w-risk=3", "-w-risk=10"},
+	// {"-w-payoff=.5", "-w-payoff=3"},
+
+	// 2026-03-28 (my first grid search)
+	// winner: -bearish -eval=3 -hostile -spread=.5
+	// {"-eval=3", "-eval=4"},
+	// {"-spread=.5", "-spread=1"},
+	// {"-floor=20_000 -budget=2_500"},
+	// {"-sigmas=2"},
+}

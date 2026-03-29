@@ -15,7 +15,7 @@ package black76
 
 import (
 	"dropbear/clocky"
-	"dropbear/ds/prob"
+	"dropbear/prob"
 	"math"
 )
 

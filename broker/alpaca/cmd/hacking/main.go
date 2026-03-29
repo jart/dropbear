@@ -4,7 +4,7 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 	"fmt"
 	"os"
 	"slices"

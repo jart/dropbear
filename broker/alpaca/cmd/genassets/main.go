@@ -3,7 +3,7 @@ package main
 import (
 	"dropbear/broker/alpaca"
 	"dropbear/decimal"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 	"fmt"
 	"os"
 	"os/exec"
@@ -41,7 +41,7 @@ func main() {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "import (")
 	fmt.Fprintln(out, "\t\"dropbear/ds\"")
-	fmt.Fprintln(out, "\t\"dropbear/ds/symbol\"")
+	fmt.Fprintln(out, "\t\"dropbear/symbol\"")
 	fmt.Fprintln(out, ")")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "var Assets = map[symbol.Symbol]*Asset{")

@@ -6,7 +6,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/ds/symbol"
+	"dropbear/symbol"
 	"encoding/json"
 	"fmt"
 	"os"

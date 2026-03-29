@@ -14,8 +14,8 @@ package main
 import (
 	"dropbear/clocky"
 	"dropbear/ds"
-	"dropbear/ds/symbol"
 	"dropbear/netty"
+	"dropbear/symbol"
 	"flag"
 	"fmt"
 	"math"
