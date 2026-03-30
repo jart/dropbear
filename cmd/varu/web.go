@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -23,9 +24,29 @@ var staticFiles embed.FS
 
 var (
 	listenFlag = flag.String("listen", "0.0.0.0:8484", "web dashboard bind address")
-	rpIDFlag   = flag.String("rpid", "varu.justinestreet.capital", "WebAuthn relying party ID (domain)")
-	originFlag = flag.String("origin", "https://varu.justinestreet.capital", "WebAuthn origin URL")
+	sldFlag    = flag.String("sld", "justinestreet.capital", "second level domain flag")
 )
+
+type Web struct {
+	Trader           *Trader
+	WebRequests      chan WebRequest
+	SSEBroadcast     chan []byte
+	SSEMu            sync.Mutex
+	SSESubscribers   map[chan []byte]struct{}
+	LastSnapshotMu   sync.RWMutex
+	LastSnapshotJSON []byte
+}
+
+func NewWeb() *Web {
+	return &Web{
+		WebRequests:      make(chan WebRequest, 8),
+		SSEBroadcast:     make(chan []byte, 4),
+		SSEMu:            sync.Mutex{},
+		SSESubscribers:   map[chan []byte]struct{}{},
+		LastSnapshotMu:   sync.RWMutex{},
+		LastSnapshotJSON: []byte{},
+	}
+}
 
 // WebRequest is a command sent from the web server to the main goroutine.
 type WebRequest struct {
@@ -35,41 +56,31 @@ type WebRequest struct {
 	Response chan struct{}   // closed when processed
 }
 
-var (
-	gPaused          bool
-	gWebRequests     = make(chan WebRequest, 8)
-	gSSEBroadcast    = make(chan []byte, 4)
-	sseMu            sync.Mutex
-	sseSubscribers   = map[chan []byte]struct{}{}
-	lastSnapshotMu   sync.RWMutex
-	lastSnapshotJSON []byte
-)
-
-func sseSubscribe() chan []byte {
+func (w *Web) sseSubscribe() chan []byte {
 	ch := make(chan []byte, 4)
-	sseMu.Lock()
-	sseSubscribers[ch] = struct{}{}
-	sseMu.Unlock()
+	w.SSEMu.Lock()
+	w.SSESubscribers[ch] = struct{}{}
+	w.SSEMu.Unlock()
 	return ch
 }
 
-func sseUnsubscribe(ch chan []byte) {
-	sseMu.Lock()
-	delete(sseSubscribers, ch)
-	sseMu.Unlock()
+func (w *Web) sseUnsubscribe(ch chan []byte) {
+	w.SSEMu.Lock()
+	delete(w.SSESubscribers, ch)
+	w.SSEMu.Unlock()
 }
 
-func sseBroadcaster() {
-	for data := range gSSEBroadcast {
-		sseMu.Lock()
-		for ch := range sseSubscribers {
+func (w *Web) sseBroadcaster() {
+	for data := range w.SSEBroadcast {
+		w.SSEMu.Lock()
+		for ch := range w.SSESubscribers {
 			select {
 			case ch <- data:
 			default:
 				// drop if subscriber is slow
 			}
 		}
-		sseMu.Unlock()
+		w.SSEMu.Unlock()
 	}
 }
 
@@ -149,18 +160,23 @@ type StrategyInfo struct {
 
 // buildStateSnapshot serializes all state into a snapshot.
 // Must be called from the main goroutine.
-func buildStateSnapshot() StateSnapshot {
+func (w *Web) buildStateSnapshot() StateSnapshot {
+	t := w.Trader
 	now := clocky.Now()
-	delta, gamma, theta, vega := computeGreeks()
-	precomputeSettlements()
-	payoff := computeExpectedPayoff()
+	t.precomputeSettlements()
+	delta, gamma, theta, vega := t.computeGreeks()
+	payoff := t.computeExpectedPayoff()
+	payoffStr := "N/A"
+	if payoff.Cmp(decimal.Min) != 0 {
+		payoffStr = payoff.FormatThousand(2)
+	}
 	snap := StateSnapshot{
 		Time:   now.String(),
-		Symbol: gSymbol.String(),
-		Price:  gChain.Price.Format(2),
-		Sigma:  gChain.ExpectedMove().Format(2),
-		Cash:   gHoldings.Cash.FormatThousand(2),
-		Paused: gPaused,
+		Symbol: t.Symbol.String(),
+		Price:  t.Chain.Price.Format(2),
+		Sigma:  t.Chain.ExpectedMove().Format(2),
+		Cash:   t.Holdings.Cash.FormatThousand(2),
+		Paused: t.Paused,
 		Greeks: GreeksData{
 			Delta: delta.Format(3),
 			Gamma: gamma.Format(3),
@@ -168,39 +184,39 @@ func buildStateSnapshot() StateSnapshot {
 			Vega:  vega.Format(3),
 		},
 		Stats: StatsData{
-			Payoff:      payoff.FormatThousand(2),
-			Liquidation: computeLiquidationValue().Truncate().FormatThousand(2),
-			Realized:    gHoldings.RealizedPnL.FormatThousand(2),
-			Worst:       computeRisk().FormatThousand(2),
-			Notional:    computeNotional().FormatThousand(2),
-			Fees:        gHoldings.TotalFees.FormatThousand(2),
-			EOD:         computeSettlementAt(gChain.Price).FormatThousand(2),
-			Sigma:       gChain.ExpectedMove().Format(2),
-			Bias:        computeBias().Format(2),
-			Error:       gHoldings.TotalError.String(),
-			Volume:      gHoldings.Volume.String(),
+			Payoff:      payoffStr,
+			Liquidation: t.computeLiquidationValue().Truncate().FormatThousand(2),
+			Realized:    t.Holdings.RealizedPnL.FormatThousand(2),
+			Worst:       t.computeRisk().FormatThousand(2),
+			Notional:    t.computeNotional().FormatThousand(2),
+			Fees:        t.Holdings.TotalFees.FormatThousand(2),
+			EOD:         t.computeSettlementAt(t.Chain.Price).FormatThousand(2),
+			Sigma:       t.Chain.ExpectedMove().Format(2),
+			Bias:        t.computeBias().Format(2),
+			Error:       t.Holdings.TotalError.String(),
+			Volume:      t.Holdings.Volume.String(),
 		},
 		Flags: FlagsData{
-			Sigmas:   (*sigmasFlag).String(),
-			Budget:   fmt.Sprintf("%g", *budgetFlag),
-			Floor:    fmt.Sprintf("%g", *floorFlag),
-			Spread:   (*spreadFlag).String(),
-			Cooldown: (*cooldownFlag).String(),
-			Patience: (*patienceFlag).String(),
-			Prune:    strconv.FormatFloat(*pruneFlag, 'f', -1, 64),
-			WPayoff:  (*wPayoffFlag).String(),
-			WRisk:    (*wRiskFlag).String(),
-			WDelta:   (*wDeltaFlag).String(),
-			Demand:   (*demandFlag).String(),
+			Sigmas:   t.Config.Sigmas.String(),
+			Budget:   fmt.Sprintf("%g", t.Config.Budget),
+			Floor:    fmt.Sprintf("%g", t.Config.Floor),
+			Spread:   t.Config.Spread.String(),
+			Cooldown: t.Config.Cooldown.String(),
+			Patience: t.Config.Patience.String(),
+			Prune:    strconv.FormatFloat(t.Config.Prune, 'f', -1, 64),
+			WPayoff:  t.Config.WeightPayoff.String(),
+			WRisk:    t.Config.WeightRisk.String(),
+			WDelta:   t.Config.WeightDelta.String(),
+			Demand:   t.Config.Demand.String(),
 		},
 		Strategies: make(map[string]StrategyInfo),
 	}
 
 	// find strike range from positions
-	price := gChain.Price
+	price := t.Chain.Price
 	var minStrike, maxStrike decimal.Decimal
 	first := true
-	iteratePositions(func(option *options.Option, pos decimal.Decimal) {
+	t.iteratePositions(func(option *options.Option, pos decimal.Decimal) {
 		sp := option.Strike.Price
 		if first || sp.Cmp(minStrike) < 0 {
 			minStrike = sp
@@ -213,7 +229,7 @@ func buildStateSnapshot() StateSnapshot {
 
 	// emit all strikes in the range with call/put data
 	if !first {
-		for it := gChain.Strikes.Iterator(); it.Next(); {
+		for it := t.Chain.Strikes.Iterator(); it.Next(); {
 			strike := it.Value()
 			if strike.Price.Cmp(minStrike) < 0 || strike.Price.Cmp(maxStrike) > 0 {
 				continue
@@ -224,7 +240,7 @@ func buildStateSnapshot() StateSnapshot {
 					OSI:    strike.Call.OSI(),
 					Strike: strike.Price.String(),
 					Class:  "C",
-					Qty:    gHoldings.GetQuantity(strike.Call).String(),
+					Qty:    t.Holdings.GetQuantity(strike.Call).String(),
 					Bid:    strike.Call.Bid.Format(2),
 					Ask:    strike.Call.Ask.Format(2),
 					Mid:    strike.Call.MidPrice().Format(2),
@@ -238,7 +254,7 @@ func buildStateSnapshot() StateSnapshot {
 					OSI:    strike.Put.OSI(),
 					Strike: strike.Price.String(),
 					Class:  "P",
-					Qty:    gHoldings.GetQuantity(strike.Put).String(),
+					Qty:    t.Holdings.GetQuantity(strike.Put).String(),
 					Bid:    strike.Put.Bid.Format(2),
 					Ask:    strike.Put.Ask.Format(2),
 					Mid:    strike.Put.MidPrice().Format(2),
@@ -251,15 +267,15 @@ func buildStateSnapshot() StateSnapshot {
 	}
 
 	// risk profile across strikes within ±4 sigmas
-	em := gChain.ExpectedMove()
-	chartLo := gChain.Price.Sub(em.MulInt(4))
-	chartHi := gChain.Price.Add(em.MulInt(4))
-	for it := gChain.Strikes.Iterator(); it.Next(); {
+	em := t.Chain.ExpectedMove()
+	chartLo := t.Chain.Price.Sub(em.MulInt(4))
+	chartHi := t.Chain.Price.Add(em.MulInt(4))
+	for it := t.Chain.Strikes.Iterator(); it.Next(); {
 		strike := it.Value()
 		if strike.Price.Cmp(chartLo) < 0 || strike.Price.Cmp(chartHi) > 0 {
 			continue
 		}
-		settlement := computeSettlementAt(strike.Price)
+		settlement := t.computeSettlementAt(strike.Price)
 		snap.Risk = append(snap.Risk, RiskPoint{
 			Strike:     strike.Price.Format(2),
 			Settlement: settlement.Format(2),
@@ -267,10 +283,10 @@ func buildStateSnapshot() StateSnapshot {
 	}
 
 	// strategies
-	for name, enabled := range gStrategyEnabled {
+	for _, name := range kStrategies {
 		snap.Strategies[name] = StrategyInfo{
-			Enabled: enabled,
-			Count:   gStrategiesUsed[name],
+			Enabled: t.Config.Strategies[name],
+			Count:   t.StrategiesUsed[name],
 		}
 	}
 
@@ -279,112 +295,114 @@ func buildStateSnapshot() StateSnapshot {
 
 // broadcastState builds a snapshot and caches it for polling.
 // Must be called from the main goroutine.
-func broadcastState() {
-	data, err := json.Marshal(buildStateSnapshot())
+func (w *Web) broadcastState() {
+	data, err := json.Marshal(w.buildStateSnapshot())
 	if err != nil {
 		return
 	}
-	lastSnapshotMu.Lock()
-	lastSnapshotJSON = data
-	lastSnapshotMu.Unlock()
+	w.LastSnapshotMu.Lock()
+	w.LastSnapshotJSON = data
+	w.LastSnapshotMu.Unlock()
 	select {
-	case gSSEBroadcast <- data:
+	case w.SSEBroadcast <- data:
 	default:
 	}
 }
 
 // processWebRequest handles a web request on the main goroutine.
-func processWebRequest(req WebRequest) {
+func (w *Web) processWebRequest(req WebRequest) {
+	t := w.Trader
 	switch req.Type {
 	case "pause":
-		gPaused = true
+		t.Paused = true
 		log.Printf("web: paused")
 	case "resume":
-		gPaused = false
+		t.Paused = false
 		log.Printf("web: resumed")
 	case "flags":
 		if req.Flags != nil {
-			applyFlags(req.Flags)
+			w.applyFlags(req.Flags)
 		}
 	case "strategies":
 		for name, enabled := range req.Strats {
-			gStrategyEnabled[name] = enabled
+			t.Config.Strategies[name] = enabled
 			log.Printf("web: strategy %s = %v", name, enabled)
 		}
 	case "broadcast":
 		// just broadcast state, handled below
 	}
-	broadcastState()
+	w.broadcastState()
 	if req.Response != nil {
 		close(req.Response)
 	}
 }
 
-func applyFlags(f *FlagsData) {
+func (w *Web) applyFlags(f *FlagsData) {
+	t := w.Trader
 	if f.Sigmas != "" {
-		*sigmasFlag = decimal.Parse(f.Sigmas)
+		t.Config.Sigmas = decimal.Parse(f.Sigmas)
 		log.Printf("web: sigmas = %s", f.Sigmas)
 	}
 	if f.Budget != "" {
 		v, err := strconv.ParseFloat(f.Budget, 64)
 		if err == nil {
-			*budgetFlag = v
+			t.Config.Budget = v
 			log.Printf("web: budget = %s", f.Budget)
 		}
 	}
 	if f.Floor != "" {
 		v, err := strconv.ParseFloat(f.Floor, 64)
 		if err == nil {
-			*floorFlag = v
+			t.Config.Floor = v
 			log.Printf("web: floor = %s", f.Floor)
 		}
 	}
 	if f.Spread != "" {
-		*spreadFlag = decimal.Parse(f.Spread)
+		t.Config.Spread = decimal.Parse(f.Spread)
 		log.Printf("web: spread = %s", f.Spread)
 	}
 	if f.Cooldown != "" {
 		d, err := clocky.ParseDuration(f.Cooldown)
 		if err == nil {
-			*cooldownFlag = d
+			t.Config.Cooldown = d
 			log.Printf("web: cooldown = %s", f.Cooldown)
 		}
 	}
 	if f.Patience != "" {
 		d, err := clocky.ParseDuration(f.Patience)
 		if err == nil {
-			*patienceFlag = d
+			t.Config.Patience = d
 			log.Printf("web: patience = %s", f.Patience)
 		}
 	}
 	if f.Prune != "" {
 		v, err := strconv.ParseFloat(f.Prune, 64)
 		if err == nil && v >= 0 && v <= 1 {
-			*pruneFlag = v
+			t.Config.Prune = v
 			log.Printf("web: prune = %s", f.Prune)
 		}
 	}
 	if f.WPayoff != "" {
-		*wPayoffFlag = decimal.Parse(f.WPayoff)
+		t.Config.WeightPayoff = decimal.Parse(f.WPayoff)
 		log.Printf("web: w-payoff = %s", f.WPayoff)
 	}
 	if f.WRisk != "" {
-		*wRiskFlag = decimal.Parse(f.WRisk)
+		t.Config.WeightRisk = decimal.Parse(f.WRisk)
 		log.Printf("web: w-risk = %s", f.WRisk)
 	}
 	if f.WDelta != "" {
-		*wDeltaFlag = decimal.Parse(f.WDelta)
+		t.Config.WeightDelta = decimal.Parse(f.WDelta)
 		log.Printf("web: w-delta = %s", f.WDelta)
 	}
 	if f.Demand != "" {
-		*demandFlag = decimal.Parse(f.Demand)
+		t.Config.Demand = decimal.Parse(f.Demand)
 		log.Printf("web: demand = %s", f.Demand)
 	}
 }
 
 // HTTP handlers
 
-func handleIndex(w http.ResponseWriter, r *http.Request) {
+func (web *Web) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
@@ -394,24 +412,24 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
-	noCache(w)
+	web.noCache(w)
 	w.Header().Set("Content-Type", "text/html")
 	w.Write(data)
 }
 
-func handleConfigAPI(w http.ResponseWriter, r *http.Request) {
-	noCache(w)
+func (web *Web) handleConfigAPI(w http.ResponseWriter, r *http.Request) {
+	web.noCache(w)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{
 		"pollInterval": int((*slowdownFlag).Milliseconds()),
 	})
 }
 
-func handleStateAPI(w http.ResponseWriter, r *http.Request) {
-	lastSnapshotMu.RLock()
-	data := lastSnapshotJSON
-	lastSnapshotMu.RUnlock()
-	noCache(w)
+func (web *Web) handleStateAPI(w http.ResponseWriter, r *http.Request) {
+	web.LastSnapshotMu.RLock()
+	data := web.LastSnapshotJSON
+	web.LastSnapshotMu.RUnlock()
+	web.noCache(w)
 	w.Header().Set("Content-Type", "application/json")
 	if data != nil {
 		w.Write(data)
@@ -420,13 +438,13 @@ func handleStateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func noCache(w http.ResponseWriter) {
+func (web *Web) noCache(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 }
 
-func handleEventsAPI(w http.ResponseWriter, r *http.Request) {
+func (web *Web) handleEventsAPI(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
@@ -435,10 +453,10 @@ func handleEventsAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	ch := sseSubscribe()
-	defer sseUnsubscribe(ch)
+	ch := web.sseSubscribe()
+	defer web.sseUnsubscribe(ch)
 	// trigger an initial broadcast
-	gWebRequests <- WebRequest{Type: "broadcast"}
+	web.WebRequests <- WebRequest{Type: "broadcast"}
 	for {
 		select {
 		case data := <-ch:
@@ -452,7 +470,7 @@ func handleEventsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleFlagsAPI(w http.ResponseWriter, r *http.Request) {
+func (web *Web) handleFlagsAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -463,37 +481,37 @@ func handleFlagsAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := make(chan struct{})
-	gWebRequests <- WebRequest{Type: "flags", Flags: &flags, Response: resp}
+	web.WebRequests <- WebRequest{Type: "flags", Flags: &flags, Response: resp}
 	<-resp
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func handlePauseAPI(w http.ResponseWriter, r *http.Request) {
+func (web *Web) handlePauseAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	resp := make(chan struct{})
-	gWebRequests <- WebRequest{Type: "pause", Response: resp}
+	web.WebRequests <- WebRequest{Type: "pause", Response: resp}
 	<-resp
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "paused"})
 }
 
-func handleResumeAPI(w http.ResponseWriter, r *http.Request) {
+func (web *Web) handleResumeAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	resp := make(chan struct{})
-	gWebRequests <- WebRequest{Type: "resume", Response: resp}
+	web.WebRequests <- WebRequest{Type: "resume", Response: resp}
 	<-resp
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "resumed"})
 }
 
-func handleStrategiesAPI(w http.ResponseWriter, r *http.Request) {
+func (web *Web) handleStrategiesAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -504,85 +522,110 @@ func handleStrategiesAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := make(chan struct{})
-	gWebRequests <- WebRequest{Type: "strategies", Strats: strats, Response: resp}
+	web.WebRequests <- WebRequest{Type: "strategies", Strats: strats, Response: resp}
 	<-resp
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func handleChainAPI(w http.ResponseWriter, r *http.Request) {
-	noCache(w)
+func (web *Web) handleChainAPI(w http.ResponseWriter, r *http.Request) {
+	t := web.Trader
+	web.noCache(w)
 	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprintf(w, "price: %s\n", gChain.Price)
-	fmt.Fprintf(w, "expected_move: %s\n", gChain.ExpectedMove())
-	fmt.Fprintf(w, "atm: %v\n", gChain.AtTheMoney != nil)
-	fmt.Fprintf(w, "options_by_id: %d\n", len(gOptionsByID))
-	fmt.Fprintf(w, "options_by_osi: %d\n", len(gOptionsByOSI))
-	fmt.Fprintf(w, "\n")
-	for it := gChain.Strikes.Iterator(); it.Next(); {
-		strike := it.Value()
-		fmt.Fprintf(w, "strike %s", strike.Price)
-		if strike.Call != nil {
-			c := strike.Call
-			fmt.Fprintf(w, "  call id=%d bid=%s ask=%s delta=%s mode=%s", c.ID, c.Bid, c.Ask, c.Delta, c.Mode)
-		}
-		if strike.Put != nil {
-			p := strike.Put
-			fmt.Fprintf(w, "  put id=%d bid=%s ask=%s delta=%s mode=%s", p.ID, p.Bid, p.Ask, p.Delta, p.Mode)
-		}
-		fmt.Fprintf(w, "\n")
+	fmt.Fprintf(w, "price: %s  em: %s  atm: %v  ids: %d  osi: %d\n\n",
+		t.Chain.Price, t.Chain.ExpectedMove(), t.Chain.AtTheMoney != nil,
+		len(t.OptionsByID), len(t.OptionsByOSI))
+	fmt.Fprintf(w, "%-8s  %5s %8s %8s %8s %5s  %5s %8s %8s %8s %5s\n",
+		"strike", "C id", "C bid", "C ask", "C delta", "C mod",
+		"P id", "P bid", "P ask", "P delta", "P mod")
+	for it := t.Chain.Strikes.Iterator(); it.Next(); {
+		s := it.Value()
+		fmt.Fprintf(w, "%-8s  %5d %8s %8s %8s %5s  %5d %8s %8s %8s %5s\n",
+			s.Price,
+			s.Call.ID, s.Call.Bid, s.Call.Ask, s.Call.Delta, s.Call.Mode,
+			s.Put.ID, s.Put.Bid, s.Put.Ask, s.Put.Delta, s.Put.Mode)
 	}
 }
 
-func startWeb() {
-	go sseBroadcaster()
+func (web *Web) handlePositionzAPI(w http.ResponseWriter, r *http.Request) {
+	t := web.Trader
+	web.noCache(w)
+	w.Header().Set("Content-Type", "text/plain")
+	sorted := t.Holdings.Sorted()
+	if len(sorted) == 0 {
+		fmt.Fprintf(w, "no positions\n")
+		return
+	}
+	fmt.Fprintf(w, "%-4s  %-30s  %8s  %8s  %8s  %8s  %8s\n",
+		"qty", "option", "avg cost", "bid", "ask", "mid", "pnl")
+	for _, h := range sorted {
+		o := h.Option
+		mid := o.MidPrice()
+		pnl := mid.Sub(h.AverageCost).Mul(h.Quantity).MulInt(kMultiplier)
+		fmt.Fprintf(w, "%-4s  %-30s  %8s  %8s  %8s  %8s  %8s\n",
+			h.Quantity, o.StringAligned(), h.AverageCost, o.Bid, o.Ask, mid, pnl)
+	}
+	fmt.Fprintf(w, "\ncash: %s  realized: %s  fees: %s\n",
+		t.Holdings.Cash, t.Holdings.RealizedPnL, t.Holdings.TotalFees)
+}
+
+func (web *Web) Start(t *Trader) {
+	web.Trader = t
+	rpID := *sldFlag
+	origin := "https://" + strings.ToLower(t.Symbol.String()) + "." + *sldFlag
+
+	go web.sseBroadcaster()
 
 	// set up database and auth
 	database := db.Get()
 	if err := auth.Migrate(database); err != nil {
 		log.Fatalf("web: failed to migrate auth schema: %v", err)
 	}
-	a, err := auth.New(database, *rpIDFlag, *originFlag)
+	a, err := auth.New(database, rpID, origin)
 	if err != nil {
 		log.Fatalf("web: failed to initialize auth: %v", err)
 	}
 
 	// static files
+	mux := http.NewServeMux()
 	staticFS, _ := fs.Sub(staticFiles, "static")
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	// public auth routes
-	http.Handle("/auth/static/", http.StripPrefix("/auth/static/", auth.StaticHandler()))
-	http.HandleFunc("/login", a.HandleLoginPage)
-	http.HandleFunc("/register", a.HandleRegisterPage)
-	http.HandleFunc("/logout", a.HandleLogout)
-	http.HandleFunc("/auth/register/begin", a.HandleRegisterBegin)
-	http.HandleFunc("/auth/register/finish", a.HandleRegisterFinish)
-	http.HandleFunc("/auth/login/begin", a.HandleLoginBegin)
-	http.HandleFunc("/auth/login/finish", a.HandleLoginFinish)
+	mux.Handle("/auth/static/", http.StripPrefix("/auth/static/", auth.StaticHandler()))
+	mux.HandleFunc("/login", a.HandleLoginPage)
+	mux.HandleFunc("/register", a.HandleRegisterPage)
+	mux.HandleFunc("/logout", a.HandleLogout)
+	mux.HandleFunc("/auth/register/begin", a.HandleRegisterBegin)
+	mux.HandleFunc("/auth/register/finish", a.HandleRegisterFinish)
+	mux.HandleFunc("/auth/login/begin", a.HandleLoginBegin)
+	mux.HandleFunc("/auth/login/finish", a.HandleLoginFinish)
 
 	// admin routes
-	http.HandleFunc("/admin/invites", a.RequireAdmin(a.HandleInvitesPage))
-	http.HandleFunc("/auth/invites/create", a.RequireAdmin(a.HandleCreateInvite))
-	http.HandleFunc("/auth/invites/list", a.RequireAdmin(a.HandleListInvites))
+	mux.HandleFunc("/admin/invites", a.RequireAdmin(a.HandleInvitesPage))
+	mux.HandleFunc("/auth/invites/create", a.RequireAdmin(a.HandleCreateInvite))
+	mux.HandleFunc("/auth/invites/list", a.RequireAdmin(a.HandleListInvites))
 
 	// protected dashboard routes
-	http.HandleFunc("/", a.RequireAuth(handleIndex))
-	http.HandleFunc("/api/config", a.RequireAuth(handleConfigAPI))
-	http.HandleFunc("/api/state", a.RequireAuth(handleStateAPI))
-	http.HandleFunc("/api/events", a.RequireAuth(handleEventsAPI))
-	http.HandleFunc("/api/flags", a.RequireAuthReadOnly(handleFlagsAPI))
-	http.HandleFunc("/api/pause", a.RequireAuthReadOnly(handlePauseAPI))
-	http.HandleFunc("/api/resume", a.RequireAuthReadOnly(handleResumeAPI))
-	http.HandleFunc("/api/strategies", a.RequireAuthReadOnly(handleStrategiesAPI))
+	mux.HandleFunc("/chainz", a.RequireAuth(web.handleChainAPI))
+	mux.HandleFunc("/positionz", a.RequireAuth(web.handlePositionzAPI))
+	mux.HandleFunc("/", a.RequireAuth(web.handleIndex))
+	mux.HandleFunc("/api/config", a.RequireAuth(web.handleConfigAPI))
+	mux.HandleFunc("/api/state", a.RequireAuth(web.handleStateAPI))
+	mux.HandleFunc("/api/events", a.RequireAuth(web.handleEventsAPI))
+	mux.HandleFunc("/api/flags", a.RequireAuthReadOnly(web.handleFlagsAPI))
+	mux.HandleFunc("/api/pause", a.RequireAuthReadOnly(web.handlePauseAPI))
+	mux.HandleFunc("/api/resume", a.RequireAuthReadOnly(web.handleResumeAPI))
+	mux.HandleFunc("/api/strategies", a.RequireAuthReadOnly(web.handleStrategiesAPI))
 
-	// expose internals
-	http.HandleFunc("/chainz", a.RequireAuth(handleChainAPI))
-
-	sock, err := net.Listen("tcp", *listenFlag)
+	listen := *listenFlag
+	if t.Config.Listen != "" {
+		listen = t.Config.Listen
+	}
+	sock, err := net.Listen("tcp", listen)
 	if err != nil {
 		log.Fatalf("web server listen error: %v", err)
 	}
-	log.Printf("dashboard at http://%s", sock.Addr())
-	go http.Serve(sock, nil)
+	log.Printf("dashboard for %s at http://%s", t.Symbol, sock.Addr())
+	go http.Serve(sock, mux)
 }

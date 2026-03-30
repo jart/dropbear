@@ -23,25 +23,30 @@ const (
 	kStrategyLiquidatePair         = "liquidate pair"
 )
 
-var gStrategyEnabled = map[string]bool{
-	kStrategyBuyCall:               false,
-	kStrategyBuyPut:                false,
-	kStrategySellCall:              false,
-	kStrategySellPut:               false,
-	kStrategyBuyCombo:              false,
-	kStrategySellCombo:             false,
-	kStrategySellCallVertical:      true,
-	kStrategySellPutVertical:       true,
-	kStrategyBuyCallVertical:       false,
-	kStrategyBuyPutVertical:        false,
-	kStrategyLiquidateCall:         false,
-	kStrategyLiquidatePut:          false,
-	kStrategyLiquidateCallVertical: false,
-	kStrategyLiquidatePutVertical:  false,
-	kStrategyLiquidatePair:         false,
+var kStrategies = []string{
+	kStrategyBuyCall,
+	kStrategyBuyPut,
+	kStrategySellCall,
+	kStrategySellPut,
+	kStrategyBuyCombo,
+	kStrategySellCombo,
+	kStrategySellCallVertical,
+	kStrategySellPutVertical,
+	kStrategyBuyCallVertical,
+	kStrategyBuyPutVertical,
+	kStrategyLiquidateCall,
+	kStrategyLiquidatePut,
+	kStrategyLiquidateCallVertical,
+	kStrategyLiquidatePutVertical,
+	kStrategyLiquidatePair,
 }
 
-var gStrategyEnabledEOD = map[string]bool{
+var kStrategyDefault = map[string]bool{
+	kStrategySellCallVertical: true,
+	kStrategySellPutVertical:  true,
+}
+
+var kStrategyDefaultEOD = map[string]bool{
 	kStrategyLiquidatePair:         true,
 	kStrategyLiquidateCall:         true,
 	kStrategyLiquidatePut:          true,
@@ -49,244 +54,244 @@ var gStrategyEnabledEOD = map[string]bool{
 	kStrategyLiquidatePutVertical:  false,
 }
 
-func buyCall() {
-	if !gStrategyEnabled[kStrategyBuyCall] {
+func (t *Trader) buyCall() {
+	if !t.Config.Strategies[kStrategyBuyCall] {
 		return
 	}
-	for strike := gChain.AtTheMoney.Prev; strike != nil && strike.Call.Ask.Cmp(minTick(gSymbol)) >= 0; strike = strike.Next {
-		if prune() {
+	for strike := t.Chain.AtTheMoney.Prev; strike != nil && strike.Call.Ask.Cmp(minTick(t.Symbol)) >= 0; strike = strike.Next {
+		if t.prune() {
 			continue
 		}
-		buy(strike.Call)
-		end(kStrategyBuyCall)
+		t.buy(strike.Call)
+		t.end(kStrategyBuyCall)
 	}
 }
 
-func buyPut() {
-	if !gStrategyEnabled[kStrategyBuyPut] {
+func (t *Trader) buyPut() {
+	if !t.Config.Strategies[kStrategyBuyPut] {
 		return
 	}
-	for strike := gChain.AtTheMoney.Next; strike != nil && strike.Put.Ask.Cmp(minTick(gSymbol)) >= 0; strike = strike.Prev {
-		if prune() {
+	for strike := t.Chain.AtTheMoney.Next; strike != nil && strike.Put.Ask.Cmp(minTick(t.Symbol)) >= 0; strike = strike.Prev {
+		if t.prune() {
 			continue
 		}
-		buy(strike.Put)
-		end(kStrategyBuyPut)
+		t.buy(strike.Put)
+		t.end(kStrategyBuyPut)
 	}
 }
 
-func sellCall() {
-	if !gStrategyEnabled[kStrategySellCall] {
+func (t *Trader) sellCall() {
+	if !t.Config.Strategies[kStrategySellCall] {
 		return
 	}
-	for strike := gChain.AtTheMoney.Prev; strike != nil && strike.Call.Ask.Cmp(minTick(gSymbol)) >= 0; strike = strike.Next {
-		if prune() {
+	for strike := t.Chain.AtTheMoney.Prev; strike != nil && strike.Call.Ask.Cmp(minTick(t.Symbol)) >= 0; strike = strike.Next {
+		if t.prune() {
 			continue
 		}
-		sell(strike.Call)
-		end(kStrategySellCall)
+		t.sell(strike.Call)
+		t.end(kStrategySellCall)
 	}
 }
 
-func sellPut() {
-	if !gStrategyEnabled[kStrategySellPut] {
+func (t *Trader) sellPut() {
+	if !t.Config.Strategies[kStrategySellPut] {
 		return
 	}
-	for strike := gChain.AtTheMoney.Next; strike != nil && strike.Put.Ask.Cmp(minTick(gSymbol)) >= 0; strike = strike.Prev {
-		if prune() {
+	for strike := t.Chain.AtTheMoney.Next; strike != nil && strike.Put.Ask.Cmp(minTick(t.Symbol)) >= 0; strike = strike.Prev {
+		if t.prune() {
 			continue
 		}
-		sell(strike.Put)
-		end(kStrategySellPut)
+		t.sell(strike.Put)
+		t.end(kStrategySellPut)
 	}
 }
 
-func sellCallVertical(lo, hi decimal.Decimal) {
-	if !gStrategyEnabled[kStrategySellCallVertical] {
+func (t *Trader) sellCallVertical(lo, hi decimal.Decimal) {
+	if !t.Config.Strategies[kStrategySellCallVertical] {
 		return
 	}
-	for _, ss, _ := gChain.Strikes.Ceiling(lo); ss != nil && ss.Price.Cmp(hi) <= 0; ss = ss.Next {
+	for _, ss, _ := t.Chain.Strikes.Ceiling(lo); ss != nil && ss.Price.Cmp(hi) <= 0; ss = ss.Next {
 		for sb := ss.Next; sb != nil && sb.Price.Cmp(hi) <= 0; sb = sb.Next {
-			if prune() {
+			if t.prune() {
 				continue
 			}
-			sell(ss.Call)
-			buy(sb.Call)
-			end(kStrategySellCallVertical)
+			t.sell(ss.Call)
+			t.buy(sb.Call)
+			t.end(kStrategySellCallVertical)
 		}
 	}
 }
 
-func sellPutVertical(lo, hi decimal.Decimal) {
-	if !gStrategyEnabled[kStrategySellPutVertical] {
+func (t *Trader) sellPutVertical(lo, hi decimal.Decimal) {
+	if !t.Config.Strategies[kStrategySellPutVertical] {
 		return
 	}
-	for _, ss, _ := gChain.Strikes.Ceiling(hi); ss != nil && ss.Price.Cmp(lo) >= 0; ss = ss.Prev {
+	for _, ss, _ := t.Chain.Strikes.Ceiling(hi); ss != nil && ss.Price.Cmp(lo) >= 0; ss = ss.Prev {
 		for sb := ss.Prev; sb != nil && sb.Price.Cmp(lo) >= 0; sb = sb.Prev {
-			if prune() {
+			if t.prune() {
 				continue
 			}
-			sell(ss.Put)
-			buy(sb.Put)
-			end(kStrategySellPutVertical)
+			t.sell(ss.Put)
+			t.buy(sb.Put)
+			t.end(kStrategySellPutVertical)
 		}
 	}
 }
 
-func buyCallVertical(lo, hi decimal.Decimal) {
-	if !gStrategyEnabled[kStrategyBuyCallVertical] {
+func (t *Trader) buyCallVertical(lo, hi decimal.Decimal) {
+	if !t.Config.Strategies[kStrategyBuyCallVertical] {
 		return
 	}
-	for _, sb, _ := gChain.Strikes.Ceiling(lo); sb != nil && sb.Price.Cmp(hi) <= 0; sb = sb.Next {
+	for _, sb, _ := t.Chain.Strikes.Ceiling(lo); sb != nil && sb.Price.Cmp(hi) <= 0; sb = sb.Next {
 		for ss := sb.Next; ss != nil && ss.Price.Cmp(hi) <= 0; ss = ss.Next {
-			if prune() {
+			if t.prune() {
 				continue
 			}
-			buy(sb.Call)
-			sell(ss.Call)
-			end(kStrategyBuyCallVertical)
+			t.buy(sb.Call)
+			t.sell(ss.Call)
+			t.end(kStrategyBuyCallVertical)
 		}
 	}
 }
 
-func buyPutVertical(lo, hi decimal.Decimal) {
-	if !gStrategyEnabled[kStrategyBuyPutVertical] {
+func (t *Trader) buyPutVertical(lo, hi decimal.Decimal) {
+	if !t.Config.Strategies[kStrategyBuyPutVertical] {
 		return
 	}
-	for _, sb, _ := gChain.Strikes.Ceiling(hi); sb != nil && sb.Price.Cmp(lo) >= 0; sb = sb.Prev {
+	for _, sb, _ := t.Chain.Strikes.Ceiling(hi); sb != nil && sb.Price.Cmp(lo) >= 0; sb = sb.Prev {
 		for ss := sb.Prev; ss != nil && ss.Price.Cmp(lo) >= 0; ss = ss.Prev {
-			if prune() {
+			if t.prune() {
 				continue
 			}
-			buy(sb.Put)
-			sell(ss.Put)
-			end(kStrategyBuyPutVertical)
+			t.buy(sb.Put)
+			t.sell(ss.Put)
+			t.end(kStrategyBuyPutVertical)
 		}
 	}
 }
 
-func buyCombo(lo, hi decimal.Decimal) {
-	if !gStrategyEnabled[kStrategyBuyCombo] {
+func (t *Trader) buyCombo(lo, hi decimal.Decimal) {
+	if !t.Config.Strategies[kStrategyBuyCombo] {
 		return
 	}
-	for _, strike, _ := gChain.Strikes.Floor(lo); strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		if prune() {
+	for _, strike, _ := t.Chain.Strikes.Floor(lo); strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+		if t.prune() {
 			continue
 		}
-		buy(strike.Call)
-		sell(strike.Put)
-		if end(kStrategyBuyCombo) {
+		t.buy(strike.Call)
+		t.sell(strike.Put)
+		if t.end(kStrategyBuyCombo) {
 			break
 		}
 	}
 }
 
-func sellCombo(lo, hi decimal.Decimal) {
-	if !gStrategyEnabled[kStrategySellCombo] {
+func (t *Trader) sellCombo(lo, hi decimal.Decimal) {
+	if !t.Config.Strategies[kStrategySellCombo] {
 		return
 	}
-	for _, strike, _ := gChain.Strikes.Floor(lo); strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
-		if prune() {
+	for _, strike, _ := t.Chain.Strikes.Floor(lo); strike != nil && strike.Price.Cmp(hi) <= 0; strike = strike.Next {
+		if t.prune() {
 			continue
 		}
-		sell(strike.Call)
-		buy(strike.Put)
-		if end(kStrategySellCombo) {
+		t.sell(strike.Call)
+		t.buy(strike.Put)
+		if t.end(kStrategySellCombo) {
 			break
 		}
 	}
 }
 
-func liquidateCall() {
-	if !gStrategyEnabled[kStrategyLiquidateCall] {
+func (t *Trader) liquidateCall() {
+	if !t.Config.Strategies[kStrategyLiquidateCall] {
 		return
 	}
-	for x, xh := range gHoldings.Positions {
+	for x, xh := range t.Holdings.Positions {
 		if x.Class != 'C' {
 			continue
 		}
 		if xh.Quantity.IsPositive() {
-			sell(x)
+			t.sell(x)
 		} else {
-			buy(x)
+			t.buy(x)
 		}
-		end(kStrategyLiquidateCall)
+		t.end(kStrategyLiquidateCall)
 	}
 }
 
-func liquidatePut() {
-	if !gStrategyEnabled[kStrategyLiquidatePut] {
+func (t *Trader) liquidatePut() {
+	if !t.Config.Strategies[kStrategyLiquidatePut] {
 		return
 	}
-	for x, xh := range gHoldings.Positions {
+	for x, xh := range t.Holdings.Positions {
 		if x.Class != 'P' {
 			continue
 		}
 		if xh.Quantity.IsPositive() {
-			sell(x)
+			t.sell(x)
 		} else {
-			buy(x)
+			t.buy(x)
 		}
-		end(kStrategyLiquidatePut)
+		t.end(kStrategyLiquidatePut)
 	}
 }
 
-func liquidateCallVertical() {
-	if !gStrategyEnabled[kStrategyLiquidateCallVertical] {
+func (t *Trader) liquidateCallVertical() {
+	if !t.Config.Strategies[kStrategyLiquidateCallVertical] {
 		return
 	}
-	for s, sh := range gHoldings.Positions {
+	for s, sh := range t.Holdings.Positions {
 		if s.Class != 'C' || sh.Quantity.IsPositive() {
 			continue // need a short call
 		}
-		for l, lh := range gHoldings.Positions {
+		for l, lh := range t.Holdings.Positions {
 			if s == l {
 				continue
 			}
 			if l.Class != 'C' || lh.Quantity.IsNegative() {
 				continue // need a long call
 			}
-			if !gEODTransitioned && !isSpreadProfitableToClose(s, sh, l, lh) {
+			if !t.EODTransitioned && !t.isSpreadProfitableToClose(s, sh, l, lh) {
 				continue
 			}
-			buy(s)
-			sell(l)
-			end(kStrategyLiquidateCallVertical)
+			t.buy(s)
+			t.sell(l)
+			t.end(kStrategyLiquidateCallVertical)
 		}
 	}
 }
 
-func liquidatePutVertical() {
-	if !gStrategyEnabled[kStrategyLiquidatePutVertical] {
+func (t *Trader) liquidatePutVertical() {
+	if !t.Config.Strategies[kStrategyLiquidatePutVertical] {
 		return
 	}
-	for s, sh := range gHoldings.Positions {
+	for s, sh := range t.Holdings.Positions {
 		if s.Class != 'P' || sh.Quantity.IsPositive() {
 			continue // need a short put
 		}
-		for l, lh := range gHoldings.Positions {
+		for l, lh := range t.Holdings.Positions {
 			if s == l {
 				continue
 			}
 			if l.Class != 'P' || lh.Quantity.IsNegative() {
 				continue // need a long put
 			}
-			if !gEODTransitioned && !isSpreadProfitableToClose(s, sh, l, lh) {
+			if !t.EODTransitioned && !t.isSpreadProfitableToClose(s, sh, l, lh) {
 				continue
 			}
-			buy(s)
-			sell(l)
-			end(kStrategyLiquidatePutVertical)
+			t.buy(s)
+			t.sell(l)
+			t.end(kStrategyLiquidatePutVertical)
 		}
 	}
 }
 
-func liquidatePair() {
-	if !gStrategyEnabled[kStrategyLiquidatePair] {
+func (t *Trader) liquidatePair() {
+	if !t.Config.Strategies[kStrategyLiquidatePair] {
 		return
 	}
-	for x, xh := range gHoldings.Positions {
-		for y, yh := range gHoldings.Positions {
+	for x, xh := range t.Holdings.Positions {
+		for y, yh := range t.Holdings.Positions {
 			if x == y {
 				continue
 			}
@@ -294,22 +299,22 @@ func liquidatePair() {
 				continue
 			}
 			if xh.Quantity.IsPositive() {
-				sell(x)
+				t.sell(x)
 			} else {
-				buy(x)
+				t.buy(x)
 			}
 			if yh.Quantity.IsPositive() {
-				sell(y)
+				t.sell(y)
 			} else {
-				buy(y)
+				t.buy(y)
 			}
-			end(kStrategyLiquidatePair)
+			t.end(kStrategyLiquidatePair)
 		}
 	}
 }
 
-func isSpreadProfitableToClose(short *options.Option, sh *Holding, long *options.Option, lh *Holding) bool {
+func (t *Trader) isSpreadProfitableToClose(short *options.Option, sh *Holding, long *options.Option, lh *Holding) bool {
 	openCredit := sh.AverageCost.Sub(lh.AverageCost)
 	closeCost := short.MidPrice().Sub(long.MidPrice())
-	return closeCost.Mul(*demandFlag).Cmp(openCredit) < 0
+	return closeCost.Mul(t.Config.Demand).Cmp(openCredit) < 0
 }

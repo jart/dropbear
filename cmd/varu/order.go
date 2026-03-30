@@ -10,6 +10,7 @@ import (
 )
 
 type Order struct {
+	Trader    *Trader
 	ID        int
 	OrderID   schwab.OrderID
 	Legs      []*Leg
@@ -96,8 +97,8 @@ func (order *Order) Send() error {
 	if order.Vertical() {
 		width := order.Width()
 		if order.Price.Abs().Cmp(width) >= 0 {
-			return fmt.Errorf("vertical order price must be beneath spread width: price=%s width=%s mid=%s natural=%s maker=%s underlying=%s",
-				order.Price, width, order.MidPrice(), order.NaturalPrice(), order.MakerPrice(), gChain.Price)
+			return fmt.Errorf("vertical order price must be beneath spread width: price=%s width=%s mid=%s natural=%s maker=%s",
+				order.Price, width, order.MidPrice(), order.NaturalPrice(), order.MakerPrice())
 		}
 	}
 	for _, leg := range order.Legs {
@@ -130,9 +131,9 @@ func (order *Order) Send() error {
 	}
 	order.Sent = true
 	if *liveFlag {
-		sendLiveOrder(order)
+		order.Trader.sendLiveOrder(order)
 	} else {
-		simulateOrder(order)
+		order.Trader.simulateOrder(order)
 	}
 	return nil
 }
@@ -156,9 +157,9 @@ func (order *Order) Cancel() error {
 	}
 	order.Canceling = true
 	if *liveFlag {
-		go schwabCancelOrder(order)
+		go order.Trader.schwabCancelOrder(order)
 	} else {
-		simulateCancelOrder(order)
+		order.Trader.simulateCancelOrder(order)
 	}
 	return nil
 }
@@ -183,4 +184,12 @@ func (order *Order) HasFill() bool {
 
 func (order *Order) Vertical() bool {
 	return len(order.Legs) == 2 && order.Legs[0].Option.Class == order.Legs[1].Option.Class
+}
+
+func compareOrdersByScore(a, b *Order) int {
+	res := a.Score.Cmp(b.Score)
+	if res != 0 {
+		return -res // highest score first
+	}
+	return a.ID - b.ID
 }

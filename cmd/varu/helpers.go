@@ -7,6 +7,7 @@ import (
 
 const (
 	kSPXW = symbol.Symbol('S' | 'P'<<8 | 'X'<<16 | 'W'<<24)
+	kXSP  = symbol.Symbol('X' | 'S'<<8 | 'P'<<16)
 	kNDX  = symbol.Symbol('N' | 'D'<<8 | 'X'<<16)
 )
 

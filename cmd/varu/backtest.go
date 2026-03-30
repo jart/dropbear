@@ -9,28 +9,19 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"slices"
 	"time"
 )
 
-func backtest() {
-	log.Printf("starting backtest for %s on %04d-%02d-%02d", gSymbol, dateFlag.Year(), dateFlag.Month(), dateFlag.Day())
-	if *dbnFlag == "" {
-		fmt.Fprintln(os.Stderr, "missing required -dbn flag")
-		os.Exit(1)
-	}
-	quoteReader, err := databento.OpenFileReader(*dbnFlag)
+func (t *Trader) Backtest(dbn string, date clocky.Time) error {
+	wantYear, wantMonth, wantDay := date.Date()
+	log.Printf("starting backtest for %s on %04d-%02d-%02d",
+		t.Symbol, wantYear, wantMonth, wantDay)
+	quoteReader, err := databento.OpenFileReader(dbn)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", *dbnFlag, err)
-		os.Exit(1)
+		return err
 	}
 	defer quoteReader.Close()
-	if quoteReader.Metadata.Schema != databento.SchemaCMBP1 {
-		fmt.Fprintf(os.Stderr, "%s: expected quotes DBN file with schema %d, got %d\n",
-			*dbnFlag, databento.SchemaCMBP1, quoteReader.Metadata.Schema)
-		os.Exit(1)
-	}
 	clocky.Now = clocky.FakeNow
 	clocky.Sleep = clocky.FakeSleep
 	ready := false
@@ -38,22 +29,20 @@ func backtest() {
 	var nextDump time.Time
 	var rtBaseData clocky.Time
 	var nextThought, nextHeartbeat clocky.Time
-	wantYear, wantMonth, wantDay := dateFlag.Date()
 	for {
 		rec, err := quoteReader.Read()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			fmt.Fprintf(os.Stderr, "%s: read quote error: %v\n", *dbnFlag, err)
-			os.Exit(1)
+			return err
 		}
 		switch m := rec.(type) {
 		case *databento.Instrument:
 			symbol := symbol.MustParse(m.GetAsset())
 			year, timeMonth, day := m.Expiration.In(clocky.UTC).Date()
 			month := clocky.Month(timeMonth)
-			if symbol == gSymbol && year == wantYear && month == wantMonth && day == wantDay {
+			if symbol == t.Symbol && year == wantYear && month == wantMonth && day == wantDay {
 				id := m.Header.InstrumentID
 				strike := decimal.Decimal(m.StrikePrice / 1000)
 				class := m.InstrumentClass
@@ -66,28 +55,28 @@ func backtest() {
 					Month:  month,
 					Day:    day,
 				}
-				onOptionDef(option)
+				t.onOptionDef(option)
 			} else {
 				log.Printf("skipping instrument %s expiring on %04d-%02d-%02d\n", symbol, year, month, day)
 			}
 		case *databento.CMBP1:
 			now := m.TSRecv
 			clocky.SetNow(now)
-			o := onOptionTick(m)
+			o := t.onOptionTick(m)
 			if o == nil {
 				continue
 			}
-			simulateFills(o)
-			if _, ok := gPendingOrdersByOption[o]; ok {
-				cancelUnfilledOrders(now)
+			t.simulateFills(o)
+			if _, ok := t.PendingOrdersByOption[o]; ok {
+				t.cancelUnfilledOrders(now)
 			}
 			clock := now.ClockInt()
 			var realNow time.Time
-			if *rtFlag || *webFlag {
+			if *rtFlag || t.Web != nil {
 				realNow = time.Now()
 			}
 			if *rtFlag {
-				if rtBaseData == 0 && clock >= *startOfDayFlag {
+				if rtBaseData == 0 && clock >= t.Config.StartOfDay {
 					rtBase = realNow
 					rtBaseData = now
 				}
@@ -102,64 +91,61 @@ func backtest() {
 			if clock >= kMarketClose {
 				break
 			}
-			if clock < *startOfDayFlag {
-				continue
-			}
-			if !ready && gChain.AtTheMoney != nil {
-				onOptionDefEnd()
+			if !ready && t.Chain.AtTheMoney != nil {
+				t.onOptionDefEnd()
 				ready = true
 			}
 			if ready && now >= nextThought {
-				nextThought = now.Add(*thinkFlag)
-				onThought(now)
+				nextThought = now.Add(t.Config.Think)
+				t.onThought(now)
 			}
-			if *webFlag {
+			if t.Web != nil {
 				for {
 					select {
-					case req := <-gWebRequests:
-						processWebRequest(req)
+					case req := <-t.Web.WebRequests:
+						t.Web.processWebRequest(req)
 					default:
 						goto doneWebRequests
 					}
 				}
 			doneWebRequests:
 				if realNow.After(nextDump) {
-					nextDump = realNow.Add(slowdownFlag.Go())
-					broadcastState()
+					nextDump = realNow.Add(time.Duration(*slowdownFlag))
+					t.Web.broadcastState()
 				}
 			}
 			if now.After(nextHeartbeat) {
 				nextHeartbeat = now.Add(*heartbeatFlag)
-				onHeartbeat()
+				t.onHeartbeat()
 			}
 		default:
-			fmt.Fprintf(os.Stderr, "%s: unexpected record type %T\n", *dbnFlag, rec)
-			os.Exit(1)
+			return fmt.Errorf("unexpected record type %T", rec)
 		}
 	}
-	if *webFlag {
-		broadcastState()
+	if t.Web != nil {
+		t.Web.broadcastState()
 	}
-	onEndOfDay()
+	t.onEndOfDay()
+	return nil
 }
 
-func simulateOrder(order *Order) {
+func (t *Trader) simulateOrder(order *Order) {
 	// order will be filled immediately if it crosses the spread
-	if !simulateFillOrder(order) {
+	if !t.simulateFillOrder(order) {
 		// otherwise we wait for market to move towards limit price
-		addPendingOrder(order)
+		t.addPendingOrder(order)
 	}
 }
 
-func simulateFills(option *options.Option) {
-	for _, order := range slices.Clone(gPendingOrdersByOption[option]) {
-		if simulateFillOrder(order) {
-			removePendingOrder(order)
+func (t *Trader) simulateFills(option *options.Option) {
+	for _, order := range slices.Clone(t.PendingOrdersByOption[option]) {
+		if t.simulateFillOrder(order) {
+			t.removePendingOrder(order)
 		}
 	}
 }
 
-func simulateFillOrder(order *Order) bool {
+func (t *Trader) simulateFillOrder(order *Order) bool {
 	if order.Filled() {
 		panic("order already filled")
 	}
@@ -202,7 +188,7 @@ func simulateFillOrder(order *Order) bool {
 	// simulate fill by updating holdings and cash
 	log.Printf("simulated fill of order #%d at price %s -> %s\n",
 		order.ID, order.Price, priceThatMarketDemands)
-	gStrategiesUsed[order.Strategy] += 1
+	t.StrategiesUsed[order.Strategy] += 1
 	for _, leg := range order.Legs {
 		var fillPrice decimal.Decimal
 		if *hostileFlag {
@@ -214,9 +200,9 @@ func simulateFillOrder(order *Order) bool {
 		} else {
 			fillPrice = leg.Option.MidPrice()
 		}
-		gHoldings.Add(leg.Option, leg.Quantity, fillPrice)
+		t.Holdings.Add(leg.Option, leg.Quantity, fillPrice)
 		fee := kFeePerContract.Mul(leg.Quantity.Abs())
-		gHoldings.TotalFees = gHoldings.TotalFees.Add(fee)
+		t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
 		leg.Filled = true
 	}
 
@@ -224,6 +210,6 @@ func simulateFillOrder(order *Order) bool {
 	return true
 }
 
-func simulateCancelOrder(order *Order) {
-	removePendingOrder(order)
+func (t *Trader) simulateCancelOrder(order *Order) {
+	t.removePendingOrder(order)
 }

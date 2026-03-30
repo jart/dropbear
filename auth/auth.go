@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"flag"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -275,7 +274,6 @@ func (a *Auth) HandleRegisterFinish(w http.ResponseWriter, r *http.Request) {
 		a.rpID,
 	)
 	if err != nil {
-		log.Printf("Registration verification error: %v", err)
 		http.Error(w, "Registration verification failed: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -283,14 +281,12 @@ func (a *Auth) HandleRegisterFinish(w http.ResponseWriter, r *http.Request) {
 	// Create user in database
 	user, err := CreateUser(a.db, cd.name, cd.isAdmin)
 	if err != nil {
-		log.Printf("CreateUser error: %v", err)
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
 
 	// Save credential
 	if err := SaveCredential(a.db, user.ID, cred); err != nil {
-		log.Printf("SaveCredential error: %v", err)
 		http.Error(w, "Failed to save credential", http.StatusInternalServerError)
 		return
 	}
@@ -303,7 +299,6 @@ func (a *Auth) HandleRegisterFinish(w http.ResponseWriter, r *http.Request) {
 	// Create session
 	token, err := CreateSession(a.db, user.ID)
 	if err != nil {
-		log.Printf("CreateSession error: %v", err)
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 		return
 	}
@@ -465,7 +460,6 @@ func (a *Auth) HandleLoginFinish(w http.ResponseWriter, r *http.Request) {
 		a.rpID,
 	)
 	if err != nil {
-		log.Printf("Login verification error: %v", err)
 		http.Error(w, "Authentication failed: "+err.Error(), http.StatusUnauthorized)
 		return
 	}

@@ -2,11 +2,20 @@ package schwab
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
+	"dropbear/clocky"
 	"dropbear/netty"
+)
+
+var (
+	schwabLogFlag = flag.String("schwab-log", os.ExpandEnv("$HOME/.schwab.log"), "log file for schwab websocket messages")
 )
 
 // StreamerInfo contains the WebSocket connection details from GET /userPreference.
@@ -37,10 +46,15 @@ func (c *Client) GetStreamerInfo() (*StreamerInfo, error) {
 // OrderUpdates returns a channel that receives order update events via the Schwab streamer WebSocket.
 // Subscribes to the ACCT_ACTIVITY service and emits an *OrderEvent for each event.
 // Reconnects automatically with exponential backoff on disconnection.
+// Schwab only lets you have one WebSocket connection per account.
 func (c *Client) OrderUpdates() <-chan *OrderEvent {
+	flog, err := os.OpenFile(*schwabLogFlag, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("could not open schwab log file: %v", err)
+	}
 	ch := make(chan *OrderEvent, 64)
 	ready := make(chan struct{})
-	d := &orderUpdatesDaemon{client: c, ch: ch, ready: ready}
+	d := &orderUpdatesDaemon{client: c, ch: ch, ready: ready, flog: flog}
 	go d.run()
 	<-ready
 	return ch
@@ -50,6 +64,7 @@ type orderUpdatesDaemon struct {
 	client *Client
 	ch     chan<- *OrderEvent
 	ready  chan struct{}
+	flog   *os.File
 }
 
 func (d *orderUpdatesDaemon) run() {
@@ -59,6 +74,7 @@ func (d *orderUpdatesDaemon) run() {
 		err := d.impl()
 		ts2 := time.Now()
 		if err != nil {
+			fmt.Fprintf(d.flog, "error reading message: %v\n", err)
 			log.Printf("schwab stream: %v, reconnecting...", err)
 		}
 		if ts2.Sub(ts1) > 30*time.Second {
@@ -152,10 +168,21 @@ func (d *orderUpdatesDaemon) impl() error {
 
 	// main message loop
 	for {
-		_, message, err := conn.ReadMessage()
+		messageType, message, err := conn.ReadMessage()
 		if err != nil {
 			return err
 		}
+
+		// log message with timestamp
+		var sb strings.Builder
+		sb.Grow(128 + len(message))
+		sb.WriteString(clocky.Now().String())
+		sb.WriteString(" got message type ")
+		sb.WriteString(strconv.Itoa(messageType))
+		sb.WriteString(": ")
+		sb.Write(message)
+		sb.WriteRune('\n')
+		d.flog.Write([]byte(sb.String()))
 
 		// parse the envelope — data messages have {"data": [...]}
 		var envelope struct {

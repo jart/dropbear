@@ -5,16 +5,22 @@ import (
 	"time"
 )
 
-var hintTimes = map[string]time.Time{}
+// Hinter rate-limits log messages to at most once per second per unique
+// format string. Each goroutine that logs should have its own Hinter so
+// no synchronization is needed.
+type Hinter struct {
+	times map[string]time.Time
+}
 
-// Hint logs a message at most once per second per unique format string.
-// Use this for diagnostics that explain why something isn't happening,
-// without spamming the log when the condition persists.
-func Hint(format string, args ...any) {
+func NewHinter() *Hinter {
+	return &Hinter{times: map[string]time.Time{}}
+}
+
+func (h *Hinter) Hint(format string, args ...any) {
 	now := time.Now()
-	if last, ok := hintTimes[format]; ok && now.Sub(last) < time.Second {
+	if last, ok := h.times[format]; ok && now.Sub(last) < time.Second {
 		return
 	}
-	hintTimes[format] = now
+	h.times[format] = now
 	log.Printf(format, args...)
 }

@@ -1,32 +1,23 @@
 package main
 
-import (
-	"dropbear/options"
-)
-
-var (
-	gPendingOrders         = map[*Order]bool{}
-	gPendingOrdersByOption = map[*options.Option][]*Order{}
-)
-
-func addPendingOrder(order *Order) {
-	gPendingOrders[order] = true
+func (t *Trader) addPendingOrder(order *Order) {
+	t.PendingOrders[order] = true
 	for _, leg := range order.Legs {
-		gPendingOrdersByOption[leg.Option] = append(gPendingOrdersByOption[leg.Option], order)
+		t.PendingOrdersByOption[leg.Option] = append(t.PendingOrdersByOption[leg.Option], order)
 	}
 }
 
-func removePendingOrder(order *Order) {
-	delete(gPendingOrders, order)
+func (t *Trader) removePendingOrder(order *Order) {
+	delete(t.PendingOrders, order)
 	for _, leg := range order.Legs {
-		orders := gPendingOrdersByOption[leg.Option]
+		orders := t.PendingOrdersByOption[leg.Option]
 		for i, o := range orders {
 			if o == order {
 				orders = append(orders[:i], orders[i+1:]...)
 				if len(orders) == 0 {
-					delete(gPendingOrdersByOption, leg.Option)
+					delete(t.PendingOrdersByOption, leg.Option)
 				} else {
-					gPendingOrdersByOption[leg.Option] = orders
+					t.PendingOrdersByOption[leg.Option] = orders
 				}
 				break
 			}
