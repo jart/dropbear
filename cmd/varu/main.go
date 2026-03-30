@@ -27,8 +27,7 @@ var (
 )
 
 const (
-	kMarketClose = 16_00_00
-	kMultiplier  = 100
+	kMultiplier = 100
 )
 
 var (
@@ -52,7 +51,6 @@ func main() {
 	comboFlag := flag.Bool("combo", false, "enable buying and selling combos")
 	bearishFlag := flag.Bool("bearish", false, "only sell call verticals (bearish bias)")
 	bullishFlag := flag.Bool("bullish", false, "only sell put verticals (bullish bias)")
-	eodFlag := flag.Bool("eod", false, "enable end-of-day liquidation strategies")
 	dbnFlag := flag.String("dbn", "", "path to backtest data")
 	symbolFlag := flag.String("symbol", "", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag := clocky.TimeFlag("date", "", "date of the trades to report")
@@ -74,6 +72,7 @@ func main() {
 	startOfDayFlag := flag.Int("sod", 9_30_05, "start of day in HHMMSS")
 	fullRiskTimeFlag := flag.Int("frt", 12_00_00, "full risk time in HHMMSS")
 	stopTradingFlag := flag.Int("eodt", 13_00_00, "stop trading / begin EOD liquidation in HHMMSS")
+	dumpFlag := clocky.DurationFlag("dump", "0", "time before close to close positions")
 	flag.Parse()
 
 	// log what flags were passed
@@ -156,10 +155,10 @@ func main() {
 			WeightRisk:   *wRiskFlag,
 			WeightDelta:  *wDeltaFlag,
 			WeightPayoff: *wPayoffFlag,
+			Dump:         *dumpFlag,
 			Prune:        *pruneFlag,
 			Floor:        *floorFlag,
 			Budget:       *budgetFlag,
-			EOD:          *eodFlag,
 			Think:        *thinkFlag,
 		}
 		for _, s := range kStrategies {
@@ -199,6 +198,7 @@ func main() {
 	t.Config.Spread = decimal.FromInt(1)
 	t.Config.WeightDelta = decimal.Zero
 	t.Config.WeightRisk = decimal.Zero
+	t.Config.Dump = 5 * clocky.Minute
 	traders = append(traders, t)
 
 	// TSLA strategy (sharpe 5.86)
@@ -212,6 +212,7 @@ func main() {
 	t.Config.WeightDelta = decimal.Zero
 	t.Config.WeightRisk = decimal.Zero
 	t.Config.StartOfDay = 10_00_00
+	t.Config.Dump = 5 * clocky.Minute
 	traders = append(traders, t)
 
 	// SPXW strategy (sharpe 2.85)

@@ -16,6 +16,7 @@ type Config struct {
 	Cooldown     clocky.Duration
 	Patience     clocky.Duration
 	Think        clocky.Duration
+	Dump         clocky.Duration
 	Strategies   map[string]bool
 	Floor        float64
 	Budget       float64
@@ -25,5 +26,4 @@ type Config struct {
 	FullRiskTime int
 	StopTrading  int
 	MaxPending   int
-	EOD          bool
 }

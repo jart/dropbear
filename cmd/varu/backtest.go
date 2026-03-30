@@ -88,7 +88,7 @@ func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 					}
 				}
 			}
-			if clock >= kMarketClose {
+			if t.MarketClose != 0 && now.After(t.MarketClose) {
 				break
 			}
 			if !ready && t.Chain.AtTheMoney != nil {

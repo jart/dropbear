@@ -210,10 +210,11 @@ func (t *Trader) liquidateCall() {
 		if x.Class != 'C' {
 			continue
 		}
+		qty := xh.Quantity.Abs()
 		if xh.Quantity.IsPositive() {
-			t.sell(x)
+			t.sellN(x, qty)
 		} else {
-			t.buy(x)
+			t.buyN(x, qty)
 		}
 		t.end(kStrategyLiquidateCall)
 	}
@@ -227,10 +228,11 @@ func (t *Trader) liquidatePut() {
 		if x.Class != 'P' {
 			continue
 		}
+		qty := xh.Quantity.Abs()
 		if xh.Quantity.IsPositive() {
-			t.sell(x)
+			t.sellN(x, qty)
 		} else {
-			t.buy(x)
+			t.buyN(x, qty)
 		}
 		t.end(kStrategyLiquidatePut)
 	}
@@ -251,11 +253,12 @@ func (t *Trader) liquidateCallVertical() {
 			if l.Class != 'C' || lh.Quantity.IsNegative() {
 				continue // need a long call
 			}
-			if !t.EODTransitioned && !t.isSpreadProfitableToClose(s, sh, l, lh) {
+			if !t.isSpreadProfitableToClose(s, sh, l, lh) {
 				continue
 			}
-			t.buy(s)
-			t.sell(l)
+			qty := sh.Quantity.Abs().Min(lh.Quantity.Abs())
+			t.buyN(s, qty)
+			t.sellN(l, qty)
 			t.end(kStrategyLiquidateCallVertical)
 		}
 	}
@@ -276,11 +279,12 @@ func (t *Trader) liquidatePutVertical() {
 			if l.Class != 'P' || lh.Quantity.IsNegative() {
 				continue // need a long put
 			}
-			if !t.EODTransitioned && !t.isSpreadProfitableToClose(s, sh, l, lh) {
+			if !t.isSpreadProfitableToClose(s, sh, l, lh) {
 				continue
 			}
-			t.buy(s)
-			t.sell(l)
+			qty := sh.Quantity.Abs().Min(lh.Quantity.Abs())
+			t.buyN(s, qty)
+			t.sellN(l, qty)
 			t.end(kStrategyLiquidatePutVertical)
 		}
 	}
@@ -298,15 +302,16 @@ func (t *Trader) liquidatePair() {
 			if x.OSI() >= y.OSI() {
 				continue
 			}
+			qty := xh.Quantity.Abs().Min(yh.Quantity.Abs())
 			if xh.Quantity.IsPositive() {
-				t.sell(x)
+				t.sellN(x, qty)
 			} else {
-				t.buy(x)
+				t.buyN(x, qty)
 			}
 			if yh.Quantity.IsPositive() {
-				t.sell(y)
+				t.sellN(y, qty)
 			} else {
-				t.buy(y)
+				t.buyN(y, qty)
 			}
 			t.end(kStrategyLiquidatePair)
 		}

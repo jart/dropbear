@@ -3,6 +3,7 @@ package main
 import (
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/loggy"
@@ -10,9 +11,7 @@ import (
 	"dropbear/prob"
 	"dropbear/symbol"
 	"log"
-	"maps"
 	"math"
-	"slices"
 	"time"
 
 	"github.com/emirpasic/gods/v2/sets/treeset"
@@ -39,14 +38,19 @@ type Trader struct {
 	StagedCash            decimal.Decimal
 	StagedLegs            []*Leg
 	Simulations           *treeset.Set[*Order]
+	MarketClose           clocky.Time
+	StopTime              clocky.Time
+	DumpTime              clocky.Time
 	Hinter                *loggy.Hinter
 	Web                   *Web
 	OrderCounter          int
 	IdentifierCounter     int
+	Dumped                bool
 	Paused                bool
 	AbortOrder            bool
-	EODTransitioned       bool
 	AllowClosing          bool
+	StopTransitioned      bool
+	EODTransitioned       bool
 }
 
 func NewTrader(symbol symbol.Symbol, config *Config) *Trader {
@@ -65,6 +69,8 @@ func NewTrader(symbol symbol.Symbol, config *Config) *Trader {
 		StrategiesUsed:        map[string]int{},
 		Simulations:           treeset.NewWith(compareOrdersByScore),
 		Hinter:                loggy.NewHinter(),
+		StopTime:              clocky.MaxTime,
+		DumpTime:              clocky.MaxTime,
 	}
 }
 
@@ -84,17 +90,44 @@ func (t *Trader) onThought(now clocky.Time) {
 		t.Hinter.Hint("not trading: before market open (%d < %d)", clock, t.Config.StartOfDay)
 		return
 	}
+	if now.After(t.MarketClose) {
+		t.Hinter.Hint("not trading: market closed")
+		return
+	}
+	if !t.StopTransitioned && clock >= t.Config.StopTrading {
+		t.StopTransitioned = true
+		for _, k := range kStrategies {
+			t.Config.Strategies[k] = false
+		}
+		log.Printf("STOPPING TRADING")
+	}
+	if !t.EODTransitioned && now.After(t.DumpTime) {
+		for _, k := range kStrategies {
+			t.Config.Strategies[k] = false
+			if kStrategyDefaultEOD[k] {
+				t.Config.Strategies[k] = true
+			}
+		}
+		t.Config.Patience = 10 * clocky.Second
+		t.Config.Cooldown = 1 * clocky.Second
+		t.Config.Spread = decimal.One
+		t.EODTransitioned = true
+		t.AllowClosing = true
+		log.Printf("LIQUIDATING")
+	}
 	if now < t.NextTradeTime {
 		t.Hinter.Hint("not trading: cooldown (%s remaining)", clocky.Duration(t.NextTradeTime-now))
-	} else if clock >= kMarketClose {
-		t.Hinter.Hint("not trading: market closed (%d >= %d)", clock, kMarketClose)
-	} else if len(t.PendingOrders) >= t.Config.MaxPending {
-		t.Hinter.Hint("not trading: %d pending orders (max %d)", len(t.PendingOrders), t.Config.MaxPending)
-	} else if t.Paused {
-		t.Hinter.Hint("not trading: paused")
-	} else {
-		t.trade(now)
+		return
 	}
+	if len(t.PendingOrders) >= t.Config.MaxPending {
+		t.Hinter.Hint("not trading: %d pending orders (max %d)", len(t.PendingOrders), t.Config.MaxPending)
+		return
+	}
+	if t.Paused {
+		t.Hinter.Hint("not trading: paused")
+		return
+	}
+	t.trade(now)
 }
 
 func (t *Trader) trade(now clocky.Time) {
@@ -139,29 +172,6 @@ func (t *Trader) beginOrders(now clocky.Time) bool {
 	}
 	t.BaselineRisk = t.computeRisk()
 	t.BaselineDelta = t.computeDelta()
-	if !t.EODTransitioned && t.Config.EOD {
-		isPowerHour := now.ClockInt() >= t.Config.StopTrading
-		if isPowerHour {
-			pay := t.BaselinePayoff
-			liq := t.computeLiquidationValue()
-			eod := t.computeSettlementAt(t.Chain.Price)
-			if liq.Cmp(pay) < 0 {
-				t.Hinter.Hint("not liquidating: liquidation value %s is less than payoff %s", liq.Truncate(), pay.Truncate())
-			} else if pay.Cmp(decimal.FromInt(3000)) < 0 {
-				t.Hinter.Hint("not liquidating: payoff %s is too low", pay.Truncate())
-			} else if liq.Cmp(eod.DivInt(2)) < 0 {
-				t.Hinter.Hint("not liquidating: not enough theta gained; liquidation value %s < 50%% of payoff %s", liq.Truncate(), eod.Truncate())
-			} else {
-				clear(t.Config.Strategies)
-				maps.Copy(t.Config.Strategies, kStrategyDefaultEOD)
-				t.Config.Patience = 10 * clocky.Second
-				t.Config.Cooldown = 3 * clocky.Second
-				t.EODTransitioned = true
-				t.AllowClosing = true
-				log.Printf("LIQUIDATION MODE ENABLED")
-			}
-		}
-	}
 	return true
 }
 
@@ -202,26 +212,34 @@ func (t *Trader) sendBestOrder(now clocky.Time) {
 // buy simulates buying an option. Aborts if we're already short this
 // contract, to prevent churning (buying back what we sold).
 func (t *Trader) buy(option *options.Option) {
+	t.buyN(option, decimal.One)
+}
+
+func (t *Trader) buyN(option *options.Option, qty decimal.Decimal) {
 	if !t.AllowClosing && option.Mode == options.ModeShort {
 		t.AbortOrder = true
 		return
 	}
 	t.StagedLegs = append(t.StagedLegs, &Leg{
 		Option:   option,
-		Quantity: decimal.One,
+		Quantity: qty,
 	})
 }
 
 // sell simulates selling an option. Aborts if we're already long this
 // contract, to prevent churning (selling what we bought).
 func (t *Trader) sell(option *options.Option) {
+	t.sellN(option, decimal.One)
+}
+
+func (t *Trader) sellN(option *options.Option, qty decimal.Decimal) {
 	if !t.AllowClosing && option.Mode == options.ModeLong {
 		t.AbortOrder = true
 		return
 	}
 	t.StagedLegs = append(t.StagedLegs, &Leg{
 		Option:   option,
-		Quantity: decimal.NegOne,
+		Quantity: qty.Neg(),
 	})
 }
 
@@ -256,12 +274,12 @@ func (t *Trader) end(strategy string) bool {
 	}
 	payoff := t.computeExpectedPayoff()
 	payoffImprovement := payoff.Sub(t.BaselinePayoff)
-	if payoffImprovement.IsNegative() {
+	if !t.EODTransitioned && payoffImprovement.IsNegative() {
 		return false
 	}
 	risk := t.computeRisk()
 	score := t.scoreOrder(payoff, risk)
-	if !score.IsPositive() {
+	if !t.EODTransitioned && !score.IsPositive() {
 		return false
 	}
 	t.Simulations.Add(&Order{
@@ -386,9 +404,9 @@ func (t *Trader) onEndOfDay() {
 		log.Printf("have %4s of %s worth %8s", holding.Quantity, holding.Option.StringAligned(), settlement.Truncate())
 	}
 	log.Printf("strategies used")
-	for _, strategy := range slices.Sorted(maps.Keys(t.StrategiesUsed)) {
-		count := t.StrategiesUsed[strategy]
-		log.Printf("%30s %4d", strategy, count)
+	for _, s := range kStrategies {
+		count := t.StrategiesUsed[s]
+		log.Printf("%30s %4d", s, count)
 	}
 	totalFees := t.Holdings.TotalFees
 	log.Printf("ending balance %s less %s fees winning %s at %s price %s",
@@ -609,6 +627,14 @@ func (t *Trader) onOptionDef(o *options.Option) {
 }
 
 func (t *Trader) onOptionDefEnd() {
+
+	// compute dump time
+	if t.Config.Dump > 0 {
+		now := clocky.Now()
+		year, month, day := now.Date()
+		t.MarketClose = cboe.GetCloseTime(year, month, day)
+		t.DumpTime = t.MarketClose.Add(-t.Config.Dump)
+	}
 
 	// initialize options restrictions after loading schwab order history
 	for option, holding := range t.Holdings.Positions {
