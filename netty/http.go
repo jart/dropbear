@@ -31,9 +31,9 @@ var BulkHttpClient = &http.Client{
 	Transport: &http.Transport{
 		DialContext:           Dialer.DialContext,
 		DialTLSContext:        bulkTLSDialer.DialTLSContext,
-		MaxConnsPerHost:       100,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   20,
+		MaxConnsPerHost:       1000,
+		MaxIdleConns:          1000,
+		MaxIdleConnsPerHost:   1000,
 		IdleConnTimeout:       45 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
@@ -61,7 +61,6 @@ var FastHTTPClient = &http.Client{
 		ForceAttemptHTTP2:     true,
 		DisableCompression:    false, // Schwab sends gzip even when not asked
 	},
-	Timeout: 20 * time.Second,
 }
 
 // IsRetryableHTTPError returns true if the error is a retryable network error.

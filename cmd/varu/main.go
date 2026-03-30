@@ -192,8 +192,8 @@ func main() {
 	t = NewTrader(symbol.MustParse("NVDA"), newConfig())
 	t.Config.Listen = "127.0.0.1:8486"
 	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.Floor = 20_000
-	t.Config.Budget = 5_000
+	t.Config.Floor = 15_000
+	t.Config.Budget = 3_000
 	t.Config.Eval = decimal.FromInt(3)
 	t.Config.Spread = decimal.FromInt(1)
 	t.Config.WeightDelta = decimal.Zero
@@ -205,8 +205,8 @@ func main() {
 	t = NewTrader(symbol.MustParse("TSLA"), newConfig())
 	t.Config.Listen = "127.0.0.1:8485"
 	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.Floor = 20_000
-	t.Config.Budget = 5_000
+	t.Config.Floor = 15_000
+	t.Config.Budget = 3_000
 	t.Config.Eval = decimal.FromInt(2)
 	t.Config.Spread = decimal.FromInt(1)
 	t.Config.WeightDelta = decimal.Zero
@@ -219,8 +219,8 @@ func main() {
 	t = NewTrader(symbol.MustParse("SPXW"), newConfig())
 	t.Config.Listen = "127.0.0.1:8484"
 	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.Floor = 20_000
-	t.Config.Budget = 5_000
+	t.Config.Floor = 15_000
+	t.Config.Budget = 3_000
 	t.Config.Eval = decimal.FromInt(3)
 	t.Config.Spread = decimal.Half
 	t.Config.WeightDelta = decimal.Zero

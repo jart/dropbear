@@ -24,7 +24,7 @@ import (
 
 var (
 	flagFeed       = flag.String("feed", "sip", "market data feed (sip, iex, otc, boats)")
-	flagWorkers    = flag.Int("workers", 20, "number of parallel download workers")
+	flagWorkers    = flag.Int("workers", 100, "number of parallel download workers")
 	flagAdjustment = flag.String("adjustment", "all", "price adjustment (raw, split, dividend, spin-off, all)")
 )
 

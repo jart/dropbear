@@ -29,7 +29,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		APITokenBucket:  netty.NewTokenBucketPerMinute(200),
-		DataTokenBucket: netty.NewTokenBucketPerMinute(10000),
+		DataTokenBucket: netty.NewTokenBucketPerMinute(5000),
 	}
 }
 
@@ -96,7 +96,7 @@ func (c *Client) RequestJSON(client *http.Client, method, url string, requestBod
 			}
 		}
 		resp.Body.Close()
-		delay := time.Duration(1<<min(tries, 15)) * time.Millisecond
+		delay := time.Duration(100<<min(tries, 8)) * time.Millisecond
 		log.Printf("alpaca: got %d read reset, retrying in %v (attempt %d)", resp.StatusCode, delay, tries)
 		time.Sleep(delay)
 		tries++
@@ -144,7 +144,7 @@ func (c *Client) Request(client *http.Client, method, urlString string, body []b
 			if !netty.IsRetryableHTTPError(err) {
 				return nil, err
 			}
-			delay := time.Duration(1<<min(tries, 15)) * time.Millisecond
+			delay := time.Duration(100<<min(tries, 8)) * time.Millisecond
 			log.Printf("alpaca: %v, retrying in %v (attempt %d)", err, delay, tries)
 			time.Sleep(delay)
 			tries++
@@ -159,7 +159,7 @@ func (c *Client) Request(client *http.Client, method, urlString string, body []b
 		resp.Body.Close()
 
 		// retry with exponential backoff
-		delay := time.Duration(1<<min(tries, 15)) * time.Millisecond
+		delay := time.Duration(100<<min(tries, 8)) * time.Millisecond
 		log.Printf("alpaca: got %d, retrying in %v (attempt %d)", statusCode, delay, tries)
 		time.Sleep(delay)
 		tries++

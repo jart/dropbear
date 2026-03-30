@@ -629,10 +629,10 @@ func (t *Trader) onOptionDef(o *options.Option) {
 func (t *Trader) onOptionDefEnd() {
 
 	// compute dump time
+	now := clocky.Now()
+	year, month, day := now.Date()
+	t.MarketClose = cboe.GetCloseTime(year, month, day)
 	if t.Config.Dump > 0 {
-		now := clocky.Now()
-		year, month, day := now.Date()
-		t.MarketClose = cboe.GetCloseTime(year, month, day)
 		t.DumpTime = t.MarketClose.Add(-t.Config.Dump)
 	}
 
