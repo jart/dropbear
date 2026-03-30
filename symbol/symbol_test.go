@@ -134,6 +134,25 @@ func TestMapKeyUnmarshal(t *testing.T) {
 	}
 }
 
+func TestValue(t *testing.T) {
+	sym := MustParse("NVDA")
+	val, err := sym.Value()
+	if err != nil {
+		t.Fatalf("Value() error = %v", err)
+	}
+	s, ok := val.(string)
+	if !ok {
+		t.Fatalf("Value() returned %T, want string", val)
+	}
+	if s != "NVDA" {
+		t.Errorf("Value() = %q, want %q", s, "NVDA")
+	}
+	// ensure Value() returns string, not int64
+	if _, ok := val.(int64); ok {
+		t.Errorf("Value() returned int64, must return string for SQLite compatibility")
+	}
+}
+
 func BenchmarkMustParse(b *testing.B) {
 	for b.Loop() {
 		_ = MustParse("AAPL")

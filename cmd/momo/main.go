@@ -132,8 +132,9 @@ func (t *Trader) onBar(bar *ds.Bar) {
 	t.checkOrders(bar)
 
 	now := clocky.Now()
-	openTime := cboe.GetOpenTime(now)
-	closeTime := cboe.GetCloseTime(now)
+	year, month, day := now.Date()
+	openTime := cboe.GetOpenTime(year, month, day)
+	closeTime := cboe.GetCloseTime(year, month, day)
 
 	if now < openTime || now >= closeTime {
 		return

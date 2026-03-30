@@ -139,9 +139,10 @@ func (e *Equity) Order(quantity, limitPrice decimal.Decimal) (*Order, error) {
 
 	// check time
 	now := clocky.Now()
+	year, month, day := now.Date()
 	timeInForce := alpaca.TimeInForceDay
-	openTime := cboe.GetOpenTime(now)
-	closeTime := cboe.GetCloseTime(now)
+	openTime := cboe.GetOpenTime(year, month, day)
+	closeTime := cboe.GetCloseTime(year, month, day)
 	time := now.ClockInt()
 	if now.Before(openTime) || !now.Before(closeTime) {
 		// OPG orders submitted after 9:28am but before 7:00pm ET will be rejected

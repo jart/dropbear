@@ -1,9 +1,7 @@
 package main
 
 import (
-	"database/sql"
 	"dropbear/decimal"
-	"log"
 	"slices"
 	"sort"
 	"strings"
@@ -152,41 +150,4 @@ func parseWinning(log string) (winning, balance, fees decimal.Decimal, ok bool) 
 		}
 	}
 	return decimal.Zero, decimal.Zero, decimal.Zero, false
-}
-
-// cleanupDuplicateFlags finds rows with duplicate flags and re-canonicalizes them.
-// Migration added 2026-03-29: fixes rows created with duplicate flags like
-// "-bearish -bearish -spread=.5 -spread=.5" due to base/dimension overlap.
-// Rows that become duplicates after cleanup are deleted (keeping the one with results).
-func cleanupDuplicateFlags(database *sql.DB) {
-	rows, err := database.Query(`SELECT id, flags FROM varulab_runs`)
-	if err != nil {
-		return
-	}
-	type fix struct {
-		id    int64
-		canon string
-	}
-	var fixes []fix
-	for rows.Next() {
-		var id int64
-		var flags string
-		rows.Scan(&id, &flags)
-		canon := canonicalizeFlags(strings.Fields(flags))
-		if canon != flags {
-			fixes = append(fixes, fix{id, canon})
-		}
-	}
-	rows.Close()
-	if len(fixes) == 0 {
-		return
-	}
-	log.Printf("fixing %d rows with duplicate flags", len(fixes))
-	for _, f := range fixes {
-		// try to update; if it violates the unique constraint, just delete
-		_, err := database.Exec(`UPDATE varulab_runs SET flags = ? WHERE id = ?`, f.canon, f.id)
-		if err != nil {
-			database.Exec(`DELETE FROM varulab_runs WHERE id = ?`, f.id)
-		}
-	}
 }

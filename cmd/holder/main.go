@@ -201,8 +201,9 @@ func (h *Holding) onBar(bar *ds.Bar) {
 	}
 
 	now := clocky.Now()
-	openTime := cboe.GetOpenTime(now)
-	closeTime := cboe.GetCloseTime(now)
+	year, month, day := now.Date()
+	openTime := cboe.GetOpenTime(year, month, day)
+	closeTime := cboe.GetCloseTime(year, month, day)
 	if now < openTime || now >= closeTime {
 		return
 	}
@@ -233,7 +234,8 @@ func (h *Holding) onBar(bar *ds.Bar) {
 // rebalanceAll rebalances all holdings, allocating available BP proportionally by weight
 func rebalanceAll() {
 	now := clocky.Now()
-	closeTime := cboe.GetCloseTime(now)
+	year, month, day := now.Date()
+	closeTime := cboe.GetCloseTime(year, month, day)
 	inNoBuyWindow := closeTime.Sub(now) <= *flagNoBuyTime
 
 	for _, h := range gHoldings {

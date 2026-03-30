@@ -3,6 +3,7 @@ package main
 import (
 	"dropbear/cboe"
 	"dropbear/clocky"
+	"dropbear/symbol"
 	"fmt"
 	"log"
 	"os"
@@ -52,9 +53,9 @@ func downloadDir() string {
 }
 
 // findDbnFile searches all active data dirs for a .dbn file.
-func findDbnFile(sym, date string) string {
+func findDbnFile(sym symbol.Symbol, date string) string {
 	for _, d := range activeDirs() {
-		path := filepath.Join(d, sym, date+".dbn")
+		path := filepath.Join(d, sym.String(), date+".dbn")
 		if fileExists(path) {
 			return path
 		}
@@ -65,8 +66,8 @@ func findDbnFile(sym, date string) string {
 // runDownloader downloads .dbn files breadth-first backwards in time.
 // It iterates one day at a time across all symbols so that recent data
 // for every symbol is available before going deeper into history.
-func runDownloader(symbols []string, quit <-chan struct{}) {
-	day := clocky.Time(time.Now().Add(-24 * time.Hour).UnixNano())
+func runDownloader(symbols []symbol.Symbol, quit <-chan struct{}) {
+	date := clocky.Time(time.Now().Add(-24 * time.Hour).UnixNano())
 
 	for {
 		select {
@@ -75,16 +76,15 @@ func runDownloader(symbols []string, quit <-chan struct{}) {
 		default:
 		}
 
-		if day.Format("2006-01-02") < earliestDate {
+		if date.Format("2006-01-02") < earliestDate {
 			log.Printf("downloader reached earliest date %s, stopping", earliestDate)
-			select {
-			case <-quit:
-				return
-			}
+			<-quit
+			return
 		}
 
-		if !cboe.IsTradingDay(day) {
-			day = day.Add(-clocky.Day)
+		year, month, day := date.Date()
+		if !cboe.IsTradingDay(year, month, day) {
+			date = date.Add(-clocky.Day)
 			continue
 		}
 
@@ -95,11 +95,11 @@ func runDownloader(symbols []string, quit <-chan struct{}) {
 			default:
 			}
 
-			if !shouldDownload(sym, day) {
+			if !shouldDownload(sym, date) {
 				continue
 			}
 
-			dateStr := day.Format("2006-01-02")
+			dateStr := date.Format("2006-01-02")
 			if findDbnFile(sym, dateStr) != "" {
 				continue
 			}
@@ -115,7 +115,7 @@ func runDownloader(symbols []string, quit <-chan struct{}) {
 				}
 			}
 
-			path := filepath.Join(dest, sym, dateStr+".dbn")
+			path := filepath.Join(dest, sym.String(), dateStr+".dbn")
 			log.Printf("downloading %s %s -> %s", sym, dateStr, dest)
 			if err := downloadDbn(sym, dateStr, path); err != nil {
 				log.Printf("download failed %s %s: %v", sym, dateStr, err)
@@ -129,18 +129,16 @@ func runDownloader(symbols []string, quit <-chan struct{}) {
 			notifyScheduler()
 		}
 
-		day = day.Add(-clocky.Day)
+		date = date.Add(-clocky.Day)
 	}
 }
 
-func shouldDownload(sym string, day clocky.Time) bool {
-	if zeroDTESymbols[sym] {
-		return true
-	}
-	return day.Weekday() == clocky.Friday
+func shouldDownload(sym symbol.Symbol, date clocky.Time) bool {
+	year, month, day := date.Date()
+	return cboe.HasOptionChain(sym, year, month, day)
 }
 
-func downloadDbn(sym, date, outputPath string) error {
+func downloadDbn(sym symbol.Symbol, date, outputPath string) error {
 	dir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -150,9 +148,10 @@ func downloadDbn(sym, date, outputPath string) error {
 	tmpPath := outputPath + ".tmp"
 	defer os.Remove(tmpPath)
 
-	args := []string{"run", "./broker/databento/cmd/dbndownload",
+	args := []string{
+		"run", "./broker/databento/cmd/dbndownload",
 		"-date", date,
-		"-sym", sym,
+		"-sym", sym.String(),
 		"-schema", "cmbp-1",
 		"-j", "50",
 		"-o", tmpPath,
@@ -174,13 +173,13 @@ func fileExists(path string) bool {
 
 // discoverDbnFiles finds all .dbn files under the configured data directory.
 type DbnFile struct {
-	Symbol string
+	Symbol symbol.Symbol
 	Date   string
 	Path   string
 }
 
 func discoverDbnFiles() []DbnFile {
-	symbols := map[string]bool{}
+	symbols := map[symbol.Symbol]bool{}
 	for _, s := range parseSymbols() {
 		symbols[s] = true
 	}
@@ -192,11 +191,17 @@ func discoverDbnFiles() []DbnFile {
 			continue
 		}
 		for _, symDir := range entries {
-			if !symDir.IsDir() || !symbols[symDir.Name()] {
+			if !symDir.IsDir() {
 				continue
 			}
-			sym := symDir.Name()
-			symPath := filepath.Join(datadir, sym)
+			sym, err := symbol.Parse(symDir.Name())
+			if err != nil {
+				continue
+			}
+			if !symbols[sym] {
+				continue
+			}
+			symPath := filepath.Join(datadir, sym.String())
 			dateEntries, err := os.ReadDir(symPath)
 			if err != nil {
 				continue
@@ -207,7 +212,7 @@ func discoverDbnFiles() []DbnFile {
 					continue
 				}
 				date := name[:len(name)-4]
-				key := sym + "/" + date
+				key := sym.String() + "/" + date
 				if seen[key] {
 					continue
 				}

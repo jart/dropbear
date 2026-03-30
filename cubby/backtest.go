@@ -196,8 +196,8 @@ func (m *backtest) setTime(now clocky.Time) {
 		m.opened = false
 		m.closed = false
 	}
-	openTime := cboe.GetOpenTime(now)
-	closeTime := cboe.GetCloseTime(now)
+	openTime := cboe.GetOpenTime(year, month, day)
+	closeTime := cboe.GetCloseTime(year, month, day)
 	if !m.opened && !now.Before(openTime) && now.Before(closeTime) {
 		m.onMarketOpen()
 	}
@@ -208,7 +208,8 @@ func (m *backtest) checkMarketClose(now clocky.Time) {
 	if m.closed {
 		return
 	}
-	closeTime := cboe.GetCloseTime(now)
+	year, month, day := now.Date()
+	closeTime := cboe.GetCloseTime(year, month, day)
 	if !now.Before(closeTime) {
 		m.closed = true
 		m.onMarketClose(now)

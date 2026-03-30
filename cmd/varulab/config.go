@@ -3,7 +3,7 @@ package main
 import "os"
 
 // defaultSymbols is the default set of symbols to backtest if -symbols is not provided.
-const defaultSymbols = "NVDA TSLA ORCL ADBE META AMZN COIN BAC INTC NFLX SHOP XSP"
+const defaultSymbols = "NVDA TSLA ORCL ADBE META AMZN COIN BAC INTC NFLX SHOP XSP IWM"
 
 // earliestDate is the oldest date the downloader will fetch.
 const earliestDate = "2026-01-01"
@@ -15,16 +15,6 @@ var dataDirs = []string{
 	"/fast/databento",
 	"/disk/databento",
 	os.ExpandEnv("$HOME/databento"),
-}
-
-// zeroDTE symbols have 0DTE options every trading day.
-// All other symbols only have weekly options expiring on Fridays.
-var zeroDTESymbols = map[string]bool{
-	"SPXW": true,
-	"NDX":  true,
-	"XSP":  true,
-	"SPY":  true,
-	"QQQ":  true,
 }
 
 // kBaseFlags are included in every backtest run.

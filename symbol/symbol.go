@@ -1,6 +1,7 @@
 package symbol
 
 import (
+	"database/sql/driver"
 	"fmt"
 	"unsafe"
 )
@@ -53,6 +54,11 @@ func (s Symbol) String() string {
 		n++
 	}
 	return string(buf[:n])
+}
+
+// Value ensures SQLite treats Symbol as string.
+func (s Symbol) Value() (driver.Value, error) {
+	return s.String(), nil
 }
 
 func (s Symbol) GoString() string {

@@ -4,6 +4,7 @@ import (
 	"dropbear/db"
 	"dropbear/ds"
 	"dropbear/loggy"
+	"dropbear/symbol"
 	"flag"
 	"log"
 	"os"
@@ -39,20 +40,9 @@ func main() {
 
 	// database
 	database := db.Get()
-
-	// migration 2026-03-29: remove old git_rev-based dedup index and
-	// deduplicate rows so the new (symbol, date, flags) index can be created
-	database.Exec(`DROP INDEX IF EXISTS idx_varulab_runs_dedup`)
-	database.Exec(`DELETE FROM varulab_runs WHERE id NOT IN (
-		SELECT MIN(id) FROM varulab_runs GROUP BY symbol, date, flags
-	)`)
-
 	if err := Migrate(database); err != nil {
 		log.Fatalf("failed to migrate schema: %v", err)
 	}
-
-	// fix rows with duplicate flags (e.g. "-bearish -bearish -spread=.5 -spread=.5")
-	cleanupDuplicateFlags(database)
 
 	// reset any runs left in running/claimed state from a previous crash
 	res, _ := database.Exec(`UPDATE varulab_runs SET status = 'pending' WHERE status IN ('running', 'claimed')`)
@@ -62,18 +52,23 @@ func main() {
 
 	// cancel pending runs for symbols no longer configured
 	symbols := parseSymbols()
-	symSet := map[string]bool{}
+	symSet := map[symbol.Symbol]bool{}
 	for _, s := range symbols {
 		symSet[s] = true
 	}
-	var staleSymbols []string
+	var staleSymbols []symbol.Symbol
 	rows, _ := database.Query(`SELECT DISTINCT symbol FROM varulab_runs WHERE status = 'pending'`)
 	if rows != nil {
 		for rows.Next() {
 			var s string
 			rows.Scan(&s)
-			if !symSet[s] {
-				staleSymbols = append(staleSymbols, s)
+			sym, err := symbol.Parse(s)
+			if err != nil {
+				log.Printf("skipping unparseable symbol in DB: %q", s)
+				continue
+			}
+			if !symSet[sym] {
+				staleSymbols = append(staleSymbols, sym)
 			}
 		}
 		rows.Close()
@@ -128,8 +123,17 @@ func main() {
 	gScheduler.Stop()
 }
 
-func parseSymbols() []string {
-	return strings.Fields(*symbolsFlag)
+func parseSymbols() []symbol.Symbol {
+	fields := strings.Fields(*symbolsFlag)
+	syms := make([]symbol.Symbol, len(fields))
+	for i, s := range fields {
+		var err error
+		syms[i], err = symbol.Parse(s)
+		if err != nil {
+			log.Fatalf("invalid symbol: %s", s)
+		}
+	}
+	return syms
 }
 
 func gitRevision() string {
