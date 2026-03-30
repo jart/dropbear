@@ -328,8 +328,8 @@ func querySummary(database *sql.DB, dateFrom, dateTo, sym string) ([]FlagSummary
 		flagSummaries = append(flagSummaries, fs)
 	}
 	sort.Slice(flagSummaries, func(i, j int) bool {
-		si, _ := strconv.ParseFloat(flagSummaries[i].Sharpe, 64)
-		sj, _ := strconv.ParseFloat(flagSummaries[j].Sharpe, 64)
+		si, _ := strconv.ParseFloat(flagSummaries[i].AvgWinning, 64)
+		sj, _ := strconv.ParseFloat(flagSummaries[j].AvgWinning, 64)
 		return si > sj
 	})
 
