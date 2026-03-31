@@ -30,6 +30,9 @@ func Parse(osi string) (sym symbol.Symbol, strike decimal.Decimal, class byte, y
 	}
 	strike = decimal.FromInt64(strikeVal).DivInt(1000)
 	class = osi[12]
+	if class != 'C' && class != 'P' {
+		return 0, decimal.Zero, 0, 0, 0, 0, errors.New("bad osi class")
+	}
 	year = int(osi[6]-'0')*10 + int(osi[7]-'0') + 2000
 	month = clocky.Month(int(osi[8]-'0')*10 + int(osi[9]-'0'))
 	day = int(osi[10]-'0')*10 + int(osi[11]-'0')

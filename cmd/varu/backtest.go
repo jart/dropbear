@@ -5,7 +5,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/options"
-	"dropbear/symbol"
+	"dropbear/osi"
 	"fmt"
 	"io"
 	"log"
@@ -39,25 +39,26 @@ func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 		}
 		switch m := rec.(type) {
 		case *databento.Instrument:
-			symbol := symbol.MustParse(m.GetAsset())
-			year, timeMonth, day := m.Expiration.In(clocky.UTC).Date()
-			month := clocky.Month(timeMonth)
-			if symbol == t.Symbol && year == wantYear && month == wantMonth && day == wantDay {
-				id := m.Header.InstrumentID
-				strike := decimal.Decimal(m.StrikePrice / 1000)
-				class := m.InstrumentClass
-				option := &options.Option{
-					ID:     id,
-					Class:  class,
-					Strike: &options.Strike{Price: strike},
-					Symbol: symbol,
-					Year:   year,
-					Month:  month,
-					Day:    day,
+			symbol, strike, class, expYear, expMonth, expDay, err := osi.Parse(m.GetRawSymbol())
+			if err == nil {
+				if symbol == t.Symbol && expYear == wantYear && expMonth == wantMonth && expDay == wantDay {
+					id := m.Header.InstrumentID
+					option := &options.Option{
+						ID:     id,
+						Class:  databento.InstrumentClass(class),
+						Strike: &options.Strike{Price: strike},
+						Symbol: symbol,
+						Year:   expYear,
+						Month:  expMonth,
+						Day:    expDay,
+					}
+					t.onOptionDef(option)
+				} else {
+					log.Printf("skipping instrument %s expiring on %04d-%02d-%02d\n", symbol, expYear, expMonth, expDay)
 				}
-				t.onOptionDef(option)
 			} else {
-				log.Printf("skipping instrument %s expiring on %04d-%02d-%02d\n", symbol, year, month, day)
+				log.Printf("skipping instrument %s\n", m.GetRawSymbol())
+
 			}
 		case *databento.CMBP1:
 			now := m.TSRecv

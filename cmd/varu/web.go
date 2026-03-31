@@ -92,6 +92,7 @@ type StateSnapshot struct {
 	Sigma      string                  `json:"sigma"`
 	Cash       string                  `json:"cash"`
 	Paused     bool                    `json:"paused"`
+	Panicking  bool                    `json:"panicking"`
 	Positions  []PositionRow           `json:"positions"`
 	Risk       []RiskPoint             `json:"risk"`
 	Greeks     GreeksData              `json:"greeks"`
@@ -140,17 +141,21 @@ type StatsData struct {
 }
 
 type FlagsData struct {
-	Sigmas   string `json:"sigmas"`
-	Budget   string `json:"budget"`
-	Floor    string `json:"floor"`
-	Spread   string `json:"spread"`
-	Cooldown string `json:"cooldown"`
-	Patience string `json:"patience"`
-	Prune    string `json:"prune"`
-	WPayoff  string `json:"wPayoff"`
-	WRisk    string `json:"wRisk"`
-	WDelta   string `json:"wDelta"`
-	Demand   string `json:"demand"`
+	Sigmas       string `json:"sigmas"`
+	Budget       string `json:"budget"`
+	Floor        string `json:"floor"`
+	Spread       string `json:"spread"`
+	Eval         string `json:"eval"`
+	Cooldown     string `json:"cooldown"`
+	Patience     string `json:"patience"`
+	Prune        string `json:"prune"`
+	WPayoff      string `json:"wPayoff"`
+	WRisk        string `json:"wRisk"`
+	WDelta       string `json:"wDelta"`
+	Demand       string `json:"demand"`
+	BypassRisk   string `json:"bypassRisk"`
+	BypassScore  string `json:"bypassScore"`
+	BypassPayoff string `json:"bypassPayoff"`
 }
 
 type StrategyInfo struct {
@@ -171,12 +176,13 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 		payoffStr = payoff.FormatThousand(2)
 	}
 	snap := StateSnapshot{
-		Time:   now.String(),
-		Symbol: t.Symbol.String(),
-		Price:  t.Chain.Price.Format(2),
-		Sigma:  t.Chain.ExpectedMove().Format(2),
-		Cash:   t.Holdings.Cash.FormatThousand(2),
-		Paused: t.Paused,
+		Time:      now.String(),
+		Symbol:    t.Symbol.String(),
+		Price:     t.Chain.Price.Format(2),
+		Sigma:     t.Chain.ExpectedMove().Format(2),
+		Cash:      t.Holdings.Cash.FormatThousand(2),
+		Paused:    t.Paused,
+		Panicking: t.Panicking,
 		Greeks: GreeksData{
 			Delta: delta.Format(3),
 			Gamma: gamma.Format(3),
@@ -197,17 +203,21 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 			Volume:      t.Holdings.Volume.String(),
 		},
 		Flags: FlagsData{
-			Sigmas:   t.Config.Sigmas.String(),
-			Budget:   fmt.Sprintf("%g", t.Config.Budget),
-			Floor:    fmt.Sprintf("%g", t.Config.Floor),
-			Spread:   t.Config.Spread.String(),
-			Cooldown: t.Config.Cooldown.String(),
-			Patience: t.Config.Patience.String(),
-			Prune:    strconv.FormatFloat(t.Config.Prune, 'f', -1, 64),
-			WPayoff:  t.Config.WeightPayoff.String(),
-			WRisk:    t.Config.WeightRisk.String(),
-			WDelta:   t.Config.WeightDelta.String(),
-			Demand:   t.Config.Demand.String(),
+			Sigmas:       t.Config.Sigmas.String(),
+			Budget:       fmt.Sprintf("%g", t.Config.Budget),
+			Floor:        fmt.Sprintf("%g", t.Config.Floor),
+			Spread:       t.Config.Spread.String(),
+			Eval:         t.Config.Eval.String(),
+			Cooldown:     t.Config.Cooldown.String(),
+			Patience:     t.Config.Patience.String(),
+			Prune:        strconv.FormatFloat(t.Config.Prune, 'f', -1, 64),
+			WPayoff:      t.Config.WeightPayoff.String(),
+			WRisk:        t.Config.WeightRisk.String(),
+			WDelta:       t.Config.WeightDelta.String(),
+			Demand:       t.Config.Demand.String(),
+			BypassRisk:   boolToString(t.Config.BypassRisk),
+			BypassScore:  boolToString(t.Config.BypassScore),
+			BypassPayoff: boolToString(t.Config.BypassPayoff),
 		},
 		Strategies: make(map[string]StrategyInfo),
 	}
@@ -319,6 +329,27 @@ func (w *Web) processWebRequest(req WebRequest) {
 	case "resume":
 		t.Paused = false
 		log.Printf("web: resumed")
+	case "panic":
+		t.PanicTime = clocky.Now()
+		log.Printf("web: panicking")
+	case "destroy":
+		t.Config.NoHurry = true
+		t.PanicTime = clocky.Now()
+		log.Printf("web: destroying")
+	case "rehabilitate":
+		t.Panicking = false
+		t.Config.NoHurry = false
+		t.Config.BypassRisk = false
+		t.Config.BypassScore = false
+		t.Config.AllowClosing = false
+		t.Config.BypassPayoff = false
+		t.PanicTime = t.MarketClose.Add(-t.Config.Panic)
+		t.Config.Patience = 30 * clocky.Second
+		t.Config.Cooldown = 30 * clocky.Second
+		for _, k := range kStrategies {
+			t.Config.Strategies[k] = false
+		}
+		log.Printf("web: rehabilitated")
 	case "flags":
 		if req.Flags != nil {
 			w.applyFlags(req.Flags)
@@ -361,6 +392,10 @@ func (w *Web) applyFlags(f *FlagsData) {
 		t.Config.Spread = decimal.Parse(f.Spread)
 		log.Printf("web: spread = %s", f.Spread)
 	}
+	if f.Eval != "" {
+		t.Config.Eval = decimal.Parse(f.Eval)
+		log.Printf("web: eval = %s", f.Eval)
+	}
 	if f.Cooldown != "" {
 		d, err := clocky.ParseDuration(f.Cooldown)
 		if err == nil {
@@ -397,6 +432,18 @@ func (w *Web) applyFlags(f *FlagsData) {
 	if f.Demand != "" {
 		t.Config.Demand = decimal.Parse(f.Demand)
 		log.Printf("web: demand = %s", f.Demand)
+	}
+	if f.BypassRisk != "" {
+		t.Config.BypassRisk = f.BypassRisk == "true"
+		log.Printf("web: bypassRisk = %s", f.BypassRisk)
+	}
+	if f.BypassScore != "" {
+		t.Config.BypassScore = f.BypassScore == "true"
+		log.Printf("web: bypassScore = %s", f.BypassScore)
+	}
+	if f.BypassPayoff != "" {
+		t.Config.BypassPayoff = f.BypassPayoff == "true"
+		log.Printf("web: bypassPayoff = %s", f.BypassPayoff)
 	}
 }
 
@@ -499,6 +546,30 @@ func (web *Web) handlePauseAPI(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "paused"})
 }
 
+func (web *Web) handlePanicAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	resp := make(chan struct{})
+	web.WebRequests <- WebRequest{Type: "panic", Response: resp}
+	<-resp
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (web *Web) handleDestroyAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	resp := make(chan struct{})
+	web.WebRequests <- WebRequest{Type: "destroy", Response: resp}
+	<-resp
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
 func (web *Web) handleResumeAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -509,6 +580,18 @@ func (web *Web) handleResumeAPI(w http.ResponseWriter, r *http.Request) {
 	<-resp
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "resumed"})
+}
+
+func (web *Web) handleRehabilitateAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	resp := make(chan struct{})
+	web.WebRequests <- WebRequest{Type: "rehabilitate", Response: resp}
+	<-resp
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (web *Web) handleStrategiesAPI(w http.ResponseWriter, r *http.Request) {
@@ -607,16 +690,21 @@ func (web *Web) Start(t *Trader) {
 	mux.HandleFunc("/auth/invites/list", a.RequireAdmin(a.HandleListInvites))
 
 	// protected dashboard routes
-	mux.HandleFunc("/chainz", a.RequireAuth(web.handleChainAPI))
-	mux.HandleFunc("/positionz", a.RequireAuth(web.handlePositionzAPI))
 	mux.HandleFunc("/", a.RequireAuth(web.handleIndex))
 	mux.HandleFunc("/api/config", a.RequireAuth(web.handleConfigAPI))
 	mux.HandleFunc("/api/state", a.RequireAuth(web.handleStateAPI))
 	mux.HandleFunc("/api/events", a.RequireAuth(web.handleEventsAPI))
 	mux.HandleFunc("/api/flags", a.RequireAuthReadOnly(web.handleFlagsAPI))
 	mux.HandleFunc("/api/pause", a.RequireAuthReadOnly(web.handlePauseAPI))
+	mux.HandleFunc("/api/panic", a.RequireAuthReadOnly(web.handlePanicAPI))
+	mux.HandleFunc("/api/destroy", a.RequireAuthReadOnly(web.handleDestroyAPI))
 	mux.HandleFunc("/api/resume", a.RequireAuthReadOnly(web.handleResumeAPI))
 	mux.HandleFunc("/api/strategies", a.RequireAuthReadOnly(web.handleStrategiesAPI))
+	mux.HandleFunc("/api/rehabilitate", a.RequireAuthReadOnly(web.handleRehabilitateAPI))
+
+	// monitoring tools
+	mux.HandleFunc("/chainz", a.RequireAuth(web.handleChainAPI))
+	mux.HandleFunc("/positionz", a.RequireAuth(web.handlePositionzAPI))
 
 	listen := *listenFlag
 	if t.Config.Listen != "" {

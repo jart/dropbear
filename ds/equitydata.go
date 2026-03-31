@@ -15,6 +15,7 @@ var (
 // It checks the following locations in order:
 //
 //   - ~/equitydata
+//   - /nvme/equitydata
 //   - /fast/equitydata
 //   - /disk/equitydata
 //   - /usr/local/equitydata
@@ -26,6 +27,7 @@ func EquityDataDir() string {
 		defaultLocation := os.ExpandEnv("$HOME/equitydata")
 		candidates := []string{
 			defaultLocation,
+			"/nvme/equitydata",
 			"/fast/equitydata",
 			"/disk/equitydata",
 			"/usr/local/equitydata",

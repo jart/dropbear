@@ -17,7 +17,8 @@ function beginPolling(interval) {
       .then(function(data) {
         status.textContent = 'live';
         status.className = 'status-connected';
-        if (data && data.symbol) render(data);
+        if (data && data.symbol)
+          render(data);
       })
       .catch(function() {
         status.textContent = 'disconnected';
@@ -34,6 +35,9 @@ function render(d) {
   document.getElementById('time').textContent = d.time;
   document.getElementById('pauseBtn').disabled = d.paused;
   document.getElementById('resumeBtn').disabled = !d.paused;
+  document.getElementById('panicBtn').disabled = d.panicking;
+  document.getElementById('destroyBtn').disabled = d.panicking;
+  document.getElementById('rehabilitateBtn').disabled = !d.panicking;
   renderStats(d);
   renderPositions(d.positions || []);
   renderRiskChart(d);
@@ -286,6 +290,7 @@ function renderFlags(flags) {
   setIfEmpty(form.budget, flags.budget);
   setIfEmpty(form.floor, flags.floor);
   setIfEmpty(form.spread, flags.spread);
+  setIfEmpty(form.eval, flags.eval);
   setIfEmpty(form.cooldown, flags.cooldown);
   setIfEmpty(form.patience, flags.patience);
   setIfEmpty(form.prune, flags.prune);
@@ -293,6 +298,9 @@ function renderFlags(flags) {
   setIfEmpty(form.wRisk, flags.wRisk);
   setIfEmpty(form.wDelta, flags.wDelta);
   setIfEmpty(form.demand, flags.demand);
+  setIfEmpty(form.bypassRisk, flags.bypassRisk);
+  setIfEmpty(form.bypassScore, flags.bypassScore);
+  setIfEmpty(form.bypassPayoff, flags.bypassPayoff);
 }
 
 function setIfEmpty(input, val) {
@@ -305,8 +313,20 @@ function pause() {
   fetch('/api/pause', { method: 'POST' });
 }
 
+function panic() {
+  fetch('/api/panic', { method: 'POST' });
+}
+
+function destroy() {
+  fetch('/api/destroy', { method: 'POST' });
+}
+
 function resume() {
   fetch('/api/resume', { method: 'POST' });
+}
+
+function rehabilitate() {
+  fetch('/api/rehabilitate', { method: 'POST' });
 }
 
 function submitFlags(e) {
@@ -317,13 +337,17 @@ function submitFlags(e) {
     budget: form.budget.value,
     floor: form.floor.value,
     spread: form.spread.value,
+    eval: form.eval.value,
     cooldown: form.cooldown.value,
     patience: form.patience.value,
     prune: form.prune.value,
     wPayoff: form.wPayoff.value,
     wRisk: form.wRisk.value,
     wDelta: form.wDelta.value,
-    demand: form.demand.value
+    demand: form.demand.value,
+    bypassRisk: form.bypassRisk.value,
+    bypassScore: form.bypassScore.value,
+    bypassPayoff: form.bypassPayoff.value
   };
   fetch('/api/flags', {
     method: 'POST',

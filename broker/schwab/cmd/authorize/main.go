@@ -21,13 +21,21 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"sync/atomic"
+	"time"
 )
 
 var (
 	flagAddr = flag.String("addr", "127.0.0.1:8420", "local address to listen on for OAuth callback")
+)
+
+var (
+	conns atomic.Int64
+	done  atomic.Bool
 )
 
 func main() {
@@ -39,8 +47,18 @@ func main() {
 	fmt.Println()
 	fmt.Println("waiting for callback on " + *flagAddr + " ...")
 	fmt.Println()
-	http.HandleFunc("/api/schwab", handleCallback)
-	if err := http.ListenAndServe(*flagAddr, nil); err != nil {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/schwab", handleCallback)
+	srv := &http.Server{
+		Handler:     mux,
+		ConnState:   monitorConnections,
+		IdleTimeout: time.Second,
+	}
+	sock, err := net.Listen("tcp", *flagAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := srv.Serve(sock); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -95,11 +113,21 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println("authorization token saved to disk; you're good for 7 days")
 
-	// write response
+	// write response and exit once connection closes
 	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Connection", "close")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("<h1>authorization successful</h1>\n"))
+	done.Store(true)
+}
 
-	// terminate program
-	os.Exit(0)
+func monitorConnections(_ net.Conn, state http.ConnState) {
+	switch state {
+	case http.StateNew:
+		conns.Add(1)
+	case http.StateClosed, http.StateHijacked:
+		if conns.Add(-1) == 0 && done.Load() {
+			os.Exit(0)
+		}
+	}
 }

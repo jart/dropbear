@@ -11,6 +11,7 @@ import (
 
 	"dropbear/broker/databento"
 	"dropbear/clocky"
+	"dropbear/osi"
 )
 
 var (
@@ -61,9 +62,8 @@ func main() {
 		}
 		switch m := rec.(type) {
 		case *databento.Instrument:
-			year, timeMonth, day := m.Expiration.In(clocky.UTC).Date()
-			month := clocky.Month(timeMonth)
-			if year == wantYear && month == wantMonth && day == wantDay {
+			_, _, _, expYear, expMonth, expDay, _ := osi.Parse(m.GetRawSymbol())
+			if expYear == wantYear && expMonth == wantMonth && expDay == wantDay {
 				id := m.Header.InstrumentID
 				gInstrumentsByID[id] = m
 			}

@@ -6,6 +6,8 @@ import (
 	"dropbear/decimal"
 	"embed"
 	"encoding/json"
+	"fmt"
+	"html"
 	"io/fs"
 	"log"
 	"math"
@@ -13,7 +15,9 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 )
 
 //go:embed static
@@ -376,6 +380,8 @@ func startWeb() {
 	http.HandleFunc("/api/runs", handleRuns)
 	http.HandleFunc("/api/flagsets", handleFlagSets)
 	http.HandleFunc("/api/regenerate", handleRegenerate)
+	http.HandleFunc("/failed", handleFailedPage)
+	http.HandleFunc("/log/", handleLogPage)
 
 	sock, err2 := net.Listen("tcp", *listenFlag)
 	if err2 != nil {
@@ -389,6 +395,55 @@ func noCache(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
+}
+
+func handleFailedPage(w http.ResponseWriter, r *http.Request) {
+	database := db.Get()
+	rows, err := database.Query(`SELECT id, symbol, date, flags, finished_at FROM varulab_runs WHERE status = 'failed' ORDER BY finished_at DESC`)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	defer rows.Close()
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, "<html><head><title>failed runs</title><style>body{font-family:monospace;background:#1a1a2e;color:#ccc;padding:20px}a{color:#6cf}table{border-collapse:collapse}td,th{padding:4px 12px;text-align:left}tr:hover{background:#2a2a4e}</style></head><body>\n")
+	fmt.Fprintf(w, "<h1>failed runs</h1>\n<table><tr><th>id</th><th>symbol</th><th>date</th><th>flags</th><th>finished</th></tr>\n")
+	for rows.Next() {
+		var id int64
+		var sym, date, flags string
+		var finishedAt sql.NullInt64
+		rows.Scan(&id, &sym, &date, &flags, &finishedAt)
+		finished := ""
+		if finishedAt.Valid {
+			finished = time.Unix(0, finishedAt.Int64).Format("2006-01-02 15:04:05")
+		}
+		fmt.Fprintf(w, "<tr><td><a href=\"/log/%d\">%d</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+			id, id, sym, date, flags, finished)
+	}
+	fmt.Fprintf(w, "</table></body></html>\n")
+}
+
+func handleLogPage(w http.ResponseWriter, r *http.Request) {
+	idStr := strings.TrimPrefix(r.URL.Path, "/log/")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", 400)
+		return
+	}
+	database := db.Get()
+	var sym, date, flags, status, logText string
+	err = database.QueryRow(`SELECT symbol, date, flags, status, COALESCE(log,'') FROM varulab_runs WHERE id = ?`, id).
+		Scan(&sym, &date, &flags, &status, &logText)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, "<html><head><title>run %d</title><style>body{font-family:monospace;background:#1a1a2e;color:#ccc;padding:20px}a{color:#6cf}pre{white-space:pre-wrap;word-wrap:break-word}</style></head><body>\n", id)
+	fmt.Fprintf(w, "<p><a href=\"/failed\">&larr; back</a></p>\n")
+	fmt.Fprintf(w, "<h1>run %d: %s %s [%s] %s</h1>\n", id, sym, date, status, flags)
+	fmt.Fprintf(w, "<pre>%s</pre>\n", html.EscapeString(logText))
+	fmt.Fprintf(w, "</body></html>\n")
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {

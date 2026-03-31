@@ -25,6 +25,7 @@ import (
 
 	"dropbear/broker/databento"
 	"dropbear/clocky"
+	"dropbear/osi"
 
 	"github.com/emirpasic/gods/v2/trees/binaryheap"
 )
@@ -288,9 +289,8 @@ func fetchDefinitions(client *databento.HistoricalClient, start, end clocky.Time
 		if !ok {
 			continue
 		}
-		year, timeMonth, day := inst.Expiration.In(clocky.UTC).Date()
-		month := clocky.Month(timeMonth)
-		if year == wantYear && month == wantMonth && day == wantDay {
+		_, _, _, expYear, expMonth, expDay, _ := osi.Parse(inst.GetRawSymbol())
+		if expYear == wantYear && expMonth == wantMonth && expDay == wantDay {
 			instruments = append(instruments, inst)
 		}
 	}

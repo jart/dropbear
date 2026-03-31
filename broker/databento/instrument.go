@@ -13,7 +13,7 @@ type Instrument struct {
 	TSRecv                   clocky.Time           // capture-server-received timestamp expressed as the number of nanoseconds since the UNIX epoch
 	MinPriceIncrement        int64                 // minimum constant tick for the instrument in units of 1e-9, i.e. 1/1,000,000,000 or 0.000000001
 	DisplayFactor            int64                 // multiplier to convert the venue’s display price to the conventional price in units of 1e-9, i.e. 1/1,000,000,000 or 0.000000001
-	Expiration               clocky.Time           // last eligible trade time expressed as a number of nanoseconds since the UNIX epoch. May only have date precision depending on the publisher
+	ExpirationWeird          clocky.Time           // [consider parsing expiry date from GetRawSymbol()] last eligible trade time expressed as a number of nanoseconds since the UNIX epoch. May only have date precision depending on the publisher
 	Activation               clocky.Time           // time of instrument activation expressed as a number of nanoseconds since the UNIX epoch. May only have date precision depending on the publisher
 	HighLimitPrice           int64                 // allowable high limit price for the trading day in units of 1e-9, i.e. 1/1,000,000,000 or 0.000000001
 	LowLimitPrice            int64                 // allowable low limit price for the trading day in units of 1e-9, i.e. 1/1,000,000,000 or 0.000000001
@@ -136,8 +136,8 @@ func (m *Instrument) GoString() string {
 	appendPrice(&b, m.MinPriceIncrement)
 	appendName(&b, "DisplayFactor")
 	appendPrice(&b, m.DisplayFactor)
-	appendName(&b, "Expiration")
-	appendTimestamp(&b, m.Expiration)
+	appendName(&b, "ExpirationWeird")
+	appendTimestamp(&b, m.ExpirationWeird)
 	appendName(&b, "Activation")
 	appendTimestamp(&b, m.Activation)
 	appendName(&b, "HighLimitPrice")

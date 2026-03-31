@@ -12,6 +12,7 @@ import (
 	"dropbear/symbol"
 	"log"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/emirpasic/gods/v2/sets/treeset"
@@ -40,17 +41,15 @@ type Trader struct {
 	Simulations           *treeset.Set[*Order]
 	MarketClose           clocky.Time
 	StopTime              clocky.Time
-	DumpTime              clocky.Time
+	PanicTime             clocky.Time
 	Hinter                *loggy.Hinter
 	Web                   *Web
 	OrderCounter          int
 	IdentifierCounter     int
-	Dumped                bool
-	Paused                bool
-	AbortOrder            bool
-	AllowClosing          bool
 	StopTransitioned      bool
-	EODTransitioned       bool
+	AbortOrder            bool
+	Panicking             bool
+	Paused                bool
 }
 
 func NewTrader(symbol symbol.Symbol, config *Config) *Trader {
@@ -70,7 +69,7 @@ func NewTrader(symbol symbol.Symbol, config *Config) *Trader {
 		Simulations:           treeset.NewWith(compareOrdersByScore),
 		Hinter:                loggy.NewHinter(),
 		StopTime:              clocky.MaxTime,
-		DumpTime:              clocky.MaxTime,
+		PanicTime:             clocky.MaxTime,
 	}
 }
 
@@ -101,18 +100,26 @@ func (t *Trader) onThought(now clocky.Time) {
 		}
 		log.Printf("STOPPING TRADING")
 	}
-	if !t.EODTransitioned && now.After(t.DumpTime) {
+	if !t.Panicking && now.After(t.PanicTime) {
 		for _, k := range kStrategies {
 			t.Config.Strategies[k] = false
 			if kStrategyDefaultEOD[k] {
 				t.Config.Strategies[k] = true
 			}
 		}
-		t.Config.Patience = 10 * clocky.Second
-		t.Config.Cooldown = 1 * clocky.Second
-		t.Config.Spread = decimal.One
-		t.EODTransitioned = true
-		t.AllowClosing = true
+		if t.Config.NoHurry {
+			t.Config.NoHurry = false
+			t.Config.Eval = decimal.Two
+			t.Config.Spread = decimal.Half.Neg()
+			t.PanicTime = t.MarketClose.Add(-t.Config.Panic)
+		} else {
+			t.Config.Spread = decimal.One
+			t.Config.Cooldown = 3 * clocky.Second
+			t.Config.Patience = 10 * clocky.Second
+			t.Config.BypassPayoff = true
+			t.Config.BypassScore = true
+			t.Panicking = true
+		}
 		log.Printf("LIQUIDATING")
 	}
 	if now < t.NextTradeTime {
@@ -131,7 +138,7 @@ func (t *Trader) onThought(now clocky.Time) {
 }
 
 func (t *Trader) trade(now clocky.Time) {
-	if !t.beginOrders(now) {
+	if !t.beginOrders() {
 		return
 	}
 	benchStartTime := time.Now()
@@ -161,7 +168,7 @@ func (t *Trader) trade(now clocky.Time) {
 	t.sendBestOrder(now)
 }
 
-func (t *Trader) beginOrders(now clocky.Time) bool {
+func (t *Trader) beginOrders() bool {
 	t.OrderCounter = 0
 	t.precomputeSettlements()
 	t.BaselinePayoff = t.computeExpectedPayoff()
@@ -176,11 +183,11 @@ func (t *Trader) beginOrders(now clocky.Time) bool {
 }
 
 func (t *Trader) sendBestOrder(now clocky.Time) {
+	t.Hinter.Hint("%d out of %d simulated orders were reasonable",
+		t.Simulations.Size(), t.OrderCounter)
 	if t.Simulations.Empty() {
 		return
 	}
-	t.Hinter.Hint("%d out of %d simulated orders were reasonable",
-		t.Simulations.Size(), t.OrderCounter)
 	for it := t.Simulations.Iterator(); it.Next(); {
 		order := it.Value()
 		order.Created = now
@@ -189,7 +196,7 @@ func (t *Trader) sendBestOrder(now clocky.Time) {
 		t.NextTradeTime = now.Add(t.Config.Cooldown)
 		err := order.Send()
 		if err != nil {
-			t.Hinter.Hint("#%d failed to send order: %v", order.ID, err)
+			log.Printf("#%d failed to send order: %v", order.ID, err)
 			break
 		}
 		log.Printf("#%d %s: price=%s natural=%s maker=%s score=%s payoff=%s->%s risk=%s->%s",
@@ -216,9 +223,8 @@ func (t *Trader) buy(option *options.Option) {
 }
 
 func (t *Trader) buyN(option *options.Option, qty decimal.Decimal) {
-	if !t.AllowClosing && option.Mode == options.ModeShort {
+	if !t.Config.AllowClosing && option.Mode == options.ModeShort {
 		t.AbortOrder = true
-		return
 	}
 	t.StagedLegs = append(t.StagedLegs, &Leg{
 		Option:   option,
@@ -233,9 +239,8 @@ func (t *Trader) sell(option *options.Option) {
 }
 
 func (t *Trader) sellN(option *options.Option, qty decimal.Decimal) {
-	if !t.AllowClosing && option.Mode == options.ModeLong {
+	if !t.Config.AllowClosing && option.Mode == options.ModeLong {
 		t.AbortOrder = true
-		return
 	}
 	t.StagedLegs = append(t.StagedLegs, &Leg{
 		Option:   option,
@@ -252,9 +257,9 @@ func (t *Trader) end(strategy string) bool {
 	defer func() {
 		t.StagedLegs = nil
 		t.StagedCash = decimal.Zero
-	}()
-	if t.AbortOrder {
 		t.AbortOrder = false
+	}()
+	if t.AbortOrder && !strings.HasPrefix(strategy, "liquidate") {
 		return false
 	}
 	t.OrderCounter++
@@ -269,17 +274,17 @@ func (t *Trader) end(strategy string) bool {
 		return false
 	}
 	t.StagedCash = evalPrice.MulInt(kMultiplier)
-	if !t.checkRiskTolerance() {
+	if !t.Config.BypassRisk && !t.checkRiskTolerance() {
 		return false
 	}
 	payoff := t.computeExpectedPayoff()
 	payoffImprovement := payoff.Sub(t.BaselinePayoff)
-	if !t.EODTransitioned && payoffImprovement.IsNegative() {
+	if !t.Config.BypassPayoff && payoffImprovement.IsNegative() {
 		return false
 	}
 	risk := t.computeRisk()
 	score := t.scoreOrder(payoff, risk)
-	if !t.EODTransitioned && !score.IsPositive() {
+	if !t.Config.BypassScore && !score.IsPositive() {
 		return false
 	}
 	t.Simulations.Add(&Order{
@@ -331,13 +336,13 @@ func (t *Trader) isPendingOrderToxic(order *Order) bool {
 	t.StagedLegs = order.Legs
 	t.StagedCash = order.Price.MulInt(kMultiplier)
 	toxic := false
-	if !t.checkRiskTolerance() {
+	if !t.Config.BypassRisk && !t.checkRiskTolerance() {
 		log.Printf("#%d order is toxic: risk tolerance exceeded", order.ID)
 		toxic = true
 	}
 	newPayoff := t.computeExpectedPayoff()
 	payoffImprovement := newPayoff.Sub(t.BaselinePayoff)
-	if payoffImprovement.IsNegative() {
+	if !t.Config.BypassPayoff && payoffImprovement.IsNegative() {
 		log.Printf("#%d order has gone toxic because it would decrease payoff from %s to %s",
 			order.ID, t.BaselinePayoff.Format(2), newPayoff.Format(2))
 		toxic = true
@@ -628,12 +633,14 @@ func (t *Trader) onOptionDef(o *options.Option) {
 
 func (t *Trader) onOptionDefEnd() {
 
-	// compute dump time
+	// get close time
 	now := clocky.Now()
 	year, month, day := now.Date()
 	t.MarketClose = cboe.GetCloseTime(year, month, day)
-	if t.Config.Dump > 0 {
-		t.DumpTime = t.MarketClose.Add(-t.Config.Dump)
+
+	// compute panic time
+	if t.Config.Panic > 0 {
+		t.PanicTime = t.MarketClose.Add(-t.Config.Panic)
 	}
 
 	// initialize options restrictions after loading schwab order history

@@ -7,6 +7,7 @@ import (
 
 const (
 	kSPXW = symbol.Symbol('S' | 'P'<<8 | 'X'<<16 | 'W'<<24)
+	kRUTW = symbol.Symbol('R' | 'U'<<8 | 'T'<<16 | 'W'<<24)
 	kXSP  = symbol.Symbol('X' | 'S'<<8 | 'P'<<16)
 	kNDX  = symbol.Symbol('N' | 'D'<<8 | 'X'<<16)
 )
@@ -21,7 +22,7 @@ var (
 // getTicks returns the minimum tick size.
 func getTicks(symbol symbol.Symbol) (decimal.Decimal, decimal.Decimal) {
 	switch symbol {
-	case kSPXW, kNDX:
+	case kSPXW, kNDX, kRUTW:
 		return kTick05, kTick10
 	default:
 		return kTick01, kTick05
@@ -72,4 +73,13 @@ func optionTick(symbol symbol.Symbol, price decimal.Decimal) decimal.Decimal {
 		return minTick
 	}
 	return maxTick
+}
+
+// boolToString converts a boolean to "true" or "false".
+func boolToString(b bool) string {
+	if b {
+		return "true"
+	} else {
+		return "false"
+	}
 }

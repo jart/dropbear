@@ -12,6 +12,9 @@
   <span id="time">--</span>
   <button id="pauseBtn" onclick="pause()">Pause</button>
   <button id="resumeBtn" onclick="resume()" disabled>Resume</button>
+  <button id="panicBtn" onclick="panic()">Panic</button>
+  <button id="destroyBtn" onclick="destroy()">Destroy</button>
+  <button id="rehabilitateBtn" onclick="rehabilitate()" disabled>Rehabilitate</button>
   <span id="status"></span>
 </header>
 
@@ -68,6 +71,7 @@
       <label>sigmas <input name="sigmas" type="text" size="6"></label>
       <label>budget <input name="budget" type="text" size="8"></label>
       <label>floor <input name="floor" type="text" size="8"></label>
+      <label>eval <input name="eval" type="text" size="6"></label>
       <label>spread <input name="spread" type="text" size="6"></label>
       <label>cooldown <input name="cooldown" type="text" size="6"></label>
       <label>patience <input name="patience" type="text" size="6"></label>
@@ -76,6 +80,9 @@
       <label>w-risk <input name="wRisk" type="text" size="6"></label>
       <label>w-delta <input name="wDelta" type="text" size="6"></label>
       <label>demand <input name="demand" type="text" size="6"></label>
+      <label>bypassRisk <input name="bypassRisk" type="text" size="6"></label>
+      <label>bypassScore <input name="bypassScore" type="text" size="6"></label>
+      <label>bypassPayoff <input name="bypassPayoff" type="text" size="6"></label>
       <button type="submit">Apply</button>
     </form>
   </section>

@@ -51,7 +51,7 @@ func TestStream_OPRA(t *testing.T) {
 				r.GetRawSymbol(),
 				r.InstrumentClass,
 				r.StrikePrice,
-				r.Expiration.String())
+				r.ExpirationWeird.String())
 		case *CBBO:
 			t.Logf("CBBO instrument=%d bid=%d ask=%d",
 				r.Header.InstrumentID,

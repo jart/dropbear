@@ -6,20 +6,20 @@ import (
 )
 
 const (
-	kStrategyBuyCall               = "buy call"
 	kStrategyBuyPut                = "buy put"
-	kStrategySellCall              = "sell call"
-	kStrategySellPut               = "sell put"
-	kStrategyBuyCombo              = "buy combo"
-	kStrategySellCombo             = "sell combo"
-	kStrategySellCallVertical      = "sell call vertical"
-	kStrategySellPutVertical       = "sell put vertical"
-	kStrategyBuyCallVertical       = "buy call vertical"
-	kStrategyBuyPutVertical        = "buy put vertical"
-	kStrategyLiquidateCall         = "liquidate call"
+	kStrategyBuyCall               = "buy call"
+	kStrategySellPut               = "naked sell put"
+	kStrategySellCall              = "naked sell call"
+	kStrategyBuyCombo              = "combo buy"
+	kStrategySellCombo             = "combo sell"
+	kStrategySellPutVertical       = "vertical sell put"
+	kStrategySellCallVertical      = "vertical sell call"
+	kStrategyBuyPutVertical        = "vertical buy put"
+	kStrategyBuyCallVertical       = "vertical buy call"
 	kStrategyLiquidatePut          = "liquidate put"
-	kStrategyLiquidateCallVertical = "liquidate call vertical"
-	kStrategyLiquidatePutVertical  = "liquidate put vertical"
+	kStrategyLiquidateCall         = "liquidate call"
+	kStrategyLiquidatePutVertical  = "liquidate vertical put"
+	kStrategyLiquidateCallVertical = "liquidate vertical call"
 	kStrategyLiquidatePair         = "liquidate pair"
 )
 
@@ -47,11 +47,9 @@ var kStrategyDefault = map[string]bool{
 }
 
 var kStrategyDefaultEOD = map[string]bool{
-	kStrategyLiquidatePair:         true,
-	kStrategyLiquidateCall:         true,
-	kStrategyLiquidatePut:          true,
-	kStrategyLiquidateCallVertical: false,
-	kStrategyLiquidatePutVertical:  false,
+	kStrategyLiquidatePair: true,
+	kStrategyLiquidateCall: true,
+	kStrategyLiquidatePut:  true,
 }
 
 func (t *Trader) buyCall() {

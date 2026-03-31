@@ -10,15 +10,9 @@ type Decimal int64
 const (
 	Zero    = Decimal(0)
 	One     = Decimal(Scale)
-	NegOne  = Decimal(-Scale)
-	Two     = Decimal(Scale * 2)
-	Half    = Decimal(Scale / 2)
-	Tenth   = Decimal(Scale / 10)
 	Max     = Decimal(math.MaxInt64) // +9'223'372'036'854.775807
 	Min     = Decimal(math.MinInt64) // -9'223'372'036'854.775808
 	Epsilon = Decimal(1)             // 0.000001
-	Cent    = Decimal(Scale / 100)   // 0.01
-	Lot     = Decimal(Scale * 100)   // 100
 	Scale   = 1_000_000
 	Places  = 6
 )

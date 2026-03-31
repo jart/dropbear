@@ -57,7 +57,7 @@ func main() {
 	sigmasFlag := decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
 	budgetFlag := flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
 	floorFlag := flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
-	spreadFlag := decimal.Flag("spread", "0", "spread crossing (-1=make, 0=mid, 1=take)")
+	spreadFlag := decimal.Flag("spread", "1", "spread crossing (-1=make, 0=mid, 1=take)")
 	evalFlag := decimal.Flag("eval", "2", "spread aggressiveness for scoring (0=same as -spread)")
 	pruneFlag := flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
 	demandFlag := decimal.Flag("demand", "1.1", "minimum ratio of open credit to close cost for liquidation")
@@ -72,7 +72,7 @@ func main() {
 	startOfDayFlag := flag.Int("sod", 9_30_05, "start of day in HHMMSS")
 	fullRiskTimeFlag := flag.Int("frt", 12_00_00, "full risk time in HHMMSS")
 	stopTradingFlag := flag.Int("eodt", 13_00_00, "stop trading / begin EOD liquidation in HHMMSS")
-	dumpFlag := clocky.DurationFlag("dump", "0", "time before close to close positions")
+	panicFlag := clocky.DurationFlag("panic", "0", "time before close to panic close positions")
 	flag.Parse()
 
 	// log what flags were passed
@@ -94,13 +94,20 @@ func main() {
 	if *comboFlag {
 		bts[kStrategyBuyCombo] = true
 		bts[kStrategySellCombo] = true
-		kStrategyDefaultEOD[kStrategyLiquidateCall] = true
 		kStrategyDefaultEOD[kStrategyLiquidatePut] = true
+		kStrategyDefaultEOD[kStrategyLiquidateCall] = true
 	}
 	if *allFlag {
-		for k := range bts {
-			bts[k] = true
-		}
+		bts[kStrategyBuyPut] = true
+		bts[kStrategySellPut] = true
+		bts[kStrategyBuyCall] = true
+		bts[kStrategySellCall] = true
+		bts[kStrategyBuyCombo] = true
+		bts[kStrategySellCombo] = true
+		bts[kStrategyBuyPutVertical] = true
+		bts[kStrategyBuyCallVertical] = true
+		bts[kStrategySellPutVertical] = true
+		bts[kStrategySellCallVertical] = true
 	}
 	if *bearishFlag {
 		bts[kStrategySellPutVertical] = false
@@ -155,7 +162,7 @@ func main() {
 			WeightRisk:   *wRiskFlag,
 			WeightDelta:  *wDeltaFlag,
 			WeightPayoff: *wPayoffFlag,
-			Dump:         *dumpFlag,
+			Panic:        *panicFlag,
 			Prune:        *pruneFlag,
 			Floor:        *floorFlag,
 			Budget:       *budgetFlag,
@@ -188,43 +195,84 @@ func main() {
 	loggy.AlsoLogToFile()
 	log.Printf("varu is on the prowl")
 
-	// NVDA strategy (sharpe 10.40)
-	t = NewTrader(symbol.MustParse("NVDA"), newConfig())
-	t.Config.Listen = "127.0.0.1:8486"
-	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.Floor = 15_000
-	t.Config.Budget = 3_000
-	t.Config.Eval = decimal.FromInt(3)
-	t.Config.Spread = decimal.FromInt(1)
-	t.Config.WeightDelta = decimal.Zero
-	t.Config.WeightRisk = decimal.Zero
-	t.Config.Dump = 5 * clocky.Minute
-	traders = append(traders, t)
-
-	// TSLA strategy (sharpe 5.86)
-	t = NewTrader(symbol.MustParse("TSLA"), newConfig())
-	t.Config.Listen = "127.0.0.1:8485"
-	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.Floor = 15_000
-	t.Config.Budget = 3_000
-	t.Config.Eval = decimal.FromInt(2)
-	t.Config.Spread = decimal.FromInt(1)
-	t.Config.WeightDelta = decimal.Zero
-	t.Config.WeightRisk = decimal.Zero
-	t.Config.StartOfDay = 10_00_00
-	t.Config.Dump = 5 * clocky.Minute
-	traders = append(traders, t)
-
-	// SPXW strategy (sharpe 2.85)
+	// SPXW strategy
 	t = NewTrader(symbol.MustParse("SPXW"), newConfig())
 	t.Config.Listen = "127.0.0.1:8484"
-	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.Floor = 15_000
-	t.Config.Budget = 3_000
-	t.Config.Eval = decimal.FromInt(3)
+	t.Config.Strategies[kStrategySellPutVertical] = true
+	t.Config.Strategies[kStrategySellCallVertical] = true
+	t.Config.Floor = 20_000
+	t.Config.Budget = 2_000
+	t.Config.Eval = decimal.Seven
+	t.Config.Spread = decimal.One
+	traders = append(traders, t)
+
+	// // TSLA strategy
+	// t = NewTrader(symbol.MustParse("TSLA"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8485"
+	// t.Config.Strategies[kStrategySellCallVertical] = true // bearish
+	// t.Config.Floor = 20_000
+	// t.Config.Budget = 5_000
+	// t.Config.Eval = decimal.Five
+	// t.Config.Spread = decimal.One
+	// t.Config.WeightDelta = decimal.Zero
+	// t.Config.WeightRisk = decimal.Zero
+	// t.Config.StartOfDay = 10_00_00
+	// t.Config.Panic = 5 * clocky.Minute
+	// traders = append(traders, t)
+
+	// // NVDA strategy
+	// t = NewTrader(symbol.MustParse("NVDA"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8486"
+	// t.Config.Strategies[kStrategySellCallVertical] = true // bearish
+	// t.Config.Floor = 20_000
+	// t.Config.Budget = 5_000
+	// t.Config.Eval = decimal.Three
+	// t.Config.Spread = decimal.One
+	// t.Config.WeightDelta = decimal.Zero
+	// t.Config.WeightRisk = decimal.Zero
+	// t.Config.Panic = 5 * clocky.Minute
+	// traders = append(traders, t)
+
+	// RUTW strategy
+	t = NewTrader(symbol.MustParse("RUTW"), newConfig())
+	t.Config.Listen = "127.0.0.1:8487"
+	t.Config.Strategies[kStrategyBuyPut] = true
+	t.Config.Strategies[kStrategySellPut] = true
+	t.Config.Strategies[kStrategyBuyCall] = true
+	t.Config.Strategies[kStrategySellCall] = true
+	t.Config.Strategies[kStrategyBuyCombo] = true
+	t.Config.Strategies[kStrategySellCombo] = true
+	t.Config.Strategies[kStrategyBuyPutVertical] = true
+	t.Config.Strategies[kStrategyBuyCallVertical] = true
+	t.Config.Strategies[kStrategySellPutVertical] = true
+	t.Config.Strategies[kStrategySellCallVertical] = true
+	t.Config.Floor = 20_000
+	t.Config.Budget = 5_000
+	t.Config.Eval = decimal.Five
 	t.Config.Spread = decimal.Half
-	t.Config.WeightDelta = decimal.Zero
-	t.Config.WeightRisk = decimal.Zero
+	traders = append(traders, t)
+
+	// // META strategy
+	// t = NewTrader(symbol.MustParse("META"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8488"
+	// t.Config.Strategies[kStrategySellPutVertical] = true
+	// t.Config.Strategies[kStrategySellCallVertical] = true
+	// t.Config.Floor = 20_000
+	// t.Config.Budget = 2_000
+	// t.Config.Eval = decimal.Five
+	// t.Config.Spread = decimal.One
+	// t.Config.Panic = 5 * clocky.Minute
+	// traders = append(traders, t)
+
+	// XSP strategy
+	t = NewTrader(symbol.MustParse("XSP"), newConfig())
+	t.Config.Listen = "127.0.0.1:8489"
+	t.Config.Strategies[kStrategySellPutVertical] = true
+	t.Config.Strategies[kStrategySellCallVertical] = true
+	t.Config.Floor = 20_000
+	t.Config.Budget = 3_000
+	t.Config.Eval = decimal.Five
+	t.Config.Spread = decimal.Half
 	traders = append(traders, t)
 
 	// subscribe to schwab order updates

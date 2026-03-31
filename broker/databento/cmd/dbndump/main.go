@@ -18,6 +18,7 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/osi"
 )
 
 var (
@@ -120,9 +121,8 @@ func matchInstrument(m *databento.Instrument) bool {
 	}
 	if !expiryFlag.IsZero() {
 		wantYear, wantMonth, wantDay := expiryFlag.Date()
-		year, timeMonth, day := m.Expiration.In(clocky.UTC).Date()
-		month := clocky.Month(timeMonth)
-		if year != wantYear || month != wantMonth || day != wantDay {
+		_, _, _, expYear, expMonth, expDay, _ := osi.Parse(m.GetRawSymbol())
+		if expYear == wantYear && expMonth == wantMonth && expDay == wantDay {
 			return false
 		}
 	}

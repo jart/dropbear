@@ -82,7 +82,7 @@ func (m *instrumentV1) ToV3() Instrument {
 	inst.TSRecv = m.TSRecv
 	inst.MinPriceIncrement = m.MinPriceIncrement
 	inst.DisplayFactor = m.DisplayFactor
-	inst.Expiration = m.Expiration
+	inst.ExpirationWeird = m.Expiration
 	inst.Activation = m.Activation
 	inst.HighLimitPrice = m.HighLimitPrice
 	inst.LowLimitPrice = m.LowLimitPrice
