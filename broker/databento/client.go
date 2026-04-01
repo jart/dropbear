@@ -169,7 +169,7 @@ func (c *Client) readControlMessage() (map[string]string, error) {
 	}
 	line = strings.TrimSuffix(line, "\n")
 	result := make(map[string]string)
-	for _, part := range strings.Split(line, "|") {
+	for part := range strings.SplitSeq(line, "|") {
 		if idx := strings.Index(part, "="); idx > 0 {
 			result[part[:idx]] = part[idx+1:]
 		}

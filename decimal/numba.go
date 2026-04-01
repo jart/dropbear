@@ -8,6 +8,7 @@ const (
 	Five   = Decimal(Scale * 5)
 	Seven  = Decimal(Scale * 7)
 	Half   = Decimal(Scale / 2)
+	Ten    = Decimal(Scale * 10)
 	Tenth  = Decimal(Scale / 10)
 	Cent   = Decimal(Scale / 100) // 0.01
 	Lot    = Decimal(Scale * 100) // 100

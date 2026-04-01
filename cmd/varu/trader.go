@@ -301,8 +301,8 @@ func (t *Trader) end(strategy string) bool {
 }
 
 func (t *Trader) scoreOrder(payoff, risk decimal.Decimal) decimal.Decimal {
+	riskReduction := t.BaselineRisk.Sub(risk)
 	payoffImprovement := payoff.Sub(t.BaselinePayoff)
-	riskReduction := risk.Sub(t.BaselineRisk).Max(decimal.Zero)
 	delta := t.computeDelta()
 	deltaImprovement := t.BaselineDelta.Abs().Sub(delta.Abs())
 	a := payoffImprovement.Mul(t.Config.WeightPayoff)
@@ -315,7 +315,7 @@ func (t *Trader) cancelUnfilledOrders(now clocky.Time) {
 	t.precomputeSettlements()
 	t.BaselinePayoff = t.computeExpectedPayoff()
 	for order := range t.PendingOrders {
-		if order.Canceling {
+		if order.Canceling || order.HasFill() || (*liveFlag && order.OrderID == 0) {
 			continue
 		}
 		elapsed := now.Sub(order.Created)
@@ -627,8 +627,13 @@ func (t *Trader) computeGreeks() (delta, gamma, theta, vega decimal.Decimal) {
 }
 
 func (t *Trader) onOptionDef(o *options.Option) {
+	osi := o.OSI()
+	if existing := t.OptionsByOSI[osi]; existing != nil {
+		existing.ID = o.ID
+		o = existing
+	}
 	t.OptionsByID[o.ID] = o
-	t.OptionsByOSI[o.OSI()] = o
+	t.OptionsByOSI[osi] = o
 }
 
 func (t *Trader) onOptionDefEnd() {

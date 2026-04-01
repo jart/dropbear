@@ -263,12 +263,12 @@ function renderStrategies(strategies) {
       var s = strategies[name];
       html += '<label>' +
         '<input type="checkbox" data-strategy="' + name + '"' +
-        (s.enabled ? ' checked' : '') +
-        ' onchange="toggleStrategy(this)">' +
+        (s.enabled ? ' checked' : '') + '>' +
         name +
         '<span class="count" id="strat-' + name.replace(/ /g, '-') + '">' + s.count + '</span>' +
         '</label>';
     }
+    html += '<button type="button" onclick="submitStrategies()">Apply</button>';
     div.innerHTML = html;
   } else {
     // just update counts and checked state
@@ -357,9 +357,13 @@ function submitFlags(e) {
   return false;
 }
 
-function toggleStrategy(cb) {
+function submitStrategies() {
+  var div = document.getElementById('strategiesList');
+  var checkboxes = div.querySelectorAll('input[type="checkbox"]');
   var data = {};
-  data[cb.dataset.strategy] = cb.checked;
+  for (var i = 0; i < checkboxes.length; i++) {
+    data[checkboxes[i].dataset.strategy] = checkboxes[i].checked;
+  }
   fetch('/api/strategies', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

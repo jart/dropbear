@@ -54,7 +54,7 @@ nav { display: flex; gap: 4px; }
   flex-wrap: wrap;
   gap: 2px;
   margin-left: 8px;
-  max-width: 600px;
+  max-width: 800px;
 }
 
 .sym-btn {
