@@ -200,7 +200,7 @@ func main() {
 	// SPXW strategy
 	t = NewTrader(symbol.MustParse("SPXW"), newConfig())
 	t.Config.Listen = "127.0.0.1:8484"
-	t.Config.Strategies[kStrategySellPutVertical] = true
+	// t.Config.Strategies[kStrategySellPutVertical] = true
 	t.Config.Strategies[kStrategySellCallVertical] = true
 	t.Config.Floor = 20_000
 	t.Config.Budget = 2_000
@@ -208,27 +208,27 @@ func main() {
 	t.Config.Spread = decimal.One
 	traders = append(traders, t)
 
-	// RUTW strategy
-	t = NewTrader(symbol.MustParse("RUTW"), newConfig())
-	t.Config.Listen = "127.0.0.1:8487"
-	// t.Config.Strategies[kStrategySellPutVertical] = true
-	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 10_000
-	t.Config.Budget = 2_000
-	t.Config.Eval = decimal.Ten
-	t.Config.Spread = decimal.Half
-	traders = append(traders, t)
+	// // RUTW strategy
+	// t = NewTrader(symbol.MustParse("RUTW"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8487"
+	// // t.Config.Strategies[kStrategySellPutVertical] = true
+	// t.Config.Strategies[kStrategySellCallVertical] = true
+	// t.Config.Floor = 10_000
+	// t.Config.Budget = 2_000
+	// t.Config.Eval = decimal.Ten
+	// t.Config.Spread = decimal.Half
+	// traders = append(traders, t)
 
-	// XSP strategy
-	t = NewTrader(symbol.MustParse("XSP"), newConfig())
-	t.Config.Listen = "127.0.0.1:8489"
-	// t.Config.Strategies[kStrategySellPutVertical] = true
-	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 10_000
-	t.Config.Budget = 2_000
-	t.Config.Eval = decimal.Ten
-	t.Config.Spread = decimal.Half
-	traders = append(traders, t)
+	// // XSP strategy
+	// t = NewTrader(symbol.MustParse("XSP"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8489"
+	// // t.Config.Strategies[kStrategySellPutVertical] = true
+	// t.Config.Strategies[kStrategySellCallVertical] = true
+	// t.Config.Floor = 10_000
+	// t.Config.Budget = 2_000
+	// t.Config.Eval = decimal.Ten
+	// t.Config.Spread = decimal.Half
+	// traders = append(traders, t)
 
 	// // TSLA strategy
 	// t = NewTrader(symbol.MustParse("TSLA"), newConfig())
@@ -260,7 +260,7 @@ func main() {
 	t.Config.Listen = "127.0.0.1:8488"
 	t.Config.Strategies[kStrategySellPutVertical] = true
 	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 20_000
+	t.Config.Floor = 10_000
 	t.Config.Budget = 5_000
 	t.Config.Eval = decimal.Five
 	t.Config.Spread = decimal.One
@@ -274,7 +274,7 @@ func main() {
 	t.Config.Listen = "127.0.0.1:8490"
 	// t.Config.Strategies[kStrategySellPutVertical] = true
 	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 20_000
+	t.Config.Floor = 10_000
 	t.Config.Budget = 2_000
 	t.Config.Eval = decimal.Two
 	t.Config.Spread = decimal.One
@@ -300,7 +300,7 @@ func main() {
 	t.Config.Listen = "127.0.0.1:8492"
 	t.Config.Strategies[kStrategySellPutVertical] = true
 	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 20_000
+	t.Config.Floor = 10_000
 	t.Config.Budget = 5_000
 	t.Config.Eval = decimal.Three
 	t.Config.Spread = decimal.Half
