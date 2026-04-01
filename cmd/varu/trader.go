@@ -113,6 +113,7 @@ func (t *Trader) onThought(now clocky.Time) {
 			t.Config.Spread = decimal.Half.Neg()
 			t.PanicTime = t.MarketClose.Add(-t.Config.Panic)
 		} else {
+			t.Config.AllowClosing = true
 			t.Config.Spread = decimal.One
 			t.Config.Cooldown = 3 * clocky.Second
 			t.Config.Patience = 10 * clocky.Second
@@ -172,7 +173,7 @@ func (t *Trader) beginOrders() bool {
 	t.OrderCounter = 0
 	t.precomputeSettlements()
 	t.BaselinePayoff = t.computeExpectedPayoff()
-	if t.BaselinePayoff.Cmp(decimal.Min) == 0 {
+	if t.BaselinePayoff.Cmp(decimal.Min) == 0 && !t.Panicking {
 		t.Hinter.Hint("not thinking: no strikes with positive probability (price=%s em=%s atm=%v)",
 			t.Chain.Price, t.Chain.ExpectedMove(), t.Chain.AtTheMoney != nil)
 		return false
@@ -204,9 +205,9 @@ func (t *Trader) sendBestOrder(now clocky.Time) {
 			t.BaselinePayoff.Format(2), order.Payoff.Format(2), t.BaselineRisk.Format(2), order.Risk.Format(2))
 		for _, leg := range order.Legs {
 			if leg.Quantity.IsPositive() {
-				log.Printf("  buy  %s", leg.Option)
+				log.Printf("  buy  %4s  %s", leg.Quantity, leg.Option)
 			} else {
-				log.Printf("  sell %s", leg.Option)
+				log.Printf("  sell %4s  %s", leg.Quantity.Abs(), leg.Option)
 			}
 		}
 		if true {
@@ -270,7 +271,7 @@ func (t *Trader) end(strategy string) bool {
 	// evaluate at the pessimistic eval spread for scoring
 	// this filters out marginal trades that only work at mid
 	evalPrice := t.chooseEvalPrice()
-	if evalPrice.IsZero() {
+	if !t.Panicking && evalPrice.IsZero() {
 		return false
 	}
 	t.StagedCash = evalPrice.MulInt(kMultiplier)
@@ -301,14 +302,21 @@ func (t *Trader) end(strategy string) bool {
 }
 
 func (t *Trader) scoreOrder(payoff, risk decimal.Decimal) decimal.Decimal {
-	riskReduction := t.BaselineRisk.Sub(risk)
+	floor := decimal.FromFloat64(t.Config.Floor)
 	payoffImprovement := payoff.Sub(t.BaselinePayoff)
+	riskReduction := t.BaselineRisk.Sub(risk).Div(floor)
 	delta := t.computeDelta()
-	deltaImprovement := t.BaselineDelta.Abs().Sub(delta.Abs())
+	deltaImprovement := t.BaselineDelta.Abs().Sub(delta.Abs()).Mul(t.Chain.Price).Div(floor)
 	a := payoffImprovement.Mul(t.Config.WeightPayoff)
 	b := riskReduction.Mul(t.Config.WeightRisk)
 	c := deltaImprovement.Mul(t.Config.WeightDelta)
-	return a.Add(b).Add(c)
+	s := a.Add(b).Add(c)
+	// log.Printf("scoring order: payoff=%s improvement=%s weight=%s risk=%s reduction=%s weight=%s delta=%s improvement=%s weight=%s score=%s",
+	// 	payoff, payoffImprovement, t.Config.WeightPayoff,
+	// 	risk, riskReduction, t.Config.WeightRisk,
+	// 	delta, deltaImprovement, t.Config.WeightDelta,
+	// 	s)
+	return s
 }
 
 func (t *Trader) cancelUnfilledOrders(now clocky.Time) {

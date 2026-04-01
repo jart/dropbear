@@ -3,7 +3,8 @@ package main
 import "os"
 
 // defaultSymbols is the default set of symbols to backtest if -symbols is not provided.
-const defaultSymbols = "MSFT AVGO TSLA NVDA META GOOGL" // META XSP SPXW RUTW
+// const defaultSymbols = "MSFT AVGO TSLA NVDA META GOOGL" // META XSP SPXW RUTW
+const defaultSymbols = "SPXW RUTW XSP"
 
 // earliestDate is the oldest date the downloader will fetch.
 const earliestDate = "2026-01-01"
@@ -25,10 +26,11 @@ var kBaseFlags = "-hostile -floor=20000"
 // the Cartesian product of all dimensions (plus a baseline with each dimension
 // absent) generates the full set of flag combinations to test.
 var kFlagDimensions = [][]string{
-	{"-bullish -w-delta=0 -w-risk=0", "-bearish -w-delta=0 -w-risk=0"},
-	{"-eval=3", "-eval=5", "-eval=7", "-eval=10"}, // this makes varu pickier about trades
-	{"-spread=.5"}, // this is usually needed when liquidity is tight (since varu crosses the spread by default)
-	{"-budget=2000"},
+	{"-bullish -w-delta=0", "-bearish -w-delta=0"},
+	{"-eval=10"},
+	// {"-eval=3", "-eval=5", "-eval=7", "-eval=10"}, // this makes varu pickier about trades
+	// {"-spread=.5"}, // this is usually needed when liquidity is tight (since varu crosses the spread by default)
+	// {"-budget=2000"},
 	{"-sod=100000"},
 }
 

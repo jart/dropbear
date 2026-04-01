@@ -156,6 +156,7 @@ type FlagsData struct {
 	BypassRisk   string `json:"bypassRisk"`
 	BypassScore  string `json:"bypassScore"`
 	BypassPayoff string `json:"bypassPayoff"`
+	Closing      string `json:"closing"`
 }
 
 type StrategyInfo struct {
@@ -218,6 +219,7 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 			BypassRisk:   boolToString(t.Config.BypassRisk),
 			BypassScore:  boolToString(t.Config.BypassScore),
 			BypassPayoff: boolToString(t.Config.BypassPayoff),
+			Closing:      boolToString(t.Config.AllowClosing),
 		},
 		Strategies: make(map[string]StrategyInfo),
 	}
@@ -444,6 +446,10 @@ func (w *Web) applyFlags(f *FlagsData) {
 	if f.BypassPayoff != "" {
 		t.Config.BypassPayoff = f.BypassPayoff == "true"
 		log.Printf("web: bypassPayoff = %s", f.BypassPayoff)
+	}
+	if f.Closing != "" {
+		t.Config.AllowClosing = f.Closing == "true"
+		log.Printf("web: closing = %s", f.Closing)
 	}
 }
 

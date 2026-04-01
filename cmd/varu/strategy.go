@@ -47,7 +47,6 @@ var kStrategyDefault = map[string]bool{
 }
 
 var kStrategyDefaultEOD = map[string]bool{
-	kStrategyLiquidatePair: true,
 	kStrategyLiquidateCall: true,
 	kStrategyLiquidatePut:  true,
 }
@@ -205,7 +204,7 @@ func (t *Trader) liquidateCall() {
 		return
 	}
 	for x, xh := range t.Holdings.Positions {
-		if x.Class != 'C' {
+		if x.Class != 'C' || x.IntrinsicValue(t.Chain.Price).IsZero() {
 			continue
 		}
 		qty := xh.Quantity.Abs()
@@ -223,7 +222,7 @@ func (t *Trader) liquidatePut() {
 		return
 	}
 	for x, xh := range t.Holdings.Positions {
-		if x.Class != 'P' {
+		if x.Class != 'P' || x.IntrinsicValue(t.Chain.Price).IsZero() {
 			continue
 		}
 		qty := xh.Quantity.Abs()
