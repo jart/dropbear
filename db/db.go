@@ -31,6 +31,11 @@ func MustOpen(path string) *sql.DB {
 	return db
 }
 
+// OpenReadOnly opens a read-only database connection.
+func OpenReadOnly(path string) (*sql.DB, error) {
+	return Open(path + "?mode=ro")
+}
+
 // Open opens a database connection.
 func Open(path string) (*sql.DB, error) {
 	conn, err := sql.Open("sqlite3", path)

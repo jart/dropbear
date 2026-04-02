@@ -1,6 +1,8 @@
 (function() {
   'use strict';
 
+  var BASE = window.BASE || '';
+
   // Date range filter with localStorage persistence
   var dateFrom = document.getElementById('date-from');
   var dateTo = document.getElementById('date-to');
@@ -10,7 +12,7 @@
   var symbolButtons = document.getElementById('symbol-buttons');
   var selectedSymbol = localStorage.getItem('varulab-symbol') || '';
 
-  fetch('/api/dates').then(r => r.json()).then(data => {
+  fetch(BASE + '/api/dates').then(r => r.json()).then(data => {
     if (data.min) dateFrom.min = data.min;
     if (data.max) dateTo.max = data.max;
     dateFrom.value = savedFrom || data.min || '';
@@ -89,7 +91,7 @@
   });
 
   function showLog(runId) {
-    fetch('/api/runs?id=' + runId)
+    fetch(BASE + '/api/runs?id=' + runId)
       .then(r => r.json())
       .then(data => {
         document.getElementById('modal-log').textContent = data.log || '(no log)';
@@ -98,7 +100,7 @@
   }
 
   // SSE
-  const evtSource = new EventSource('/api/events');
+  const evtSource = new EventSource(BASE + '/api/events');
   evtSource.onmessage = function(e) {
     const data = JSON.parse(e.data);
     if (data.type === 'state') {
@@ -125,7 +127,7 @@
 
   // Grid
   function loadGrid() {
-    fetch('/api/grid?' + filterParams()).then(r => r.json()).then(cells => {
+    fetch(BASE + '/api/grid?' + filterParams()).then(r => r.json()).then(cells => {
       const el = document.getElementById('grid');
       if (!cells || cells.length === 0) {
         el.innerHTML = '<p>No completed runs yet.</p>';
@@ -206,7 +208,7 @@
 
   // Summary
   function loadSummary() {
-    fetch('/api/summary?' + filterParams()).then(r => r.json()).then(data => {
+    fetch(BASE + '/api/summary?' + filterParams()).then(r => r.json()).then(data => {
       const el = document.getElementById('summary');
       let html = '<h2>Best Flags</h2><table><tr><th>Flags</th><th>Distribution</th><th>Avg</th><th>Fees</th><th>Median</th><th>Best</th><th>Worst</th><th>StdDev</th><th>Sharpe</th><th>Win Rate</th><th>Count</th></tr>';
       (data.flags || []).forEach(f => {
@@ -242,7 +244,7 @@
 
   // Flags
   function loadFlags() {
-    fetch('/api/flagsets').then(r => r.json()).then(sets => {
+    fetch(BASE + '/api/flagsets').then(r => r.json()).then(sets => {
       const el = document.getElementById('flags');
       let html = '<div class="flag-form">' +
         '<input id="fs-name" placeholder="name (e.g. spread)">' +
@@ -268,7 +270,7 @@
     const flag = document.getElementById('fs-flag').value;
     const value = document.getElementById('fs-value').value;
     if (!name || !flag) return;
-    fetch('/api/flagsets', {
+    fetch(BASE + '/api/flagsets', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({name, flag, value})
@@ -276,11 +278,11 @@
   };
 
   window.deleteFlag = function(id) {
-    fetch('/api/flagsets?id=' + id, {method: 'DELETE'}).then(() => loadFlags());
+    fetch(BASE + '/api/flagsets?id=' + id, {method: 'DELETE'}).then(() => loadFlags());
   };
 
   window.regenerate = function() {
-    fetch('/api/regenerate', {method: 'POST'})
+    fetch(BASE + '/api/regenerate', {method: 'POST'})
       .then(r => r.json())
       .then(data => {
         alert('Created ' + data.created + ' pending runs');
@@ -347,7 +349,7 @@
   }
 
   function loadStatus() {
-    fetch('/api/state').then(r => r.json()).then(data => {
+    fetch(BASE + '/api/state').then(r => r.json()).then(data => {
       updateCounts(data.counts);
       updateStatus(data);
     });
