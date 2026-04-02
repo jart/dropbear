@@ -206,6 +206,7 @@ func main() {
 	t.Config.Budget = 2_000
 	t.Config.Eval = decimal.Ten
 	t.Config.Spread = decimal.One
+	t.Config.StartOfDay = 10_00_00
 	traders = append(traders, t)
 
 	// RUTW strategy
@@ -216,19 +217,20 @@ func main() {
 	t.Config.Floor = 10_000
 	t.Config.Budget = 2_000
 	t.Config.Eval = decimal.Ten
-	t.Config.Spread = decimal.Half
+	t.Config.Spread = decimal.One
 	traders = append(traders, t)
 
-	// XSP strategy
-	t = NewTrader(symbol.MustParse("XSP"), newConfig())
-	t.Config.Listen = "127.0.0.1:8489"
-	t.Config.Strategies[kStrategySellPutVertical] = true
-	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 10_000
-	t.Config.Budget = 2_000
-	t.Config.Eval = decimal.Ten
-	t.Config.Spread = decimal.Half
-	traders = append(traders, t)
+	// // XSP strategy
+	// t = NewTrader(symbol.MustParse("XSP"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8489"
+	// t.Config.Strategies[kStrategySellPutVertical] = true
+	// t.Config.Strategies[kStrategySellCallVertical] = true
+	// t.Config.Floor = 10_000
+	// t.Config.Budget = 2_000
+	// t.Config.Eval = decimal.Ten
+	// t.Config.Spread = decimal.Half
+	// t.Config.Sigmas = decimal.Three
+	// traders = append(traders, t)
 
 	// // TSLA strategy
 	// t = NewTrader(symbol.MustParse("TSLA"), newConfig())
@@ -261,12 +263,11 @@ func main() {
 	// t.Config.Strategies[kStrategySellPutVertical] = true
 	// t.Config.Strategies[kStrategySellCallVertical] = true
 	// t.Config.Floor = 10_000
-	// t.Config.Budget = 5_000
+	// t.Config.Budget = 2_000
 	// t.Config.Eval = decimal.Five
-	// t.Config.Spread = decimal.One
-	// t.Config.StartOfDay = 10_00_00
+	// t.Config.Spread = decimal.Half
 	// t.Config.Panic = 2 * clocky.Minute
-	// t.Config.WeightDelta = decimal.Zero
+	// t.Config.WeightPayoff = decimal.Half
 	// traders = append(traders, t)
 
 	// // AVGO strategy
@@ -285,14 +286,15 @@ func main() {
 	// // GOOGL strategy
 	// t = NewTrader(symbol.MustParse("GOOGL"), newConfig())
 	// t.Config.Listen = "127.0.0.1:8491"
-	// //t.Config.Strategies[kStrategySellPutVertical] = true
+	// t.Config.Strategies[kStrategySellPutVertical] = true
 	// t.Config.Strategies[kStrategySellCallVertical] = true
-	// t.Config.Floor = 20_000
+	// t.Config.Floor = 10_000
 	// t.Config.Budget = 2_000
-	// t.Config.Eval = decimal.Two
+	// t.Config.Eval = decimal.Five
 	// t.Config.Spread = decimal.Half
+	// t.Config.Sigmas = decimal.Three
 	// t.Config.Panic = 1 * clocky.Minute
-	// t.Config.WeightDelta = decimal.Zero
+	// t.Config.WeightRisk = decimal.Half
 	// traders = append(traders, t)
 
 	// // MSFT strategy
@@ -301,12 +303,9 @@ func main() {
 	// t.Config.Strategies[kStrategySellPutVertical] = true
 	// t.Config.Strategies[kStrategySellCallVertical] = true
 	// t.Config.Floor = 10_000
-	// t.Config.Budget = 5_000
-	// t.Config.Eval = decimal.Three
-	// t.Config.Spread = decimal.Half
+	// t.Config.Budget = 2_000
 	// t.Config.StartOfDay = 10_00_00
 	// t.Config.Panic = 1 * clocky.Minute
-	// t.Config.WeightDelta = decimal.Zero
 	// traders = append(traders, t)
 
 	// subscribe to schwab order updates

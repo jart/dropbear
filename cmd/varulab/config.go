@@ -5,10 +5,10 @@ import "os"
 // defaultSymbols is the default set of symbols to backtest if -symbols is not provided.
 // const defaultSymbols = "MSFT AVGO TSLA NVDA META GOOGL XSP" // META XSP SPXW RUTW
 // const defaultSymbols = "MSFT META AVGO NVDA TSLA GOOGL AAPL"
-const defaultSymbols = "SPXW RUTW XSP"
+const defaultSymbols = "SPXW RUTW"
 
 // earliestDate is the oldest date the downloader will fetch.
-const earliestDate = "2026-01-01"
+const earliestDate = "2025-01-01"
 
 // dataDirs is the list of databento directories in order of preference.
 // Downloads go to the first one that exists and has <90% disk usage.
@@ -33,8 +33,8 @@ var kFlagDimensions = [][]string{
 	// {"-w-risk=.5", "-w-delta=.5", "-w-payoff=.5"},
 	// {"-budget=2000"},
 	// {"-sod=100000"},
-	{"-eval=10", "-eval=7", "-eval=5"},
-	{"-sigmas=3"},
+	{"-eval=10", "-eval=5"},
+	{"-sigmas=1", "-sigmas=1.5", "-sigmas=2"},
 }
 
 // 2026-03-29 (find good stocks)

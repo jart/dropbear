@@ -30,6 +30,7 @@ function beginPolling(interval) {
 }
 
 function render(d) {
+  document.title = d.symbol;
   document.getElementById('symbol').textContent = d.symbol;
   document.getElementById('price').textContent = d.price;
   document.getElementById('time').textContent = d.time;

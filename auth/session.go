@@ -10,7 +10,7 @@ import (
 
 const (
 	SessionCookieName = "session"
-	SessionDuration   = 24 * time.Hour
+	SessionDuration   = 720 * time.Hour
 )
 
 func generateToken() (string, error) {

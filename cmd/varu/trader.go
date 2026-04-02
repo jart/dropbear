@@ -436,21 +436,6 @@ func (t *Trader) iteratePositions(f func(*options.Option, decimal.Decimal)) {
 	}
 }
 
-// iterateStrikes calls f for each strike within expected move range.
-func (t *Trader) iterateStrikes(f func(*options.Strike)) {
-	em := t.Chain.ExpectedMove().Mul(t.Config.Sigmas)
-	lo := t.Chain.Price.Sub(em)
-	hi := t.Chain.Price.Add(em)
-	_, strike, _ := t.Chain.Strikes.Floor(lo)
-	for strike != nil {
-		f(strike)
-		if strike.Price.Cmp(hi) >= 0 {
-			break
-		}
-		strike = strike.Next
-	}
-}
-
 // precomputeSettlements caches baseline settlement values at every strike
 // so that orders only need to add the delta from their 2 staged legs.
 // riskRamp returns a factor from 0.1 to 1.0 that linearly ramps risk
@@ -569,37 +554,37 @@ func (t *Trader) computeExpectedPayoff() decimal.Decimal {
 	// collect probabilities from cached settlements
 	type cachedProb struct {
 		idx  int
-		prob decimal.Decimal
+		prob float64
 	}
 	em := t.Chain.ExpectedMove().Mul(t.Config.Sigmas)
 	lo := t.Chain.Price.Sub(em)
 	hi := t.Chain.Price.Add(em)
 	var probs []cachedProb
-	var probSum decimal.Decimal
+	var probSum float64
 	for i, ss := range t.BaselineSettlements {
 		if ss.strike.Price.Cmp(lo) < 0 || ss.strike.Price.Cmp(hi) > 0 {
 			continue
 		}
-		p := ss.strike.Probability()
-		if p.IsPositive() {
+		p := ss.strike.Probability().Float64()
+		if p > 0 {
 			probs = append(probs, cachedProb{i, p})
-			probSum = probSum.Add(p)
+			probSum += p
 		}
 	}
-	if len(probs) == 0 || !probSum.IsPositive() {
+	if len(probs) == 0 || probSum <= 0 {
 		return decimal.Min
 	}
 	// compute expected payoff using cached baselines
-	payoff := decimal.Zero
+	payoff := 0.0
 	for _, cp := range probs {
 		ss := &t.BaselineSettlements[cp.idx]
 		settlement := ss.baseline
 		if len(t.StagedLegs) > 0 {
 			settlement = settlement.Add(t.stagedSettlementDelta(ss.strike.Price))
 		}
-		payoff = payoff.Add(settlement.Mul(cp.prob.Div(probSum)))
+		payoff += settlement.Float64() * (cp.prob / probSum)
 	}
-	return payoff.Add(t.Holdings.Cash).Add(t.StagedCash)
+	return decimal.FromFloat64(payoff).Add(t.Holdings.Cash).Add(t.StagedCash)
 }
 
 // computeBias returns what direction options market thinks underlying will move.
