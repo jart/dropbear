@@ -56,8 +56,8 @@ func main() {
 	symbolFlag := flag.String("symbol", "", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag := clocky.TimeFlag("date", "", "date of the trades to report")
 	sigmasFlag := decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
-	budgetFlag := flag.Float64("budget", 5_000, "maximum acceptable loss at current price")
-	floorFlag := flag.Float64("floor", 40_000, "maximum acceptable loss in catastrophic scenario")
+	budgetFlag := flag.Float64("budget", 2_000, "maximum acceptable loss at current price")
+	floorFlag := flag.Float64("floor", 10_000, "maximum acceptable loss in catastrophic scenario")
 	spreadFlag := decimal.Flag("spread", "1", "spread crossing (-1=make, 0=mid, 1=take)")
 	evalFlag := decimal.Flag("eval", "2", "spread aggressiveness for scoring (0=same as -spread)")
 	pruneFlag := flag.Float64("prune", .5, "probability of stochastic pruning in strategy search")
@@ -200,35 +200,35 @@ func main() {
 	// SPXW strategy
 	t = NewTrader(symbol.MustParse("SPXW"), newConfig())
 	t.Config.Listen = "127.0.0.1:8484"
-	// t.Config.Strategies[kStrategySellPutVertical] = true
+	t.Config.Strategies[kStrategySellPutVertical] = true
 	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 20_000
+	t.Config.Floor = 10_000
 	t.Config.Budget = 2_000
 	t.Config.Eval = decimal.Ten
 	t.Config.Spread = decimal.One
 	traders = append(traders, t)
 
-	// // RUTW strategy
-	// t = NewTrader(symbol.MustParse("RUTW"), newConfig())
-	// t.Config.Listen = "127.0.0.1:8487"
-	// // t.Config.Strategies[kStrategySellPutVertical] = true
-	// t.Config.Strategies[kStrategySellCallVertical] = true
-	// t.Config.Floor = 10_000
-	// t.Config.Budget = 2_000
-	// t.Config.Eval = decimal.Ten
-	// t.Config.Spread = decimal.Half
-	// traders = append(traders, t)
+	// RUTW strategy
+	t = NewTrader(symbol.MustParse("RUTW"), newConfig())
+	t.Config.Listen = "127.0.0.1:8487"
+	t.Config.Strategies[kStrategySellPutVertical] = true
+	t.Config.Strategies[kStrategySellCallVertical] = true
+	t.Config.Floor = 10_000
+	t.Config.Budget = 2_000
+	t.Config.Eval = decimal.Ten
+	t.Config.Spread = decimal.Half
+	traders = append(traders, t)
 
-	// // XSP strategy
-	// t = NewTrader(symbol.MustParse("XSP"), newConfig())
-	// t.Config.Listen = "127.0.0.1:8489"
-	// // t.Config.Strategies[kStrategySellPutVertical] = true
-	// t.Config.Strategies[kStrategySellCallVertical] = true
-	// t.Config.Floor = 10_000
-	// t.Config.Budget = 2_000
-	// t.Config.Eval = decimal.Ten
-	// t.Config.Spread = decimal.Half
-	// traders = append(traders, t)
+	// XSP strategy
+	t = NewTrader(symbol.MustParse("XSP"), newConfig())
+	t.Config.Listen = "127.0.0.1:8489"
+	t.Config.Strategies[kStrategySellPutVertical] = true
+	t.Config.Strategies[kStrategySellCallVertical] = true
+	t.Config.Floor = 10_000
+	t.Config.Budget = 2_000
+	t.Config.Eval = decimal.Ten
+	t.Config.Spread = decimal.Half
+	traders = append(traders, t)
 
 	// // TSLA strategy
 	// t = NewTrader(symbol.MustParse("TSLA"), newConfig())
@@ -255,32 +255,32 @@ func main() {
 	// t.Config.WeightDelta = decimal.Zero
 	// traders = append(traders, t)
 
-	// META strategy
-	t = NewTrader(symbol.MustParse("META"), newConfig())
-	t.Config.Listen = "127.0.0.1:8488"
-	t.Config.Strategies[kStrategySellPutVertical] = true
-	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 10_000
-	t.Config.Budget = 5_000
-	t.Config.Eval = decimal.Five
-	t.Config.Spread = decimal.One
-	t.Config.StartOfDay = 10_00_00
-	t.Config.Panic = 2 * clocky.Minute
-	t.Config.WeightDelta = decimal.Zero
-	traders = append(traders, t)
-
-	// AVGO strategy
-	t = NewTrader(symbol.MustParse("AVGO"), newConfig())
-	t.Config.Listen = "127.0.0.1:8490"
+	// // META strategy
+	// t = NewTrader(symbol.MustParse("META"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8488"
 	// t.Config.Strategies[kStrategySellPutVertical] = true
-	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 10_000
-	t.Config.Budget = 2_000
-	t.Config.Eval = decimal.Two
-	t.Config.Spread = decimal.One
-	t.Config.Panic = 2 * clocky.Minute
-	t.Config.WeightDelta = decimal.Zero
-	traders = append(traders, t)
+	// t.Config.Strategies[kStrategySellCallVertical] = true
+	// t.Config.Floor = 10_000
+	// t.Config.Budget = 5_000
+	// t.Config.Eval = decimal.Five
+	// t.Config.Spread = decimal.One
+	// t.Config.StartOfDay = 10_00_00
+	// t.Config.Panic = 2 * clocky.Minute
+	// t.Config.WeightDelta = decimal.Zero
+	// traders = append(traders, t)
+
+	// // AVGO strategy
+	// t = NewTrader(symbol.MustParse("AVGO"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8490"
+	// // t.Config.Strategies[kStrategySellPutVertical] = true
+	// t.Config.Strategies[kStrategySellCallVertical] = true
+	// t.Config.Floor = 10_000
+	// t.Config.Budget = 2_000
+	// t.Config.Eval = decimal.Two
+	// t.Config.Spread = decimal.One
+	// t.Config.Panic = 2 * clocky.Minute
+	// t.Config.WeightDelta = decimal.Zero
+	// traders = append(traders, t)
 
 	// // GOOGL strategy
 	// t = NewTrader(symbol.MustParse("GOOGL"), newConfig())
@@ -295,19 +295,19 @@ func main() {
 	// t.Config.WeightDelta = decimal.Zero
 	// traders = append(traders, t)
 
-	// MSFT strategy
-	t = NewTrader(symbol.MustParse("MSFT"), newConfig())
-	t.Config.Listen = "127.0.0.1:8492"
-	t.Config.Strategies[kStrategySellPutVertical] = true
-	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 10_000
-	t.Config.Budget = 5_000
-	t.Config.Eval = decimal.Three
-	t.Config.Spread = decimal.Half
-	t.Config.StartOfDay = 10_00_00
-	t.Config.Panic = 1 * clocky.Minute
-	t.Config.WeightDelta = decimal.Zero
-	traders = append(traders, t)
+	// // MSFT strategy
+	// t = NewTrader(symbol.MustParse("MSFT"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8492"
+	// t.Config.Strategies[kStrategySellPutVertical] = true
+	// t.Config.Strategies[kStrategySellCallVertical] = true
+	// t.Config.Floor = 10_000
+	// t.Config.Budget = 5_000
+	// t.Config.Eval = decimal.Three
+	// t.Config.Spread = decimal.Half
+	// t.Config.StartOfDay = 10_00_00
+	// t.Config.Panic = 1 * clocky.Minute
+	// t.Config.WeightDelta = decimal.Zero
+	// traders = append(traders, t)
 
 	// subscribe to schwab order updates
 	// they only let us have one connection
