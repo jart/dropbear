@@ -122,7 +122,7 @@ func matchInstrument(m *databento.Instrument) bool {
 	if !expiryFlag.IsZero() {
 		wantYear, wantMonth, wantDay := expiryFlag.Date()
 		_, _, _, expYear, expMonth, expDay, _ := osi.Parse(m.GetRawSymbol())
-		if expYear == wantYear && expMonth == wantMonth && expDay == wantDay {
+		if expYear != wantYear || expMonth != wantMonth || expDay != wantDay {
 			return false
 		}
 	}
