@@ -200,24 +200,24 @@ func main() {
 	// SPXW strategy
 	t = NewTrader(symbol.MustParse("SPXW"), newConfig())
 	t.Config.Listen = "127.0.0.1:8484"
-	t.Config.Strategies[kStrategySellPutVertical] = true
+	// t.Config.Strategies[kStrategySellPutVertical] = true
 	t.Config.Strategies[kStrategySellCallVertical] = true
 	t.Config.Floor = 10_000
 	t.Config.Budget = 2_000
 	t.Config.Eval = decimal.Ten
-	t.Config.Spread = decimal.One
-	t.Config.StartOfDay = 10_00_00
+	t.Config.Spread = decimal.Half
+	// t.Config.StartOfDay = 10_00_00
 	traders = append(traders, t)
 
 	// RUTW strategy
 	t = NewTrader(symbol.MustParse("RUTW"), newConfig())
 	t.Config.Listen = "127.0.0.1:8487"
-	t.Config.Strategies[kStrategySellPutVertical] = true
+	// t.Config.Strategies[kStrategySellPutVertical] = true
 	t.Config.Strategies[kStrategySellCallVertical] = true
 	t.Config.Floor = 10_000
 	t.Config.Budget = 2_000
 	t.Config.Eval = decimal.Ten
-	t.Config.Spread = decimal.One
+	t.Config.Spread = decimal.Half
 	traders = append(traders, t)
 
 	// // XSP strategy

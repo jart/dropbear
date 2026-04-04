@@ -1,5 +1,7 @@
 package databento
 
+import "fmt"
+
 type SType uint8
 
 const (
@@ -48,6 +50,39 @@ func (st SType) String() string {
 		return "figi_ticker"
 	default:
 		return "unknown"
+	}
+}
+
+func ParseSType(s string) (SType, error) {
+	switch s {
+	case "instrument_id":
+		return STypeInstrumentID, nil
+	case "raw_symbol":
+		return STypeRawSymbol, nil
+	case "smart":
+		return STypeSmart, nil
+	case "continuous":
+		return STypeContinuous, nil
+	case "parent":
+		return STypeParent, nil
+	case "nasdaq_symbol":
+		return STypeNasdaqSymbol, nil
+	case "cms_symbol":
+		return STypeCMSSymbol, nil
+	case "isin":
+		return STypeISIN, nil
+	case "us_code":
+		return STypeUSCode, nil
+	case "bbg_comp_id":
+		return STypeBBGCompID, nil
+	case "bbg_comp_ticker":
+		return STypeBBGCompTicker, nil
+	case "figi":
+		return STypeFIGI, nil
+	case "figi_ticker":
+		return STypeFIGITicker, nil
+	default:
+		return 0, fmt.Errorf("databento: unknown stype %q", s)
 	}
 }
 
