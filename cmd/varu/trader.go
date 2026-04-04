@@ -48,6 +48,7 @@ type Trader struct {
 	IdentifierCounter     int
 	StopTransitioned      bool
 	AbortOrder            bool
+	UnderlyingPrice       decimal.Decimal
 	Panicking             bool
 	Paused                bool
 }
@@ -711,6 +712,18 @@ func (t *Trader) onOptionTick(m *databento.CMBP1) *options.Option {
 	return o
 }
 
+func (t *Trader) onUnderlyingTick(m *databento.MBP1) {
+	bid := m.Levels[0].BidPx
+	ask := m.Levels[0].AskPx
+	if bid != databento.UndefPrice && ask != databento.UndefPrice {
+		bidPrice := decimal.Decimal(bid / 1000)
+		askPrice := decimal.Decimal(ask / 1000)
+		if bidPrice.IsPositive() && askPrice.IsPositive() {
+			t.UnderlyingPrice = bidPrice.Add(askPrice).DivInt(2)
+		}
+	}
+}
+
 func (t *Trader) onOptionTrade(o *options.Option, m *databento.CMBP1) {
 }
 
@@ -749,6 +762,6 @@ func (t *Trader) onOptionQuote(o *options.Option, m *databento.CMBP1) {
 		mustRecomputeGreeks = true
 	}
 	if mustRecomputeGreeks {
-		o.ComputeGreeks(t.Chain.Price, kRiskFreeRate, decimal.Zero)
+		o.ComputeGreeks(t.Chain.Price, kRiskFreeRate, t.UnderlyingPrice)
 	}
 }

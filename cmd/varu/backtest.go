@@ -25,6 +25,7 @@ func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 	clocky.Now = clocky.FakeNow
 	clocky.Sleep = clocky.FakeSleep
 	ready := false
+	var underlyingID uint32
 	var rtBase time.Time
 	var nextDump time.Time
 	var rtBaseData clocky.Time
@@ -56,9 +57,18 @@ func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 				} else {
 					log.Printf("skipping instrument %s expiring on %04d-%02d-%02d\n", symbol, expYear, expMonth, expDay)
 				}
+			} else if underlyingID == 0 {
+				underlyingID = m.Header.InstrumentID
+				log.Printf("underlying instrument %s id=%d", m.GetRawSymbol(), underlyingID)
 			} else {
 				log.Printf("skipping instrument %s\n", m.GetRawSymbol())
-
+			}
+		case *databento.MBP1:
+			if underlyingID != 0 && m.Header.InstrumentID == underlyingID {
+				if t.MarketClose != 0 && m.TSRecv.After(t.MarketClose) {
+					continue
+				}
+				t.onUnderlyingTick(m)
 			}
 		case *databento.CMBP1:
 			now := m.TSRecv

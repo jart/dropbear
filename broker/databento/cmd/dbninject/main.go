@@ -16,6 +16,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 
 	"dropbear/broker/databento"
 	"dropbear/clocky"
@@ -83,11 +84,21 @@ func main() {
 	// Phase 2: download definition + data for the injected symbol
 	client := databento.NewHistoricalClient(databento.MustLoadDefaultKey())
 
-	log.Printf("fetching definition for %s from %s", *symFlag, *datasetFlag)
+	// For continuous stype (e.g. ES.FUT), the historical API doesn't support
+	// it. We fetch definitions with parent stype, find the front-month contract
+	// (earliest expiry on or after the trading date), then fetch data for that
+	// specific contract by raw_symbol.
+	dataStype := stype
+	dataSym := *symFlag
+	log.Printf("fetching definitions for %s from %s", *symFlag, *datasetFlag)
+	defStype := stype
+	if defStype == databento.STypeContinuous {
+		defStype = databento.STypeParent
+	}
 	defResp, err := client.GetRange(databento.GetRangeParams{
 		Dataset: *datasetFlag,
 		Schema:  databento.SchemaDefinition,
-		STypeIn: stype,
+		STypeIn: defStype,
 		Symbols: []string{*symFlag},
 		Start:   start,
 		End:     end,
@@ -95,7 +106,7 @@ func main() {
 	if err != nil {
 		log.Fatal("fetch definition:", err)
 	}
-	var newInstruments []*databento.Instrument
+	var allInstruments []*databento.Instrument
 	for {
 		rec, err := defResp.Read()
 		if err == io.EOF {
@@ -105,21 +116,49 @@ func main() {
 			log.Fatal("read definition:", err)
 		}
 		if inst, ok := rec.(*databento.Instrument); ok {
-			newInstruments = append(newInstruments, inst)
+			allInstruments = append(allInstruments, inst)
 		}
 	}
 	defResp.Close()
-	log.Printf("got %d instrument definitions for %s", len(newInstruments), *symFlag)
+
+	// For continuous stype, find front-month contract and switch to raw_symbol
+	var newInstruments []*databento.Instrument
+	if stype == databento.STypeContinuous {
+		var frontMonth *databento.Instrument
+		for _, inst := range allInstruments {
+			exp := inst.ExpirationWeird
+			if exp == 0 || exp.Before(start) {
+				continue
+			}
+			if strings.Contains(inst.GetRawSymbol(), "-") {
+				continue // skip spreads (e.g. ESM5-ESH6)
+			}
+			if frontMonth == nil || exp.Before(frontMonth.ExpirationWeird) {
+				frontMonth = inst
+			}
+		}
+		if frontMonth == nil {
+			log.Fatal("no front-month contract found for ", *symFlag)
+		}
+		dataSym = frontMonth.GetRawSymbol()
+		dataStype = databento.STypeRawSymbol
+		newInstruments = []*databento.Instrument{frontMonth}
+		log.Printf("front-month contract: %s (expires %s)", dataSym,
+			frontMonth.ExpirationWeird.Format("2006-01-02"))
+	} else {
+		newInstruments = allInstruments
+	}
+	log.Printf("got %d instrument definitions for %s", len(newInstruments), dataSym)
 	if len(newInstruments) == 0 {
 		log.Fatal("no instruments found for ", *symFlag)
 	}
 
-	log.Printf("downloading %s data for %s", *schemaFlag, *symFlag)
+	log.Printf("downloading %s data for %s", *schemaFlag, dataSym)
 	dataResp, err := client.GetRange(databento.GetRangeParams{
 		Dataset: *datasetFlag,
 		Schema:  schema,
-		STypeIn: stype,
-		Symbols: []string{*symFlag},
+		STypeIn: dataStype,
+		Symbols: []string{dataSym},
 		Start:   start,
 		End:     end,
 	})
