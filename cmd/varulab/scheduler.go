@@ -132,6 +132,9 @@ func (s *Scheduler) pickNext() *Run {
 }
 
 func (s *Scheduler) Stop() {
+	if s == nil {
+		return
+	}
 	s.cancel() // cancels context, kills all running subprocesses
 	s.wg.Wait()
 	// reset any runs that were running/claimed back to pending

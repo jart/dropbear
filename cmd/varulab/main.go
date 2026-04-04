@@ -20,7 +20,7 @@ var (
 	symbolsFlag  = flag.String("symbols", defaultSymbols, "comma-separated symbols to backtest")
 	resumeFlag   = flag.Bool("resume", false, "resume the most recently modified experiment")
 	openFlag     = flag.String("open", "", "open a specific experiment by name")
-	newFlag      = flag.Bool("new", false, "create a new experiment")
+	newFlag      = flag.String("new", "", "create a new experiment with the given name")
 )
 
 var (
@@ -53,8 +53,8 @@ func main() {
 			log.Fatalf("cannot resume: %v", err)
 		}
 		log.Printf("resuming experiment: %s", expName)
-	} else if *newFlag {
-		expName = newExperimentName()
+	} else if *newFlag != "" {
+		expName = *newFlag
 		log.Printf("creating experiment: %s", expName)
 	}
 

@@ -471,13 +471,19 @@ func handleRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if gExperiment != nil && oldName == gExperiment.Name {
-		// update active experiment reference
+		// close and reopen DB so SQLite WAL sidecar files follow the rename
+		gExperiment.DB.Close()
 		if err := renameExperiment(oldName, newName); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		gExperiment.Name = newName
-		gExperiment.Path = varulabDir() + "/" + newName + ".sqlite3"
+		newExp, err := openExperiment(newName)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		gExperiment = newExp
+		gScheduler.db = newExp.DB
 	} else {
 		if err := renameExperiment(oldName, newName); err != nil {
 			http.Error(w, err.Error(), 500)
