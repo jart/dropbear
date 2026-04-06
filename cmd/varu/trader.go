@@ -455,6 +455,7 @@ func (t *Trader) riskRamp() float64 {
 }
 
 func (t *Trader) precomputeSettlements() {
+	rr := t.riskRamp()
 	em := t.Chain.ExpectedMove().Float64()
 	t.BaselineSettlements = t.BaselineSettlements[:0]
 	for it := t.Chain.Strikes.Iterator(); it.Next(); {
@@ -472,7 +473,7 @@ func (t *Trader) precomputeSettlements() {
 			movement := t.Chain.Price.Sub(strike.Price).Abs().Float64()
 			sigmas := movement / em
 			blend := (prob.NormCDF(sigmas) - .5) * 2
-			ss.maxLoss = math.FMA(t.Config.Floor-t.Config.Budget, blend, t.Config.Budget) * t.riskRamp()
+			ss.maxLoss = math.FMA(t.Config.Floor-t.Config.Budget, blend, t.Config.Budget) * rr
 		}
 		t.BaselineSettlements = append(t.BaselineSettlements, ss)
 	}

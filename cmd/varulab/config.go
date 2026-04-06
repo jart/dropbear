@@ -4,8 +4,8 @@ import "os"
 
 // defaultSymbols is the default set of symbols to backtest if -symbols is not provided.
 // const defaultSymbols = "MSFT AVGO TSLA NVDA META GOOGL XSP" // META XSP SPXW RUTW
-// const defaultSymbols = "MSFT META AVGO NVDA TSLA GOOGL AAPL"
-const defaultSymbols = "SPXW RUTW"
+// const defaultSymbols = "SPXW RUTW"
+const defaultSymbols = "MSFT META AVGO NVDA TSLA GOOGL AAPL"
 
 // earliestDate is the oldest date the downloader will fetch.
 const earliestDate = "2025-01-01"
@@ -21,7 +21,7 @@ var dataDirs = []string{
 
 // kBaseFlags are included in every backtest run.
 // var kBaseFlags = "-bearish -eval=3 -hostile -spread=.5 -w-delta=0 -w-risk=0 -sod=100000"
-var kBaseFlags = "-hostile -spread=.5"
+var kBaseFlags = "-hostile"
 
 // kFlagDimensions defines the search space. Each inner slice is a dimension;
 // the Cartesian product of all dimensions (plus a baseline with each dimension
@@ -31,10 +31,10 @@ var kFlagDimensions = [][]string{
 	// {"-eval=3", "-eval=5", "-eval=7", "-eval=10"}, // this makes varu pickier about trades
 	// {"-spread=.5"}, // this is usually needed when liquidity is tight (since varu crosses the spread by default)
 	// {"-w-risk=.5", "-w-delta=.5", "-w-payoff=.5"},
-	// {"-budget=2000"},
 	// {"-sod=100000"},
-	{"-eval=10", "-eval=5"},
-	{"-sigmas=1", "-sigmas=1.5", "-sigmas=2"},
+	{"-bullish", "-bearish"},
+	{"-eval=5"},
+	{"-sigmas=3"},
 }
 
 // 2026-03-29 (find good stocks)
