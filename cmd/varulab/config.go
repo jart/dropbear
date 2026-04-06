@@ -21,7 +21,7 @@ var dataDirs = []string{
 
 // kBaseFlags are included in every backtest run.
 // var kBaseFlags = "-bearish -eval=3 -hostile -spread=.5 -w-delta=0 -w-risk=0 -sod=100000"
-var kBaseFlags = "-hostile"
+var kBaseFlags = "-hostile -bullish"
 
 // kFlagDimensions defines the search space. Each inner slice is a dimension;
 // the Cartesian product of all dimensions (plus a baseline with each dimension
@@ -31,10 +31,11 @@ var kFlagDimensions = [][]string{
 	// {"-eval=3", "-eval=5", "-eval=7", "-eval=10"}, // this makes varu pickier about trades
 	// {"-spread=.5"}, // this is usually needed when liquidity is tight (since varu crosses the spread by default)
 	// {"-w-risk=.5", "-w-delta=.5", "-w-payoff=.5"},
-	// {"-sod=100000"},
-	{"-bullish", "-bearish"},
-	{"-eval=5"},
+	// {"-bullish", "-bearish"},
+	{"-sod=100000"},
+	{"-eval=0", "-eval=5"},
 	{"-sigmas=3"},
+	{"-w-delta=0"},
 }
 
 // 2026-03-29 (find good stocks)
