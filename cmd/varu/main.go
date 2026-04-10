@@ -197,17 +197,17 @@ func main() {
 	loggy.AlsoLogToFile()
 	log.Printf("varu is on the prowl")
 
-	// // SPXW strategy
-	// t = NewTrader(symbol.MustParse("SPXW"), newConfig())
-	// t.Config.Listen = "127.0.0.1:8484"
-	// // t.Config.Strategies[kStrategySellPutVertical] = true
-	// t.Config.Strategies[kStrategySellCallVertical] = true
-	// t.Config.Floor = 10_000
-	// t.Config.Budget = 2_000
-	// t.Config.Eval = decimal.Ten
-	// t.Config.Spread = decimal.Half
-	// // t.Config.StartOfDay = 10_00_00
-	// traders = append(traders, t)
+	// SPXW strategy
+	t = NewTrader(symbol.MustParse("SPXW"), newConfig())
+	t.Config.Listen = "127.0.0.1:8484"
+	t.Config.Strategies[kStrategySellPutVertical] = true
+	t.Config.Strategies[kStrategySellCallVertical] = true
+	t.Config.Floor = 20_000
+	t.Config.Budget = 5_000
+	t.Config.Eval = decimal.Ten
+	t.Config.Spread = decimal.NegOne
+	// t.Config.StartOfDay = 10_00_00
+	traders = append(traders, t)
 
 	// // RUTW strategy
 	// t = NewTrader(symbol.MustParse("RUTW"), newConfig())
@@ -217,7 +217,7 @@ func main() {
 	// t.Config.Floor = 10_000
 	// t.Config.Budget = 2_000
 	// t.Config.Eval = decimal.Ten
-	// t.Config.Spread = decimal.Half
+	// t.Config.Spread = decimal.One
 	// traders = append(traders, t)
 
 	// // XSP strategy
@@ -232,74 +232,74 @@ func main() {
 	// t.Config.Sigmas = decimal.Three
 	// traders = append(traders, t)
 
-	// TSLA strategy
-	t = NewTrader(symbol.MustParse("TSLA"), newConfig())
-	t.Config.Listen = "127.0.0.1:8485"
-	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.Eval = decimal.Five
-	t.Config.Sigmas = decimal.Three
-	t.Config.StartOfDay = 10_00_00
-	t.Config.Panic = 1 * clocky.Minute
-	traders = append(traders, t)
+	// // TSLA strategy
+	// t = NewTrader(symbol.MustParse("TSLA"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8485"
+	// t.Config.Strategies[kStrategySellCallVertical] = true // bearish
+	// t.Config.Eval = decimal.Five
+	// t.Config.Sigmas = decimal.Three
+	// t.Config.StartOfDay = 10_00_00
+	// t.Config.Panic = 1 * clocky.Minute
+	// traders = append(traders, t)
 
-	// NVDA strategy
-	t = NewTrader(symbol.MustParse("NVDA"), newConfig())
-	t.Config.Listen = "127.0.0.1:8486"
-	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.Eval = decimal.Five
-	t.Config.Spread = decimal.NegOne
-	t.Config.Sigmas = decimal.Three
-	t.Config.Panic = 1 * clocky.Minute
-	t.Config.WeightDelta = decimal.Zero
-	traders = append(traders, t)
+	// // NVDA strategy
+	// t = NewTrader(symbol.MustParse("NVDA"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8486"
+	// t.Config.Strategies[kStrategySellCallVertical] = true // bearish
+	// t.Config.Eval = decimal.Five
+	// t.Config.Spread = decimal.NegOne
+	// t.Config.Sigmas = decimal.Three
+	// t.Config.Panic = 1 * clocky.Minute
+	// t.Config.WeightDelta = decimal.Zero
+	// traders = append(traders, t)
 
-	// META strategy
-	t = NewTrader(symbol.MustParse("META"), newConfig())
-	t.Config.Listen = "127.0.0.1:8488"
-	t.Config.Strategies[kStrategySellPutVertical] = true // bullish
-	t.Config.Eval = decimal.Five
-	t.Config.Sigmas = decimal.Three
-	t.Config.StartOfDay = 10_00_00
-	t.Config.Panic = 90 * clocky.Second
-	t.Config.WeightDelta = decimal.Zero
-	traders = append(traders, t)
+	// // META strategy
+	// t = NewTrader(symbol.MustParse("META"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8488"
+	// t.Config.Strategies[kStrategySellPutVertical] = true // bullish
+	// t.Config.Eval = decimal.Five
+	// t.Config.Sigmas = decimal.Three
+	// t.Config.StartOfDay = 10_00_00
+	// t.Config.Panic = 90 * clocky.Second
+	// t.Config.WeightDelta = decimal.Zero
+	// traders = append(traders, t)
 
-	// AVGO strategy
-	t = NewTrader(symbol.MustParse("AVGO"), newConfig())
-	t.Config.Listen = "127.0.0.1:8490"
-	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.Eval = decimal.Zero
-	t.Config.StartOfDay = 10_00_00
-	t.Config.Panic = 90 * clocky.Second
-	traders = append(traders, t)
+	// // AVGO strategy
+	// t = NewTrader(symbol.MustParse("AVGO"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8490"
+	// t.Config.Strategies[kStrategySellCallVertical] = true // bearish
+	// t.Config.Eval = decimal.Zero
+	// t.Config.StartOfDay = 10_00_00
+	// t.Config.Panic = 90 * clocky.Second
+	// traders = append(traders, t)
 
-	// GOOGL strategy
-	t = NewTrader(symbol.MustParse("GOOGL"), newConfig())
-	t.Config.Listen = "127.0.0.1:8491"
-	t.Config.Strategies[kStrategySellPutVertical] = true // bullish
-	t.Config.Eval = decimal.Five
-	t.Config.Panic = 1 * clocky.Minute
-	t.Config.WeightDelta = decimal.Zero
-	traders = append(traders, t)
+	// // GOOGL strategy
+	// t = NewTrader(symbol.MustParse("GOOGL"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8491"
+	// t.Config.Strategies[kStrategySellPutVertical] = true // bullish
+	// t.Config.Eval = decimal.Five
+	// t.Config.Panic = 1 * clocky.Minute
+	// t.Config.WeightDelta = decimal.Zero
+	// traders = append(traders, t)
 
-	// MSFT strategy
-	t = NewTrader(symbol.MustParse("MSFT"), newConfig())
-	t.Config.Listen = "127.0.0.1:8492"
-	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.Eval = decimal.Zero
-	t.Config.Sigmas = decimal.Three
-	t.Config.StartOfDay = 10_00_00
-	t.Config.Panic = 1 * clocky.Minute
-	traders = append(traders, t)
+	// // MSFT strategy
+	// t = NewTrader(symbol.MustParse("MSFT"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8492"
+	// t.Config.Strategies[kStrategySellCallVertical] = true // bearish
+	// t.Config.Eval = decimal.Zero
+	// t.Config.Sigmas = decimal.Three
+	// t.Config.StartOfDay = 10_00_00
+	// t.Config.Panic = 1 * clocky.Minute
+	// traders = append(traders, t)
 
-	// AAPL strategy
-	t = NewTrader(symbol.MustParse("AAPL"), newConfig())
-	t.Config.Listen = "127.0.0.1:8493"
-	t.Config.Strategies[kStrategySellCallVertical] = true // bearish
-	t.Config.StartOfDay = 10_00_00
-	t.Config.Panic = 1 * clocky.Minute
-	t.Config.WeightDelta = decimal.Zero
-	traders = append(traders, t)
+	// // AAPL strategy
+	// t = NewTrader(symbol.MustParse("AAPL"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8493"
+	// t.Config.Strategies[kStrategySellCallVertical] = true // bearish
+	// t.Config.StartOfDay = 10_00_00
+	// t.Config.Panic = 1 * clocky.Minute
+	// t.Config.WeightDelta = decimal.Zero
+	// traders = append(traders, t)
 
 	// subscribe to schwab order updates
 	// they only let us have one connection

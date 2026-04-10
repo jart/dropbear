@@ -126,6 +126,7 @@ var kOptionCadence = map[symbol.Symbol]OptionCadence{
 	kGOOGL: OptionCadenceTweekly,
 	kAAPL:  OptionCadenceTweekly,
 	kMSFT:  OptionCadenceTweekly,
+	kAMZN:  OptionCadenceTweekly,
 	kNVDA:  OptionCadenceTweekly,
 	kTSLA:  OptionCadenceTweekly,
 	kAVGO:  OptionCadenceTweekly,
@@ -163,4 +164,5 @@ const (
 	kVIX   = symbol.Symbol('V' | 'I'<<8 | 'X'<<16)
 	kVIXW  = symbol.Symbol('V' | 'I'<<8 | 'X'<<16 | 'W'<<24)
 	kSPEQX = symbol.Symbol('S' | 'P'<<8 | 'E'<<16 | 'Q'<<24 | 'X'<<32)
+	kAMZN  = symbol.Symbol('A' | 'M'<<8 | 'Z'<<16 | 'N'<<24)
 )

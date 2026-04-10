@@ -144,9 +144,9 @@ func (s *Scheduler) Stop() {
 func fetchPendingRun(db *sql.DB, preferPath string) *Run {
 	var row *sql.Row
 	if preferPath != "" {
-		row = db.QueryRow(`SELECT id, symbol, date, flags, dbn_path, git_rev FROM varulab_runs WHERE status = 'pending' AND dbn_path = ? LIMIT 1`, preferPath)
+		row = db.QueryRow(`SELECT id, symbol, date, flags, dbn_path, git_rev FROM varulab_runs WHERE status = 'pending' AND dbn_path = ? ORDER BY date DESC LIMIT 1`, preferPath)
 	} else {
-		row = db.QueryRow(`SELECT id, symbol, date, flags, dbn_path, git_rev FROM varulab_runs WHERE status = 'pending' LIMIT 1`)
+		row = db.QueryRow(`SELECT id, symbol, date, flags, dbn_path, git_rev FROM varulab_runs WHERE status = 'pending' ORDER BY date DESC LIMIT 1`)
 	}
 	var r Run
 	if err := row.Scan(&r.ID, &r.Symbol, &r.Date, &r.Flags, &r.DbnPath, &r.GitRev); err != nil {

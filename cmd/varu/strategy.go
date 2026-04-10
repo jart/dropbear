@@ -44,6 +44,8 @@ var kStrategies = []string{
 var kStrategyDefault = map[string]bool{
 	kStrategySellCallVertical: true,
 	kStrategySellPutVertical:  true,
+	kStrategyBuyCombo:         true,
+	kStrategySellCombo:        true,
 }
 
 var kStrategyDefaultEOD = map[string]bool{
