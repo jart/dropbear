@@ -7,7 +7,7 @@ import "os"
 const defaultSymbols = "SPXW"
 
 // earliestDate is the oldest date the downloader will fetch.
-const earliestDate = "2025-01-01"
+const earliestDate = "2025-05-01"
 
 // dataDirs is the list of databento directories in order of preference.
 // Downloads go to the first one that exists and has <90% disk usage.
