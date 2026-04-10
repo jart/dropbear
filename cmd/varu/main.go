@@ -205,6 +205,7 @@ func main() {
 	t.Config.Floor = 10_000
 	t.Config.Budget = 2_000
 	t.Config.Eval = decimal.Ten
+	t.Config.Sigmas = decimal.One
 	t.Config.Spread = decimal.NegOne
 	t.Config.StartOfDay = 10_00_00
 	traders = append(traders, t)
