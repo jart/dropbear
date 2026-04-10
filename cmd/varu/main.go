@@ -202,11 +202,11 @@ func main() {
 	t.Config.Listen = "127.0.0.1:8484"
 	t.Config.Strategies[kStrategySellPutVertical] = true
 	t.Config.Strategies[kStrategySellCallVertical] = true
-	t.Config.Floor = 20_000
-	t.Config.Budget = 5_000
+	t.Config.Floor = 10_000
+	t.Config.Budget = 2_000
 	t.Config.Eval = decimal.Ten
 	t.Config.Spread = decimal.NegOne
-	// t.Config.StartOfDay = 10_00_00
+	t.Config.StartOfDay = 10_00_00
 	traders = append(traders, t)
 
 	// // RUTW strategy

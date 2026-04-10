@@ -157,6 +157,7 @@ func (t *Trader) trade(now clocky.Time) {
 	t.sellCall()
 	t.buyCombo(lo_near, hi_near)
 	t.sellCombo(lo_near, hi_near)
+	t.buyStrangle(lo_wide, hi_wide)
 	t.sellCallVertical(lo_near, hi_wide)
 	t.sellPutVertical(lo_wide, hi_near)
 	t.buyCallVertical(lo_near, hi_wide)

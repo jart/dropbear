@@ -21,6 +21,7 @@ const (
 	kStrategyLiquidatePutVertical  = "liquidate vertical put"
 	kStrategyLiquidateCallVertical = "liquidate vertical call"
 	kStrategyLiquidatePair         = "liquidate pair"
+	kStrategyBuyStrangle           = "strangle buy"
 )
 
 var kStrategies = []string{
@@ -30,6 +31,7 @@ var kStrategies = []string{
 	kStrategySellPut,
 	kStrategyBuyCombo,
 	kStrategySellCombo,
+	kStrategyBuyStrangle,
 	kStrategySellCallVertical,
 	kStrategySellPutVertical,
 	kStrategyBuyCallVertical,
@@ -44,8 +46,6 @@ var kStrategies = []string{
 var kStrategyDefault = map[string]bool{
 	kStrategySellCallVertical: true,
 	kStrategySellPutVertical:  true,
-	kStrategyBuyCombo:         true,
-	kStrategySellCombo:        true,
 }
 
 var kStrategyDefaultEOD = map[string]bool{
@@ -102,6 +102,22 @@ func (t *Trader) sellPut() {
 		}
 		t.sell(strike.Put)
 		t.end(kStrategySellPut)
+	}
+}
+
+func (t *Trader) buyStrangle(lo, hi decimal.Decimal) {
+	if !t.Config.Strategies[kStrategyBuyStrangle] {
+		return
+	}
+	for _, s1, _ := t.Chain.Strikes.Floor(lo); s1 != nil && s1.Price.Cmp(hi) <= 0; s1 = s1.Next {
+		for _, s2, _ := t.Chain.Strikes.Floor(lo); s2 != nil && s2.Price.Cmp(hi) <= 0; s2 = s2.Next {
+			if t.prune() {
+				continue
+			}
+			t.buy(s1.Call)
+			t.buy(s2.Put)
+			t.end(kStrategyBuyStrangle)
+		}
 	}
 }
 

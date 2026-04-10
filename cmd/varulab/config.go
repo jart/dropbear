@@ -20,14 +20,14 @@ var dataDirs = []string{
 
 // kBaseFlags are included in every backtest run.
 // var kBaseFlags = "-bearish -eval=3 -hostile -spread=.5 -w-delta=0 -w-risk=0 -sod=100000"
-var kBaseFlags = "-hostile"
+var kBaseFlags = "-hostile -floor=20000 -budget=5000 -w-payoff=.05 -w-risk=100 -sigmas=2"
 
 // kFlagDimensions defines the search space. Each inner slice is a dimension;
 // the Cartesian product of all dimensions (plus a baseline with each dimension
 // absent) generates the full set of flag combinations to test.
 var kFlagDimensions = [][]string{
 	// {"-bullish", "-bearish"},
-	{"-sigmas=1"},
+	// {"-sigmas=1"},
 	{"-spread=-1"},
 	{"-eval=5", "-eval=10"},
 }
