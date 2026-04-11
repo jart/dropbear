@@ -142,7 +142,7 @@ func (t *Trader) choosePriceForOrder(legs []*Leg) decimal.Decimal {
 		}
 	}
 	tick, bigTick := getTicks(t.Symbol)
-	if len(legs) == 1 && price.Abs().Cmp(kThree) >= 0 {
+	if price.Abs().Cmp(kThree) >= 0 {
 		tick = bigTick
 	}
 	return price.QuantizeCeil(tick)

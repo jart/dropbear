@@ -40,7 +40,7 @@ func (t *Trader) arbitrageBoxes() {
 
 	var bestLegs []*Leg
 	bestNetValue := decimal.Zero
-	threshold := t.Config.WeightRisk
+	threshold := t.Config.MinProfit
 	if threshold.IsZero() {
 		threshold = decimal.FromInt(5)
 	}

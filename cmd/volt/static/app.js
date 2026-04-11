@@ -294,14 +294,7 @@ function renderFlags(flags) {
   setIfEmpty(form.eval, flags.eval);
   setIfEmpty(form.cooldown, flags.cooldown);
   setIfEmpty(form.patience, flags.patience);
-  setIfEmpty(form.prune, flags.prune);
-  setIfEmpty(form.wPayoff, flags.wPayoff);
-  setIfEmpty(form.wRisk, flags.wRisk);
-  setIfEmpty(form.wDelta, flags.wDelta);
-  setIfEmpty(form.demand, flags.demand);
-  setIfEmpty(form.bypassRisk, flags.bypassRisk);
-  setIfEmpty(form.bypassScore, flags.bypassScore);
-  setIfEmpty(form.bypassPayoff, flags.bypassPayoff);
+  setIfEmpty(form.minProfit, flags.minProfit);
 }
 
 function setIfEmpty(input, val) {
@@ -341,14 +334,8 @@ function submitFlags(e) {
     eval: form.eval.value,
     cooldown: form.cooldown.value,
     patience: form.patience.value,
-    prune: form.prune.value,
-    wPayoff: form.wPayoff.value,
-    wRisk: form.wRisk.value,
-    wDelta: form.wDelta.value,
-    demand: form.demand.value,
-    bypassRisk: form.bypassRisk.value,
-    bypassScore: form.bypassScore.value,
-    bypassPayoff: form.bypassPayoff.value
+    minProfit: form.minProfit.value,
+    closing: form.closing.value
   };
   fetch('/api/flags', {
     method: 'POST',

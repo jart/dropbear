@@ -141,22 +141,15 @@ type StatsData struct {
 }
 
 type FlagsData struct {
-	Sigmas       string `json:"sigmas"`
-	Budget       string `json:"budget"`
-	Floor        string `json:"floor"`
-	Spread       string `json:"spread"`
-	Eval         string `json:"eval"`
-	Cooldown     string `json:"cooldown"`
-	Patience     string `json:"patience"`
-	Prune        string `json:"prune"`
-	WPayoff      string `json:"wPayoff"`
-	WRisk        string `json:"wRisk"`
-	WDelta       string `json:"wDelta"`
-	Demand       string `json:"demand"`
-	BypassRisk   string `json:"bypassRisk"`
-	BypassScore  string `json:"bypassScore"`
-	BypassPayoff string `json:"bypassPayoff"`
-	Closing      string `json:"closing"`
+	Sigmas    string `json:"sigmas"`
+	Budget    string `json:"budget"`
+	Floor     string `json:"floor"`
+	Spread    string `json:"spread"`
+	Eval      string `json:"eval"`
+	Cooldown  string `json:"cooldown"`
+	Patience  string `json:"patience"`
+	MinProfit string `json:"minProfit"`
+	Closing   string `json:"closing"`
 }
 
 type StrategyInfo struct {
@@ -198,22 +191,15 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 			Volume:      t.Holdings.Volume.String(),
 		},
 		Flags: FlagsData{
-			Sigmas:       t.Config.Sigmas.String(),
-			Budget:       fmt.Sprintf("%g", t.Config.Budget),
-			Floor:        fmt.Sprintf("%g", t.Config.Floor),
-			Spread:       t.Config.Spread.String(),
-			Eval:         t.Config.Eval.String(),
-			Cooldown:     t.Config.Cooldown.String(),
-			Patience:     t.Config.Patience.String(),
-			Prune:        "0.00",
-			WPayoff:      "0.00",
-			WRisk:        t.Config.WeightRisk.String(),
-			WDelta:       "0.00",
-			Demand:       "0.00",
-			BypassRisk:   "false",
-			BypassScore:  "false",
-			BypassPayoff: "false",
-			Closing:      boolToString(t.Config.AllowClosing),
+			Sigmas:    t.Config.Sigmas.String(),
+			Budget:    fmt.Sprintf("%g", t.Config.Budget),
+			Floor:     fmt.Sprintf("%g", t.Config.Floor),
+			Spread:    t.Config.Spread.String(),
+			Eval:      t.Config.Eval.String(),
+			Cooldown:  t.Config.Cooldown.String(),
+			Patience:  t.Config.Patience.String(),
+			MinProfit: t.Config.MinProfit.String(),
+			Closing:   boolToString(t.Config.AllowClosing),
 		},
 		Strategies: make(map[string]StrategyInfo),
 		Risk:       make([]RiskPoint, 0),
@@ -405,9 +391,9 @@ func (w *Web) applyFlags(f *FlagsData) {
 			log.Printf("web: patience = %s", f.Patience)
 		}
 	}
-	if f.WRisk != "" {
-		t.Config.WeightRisk = decimal.Parse(f.WRisk)
-		log.Printf("web: w-risk = %s", f.WRisk)
+	if f.MinProfit != "" {
+		t.Config.MinProfit = decimal.Parse(f.MinProfit)
+		log.Printf("web: min-profit = %s", f.MinProfit)
 	}
 	if f.Closing != "" {
 		t.Config.AllowClosing = f.Closing == "true"

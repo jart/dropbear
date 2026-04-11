@@ -55,7 +55,7 @@ func main() {
 	floorFlag := flag.Float64("floor", 10_000, "maximum acceptable loss in catastrophic scenario")
 	spreadFlag := decimal.Flag("spread", "1", "spread crossing (-1=make, 0=mid, 1=take)")
 	evalFlag := decimal.Flag("eval", "2", "spread aggressiveness for scoring (0=same as -spread)")
-	wRiskFlag := decimal.Flag("w-risk", "5", "minimum structural edge for statistical arbitrage")
+	minProfitFlag := decimal.Flag("min-profit", "5", "minimum structural edge for statistical arbitrage")
 	thinkFlag := clocky.DurationFlag("think", "50ms", "interval between backtest trading analysis")
 	patienceFlag := clocky.DurationFlag("patience", "30s", "how long to wait before canceling live orders")
 	cooldownFlag := clocky.DurationFlag("cooldown", "30s", "interval between trading decisions")
@@ -117,7 +117,7 @@ func main() {
 			FullRiskTime: *fullRiskTimeFlag,
 			StopTrading:  *stopTradingFlag,
 			MaxPending:   *maxPendingFlag,
-			WeightRisk:   *wRiskFlag,
+			MinProfit:    *minProfitFlag,
 			Strategies:   map[string]bool{},
 			AllowClosing: *closingFlag,
 			Panic:        *panicFlag,

@@ -10,7 +10,7 @@ type Config struct {
 	Spread       decimal.Decimal
 	Sigmas       decimal.Decimal
 	Demand       decimal.Decimal
-	WeightRisk   decimal.Decimal
+	MinProfit    decimal.Decimal
 	WeightDelta  decimal.Decimal
 	WeightPayoff decimal.Decimal
 	Cooldown     clocky.Duration
