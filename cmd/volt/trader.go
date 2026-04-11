@@ -92,7 +92,6 @@ func (t *Trader) onThought(now clocky.Time) {
 }
 
 func (t *Trader) trade(now clocky.Time) {
-	t.arbitrageBoxes()
 }
 
 func (t *Trader) submitOrder(strategy string, legs []*Leg) bool {
@@ -385,4 +384,5 @@ func (t *Trader) onOptionQuote(o *options.Option, m *databento.CMBP1) {
 	if mustRecomputeGreeks {
 		o.ComputeGreeks(t.Chain.Price, kRiskFreeRate, t.UnderlyingPrice)
 	}
+	t.arbitrageBox(o.Strike)
 }

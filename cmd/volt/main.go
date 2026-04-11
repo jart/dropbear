@@ -51,6 +51,7 @@ func main() {
 	symbolFlag := flag.String("symbol", "", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag := clocky.TimeFlag("date", "", "date of the trades to report")
 	sigmasFlag := decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
+	berthFlag := decimal.Flag("berth", "0.15", "percent of strikes to consider for box arbitrage")
 	budgetFlag := flag.Float64("budget", 2_000, "maximum acceptable loss at current price")
 	floorFlag := flag.Float64("floor", 10_000, "maximum acceptable loss in catastrophic scenario")
 	spreadFlag := decimal.Flag("spread", "1", "spread crossing (-1=make, 0=mid, 1=take)")
@@ -123,6 +124,7 @@ func main() {
 			Panic:        *panicFlag,
 			Floor:        *floorFlag,
 			Budget:       *budgetFlag,
+			Berth:        *berthFlag,
 			Think:        *thinkFlag,
 		}
 		for _, s := range kStrategies {

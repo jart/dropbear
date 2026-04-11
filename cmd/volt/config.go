@@ -7,6 +7,7 @@ import (
 
 type Config struct {
 	Eval         decimal.Decimal
+	Berth        decimal.Decimal
 	Spread       decimal.Decimal
 	Sigmas       decimal.Decimal
 	Demand       decimal.Decimal

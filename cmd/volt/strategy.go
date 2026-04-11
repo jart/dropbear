@@ -20,125 +20,133 @@ var kStrategyDefault = map[string]bool{
 
 var kStrategyDefaultEOD = map[string]bool{}
 
-func (t *Trader) arbitrageBoxes() {
+func (t *Trader) arbitrageBox(s *options.Strike) {
 	price := t.Chain.Price
-	if price.IsZero() {
+	if price.IsZero() || s == nil {
 		return
 	}
 
-	// Only scan strikes within ±15% of current price for efficiency
-	window := price.Mul(decimal.Parse("0.15"))
+	window := price.Mul(t.Config.Berth)
 	lo, hi := price.Sub(window), price.Add(window)
+	if s.Price.Cmp(lo) < 0 || s.Price.Cmp(hi) > 0 {
+		return
+	}
 
-	var strikes []*options.Strike
-	for it := t.Chain.Strikes.Iterator(); it.Next(); {
-		s := it.Value()
-		if s.Price.Cmp(lo) >= 0 && s.Price.Cmp(hi) <= 0 {
-			strikes = append(strikes, s)
+	var bestS1, bestS2 *options.Strike
+	var bestNetValue decimal.Decimal
+	var bestDirection int
+	var bestSize uint32
+
+	for _, it, _ := t.Chain.Strikes.Ceiling(lo); it != nil && it.Price.Cmp(hi) <= 0; it = it.Next {
+		if it == s {
+			continue
 		}
-	}
 
-	var bestLegs []*Leg
-	bestNetValue := decimal.Zero
-	threshold := t.Config.MinProfit
-	if threshold.IsZero() {
-		threshold = decimal.FromInt(5)
-	}
-
-	for i := 0; i < len(strikes); i++ {
-		for j := i + 1; j < len(strikes); j++ {
-			s1, s2 := strikes[i], strikes[j]
-
-			legs, direction := t.getBoxLegs(s1, s2)
-			if legs == nil {
-				continue
-			}
-
-			// Determine max quantity based on available liquidity
-			size := t.getBoxAvailableSize(legs)
-			if size == 0 {
-				continue
-			}
-
-			orderPrice := t.choosePriceForOrder(legs)
-			if orderPrice.IsZero() {
-				continue
-			}
-
-			// Settlement value is (K2 - K1) * direction
-			// Long Box (direction 1): Pay debit, receive (K2-K1) at expiry. Profit = (K2-K1) - |debit|
-			// Short Box (direction -1): Receive credit, pay (K2-K1) at expiry. Profit = credit - (K2-K1)
-
-			width := s2.Price.Sub(s1.Price).MulInt(kMultiplier)
-			settlement := width.MulInt(direction)
-
-			// Total net value = (Credit/Debit)*100 + (Settlement at Expiry)
-			// choosePriceForOrder returns the limit price per contract.
-			netValue := orderPrice.MulInt(kMultiplier).Add(settlement).MulInt64(int64(size))
-
-			if netValue.Cmp(threshold) > 0 && netValue.Cmp(bestNetValue) > 0 {
-				bestNetValue = netValue
-				// Scale the legs by the available size
-				for _, leg := range legs {
-					leg.Quantity = leg.Quantity.MulInt64(int64(size))
-				}
-				bestLegs = legs
-			}
+		s1, s2 := s, it
+		if s1.Price.Cmp(s2.Price) > 0 {
+			s1, s2 = s2, s1
 		}
-	}
 
-	if bestLegs != nil {
-		t.submitOrder(kStrategyBoxArbitrage, bestLegs)
-	}
-}
+		// 1. Determine direction based on modes (No Allocation)
+		direction := 0
+		if s1.Call.Mode == options.ModeLong && s1.Put.Mode == options.ModeShort &&
+			s2.Call.Mode == options.ModeShort && s2.Put.Mode == options.ModeLong {
+			direction = 1 // Long Box
+		} else if s1.Call.Mode == options.ModeShort && s1.Put.Mode == options.ModeLong &&
+			s2.Call.Mode == options.ModeLong && s2.Put.Mode == options.ModeShort {
+			direction = -1 // Short Box
+		}
+		if direction == 0 {
+			continue
+		}
 
-func (t *Trader) getBoxAvailableSize(legs []*Leg) uint32 {
-	var minSize uint32 = math.MaxUint32
-	for _, leg := range legs {
-		var available uint32
-		if leg.Quantity.IsPositive() {
-			available = leg.Option.AskSize
+		// 2. Check liquidity (No Allocation)
+		var size uint32 = math.MaxUint32
+		if direction == 1 {
+			size = min4(s1.Call.AskSize, s1.Put.BidSize, s2.Call.BidSize, s2.Put.AskSize)
 		} else {
-			available = leg.Option.BidSize
+			size = min4(s1.Call.BidSize, s1.Put.AskSize, s2.Call.AskSize, s2.Put.BidSize)
 		}
-		if available < minSize {
-			minSize = available
+		if size == 0 {
+			continue
+		}
+
+		// 3. Compute price (No Allocation)
+		orderPrice := t.computeBoxPrice(s1, s2, direction)
+		if orderPrice.IsZero() {
+			continue
+		}
+
+		// 4. Calculate Net Value
+		width := s2.Price.Sub(s1.Price).MulInt(kMultiplier)
+		settlement := width.MulInt(direction)
+		netValue := orderPrice.MulInt(kMultiplier).Add(settlement).MulInt64(int64(size))
+
+		if netValue.Cmp(t.Config.MinProfit) > 0 && netValue.Cmp(bestNetValue) > 0 {
+			bestNetValue = netValue
+			bestS1, bestS2 = s1, s2
+			bestDirection = direction
+			bestSize = size
 		}
 	}
-	if minSize == math.MaxUint32 {
-		return 0
+
+	// 5. Final Allocation (Only if arb found)
+	if bestS1 != nil {
+		legs := t.makeBoxLegs(bestS1, bestS2, bestDirection, bestSize)
+		t.submitOrder(kStrategyBoxArbitrage, legs)
 	}
-	return minSize
 }
 
-func (t *Trader) getBoxLegs(s1, s2 *options.Strike) ([]*Leg, int) {
-	// s1 is lower strike, s2 is higher strike
-
-	// Case 1: Long Box (Lending)
-	// We need Strike 1 to allow Synthetic Long: Call ModeLong, Put ModeShort
-	// We need Strike 2 to allow Synthetic Short: Call ModeShort, Put ModeLong
-	if s1.Call.Mode == options.ModeLong && s1.Put.Mode == options.ModeShort &&
-		s2.Call.Mode == options.ModeShort && s2.Put.Mode == options.ModeLong {
-		return []*Leg{
-			{Option: s1.Call, Quantity: decimal.One},       // Buy Call s1
-			{Option: s1.Put, Quantity: decimal.One.Neg()},  // Sell Put s1
-			{Option: s2.Call, Quantity: decimal.One.Neg()}, // Sell Call s2
-			{Option: s2.Put, Quantity: decimal.One},        // Buy Put s2
-		}, 1
+func (t *Trader) computeBoxPrice(s1, s2 *options.Strike, direction int) decimal.Decimal {
+	spread := t.Config.Spread
+	var p decimal.Decimal
+	if direction == 1 {
+		// Buy Call s1, Sell Put s1, Sell Call s2, Buy Put s2
+		p = p.Sub(midSpread(s1.Call, 1, spread))
+		p = p.Add(midSpread(s1.Put, -1, spread))
+		p = p.Add(midSpread(s2.Call, -1, spread))
+		p = p.Sub(midSpread(s2.Put, 1, spread))
+	} else {
+		// Sell Call s1, Buy Put s1, Buy Call s2, Sell Put s2
+		p = p.Add(midSpread(s1.Call, -1, spread))
+		p = p.Sub(midSpread(s1.Put, 1, spread))
+		p = p.Sub(midSpread(s2.Call, 1, spread))
+		p = p.Add(midSpread(s2.Put, -1, spread))
 	}
-
-	// Case 2: Short Box (Borrowing)
-	// We need Strike 1 to allow Synthetic Short: Call ModeShort, Put ModeLong
-	// We need Strike 2 to allow Synthetic Long: Call ModeLong, Put ModeShort
-	if s1.Call.Mode == options.ModeShort && s1.Put.Mode == options.ModeLong &&
-		s2.Call.Mode == options.ModeLong && s2.Put.Mode == options.ModeShort {
-		return []*Leg{
-			{Option: s1.Call, Quantity: decimal.One.Neg()}, // Sell Call s1
-			{Option: s1.Put, Quantity: decimal.One},        // Buy Put s1
-			{Option: s2.Call, Quantity: decimal.One},       // Buy Call s2
-			{Option: s2.Put, Quantity: decimal.One.Neg()},  // Sell Put s2
-		}, -1
+	tick, bigTick := getTicks(t.Symbol)
+	if p.Abs().Cmp(kThree) >= 0 {
+		tick = bigTick
 	}
+	return p.QuantizeCeil(tick)
+}
 
-	return nil, 0
+func midSpread(o *options.Option, action int, spread decimal.Decimal) decimal.Decimal {
+	mid := o.MidPrice()
+	hlf := o.Ask.Sub(o.Bid).DivInt(2)
+	if action > 0 {
+		return mid.Add(hlf.Mul(spread))
+	}
+	return mid.Sub(hlf.Mul(spread))
+}
+
+func (t *Trader) makeBoxLegs(s1, s2 *options.Strike, direction int, size uint32) []*Leg {
+	qty := decimal.FromInt64(int64(size))
+	if direction == 1 {
+		return []*Leg{
+			{Option: s1.Call, Quantity: qty},
+			{Option: s1.Put, Quantity: qty.Neg()},
+			{Option: s2.Call, Quantity: qty.Neg()},
+			{Option: s2.Put, Quantity: qty},
+		}
+	}
+	return []*Leg{
+		{Option: s1.Call, Quantity: qty.Neg()},
+		{Option: s1.Put, Quantity: qty},
+		{Option: s2.Call, Quantity: qty},
+		{Option: s2.Put, Quantity: qty.Neg()},
+	}
+}
+
+func min4(a, b, c, d uint32) uint32 {
+	return min(d, min(c, min(b, a)))
 }

@@ -126,6 +126,26 @@ func (order *Order) Send() error {
 	if order.Price.Cmp(order.Price.QuantizeTruncate(tick)) != 0 {
 		return errors.New("order price must be quantized properly")
 	}
+
+	// Decrement virtual liquidity so we don't send multiple orders for same volume.
+	// We do this even in dry run mode to ensure simulation accuracy.
+	for _, leg := range order.Legs {
+		qty := uint32(leg.Quantity.Abs().Int64())
+		if leg.Quantity.IsPositive() {
+			if leg.Option.AskSize > qty {
+				leg.Option.AskSize -= qty
+			} else {
+				leg.Option.AskSize = 0
+			}
+		} else {
+			if leg.Option.BidSize > qty {
+				leg.Option.BidSize -= qty
+			} else {
+				leg.Option.BidSize = 0
+			}
+		}
+	}
+
 	if *dryFlag {
 		return errors.New("won't send order in dry run mode")
 	}
