@@ -18,14 +18,21 @@ func FromInt64(n int64) Decimal {
 	return Decimal(n * Scale)
 }
 
-// Int64 returns the integer part of d, rounding toward zero.
+// Int64 returns the integer value of d.
+// This method panics if d has a fractional part.
 func (d Decimal) Int64() int64 {
+	if int64(d)%Scale != 0 {
+		panic("decimal: Int64 called on non-integer value")
+	}
 	return int64(d) / Scale
 }
 
-// Int returns the integer part of d, rounding toward zero.
-// This method panics if the result overflows int.
+// Int returns the integer value of d.
+// This method panics if d has a fractional part or if the result overflows int.
 func (d Decimal) Int() int {
+	if int64(d)%Scale != 0 {
+		panic("decimal: Int called on non-integer value")
+	}
 	r := int64(d) / Scale
 	if r > math.MaxInt || r < math.MinInt {
 		panic("decimal overflow")
