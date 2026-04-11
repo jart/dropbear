@@ -49,7 +49,7 @@ func (t *Trader) arbitrageBoxes() {
 		for j := i + 1; j < len(strikes); j++ {
 			s1, s2 := strikes[i], strikes[j]
 
-			legs := t.getBoxLegs(s1, s2)
+			legs, direction := t.getBoxLegs(s1, s2)
 			if legs == nil {
 				continue
 			}
@@ -60,15 +60,21 @@ func (t *Trader) arbitrageBoxes() {
 				continue
 			}
 
-			price := t.choosePriceForOrder(legs)
-			if price.IsZero() {
+			orderPrice := t.choosePriceForOrder(legs)
+			if orderPrice.IsZero() {
 				continue
 			}
 
-			// Payoff is (s2 - s1) scaled by size
-			payoff := s2.Price.Sub(s1.Price).MulInt(kMultiplier).MulInt64(int64(size))
-			// Price is per contract, need to scale by size
-			netValue := payoff.Add(price.MulInt(kMultiplier).MulInt64(int64(size)))
+			// Settlement value is (K2 - K1) * direction
+			// Long Box (direction 1): Pay debit, receive (K2-K1) at expiry. Profit = (K2-K1) - |debit|
+			// Short Box (direction -1): Receive credit, pay (K2-K1) at expiry. Profit = credit - (K2-K1)
+
+			width := s2.Price.Sub(s1.Price).MulInt(kMultiplier)
+			settlement := width.MulInt(direction)
+
+			// Total net value = (Credit/Debit)*100 + (Settlement at Expiry)
+			// choosePriceForOrder returns the limit price per contract.
+			netValue := orderPrice.MulInt(kMultiplier).Add(settlement).MulInt64(int64(size))
 
 			if netValue.Cmp(threshold) > 0 && netValue.Cmp(bestNetValue) > 0 {
 				bestNetValue = netValue
@@ -105,29 +111,34 @@ func (t *Trader) getBoxAvailableSize(legs []*Leg) uint32 {
 	return minSize
 }
 
-func (t *Trader) getBoxLegs(s1, s2 *options.Strike) []*Leg {
+func (t *Trader) getBoxLegs(s1, s2 *options.Strike) ([]*Leg, int) {
+	// s1 is lower strike, s2 is higher strike
+
+	// Case 1: Long Box (Lending)
 	// We need Strike 1 to allow Synthetic Long: Call ModeLong, Put ModeShort
 	// We need Strike 2 to allow Synthetic Short: Call ModeShort, Put ModeLong
-	
 	if s1.Call.Mode == options.ModeLong && s1.Put.Mode == options.ModeShort &&
 		s2.Call.Mode == options.ModeShort && s2.Put.Mode == options.ModeLong {
 		return []*Leg{
-			{Option: s1.Call, Quantity: decimal.One},      // Buy Call s1
-			{Option: s1.Put, Quantity: decimal.One.Neg()}, // Sell Put s1
+			{Option: s1.Call, Quantity: decimal.One},       // Buy Call s1
+			{Option: s1.Put, Quantity: decimal.One.Neg()},  // Sell Put s1
 			{Option: s2.Call, Quantity: decimal.One.Neg()}, // Sell Call s2
-			{Option: s2.Put, Quantity: decimal.One},       // Buy Put s2
-		}
+			{Option: s2.Put, Quantity: decimal.One},        // Buy Put s2
+		}, 1
 	}
 
-	// Reverse Box?
+	// Case 2: Short Box (Borrowing)
 	// We need Strike 1 to allow Synthetic Short: Call ModeShort, Put ModeLong
 	// We need Strike 2 to allow Synthetic Long: Call ModeLong, Put ModeShort
 	if s1.Call.Mode == options.ModeShort && s1.Put.Mode == options.ModeLong &&
 		s2.Call.Mode == options.ModeLong && s2.Put.Mode == options.ModeShort {
-		// This is a Short Box (Selling Strike 1 - Strike 2 spread)
-		// Payoff is -(s2 - s1) but we receive a credit.
-		// Actually, let's keep it simple and only do Long Boxes for now to avoid confusion.
+		return []*Leg{
+			{Option: s1.Call, Quantity: decimal.One.Neg()}, // Sell Call s1
+			{Option: s1.Put, Quantity: decimal.One},        // Buy Put s1
+			{Option: s2.Call, Quantity: decimal.One},       // Buy Call s2
+			{Option: s2.Put, Quantity: decimal.One.Neg()},  // Sell Put s2
+		}, -1
 	}
 
-	return nil
+	return nil, 0
 }
