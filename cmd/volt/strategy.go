@@ -3,6 +3,7 @@ package main
 import (
 	"dropbear/decimal"
 	"dropbear/options"
+	"math"
 )
 
 const (
@@ -53,16 +54,28 @@ func (t *Trader) arbitrageBoxes() {
 				continue
 			}
 
+			// Determine max quantity based on available liquidity
+			size := t.getBoxAvailableSize(legs)
+			if size == 0 {
+				continue
+			}
+
 			price := t.choosePriceForOrder(legs)
 			if price.IsZero() {
 				continue
 			}
 
-			payoff := s2.Price.Sub(s1.Price).MulInt(kMultiplier)
-			netValue := payoff.Add(price.MulInt(kMultiplier))
+			// Payoff is (s2 - s1) scaled by size
+			payoff := s2.Price.Sub(s1.Price).MulInt(kMultiplier).MulInt64(int64(size))
+			// Price is per contract, need to scale by size
+			netValue := payoff.Add(price.MulInt(kMultiplier).MulInt64(int64(size)))
 
 			if netValue.Cmp(threshold) > 0 && netValue.Cmp(bestNetValue) > 0 {
 				bestNetValue = netValue
+				// Scale the legs by the available size
+				for _, leg := range legs {
+					leg.Quantity = leg.Quantity.MulInt64(int64(size))
+				}
 				bestLegs = legs
 			}
 		}
@@ -71,6 +84,25 @@ func (t *Trader) arbitrageBoxes() {
 	if bestLegs != nil {
 		t.submitOrder(kStrategyBoxArbitrage, bestLegs)
 	}
+}
+
+func (t *Trader) getBoxAvailableSize(legs []*Leg) uint32 {
+	var minSize uint32 = math.MaxUint32
+	for _, leg := range legs {
+		var available uint32
+		if leg.Quantity.IsPositive() {
+			available = leg.Option.AskSize
+		} else {
+			available = leg.Option.BidSize
+		}
+		if available < minSize {
+			minSize = available
+		}
+	}
+	if minSize == math.MaxUint32 {
+		return 0
+	}
+	return minSize
 }
 
 func (t *Trader) getBoxLegs(s1, s2 *options.Strike) []*Leg {
