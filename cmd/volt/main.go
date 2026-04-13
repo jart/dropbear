@@ -51,7 +51,7 @@ func main() {
 	symbolFlag := flag.String("symbol", "", "symbol to trade (e.g. XSP, SPXW)")
 	dateFlag := clocky.TimeFlag("date", "", "date of the trades to report")
 	sigmasFlag := decimal.Flag("sigmas", "2.5", "number of sigmas of strikes to consider")
-	berthFlag := decimal.Flag("berth", "0.15", "percent of strikes to consider for box arbitrage")
+	berthFlag := decimal.Flag("berth", "0.25", "percent of strikes to consider for box arbitrage")
 	budgetFlag := flag.Float64("budget", 2_000, "maximum acceptable loss at current price")
 	floorFlag := flag.Float64("floor", 10_000, "maximum acceptable loss in catastrophic scenario")
 	spreadFlag := decimal.Flag("spread", "1", "spread crossing (-1=make, 0=mid, 1=take)")
@@ -59,7 +59,7 @@ func main() {
 	minProfitFlag := decimal.Flag("min-profit", "5", "minimum structural edge for statistical arbitrage")
 	thinkFlag := clocky.DurationFlag("think", "50ms", "interval between backtest trading analysis")
 	patienceFlag := clocky.DurationFlag("patience", "30s", "how long to wait before canceling live orders")
-	cooldownFlag := clocky.DurationFlag("cooldown", "30s", "interval between trading decisions")
+	cooldownFlag := clocky.DurationFlag("cooldown", "8s", "interval between trading decisions")
 	maxPendingFlag := flag.Int("max-pending", 1, "maximum number of pending orders")
 	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")
 	startOfDayFlag := flag.Int("sod", 9_30_05, "start of day in HHMMSS")
@@ -161,7 +161,7 @@ func main() {
 	t.Config.Budget = 2_000
 	t.Config.Eval = decimal.Ten
 	t.Config.Sigmas = decimal.One
-	t.Config.Spread = decimal.NegOne
+	t.Config.Spread = decimal.One
 	t.Config.StartOfDay = 10_00_00
 	traders = append(traders, t)
 

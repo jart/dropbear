@@ -3,7 +3,6 @@ package main
 import (
 	"dropbear/decimal"
 	"dropbear/options"
-	"math"
 )
 
 const (
@@ -32,19 +31,27 @@ func (t *Trader) arbitrageBox(s *options.Strike) {
 		return
 	}
 
-	var bestS1, bestS2 *options.Strike
-	var bestNetValue decimal.Decimal
-	var bestDirection int
-	var bestSize uint32
+	threshold := t.Config.MinProfit
+	if threshold.IsZero() {
+		threshold = decimal.FromInt(5)
+	}
 
+	// Compare the updated strike 's' against every other strike in the window.
 	for _, it, _ := t.Chain.Strikes.Ceiling(lo); it != nil && it.Price.Cmp(hi) <= 0; it = it.Next {
 		if it == s {
 			continue
+		}
+		if len(t.PendingOrders) >= t.Config.MaxPending {
+			break
 		}
 
 		s1, s2 := s, it
 		if s1.Price.Cmp(s2.Price) > 0 {
 			s1, s2 = s2, s1
+		}
+
+		if s1.Call == nil || s1.Put == nil || s2.Call == nil || s2.Put == nil {
+			continue
 		}
 
 		// 1. Determine direction based on modes (No Allocation)
@@ -61,7 +68,7 @@ func (t *Trader) arbitrageBox(s *options.Strike) {
 		}
 
 		// 2. Check liquidity (No Allocation)
-		var size uint32 = math.MaxUint32
+		var size uint32
 		if direction == 1 {
 			size = min4(s1.Call.AskSize, s1.Put.BidSize, s2.Call.BidSize, s2.Put.AskSize)
 		} else {
@@ -82,18 +89,12 @@ func (t *Trader) arbitrageBox(s *options.Strike) {
 		settlement := width.MulInt(direction)
 		netValue := orderPrice.MulInt(kMultiplier).Add(settlement).MulInt64(int64(size))
 
-		if netValue.Cmp(t.Config.MinProfit) > 0 && netValue.Cmp(bestNetValue) > 0 {
-			bestNetValue = netValue
-			bestS1, bestS2 = s1, s2
-			bestDirection = direction
-			bestSize = size
+		// 5. Submit Order Immediately (Allocates only on success)
+		// Virtual Liquidity in Order.Send() will decrement sizes for subsequent iterations.
+		if netValue.Cmp(threshold) > 0 {
+			legs := t.makeBoxLegs(s1, s2, direction, size)
+			t.submitOrder(kStrategyBoxArbitrage, legs)
 		}
-	}
-
-	// 5. Final Allocation (Only if arb found)
-	if bestS1 != nil {
-		legs := t.makeBoxLegs(bestS1, bestS2, bestDirection, bestSize)
-		t.submitOrder(kStrategyBoxArbitrage, legs)
 	}
 }
 

@@ -255,11 +255,6 @@ func (t *Trader) onOptionDefEnd() {
 	year, month, day := now.Date()
 	t.MarketClose = cboe.GetCloseTime(year, month, day)
 
-	// compute panic time
-	if t.Config.Panic > 0 {
-		t.PanicTime = t.MarketClose.Add(-t.Config.Panic)
-	}
-
 	// initialize options restrictions after loading schwab order history
 	for option, holding := range t.Holdings.Positions {
 		if holding.Quantity.IsPositive() {
