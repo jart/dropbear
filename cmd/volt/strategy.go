@@ -89,14 +89,7 @@ func (t *Trader) arbitrageBox(s *options.Strike) {
 		settlement := width.MulInt(direction)
 		netValue := orderPrice.MulInt(kMultiplier).Add(settlement).MulInt64(int64(size))
 
-		// 5. Broker Compliance Guard
-		// Schwab rejects credit spreads where credit > strike difference.
-		// For a Short Box (direction -1), orderPrice is the Net Credit.
-		if direction == -1 && orderPrice.Cmp(s2.Price.Sub(s1.Price)) > 0 {
-			continue
-		}
-
-		// 6. Submit Order Immediately (Allocates only on success)
+		// 5. Submit Order Immediately (Allocates only on success)
 		// Virtual Liquidity in Order.Send() will decrement sizes for subsequent iterations.
 		if netValue.Cmp(threshold) > 0 {
 			legs := t.makeBoxLegs(s1, s2, direction, size)
