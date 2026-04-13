@@ -60,7 +60,7 @@ func main() {
 	thinkFlag := clocky.DurationFlag("think", "50ms", "interval between backtest trading analysis")
 	patienceFlag := clocky.DurationFlag("patience", "30s", "how long to wait before canceling live orders")
 	cooldownFlag := clocky.DurationFlag("cooldown", "8s", "interval between trading decisions")
-	maxPendingFlag := flag.Int("max-pending", 1, "maximum number of pending orders")
+	maxPendingFlag := flag.Int("max-pending", 2, "maximum number of pending orders")
 	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")
 	startOfDayFlag := flag.Int("sod", 9_30_05, "start of day in HHMMSS")
 	fullRiskTimeFlag := flag.Int("frt", 12_00_00, "full risk time in HHMMSS")
@@ -157,12 +157,21 @@ func main() {
 	// SPXW strategy
 	t = NewTrader(symbol.MustParse("SPXW"), newConfig())
 	t.Config.Listen = "127.0.0.1:8484"
-	t.Config.Floor = 10_000
-	t.Config.Budget = 2_000
-	t.Config.Eval = decimal.Ten
-	t.Config.Sigmas = decimal.One
-	t.Config.Spread = decimal.One
-	t.Config.StartOfDay = 10_00_00
+	traders = append(traders, t)
+
+	// RUTW strategy
+	t = NewTrader(symbol.MustParse("RUTW"), newConfig())
+	t.Config.Listen = "127.0.0.1:8487"
+	traders = append(traders, t)
+
+	// NVDA strategy
+	t = NewTrader(symbol.MustParse("NVDA"), newConfig())
+	t.Config.Listen = "127.0.0.1:8486"
+	traders = append(traders, t)
+
+	// GOOGL strategy
+	t = NewTrader(symbol.MustParse("GOOGL"), newConfig())
+	t.Config.Listen = "127.0.0.1:8491"
 	traders = append(traders, t)
 
 	// subscribe to schwab order updates
