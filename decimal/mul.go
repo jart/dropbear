@@ -25,7 +25,7 @@ func (d Decimal) Mul(o Decimal) Decimal {
 	quo, rem := bits.Div64(hi, lo, uint64(Scale))
 
 	// 4. Bankers' Rounding (Round Half To Even)
-	quo -= uint64(int64(Scale/2-(rem+(quo&1))) >> 63)
+	quo -= uint64(int64(uint64(Scale)-(rem<<1|quo&1)) >> 63)
 
 	// 5. Check for overflow of the signed 64-bit result range.
 	//    The quotient must fit in the positive part of int64.

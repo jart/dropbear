@@ -1,7 +1,7 @@
 # decimal
 
 Fastest fixed point decimal library for Go with overflow detection, fast
-parsing, and correct rounding.
+parsing, correct rounding, and formal verification.
 
 Backed by a raw `int64`, this library provides a fixed 6-decimal
 precision (the CTS standard) with zero heap allocations and "HFT-grade"
@@ -66,6 +66,14 @@ Operations that would result in a value outside the ±9.2 trillion range
 (max `int64`) will **explicitly panic** with a `decimal overflow` error
 rather than returning a corrupt value or requiring `if err != nil`
 checks on every addition.
+
+### 5. Formally Verified
+
+The bit-level arithmetic in this library has been formally verified
+using the **Z3 Theorem Prover**. We have mathematically proven that our
+`Mul` and `Div` implementations, including their branchless absolute
+value and Banker's Rounding logic, are correct for all $2^{128}$
+possible input combinations.
 
 ## Usage
 
