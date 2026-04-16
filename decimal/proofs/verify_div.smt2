@@ -1,55 +1,86 @@
 (set-logic QF_BV)
 
-; --- 64-bit Inputs ---
-(declare-fun d () (_ BitVec 64))
-(declare-fun o () (_ BitVec 64))
+; =====================================================================
+; Verification of Decimal.Div rounding and sign (div.go)
+;
+; Combined with verify_abs.smt2, this constitutes a full proof of Div.
+;
+; Same strategy as verify_mul.smt2: quo and rem are universally
+; quantified with the constraint rem < uo (guaranteed by bits.Div64).
+; This avoids 128-bit division in the formula.
+;
+; Verifies:
+;   1. Banker's rounding (div.go:33-35), faithfully modeled in 64-bit:
+;      if (rem<<1)|(quo&1) > uo { quo++ }
+;
+;   2. Sign extraction and reapplication (div.go:20,44)
+; =====================================================================
 
-; --- Helper for 128-bit Zero Extension ---
-(define-fun zext64 ( (x (_ BitVec 64)) ) (_ BitVec 128)
-    (concat (_ bv0 64) x)
-)
+(declare-fun d () (_ BitVec 64))   ; first operand (signed)
+(declare-fun o () (_ BitVec 64))   ; second operand (signed)
+(declare-fun quo () (_ BitVec 64)) ; bits.Div64 quotient (unsigned)
+(declare-fun rem () (_ BitVec 64)) ; bits.Div64 remainder (unsigned)
 
-; --- Constants (128-bit) ---
-(define-fun one_128 () (_ BitVec 128) (_ bv1 128))
-(define-fun two_128 () (_ BitVec 128) (_ bv2 128))
-(define-fun scale_128 () (_ BitVec 128) (_ bv1000000 128))
+(define-fun zx ((v (_ BitVec 64))) (_ BitVec 128) (concat (_ bv0 64) v))
 
-; --- Implementation of d.Div(o) ---
-(define-fun dm () (_ BitVec 64) (bvashr d (_ bv63 64)))
-(define-fun ud_64 () (_ BitVec 64) (bvsub (bvxor d dm) dm))
-(define-fun ud () (_ BitVec 128) (zext64 ud_64))
+; =====================================================================
+; SHARED: absolute value of o (for use as divisor bound)
+; =====================================================================
 
 (define-fun om () (_ BitVec 64) (bvashr o (_ bv63 64)))
-(define-fun uo_64 () (_ BitVec 64) (bvsub (bvxor o om) om))
-(define-fun uo () (_ BitVec 128) (zext64 uo_64))
+(define-fun uo () (_ BitVec 64) (bvsub (bvxor o om) om))
 
-(define-fun dividend128 () (_ BitVec 128) (bvmul ud scale_128))
-(define-fun quo () (_ BitVec 128) (bvudiv dividend128 uo))
-(define-fun rem () (_ BitVec 128) (bvurem dividend128 uo))
+; =====================================================================
+; IMPLEMENTATION (div.go lines 20, 33-35, 44)
+; =====================================================================
 
-; if (rem<<1)+(quo&1) > uo { quo++ }
-; (Banker's Rounding)
-(define-fun bit () (_ BitVec 128) (bvand quo one_128))
-(define-fun lhs () (_ BitVec 128) (bvor (bvshl rem one_128) bit))
-(define-fun rounding_condition () Bool (bvugt lhs uo))
+; div.go:20  sm := (di ^ oi) >> 63
+(define-fun sm () (_ BitVec 64) (bvashr (bvxor d o) (_ bv63 64)))
 
-(define-fun quo_adjusted () (_ BitVec 128) 
-    (ite rounding_condition (bvadd quo one_128) quo))
+; div.go:33-35  if (rem<<1)|(quo&1) > uo { quo++ }
+(define-fun lhs () (_ BitVec 64)
+  (bvor (bvshl rem (_ bv1 64)) (bvand quo (_ bv1 64))))
+(define-fun impl_quo_r () (_ BitVec 64)
+  (ite (bvugt lhs uo) (bvadd quo (_ bv1 64)) quo))
 
-; --- Specification Check ---
-(define-fun rem_2 () (_ BitVec 128) (bvmul rem two_128))
-(define-fun is_half () Bool (= rem_2 uo))
-(define-fun is_greater () Bool (bvugt rem_2 uo))
-(define-fun quo_is_odd () Bool (= (bvand quo one_128) one_128))
+; div.go:44  return Decimal(int64((quo ^ uint64(sm)) - uint64(sm)))
+(define-fun impl_result () (_ BitVec 64)
+  (bvsub (bvxor impl_quo_r sm) sm))
 
-(define-fun spec_quo_adj () (_ BitVec 128)
-    (ite is_greater (bvadd quo one_128)
-        (ite (and is_half quo_is_odd) (bvadd quo one_128)
-            quo)))
+; =====================================================================
+; SPECIFICATION: textbook banker's rounding + conditional negation
+; =====================================================================
 
-(assert (not (= quo_adjusted spec_quo_adj)))
+; Round up if 2*rem > |o|, or if exactly half and quo is odd.
+(define-fun spec_rem2  () (_ BitVec 128) (bvshl (zx rem) (_ bv1 128)))
+(define-fun spec_uo128 () (_ BitVec 128) (zx uo))
+(define-fun spec_round_up () Bool
+  (or (bvugt spec_rem2 spec_uo128)
+      (and (= spec_rem2 spec_uo128)
+           (= (bvand quo (_ bv1 64)) (_ bv1 64)))))
+(define-fun spec_quo_r () (_ BitVec 64)
+  (ite spec_round_up (bvadd quo (_ bv1 64)) quo))
 
-; Constraints: avoid division by zero (bits.Div64 panics in Go)
+; Negate iff exactly one of d, o is negative.
+(define-fun spec_neg () Bool
+  (xor (bvslt d (_ bv0 64)) (bvslt o (_ bv0 64))))
+(define-fun spec_result () (_ BitVec 64)
+  (ite spec_neg (bvneg spec_quo_r) spec_quo_r))
+
+; =====================================================================
+; CONSTRAINTS
+; =====================================================================
+
+; o != 0 (division by zero panics)
 (assert (not (= o (_ bv0 64))))
 
+; rem < uo (guaranteed by bits.Div64 since divisor = uo)
+(assert (bvult rem uo))
+
+; =====================================================================
+; PROOF OBLIGATION
+; =====================================================================
+
+(assert (not (= impl_result spec_result)))
 (check-sat)
+; Expected: unsat

@@ -1,59 +1,85 @@
 (set-logic QF_BV)
 
-; --- 64-bit Inputs ---
-(declare-fun d () (_ BitVec 64))
-(declare-fun o () (_ BitVec 64))
+; =====================================================================
+; Verification of Decimal.Mul rounding and sign (mul.go)
+;
+; Combined with verify_abs.smt2, this constitutes a full proof of Mul.
+;
+; The 128-bit multiply and divide (bits.Mul64/Div64) are standard
+; library functions whose correctness is assumed. This proof verifies
+; the two non-trivial parts the code implements by hand:
+;
+;   1. The banker's rounding bit trick (mul.go:28), faithfully modeled
+;      in 64-bit arithmetic matching the exact Go expression:
+;      quo -= uint64(int64(uint64(Scale)-(rem<<1|quo&1)) >> 63)
+;
+;   2. Sign extraction and reapplication (mul.go:18,40):
+;      sm := (di ^ oi) >> 63
+;      result := int64((quo ^ uint64(sm)) - uint64(sm))
+;
+; quo and rem are universally quantified with the constraint rem < Scale
+; (guaranteed by bits.Div64). This avoids 128-bit division in the
+; formula, keeping the proof fast.
+; =====================================================================
 
-; --- Helper for 128-bit Zero Extension ---
-(define-fun zext64 ( (x (_ BitVec 64)) ) (_ BitVec 128)
-    (concat (_ bv0 64) x)
-)
+(declare-fun d () (_ BitVec 64))   ; first operand (signed)
+(declare-fun o () (_ BitVec 64))   ; second operand (signed)
+(declare-fun quo () (_ BitVec 64)) ; bits.Div64 quotient (unsigned)
+(declare-fun rem () (_ BitVec 64)) ; bits.Div64 remainder (unsigned)
 
-; --- Constants (128-bit) ---
-(define-fun one_128 () (_ BitVec 128) (_ bv1 128))
-(define-fun two_128 () (_ BitVec 128) (_ bv2 128))
-(define-fun scale_128 () (_ BitVec 128) (_ bv1000000 128))
+(define-fun SCALE    () (_ BitVec 64)  (_ bv1000000 64))
+(define-fun SCALE128 () (_ BitVec 128) (_ bv1000000 128))
+(define-fun zx ((v (_ BitVec 64))) (_ BitVec 128) (concat (_ bv0 64) v))
 
-; --- Implementation of d.Mul(o) ---
-(define-fun dm () (_ BitVec 64) (bvashr d (_ bv63 64)))
-(define-fun ud_64 () (_ BitVec 64) (bvsub (bvxor d dm) dm))
-(define-fun ud () (_ BitVec 128) (zext64 ud_64))
+; =====================================================================
+; IMPLEMENTATION (mul.go lines 18, 28, 40)
+; =====================================================================
 
-(define-fun om () (_ BitVec 64) (bvashr o (_ bv63 64)))
-(define-fun uo_64 () (_ BitVec 64) (bvsub (bvxor o om) om))
-(define-fun uo () (_ BitVec 128) (zext64 uo_64))
+; mul.go:18  sm := (di ^ oi) >> 63
+(define-fun sm () (_ BitVec 64) (bvashr (bvxor d o) (_ bv63 64)))
 
-(define-fun prod128 () (_ BitVec 128) (bvmul ud uo))
-(define-fun quo_128 () (_ BitVec 128) (bvudiv prod128 scale_128))
-(define-fun rem_128 () (_ BitVec 128) (bvurem prod128 scale_128))
+; mul.go:28  quo -= uint64(int64(uint64(Scale)-(rem<<1|quo&1)) >> 63)
+(define-fun lhs  () (_ BitVec 64)
+  (bvor (bvshl rem (_ bv1 64)) (bvand quo (_ bv1 64))))
+(define-fun diff () (_ BitVec 64) (bvsub SCALE lhs))
+(define-fun adj  () (_ BitVec 64) (bvashr diff (_ bv63 64)))
+(define-fun impl_quo_r () (_ BitVec 64) (bvsub quo adj))
 
-; (Banker's Rounding)
-; quo -= uint64(int64(uint64(Scale)-(rem<<1|quo&1)) >> 63)
-(define-fun bit_128 () (_ BitVec 128) (bvand quo_128 one_128))
-(define-fun lhs_128 () (_ BitVec 128) (bvor (bvshl rem_128 one_128) bit_128))
-(define-fun diff_128 () (_ BitVec 128) (bvsub scale_128 lhs_128))
+; mul.go:40  return Decimal(int64((quo ^ uint64(sm)) - uint64(sm)))
+(define-fun impl_result () (_ BitVec 64)
+  (bvsub (bvxor impl_quo_r sm) sm))
 
-; In Go, int64(Scale - lhs) >> 63 is -1 if Scale - lhs is negative.
-; Scale - lhs is negative if Scale < lhs (unsigned).
-; This is exactly what we need to check.
-(define-fun rounding_condition () Bool
-    (bvult scale_128 lhs_128)
-)
+; =====================================================================
+; SPECIFICATION: textbook banker's rounding + conditional negation
+; =====================================================================
 
-(define-fun quo_adjusted () (_ BitVec 128) 
-    (ite rounding_condition (bvadd quo_128 one_128) quo_128))
+; Round up if 2*rem > Scale, or if exactly half and quo is odd.
+; (rem widened to 128-bit so 2*rem is obviously overflow-free)
+(define-fun spec_rem2 () (_ BitVec 128) (bvshl (zx rem) (_ bv1 128)))
+(define-fun spec_round_up () Bool
+  (or (bvugt spec_rem2 SCALE128)
+      (and (= spec_rem2 SCALE128)
+           (= (bvand quo (_ bv1 64)) (_ bv1 64)))))
+(define-fun spec_quo_r () (_ BitVec 64)
+  (ite spec_round_up (bvadd quo (_ bv1 64)) quo))
 
-; --- Specification Check ---
-(define-fun rem_2 () (_ BitVec 128) (bvmul rem_128 two_128))
-(define-fun is_half () Bool (= rem_2 scale_128))
-(define-fun is_greater () Bool (bvugt rem_2 scale_128))
-(define-fun quo_is_odd () Bool (= (bvand quo_128 one_128) one_128))
+; Negate iff exactly one of d, o is negative.
+(define-fun spec_neg () Bool
+  (xor (bvslt d (_ bv0 64)) (bvslt o (_ bv0 64))))
+(define-fun spec_result () (_ BitVec 64)
+  (ite spec_neg (bvneg spec_quo_r) spec_quo_r))
 
-(define-fun spec_quo_adj () (_ BitVec 128)
-    (ite is_greater (bvadd quo_128 one_128)
-        (ite (and is_half quo_is_odd) (bvadd quo_128 one_128)
-            quo_128)))
+; =====================================================================
+; CONSTRAINTS
+; =====================================================================
 
-(assert (not (= quo_adjusted spec_quo_adj)))
+; rem < Scale (guaranteed by bits.Div64 since divisor = Scale)
+(assert (bvult rem SCALE))
 
+; =====================================================================
+; PROOF OBLIGATION
+; =====================================================================
+
+(assert (not (= impl_result spec_result)))
 (check-sat)
+; Expected: unsat
