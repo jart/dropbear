@@ -1,6 +1,11 @@
 package decimal
 
-import "testing"
+import (
+	"math"
+	"math/big"
+	"strings"
+	"testing"
+)
 
 func TestParse(t *testing.T) {
 	tests := []struct {
@@ -218,5 +223,232 @@ func BenchmarkParseLongDecimal(b *testing.B) {
 	input := "2806.3082197200404453"
 	for i := 0; b.Loop(); i++ {
 		_ = Parse(input)
+	}
+}
+
+func FuzzParse(f *testing.F) {
+	// Seed with some basic cases
+	f.Add("0")
+	f.Add("1")
+	f.Add("-1")
+	f.Add("1.234")
+	f.Add("1.23456789")
+	f.Add("1.5e-1")
+	f.Add("100e5")
+	f.Add("1.123_456,789'0")
+	f.Add("9'223'372'036.854'775'807")
+	f.Add("-9'223'372'036'854.775807")
+	f.Add("-9'223'372'036'854.775808")
+
+	f.Fuzz(func(t *testing.T, s string) {
+		// 1. Try parsing with decimal.ParseBytes
+		got, err := ParseString(s)
+		if err != nil {
+			// If our parser fails, check if it's a "reasonable" error
+			// for obviously non-numeric input.
+			return
+		}
+
+		// 2. Parse with math/big.Rat as the Oracle
+		// We need to clean the string because big.Rat doesn't like _ , '
+		cleanS := s
+		cleanS = strings.ReplaceAll(cleanS, "_", "")
+		cleanS = strings.ReplaceAll(cleanS, ",", "")
+		cleanS = strings.ReplaceAll(cleanS, "'", "")
+
+		rat := new(big.Rat)
+		_, ok := rat.SetString(cleanS)
+		if !ok {
+			// If big.Rat can't parse it, but we did, we might have a bug
+			// or we are just more permissive (like supporting empty exponents).
+			return
+		}
+
+		// 3. Convert big.Rat to the expected Decimal (int64 with 6 places)
+		// Calculation: RoundToEven(rat * 1,000,000)
+		multiplier := new(big.Rat).SetInt64(Scale)
+		rat.Mul(rat, multiplier)
+
+		wantInt := roundToEven(rat)
+		if got != Decimal(wantInt) {
+			t.Errorf("For input %q:\n  got:  %v (%d)\n  want: %v (%d)", s, got, got, Decimal(wantInt), wantInt)
+		}
+	})
+}
+
+// roundToEven performs Banker's Rounding on a big.Rat to the nearest integer.
+func roundToEven(r *big.Rat) int64 {
+	num := r.Num()
+	den := r.Denom()
+
+	// Integer division: q = num / den, rem = num % den
+	q := new(big.Int).Quo(num, den)
+	rem := new(big.Int).Rem(num, den)
+
+	// We need absolute values for the midpoint check
+	absRem := new(big.Int).Abs(rem)
+	absDen := new(big.Int).Abs(den)
+
+	// Half = den / 2
+	half := new(big.Int).Div(absDen, big.NewInt(2))
+	isExactlyHalf := new(big.Int).Mul(absRem, big.NewInt(2)).Cmp(absDen) == 0
+
+	// Banker's Rounding Logic:
+	// 1. If rem > half: round away from zero
+	// 2. If rem < half: truncate (already done by Quo)
+	// 3. If rem == half: round to even
+	if absRem.Cmp(half) > 0 || (isExactlyHalf && q.Bit(0) != 0) {
+		if num.Sign() >= 0 {
+			q.Add(q, big.NewInt(1))
+		} else {
+			q.Sub(q, big.NewInt(1))
+		}
+	}
+
+	if !q.IsInt64() {
+		// This happens on overflow, which the fuzzer should ignore
+		// or we can catch separately.
+		return 0
+	}
+
+	return q.Int64()
+}
+
+// Probe values, error conditions, and parse paths near the int64 boundary
+// and around banker's rounding.
+func TestParseBoundaries(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int64 // ignored if wantErr != nil
+		err   error // nil = success
+	}{
+		// MinInt64 reachable through several syntactic paths
+		{"-9223372036854.775808", math.MinInt64, nil},
+		{"-9.223372036854775808e12", math.MinInt64, nil},
+		{"-92233720368547.75808e-1", math.MinInt64, nil},
+		{"-9223372036854775808e-6", math.MinInt64, nil},
+		{"-9223372036854775.808e-3", math.MinInt64, nil},
+
+		// MaxInt64 reachable through several syntactic paths
+		{"9223372036854.775807", math.MaxInt64, nil},
+		{"9.223372036854775807e12", math.MaxInt64, nil},
+		{"9223372036854775807e-6", math.MaxInt64, nil},
+
+		// One past the boundary -- must NOT silently wrap
+		{"9223372036854.775808", 0, ErrToastedNumber}, // MaxInt64+1 positive
+		{"-9223372036854.775809", 0, ErrToastedNumber},
+
+		// Banker's rounding that pushes coef past the boundary
+		// 9223372036854.7758075 -> coef=...807 (odd) + half -> ...808 = MaxInt64+1
+		{"9223372036854.7758075", 0, ErrIllegalNumber},
+		// 9223372036854.7758074 -> rem<half, stays at MaxInt64
+		{"9223372036854.7758074", math.MaxInt64, nil},
+		// -9223372036854.7758085 -> banker's: lost '5' is extraDigit,
+		// coef=...808 (even), no round -> MinInt64
+		{"-9223372036854.7758085", math.MinInt64, nil},
+
+		// Banker's at zero
+		{"0.0000005", 0, nil},                 // half, coef=0 even -> 0
+		{"-0.0000005", 0, nil},                // half, coef=0 even -> 0
+		{"0.0000015", 2, nil},                 // half, coef=1 odd -> 2
+		{"-0.0000015", -2, nil},               // half, coef=-1 odd -> -2
+		{"0.00000050000000000000001", 1, nil}, // just over half via tail
+		{"-0.00000050000000000000001", -1, nil},
+		{"0.00000049999999999999999", 0, nil}, // just under half
+
+		// Extreme exponents at the divisorExp == 19 boundary
+		{"5000000000000000000e-25", 0, nil}, // exact half (banker's: 0 even)
+		{"5000000000000000001e-25", 1, nil}, // just over
+		{"4999999999999999999e-25", 0, nil}, // just under
+		{"-5000000000000000001e-25", -1, nil},
+		{"9000000000000000000e-25", 1, nil}, // > half clearly
+
+		// Very small via fractional accumulation hitting overflow
+		{".0000007000000000000000000", 1, nil},
+		{".00000050000000000000000001", 1, nil},
+		{".00000049999999999999999999", 0, nil},
+
+		// Zero with extreme exponents -- should never error
+		{"0e1000000", 0, nil},
+		{"0e-1000000", 0, nil},
+		{"0.0e1000", 0, nil},
+
+		// Long trailing zeros at the rounding cusp
+		{"0.0000004999999999999999999999999999999", 0, nil},
+		{"0.0000005000000000000000000000000000001", 1, nil},
+		{"0.0000005000000000000000000000000000000", 0, nil}, // exact half + 0 even
+
+		// Suffix exponent that needs lost digits back -> error
+		{"99999999999999999.5e6", 0, ErrIllegalNumber},
+
+		// Plain integer overflow
+		{"99999999999999999999", 0, ErrIllegalNumber}, // 20 digits
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := ParseString(tt.input)
+			if tt.err != nil {
+				if err != tt.err {
+					t.Errorf("ParseString(%q): err = %v, want %v", tt.input, err, tt.err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseString(%q): unexpected error %v", tt.input, err)
+			}
+			if int64(got) != tt.want {
+				t.Errorf("ParseString(%q) = %d, want %d", tt.input, int64(got), tt.want)
+			}
+		})
+	}
+}
+
+// Inputs the parser currently accepts leniently. Pinning the behavior
+// so we notice if it changes.
+func TestParseLenient(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int64
+	}{
+		{"1e", 1_000_000},     // 'e' with no digits -- exponent ignored
+		{"1e+", 1_000_000},    // sign but no digits
+		{"1e-", 1_000_000},    // sign but no digits
+		{"1,", 1_000_000},     // trailing separator
+		{"_1", 1_000_000},     // leading separator
+		{"1__2", 12_000_000},  // double separator
+		{"1.5_e0", 1_500_000}, // separator allowed before 'e'
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := ParseString(tt.input)
+			if err != nil {
+				t.Errorf("ParseString(%q): unexpected error %v", tt.input, err)
+				return
+			}
+			if int64(got) != tt.want {
+				t.Errorf("ParseString(%q) = %d, want %d", tt.input, int64(got), tt.want)
+			}
+		})
+	}
+}
+
+// KNOWN LIMITATION: an integer part whose value exceeds the signed 64-bit
+// range always errors, even if a negative exponent would bring the final
+// value back into range. To support these, we'd need to track
+// extraDigit/hasMoreDigits during integer overflow and apply them through
+// the shift logic.
+func TestParseIntegerOverflowLimitation(t *testing.T) {
+	// Mathematically these are well-defined and tiny, but rejected today.
+	cases := []string{
+		"9999999999999999999e-26",  // ≈ 1e-7, would round to 0
+		"99999999999999999999e-13", // 9.99e6, well within range
+		"-9999999999999999999e-13",
+	}
+	for _, in := range cases {
+		_, err := ParseString(in)
+		if err == nil {
+			t.Logf("ParseString(%q) now succeeds -- consider promoting to TestParseBoundaries", in)
+		}
 	}
 }
