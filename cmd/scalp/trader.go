@@ -82,7 +82,7 @@ func (t *Trader) onThought(now clocky.Time) {
 }
 
 func (t *Trader) buyCall() {
-	atm := t.Chain.AtTheMoney
+	atm := t.Chain.AtTheMoney.Prev
 	if atm == nil || !atm.IsReady() || !atm.Call.Ask.IsPositive() {
 		return
 	}
@@ -277,6 +277,14 @@ func (t *Trader) onEquityQuote(e *options.Equity, m *databento.MBP1) {
 		e.Ask = decimal.Zero
 		e.AskSize = 0
 	}
+	if e.Ask.IsPositive() && e.Bid.IsPositive() {
+		underlyingPrice := e.MidPrice()
+		for _, holding := range t.Holdings.Positions {
+			if o, ok := holding.Security.(*options.Option); ok {
+				o.ComputeGreeks(underlyingPrice, kRiskFreeRate, decimal.Zero)
+			}
+		}
+	}
 }
 
 func (t *Trader) onOptionTick(m *databento.CMBP1) *options.Option {
@@ -333,10 +341,14 @@ func (t *Trader) onOptionQuote(o *options.Option, m *databento.CMBP1) {
 	if t.Chain.Add(o) {
 		mustRecomputeGreeks = true
 	}
+	mustRecomputeGreeks = true
 	if mustRecomputeGreeks {
 		equity := t.SecuritiesByName[o.Symbol.String()]
-		if equity != nil && equity.MidPrice().IsPositive() {
-			o.ComputeGreeks(t.Chain.Price, kRiskFreeRate, equity.MidPrice())
+		if equity != nil {
+			underlyingPrice := equity.MidPrice()
+			if underlyingPrice.IsPositive() {
+				o.ComputeGreeks(underlyingPrice, kRiskFreeRate, decimal.Zero)
+			}
 		}
 	}
 }

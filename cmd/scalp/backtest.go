@@ -169,8 +169,8 @@ func (t *Trader) simulateFillOrder(order *Order) bool {
 			fillPrice = leg.Security.MidPrice()
 		}
 		t.Holdings.Add(leg.Security, leg.Quantity, fillPrice)
-		fee := kFeePerContract.Mul(leg.Quantity.Abs())
-		t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
+		// fee := kFeePerContract.Mul(leg.Quantity.Abs())
+		// t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
 		leg.Filled = true
 	}
 
