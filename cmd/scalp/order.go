@@ -2,7 +2,6 @@ package main
 
 import (
 	"dropbear/broker/schwab"
-	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/options"
 	"errors"
@@ -14,18 +13,13 @@ type Order struct {
 	ID        int
 	OrderID   schwab.OrderID
 	Legs      []*Leg
-	Strategy  string
 	Price     decimal.Decimal
-	Risk      decimal.Decimal
-	Payoff    decimal.Decimal
-	Score     decimal.Decimal
-	Created   clocky.Time
 	Sent      bool
 	Canceling bool
 }
 
 func (order *Order) String() string {
-	return fmt.Sprintf("#%d %s", order.ID, order.Strategy)
+	return fmt.Sprintf("#%d", order.ID)
 }
 
 // MidPrice computes the price of the order using mid prices.
@@ -33,9 +27,9 @@ func (order *Order) MidPrice() decimal.Decimal {
 	var price decimal.Decimal
 	for _, leg := range order.Legs {
 		if leg.Quantity.IsPositive() {
-			price = price.Sub(leg.Option.MidPrice()) // buying costs money
+			price = price.Sub(leg.Security.MidPrice()) // buying costs money
 		} else {
-			price = price.Add(leg.Option.MidPrice()) // selling receives money
+			price = price.Add(leg.Security.MidPrice()) // selling receives money
 		}
 	}
 	return price
@@ -46,9 +40,9 @@ func (order *Order) NaturalPrice() decimal.Decimal {
 	var price decimal.Decimal
 	for _, leg := range order.Legs {
 		if leg.Quantity.IsPositive() {
-			price = price.Sub(leg.Option.Ask) // buying costs money
+			price = price.Sub(leg.Security.GetAsk()) // buying costs money
 		} else {
-			price = price.Add(leg.Option.Bid) // selling receives money
+			price = price.Add(leg.Security.GetBid()) // selling receives money
 		}
 	}
 	return price
@@ -59,24 +53,35 @@ func (order *Order) MakerPrice() decimal.Decimal {
 	var price decimal.Decimal
 	for _, leg := range order.Legs {
 		if leg.Quantity.IsPositive() {
-			price = price.Sub(leg.Option.Bid) // buying costs money
+			price = price.Sub(leg.Security.GetBid()) // buying costs money
 		} else {
-			price = price.Add(leg.Option.Ask) // selling receives money
+			price = price.Add(leg.Security.GetAsk()) // selling receives money
 		}
 	}
 	return price
 }
 
+func (order *Order) Options() []*options.Option {
+	var opts []*options.Option
+	for _, leg := range order.Legs {
+		if opt, ok := leg.Security.(*options.Option); ok {
+			opts = append(opts, opt)
+		}
+	}
+	return opts
+}
+
 // Width returns the distance between the lowest and highest strikes.
 // Returns zero for single-leg orders.
 func (order *Order) Width() decimal.Decimal {
-	if len(order.Legs) < 2 {
+	opts := order.Options()
+	if len(opts) < 2 {
 		return decimal.Zero
 	}
-	lo := order.Legs[0].Option.Strike.Price
+	lo := opts[0].Strike.Price
 	hi := lo
-	for _, leg := range order.Legs[1:] {
-		sp := leg.Option.Strike.Price
+	for _, leg := range opts[1:] {
+		sp := leg.Strike.Price
 		lo = lo.Min(sp)
 		hi = hi.Max(sp)
 	}
@@ -88,13 +93,10 @@ func (order *Order) Send() error {
 	if order.Sent {
 		return errors.New("order already sent")
 	}
-	if order.Price.IsZero() {
-		return errors.New("cannot send order with zero price")
-	}
 	if len(order.Legs) == 0 {
 		return errors.New("cannot send order with no legs")
 	}
-	if order.Vertical() {
+	if order.Vertical() && !order.Price.IsZero() {
 		width := order.Width()
 		if order.Price.Abs().Cmp(width) >= 0 {
 			return fmt.Errorf("vertical order price must be beneath spread width: price=%s width=%s mid=%s natural=%s maker=%s",
@@ -106,25 +108,27 @@ func (order *Order) Send() error {
 			return errors.New("leg has zero quantity")
 		}
 	}
-	seen := map[*options.Option]bool{}
+	seen := map[options.Security]bool{}
 	for _, leg := range order.Legs {
-		if seen[leg.Option] {
-			return errors.New("duplicate option in order")
+		if seen[leg.Security] {
+			return errors.New("duplicate security in order")
 		}
-		seen[leg.Option] = true
+		seen[leg.Security] = true
 	}
-	underlyingSymbol := order.Legs[0].Option.Symbol
+	underlyingSymbol := order.Legs[0].Security.GetSymbol()
 	for _, leg := range order.Legs {
-		if underlyingSymbol != leg.Option.Symbol {
+		if underlyingSymbol != leg.Security.GetSymbol() {
 			return errors.New("all legs must have same underlying")
 		}
 	}
-	tick, bigTick := getTicks(underlyingSymbol)
-	if len(order.Legs) == 1 && order.Price.Abs().Cmp(kThree) >= 0 {
-		tick = bigTick // spreads always quantize on minimum tick size
-	}
-	if order.Price.Cmp(order.Price.QuantizeTruncate(tick)) != 0 {
-		return errors.New("order price must be quantized properly")
+	if !order.Price.IsZero() {
+		tick, bigTick := getTicks(underlyingSymbol)
+		if len(order.Legs) == 1 && order.Price.Abs().Cmp(kThree) >= 0 {
+			tick = bigTick // spreads always quantize on minimum tick size
+		}
+		if order.Price.Cmp(order.Price.QuantizeTruncate(tick)) != 0 {
+			return errors.New("order price must be quantized properly")
+		}
 	}
 	if *dryFlag {
 		return errors.New("won't send order in dry run mode")
@@ -183,13 +187,6 @@ func (order *Order) HasFill() bool {
 }
 
 func (order *Order) Vertical() bool {
-	return len(order.Legs) == 2 && order.Legs[0].Option.Class == order.Legs[1].Option.Class
-}
-
-func compareOrdersByScore(a, b *Order) int {
-	res := a.Score.Cmp(b.Score)
-	if res != 0 {
-		return -res // highest score first
-	}
-	return a.ID - b.ID
+	opts := order.Options()
+	return len(opts) == 2 && opts[0].Class == opts[1].Class
 }

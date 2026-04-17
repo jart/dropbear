@@ -6,18 +6,18 @@ import (
 )
 
 type Holding struct {
-	Quantity    decimal.Decimal // never zero
-	Option      *options.Option // never nil
-	AverageCost decimal.Decimal // weighted average cost of position (always positive; per contract)
+	Security    options.Security // never nil
+	Quantity    decimal.Decimal  // never zero
+	AverageCost decimal.Decimal  // weighted average cost of position (always positive; per contract)
 }
 
 func (h *Holding) String() string {
-	return h.Quantity.String() + " of " + h.Option.String()
+	return h.Quantity.String() + " of " + h.Security.String()
 }
 
 func (h *Holding) check() {
-	if h.Option == nil {
-		panic("nil option")
+	if h.Security == nil {
+		panic("nil security")
 	}
 	if h.Quantity.IsZero() {
 		panic("zero quantity")

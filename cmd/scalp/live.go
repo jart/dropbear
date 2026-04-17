@@ -6,6 +6,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/options"
 	"dropbear/osi"
+	"dropbear/symbol"
 	"fmt"
 	"io"
 	"log"
@@ -19,25 +20,18 @@ type OrderUpdate struct {
 
 func (t *Trader) Live() {
 
-	// avoid confusion if we woke up too late
-	if clocky.Now().ClockInt() >= t.Config.StopTrading {
-		log.Printf("warning: varu stops day trading after %02d:%02d hours",
-			t.Config.StopTrading/1_00_00, t.Config.StopTrading/1_00%1_00)
-	}
-
 	// subscribe to databento data
 	key := databento.MustLoadDefaultKey()
+	equityDefs := make(chan *options.Equity, 256)
 	optionDefs := make(chan *options.Option, 256)
+	equityTicks := make(chan *databento.MBP1, 256)
 	optionTicks := make(chan *databento.CMBP1, 256)
+	go t.streamEquities(key, equityDefs, equityTicks)
 	go t.streamOptions(key, optionDefs, optionTicks)
 
 	// varu is the trading strategy with a heart
 	heartbeat := clocky.NewTicker(*heartbeatFlag)
 	defer heartbeat.Stop()
-
-	// how often to generate json for web dashboard
-	dumpTimer := clocky.NewTicker(*slowdownFlag)
-	defer dumpTimer.Stop()
 
 	// we must wait for options chain to become available
 	readySteadyGo := clocky.NewTicker(clocky.Second)
@@ -51,26 +45,16 @@ func (t *Trader) Live() {
 			t.onOptionDef(o)
 			continue
 		case m := <-optionTicks:
-			o := t.onOptionTick(m)
-			if _, ok := t.PendingOrdersByOption[o]; ok {
-				t.cancelUnfilledOrders(clocky.Now())
-			}
+			t.onOptionTick(m)
 			continue
 		case update := <-t.OrderEvents:
 			t.onOrderEvent(update)
-			t.Web.broadcastState()
 			continue
 		case orderUpdate := <-t.OrderUpdates:
 			t.onOrderOrderID(orderUpdate.Order, orderUpdate.OrderID)
 			continue
-		case req := <-t.Web.WebRequests:
-			t.Web.processWebRequest(req)
-			continue
 		case <-heartbeat.C:
 			t.onHeartbeat()
-			continue
-		case <-dumpTimer.C:
-			t.Web.broadcastState()
 			continue
 		default:
 			// all channels empty
@@ -83,31 +67,82 @@ func (t *Trader) Live() {
 		}
 		// block until next event
 		select {
+		case e := <-equityDefs:
+			t.onEquityDef(e)
 		case o := <-optionDefs:
 			t.onOptionDef(o)
+		case m := <-equityTicks:
+			t.onEquityTick(m)
 		case m := <-optionTicks:
-			o := t.onOptionTick(m)
-			if _, ok := t.PendingOrdersByOption[o]; ok {
-				t.cancelUnfilledOrders(clocky.Now())
-			}
+			t.onOptionTick(m)
 		case update := <-t.OrderEvents:
 			t.onOrderEvent(update)
-			t.Web.broadcastState()
 		case orderUpdate := <-t.OrderUpdates:
 			t.onOrderOrderID(orderUpdate.Order, orderUpdate.OrderID)
-		case req := <-t.Web.WebRequests:
-			t.Web.processWebRequest(req)
 		case <-heartbeat.C:
 			t.onHeartbeat()
-		case <-dumpTimer.C:
-			t.Web.broadcastState()
 		case <-readySteadyGo.C:
 			if !ready && t.Chain.LastPopulate != 0 && clocky.Now().After(t.Chain.LastPopulate.Add(clocky.Second)) {
 				t.restorePortfolio()
 				t.onOptionDefEnd()
-				t.Web.broadcastState()
 				ready = true
 			}
+		}
+	}
+}
+
+func (t *Trader) streamEquities(key databento.ApiKey, defs chan<- *options.Equity, ticks chan<- *databento.MBP1) {
+	client, err := databento.Dial("XNAS.ITCH", key)
+	if err != nil {
+		log.Fatalf("dial: %v", err)
+	}
+	defer client.Close()
+	client.MustSubscribe(databento.Subscription{
+		Schema:  databento.SchemaDefinition,
+		SType:   databento.STypeParent,
+		Symbols: []string{t.Symbol.String()},
+	})
+	client.MustSubscribe(databento.Subscription{
+		Schema:  databento.SchemaMBP1,
+		SType:   databento.STypeParent,
+		Symbols: []string{t.Symbol.String()},
+	})
+	meta := client.MustStart()
+	log.Printf("streaming %s (dbn v%d)", t.Symbol, meta.Version)
+	for {
+		rec, err := client.Read()
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
+			log.Fatalf("decode: %v", err)
+		}
+		switch m := rec.(type) {
+		case *databento.ErrorMsg:
+			log.Fatalf("option gateway error: %s", m.Err)
+		case *databento.SystemMsg:
+			log.Printf("option system message: %s", m.Msg)
+		case *databento.SymbolMappingMsg:
+			id := m.Header.InstrumentID
+			str := m.GetSTypeOutSymbol()
+			sym, err := symbol.Parse(str)
+			if err != nil {
+				continue
+			}
+			if sym != t.Symbol {
+				continue
+			}
+			log.Printf("got equity definition: %s (id %d)", str, id)
+			defs <- &options.Equity{
+				ID:     id,
+				Symbol: sym,
+			}
+		case *databento.MBP1:
+			ticks <- m
+		case *databento.Instrument:
+			// ignore raw definitions; we use SymbolMappingMsg instead
+		default:
+			log.Printf("unknown record type: %T", m)
 		}
 	}
 }
@@ -207,8 +242,8 @@ func (t *Trader) loadSchwabOrder(order *schwab.Order) {
 		if leg.Instrument.AssetType != schwab.AssetTypeOption {
 			continue
 		}
-		option := t.OptionsByOSI[leg.Instrument.Symbol]
-		if option == nil {
+		security := t.SecuritiesByName[leg.Instrument.Symbol]
+		if security == nil {
 			continue
 		}
 		for _, activity := range order.OrderActivityCollection {
@@ -227,7 +262,7 @@ func (t *Trader) loadSchwabOrder(order *schwab.Order) {
 				case schwab.InstructionSell, schwab.InstructionSellToOpen, schwab.InstructionSellToClose:
 					fillQuantity = fillQuantity.Neg()
 				}
-				t.Holdings.Add(option, fillQuantity, execLeg.Price)
+				t.Holdings.Add(security, fillQuantity, execLeg.Price)
 			}
 		}
 	}
@@ -237,6 +272,8 @@ func (t *Trader) sendLiveOrder(order *Order) {
 	orderType := schwab.OrderTypeNetCredit
 	if order.Price.IsNegative() {
 		orderType = schwab.OrderTypeNetDebit
+	} else if order.Price.IsZero() {
+		orderType = schwab.OrderTypeMarket
 	}
 	schwabOrder := &schwab.Order{
 		OrderType:         orderType,
@@ -245,7 +282,7 @@ func (t *Trader) sendLiveOrder(order *Order) {
 	}
 	for _, leg := range order.Legs {
 		var instruction schwab.Instruction
-		holding := t.Holdings.Positions[leg.Option]
+		holding := t.Holdings.Positions[leg.Security]
 		if leg.Quantity.IsPositive() {
 			if holding != nil && holding.Quantity.IsNegative() {
 				instruction = schwab.InstructionBuyToClose
@@ -264,7 +301,7 @@ func (t *Trader) sendLiveOrder(order *Order) {
 			Instruction: instruction,
 			Instrument: schwab.Instrument{
 				AssetType: schwab.AssetTypeOption,
-				Symbol:    leg.Option.OSI(),
+				Symbol:    leg.Security.GetName(),
 			},
 		})
 	}
@@ -376,9 +413,9 @@ func (t *Trader) onUROutCompletedEvent(event *schwab.OrderEvent, uro *schwab.Ord
 func (t *Trader) onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 
 	// figure out if fill was on chain we're trading
-	osiSymbol := fill.OrderInfoForTransactionPosting.Symbol
-	option := t.OptionsByOSI[osiSymbol]
-	if option == nil {
+	name := fill.OrderInfoForTransactionPosting.Symbol
+	security := t.SecuritiesByName[name]
+	if security == nil {
 		return
 	}
 
@@ -388,7 +425,7 @@ func (t *Trader) onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
 	routeName := fill.ExecutionInfo.RouteName
 	fillPrice := fill.ExecutionInfo.ExecutionPrice
-	t.Holdings.Add(option, fillQuantity, fillPrice)
+	t.Holdings.Add(security, fillQuantity, fillPrice)
 	priceImprovement := fill.PriceImprovement.DivInt(100)
 
 	// find relevant order
@@ -401,11 +438,11 @@ func (t *Trader) onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 
 	// update holdings
 	log.Printf("#%d leg filled for order id %d: %s %s @ %s, route: %s, improvement: %s, fee: %s",
-		order.ID, orderID, fill.OrderInfoForTransactionPosting.BuySellCode, option, fillPrice, routeName, priceImprovement, fee)
+		order.ID, orderID, fill.OrderInfoForTransactionPosting.BuySellCode, security.GetName(), fillPrice, routeName, priceImprovement, fee)
 
 	// mark leg filled
 	for _, leg := range order.Legs {
-		if leg.Option == option {
+		if leg.Security == security {
 			leg.Filled = true
 			break
 		}
@@ -414,8 +451,7 @@ func (t *Trader) onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	// remove fully filled orders
 	if order.Filled() {
 		t.deleteSchwabOrder(order)
-		t.StrategiesUsed[order.Strategy] += 1
-		log.Printf("#%d order complete for order id %d: %s", order.ID, order.OrderID, order.Strategy)
+		log.Printf("#%d order complete for order id %d", order.ID, order.OrderID)
 	}
 }
 

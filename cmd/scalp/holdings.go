@@ -10,21 +10,29 @@ import (
 )
 
 type Holdings struct {
-	Cash         decimal.Decimal              // total cash possessed, in dollars
-	Positions    map[*options.Option]*Holding // never contains zero-quantity holdings
-	RealizedPnL  decimal.Decimal              // total profit and loss from closed positions, in dollars
-	TotalDebits  decimal.Decimal              // total cash flow out from filled trades, in dollars
-	TotalCredits decimal.Decimal              // total cash flow in from filled trades, in dollars
-	TotalError   decimal.Decimal              // total error from quantization, in dollars
-	TotalFees    decimal.Decimal              // total commissions, fees, and regulatory costs
-	Volume       decimal.Decimal              // total number of contracts traded
+	Cash         decimal.Decimal               // total cash possessed, in dollars
+	Positions    map[options.Security]*Holding // never contains zero-quantity holdings
+	RealizedPnL  decimal.Decimal               // total profit and loss from closed positions, in dollars
+	TotalDebits  decimal.Decimal               // total cash flow out from filled trades, in dollars
+	TotalCredits decimal.Decimal               // total cash flow in from filled trades, in dollars
+	TotalError   decimal.Decimal               // total error from quantization, in dollars
+	TotalFees    decimal.Decimal               // total commissions, fees, and regulatory costs
+	Volume       decimal.Decimal               // total number of contracts traded
+}
+
+func (hs *Holdings) LiquidationValue() decimal.Decimal {
+	value := hs.Cash
+	for security, holding := range hs.Positions {
+		value = value.Add(security.MidPrice().Mul(holding.Quantity).MulInt(security.Multiplier()))
+	}
+	return value
 }
 
 // Sorted returns holdings sorted by option OSI symbol.
 func (h *Holdings) Sorted() []*Holding {
 	holdings := slices.Collect(maps.Values(h.Positions))
 	slices.SortFunc(holdings, func(a, b *Holding) int {
-		return strings.Compare(a.Option.OSI(), b.Option.OSI())
+		return strings.Compare(a.Security.GetName(), b.Security.GetName())
 	})
 	return holdings
 }
@@ -32,7 +40,7 @@ func (h *Holdings) Sorted() []*Holding {
 // Add updates holdings to reflect fill.
 // delta is positive for buy orders and negative for sell orders.
 // price is always positive and reflects dollars per underlying share.
-func (h *Holdings) Add(option *options.Option, delta, price decimal.Decimal) {
+func (h *Holdings) Add(security options.Security, delta, price decimal.Decimal) {
 	if delta.IsZero() {
 		panic("zero quantity change")
 	}
@@ -45,7 +53,7 @@ func (h *Holdings) Add(option *options.Option, delta, price decimal.Decimal) {
 	h.Volume = h.Volume.Add(delta.Abs())
 
 	// update cash and ledger
-	dollars := price.Mul(delta.Abs()).MulInt(kMultiplier)
+	dollars := price.Mul(delta.Abs()).MulInt(security.Multiplier())
 	if delta.IsPositive() {
 		h.Cash = h.Cash.Sub(dollars)
 		h.TotalDebits = h.TotalDebits.Add(dollars)
@@ -55,10 +63,10 @@ func (h *Holdings) Add(option *options.Option, delta, price decimal.Decimal) {
 	}
 
 	// handle case of opening a new position
-	holding := h.Positions[option]
+	holding := h.Positions[security]
 	if holding == nil {
-		h.Positions[option] = &Holding{
-			Option:      option,
+		h.Positions[security] = &Holding{
+			Security:    security,
 			Quantity:    delta,
 			AverageCost: price,
 		}
@@ -84,13 +92,13 @@ func (h *Holdings) Add(option *options.Option, delta, price decimal.Decimal) {
 		profitPerShare = holding.AverageCost.Sub(price)
 	}
 	closedQuantity := delta.Abs().Min(oldQuantity.Abs())
-	profitPerContract := profitPerShare.MulInt(kMultiplier)
+	profitPerContract := profitPerShare.MulInt(security.Multiplier())
 	profitForFill := profitPerContract.Mul(closedQuantity)
 	h.RealizedPnL = h.RealizedPnL.Add(profitForFill)
 
 	// update holding to reflect remaining open position, if any
 	if newQuantity.IsZero() {
-		delete(h.Positions, option)
+		delete(h.Positions, security)
 	} else {
 		holding.Quantity = newQuantity
 		if oldQuantity.IsPositive() != newQuantity.IsPositive() {
@@ -99,8 +107,8 @@ func (h *Holdings) Add(option *options.Option, delta, price decimal.Decimal) {
 	}
 }
 
-func (h *Holdings) GetQuantity(option *options.Option) decimal.Decimal {
-	holding := h.Positions[option]
+func (h *Holdings) GetQuantity(security options.Security) decimal.Decimal {
+	holding := h.Positions[security]
 	if holding == nil {
 		return decimal.Zero
 	}
@@ -108,10 +116,10 @@ func (h *Holdings) GetQuantity(option *options.Option) decimal.Decimal {
 }
 
 func (h *Holdings) check() {
-	for option, holding := range h.Positions {
+	for security, holding := range h.Positions {
 		holding.check()
-		if holding.Option != option {
-			panic("holding option mismatch")
+		if holding.Security != security {
+			panic("holding security mismatch")
 		}
 	}
 
@@ -139,8 +147,8 @@ func (h *Holdings) check() {
 	// close because realized P&L is computed from the same rounded
 	// cost. Therefore the rounding errors cancel out on exit.
 	var unrealizedCost decimal.Decimal
-	for _, holding := range h.Positions {
-		unrealizedCost = unrealizedCost.Sub(holding.AverageCost.Mul(holding.Quantity).MulInt(kMultiplier))
+	for security, holding := range h.Positions {
+		unrealizedCost = unrealizedCost.Sub(holding.AverageCost.Mul(holding.Quantity).MulInt(security.Multiplier()))
 	}
 	expectedFromBooks := h.RealizedPnL.Add(unrealizedCost)
 	h.TotalError = h.Cash.Sub(expectedFromBooks)

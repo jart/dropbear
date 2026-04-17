@@ -32,7 +32,7 @@ type Option struct {
 	Delta   decimal.Decimal           // Black-76 delta at last tick (dPrice/dES)
 	Gamma   decimal.Decimal           // Black-76 gamma at last tick (d²Price/dES²)
 	Theta   decimal.Decimal           // Black-76 theta at last tick (dPrice/dES)
-	Vega    decimal.Decimal           // Black-76 theta at last tick (dPrice/dES)
+	Vega    decimal.Decimal           // Black-76 vega at last tick (dPrice/dES)
 	mid     decimal.Decimal           // market price when last tick was received
 	fut     decimal.Decimal           // es price when last tick was received
 	exp     clocky.Time               // caches expiration for quick access
@@ -54,6 +54,11 @@ func (o *Option) HasGreeks() bool {
 // This might not be a legal price for an order or quote, e.g. SPX ticks at 0.10 or 0.05 increments.
 func (o *Option) MidPrice() decimal.Decimal {
 	return o.Bid.Add(o.Ask).DivInt(2)
+}
+
+// GetSymbol returns the underlying symbol of the option.
+func (o *Option) GetSymbol() symbol.Symbol {
+	return o.Symbol
 }
 
 // Expiry returns the expiration time of the option.
@@ -146,4 +151,36 @@ func (o *Option) ComputeGreeks(underlyingPrice, riskFreeRate, futuresPrice decim
 	o.Vega = decimal.FromFloat64(vega / 100)
 	o.IV = decimal.FromFloat64(iv)
 	o.Got |= GotGreeks
+}
+
+func (o *Option) GetName() string {
+	return o.OSI()
+}
+
+func (o *Option) GetID() uint32 {
+	return o.ID
+}
+
+func (o *Option) GetBid() decimal.Decimal {
+	return o.Bid
+}
+
+func (o *Option) GetAsk() decimal.Decimal {
+	return o.Ask
+}
+
+func (o *Option) GetBidSize() uint32 {
+	return o.BidSize
+}
+
+func (o *Option) GetAskSize() uint32 {
+	return o.AskSize
+}
+
+func (o *Option) Multiplier() int {
+	return 100
+}
+
+func (o *Option) GetDelta() decimal.Decimal {
+	return o.Delta
 }
