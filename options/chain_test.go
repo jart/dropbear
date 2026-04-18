@@ -32,7 +32,7 @@ func makeOptionWithGreeks(class databento.InstrumentClass, strikePrice int, bid,
 }
 
 func TestAddCallThenPutBecomesReady(t *testing.T) {
-	oc := NewOptions()
+	oc := NewChain()
 	call := makeOption(databento.InstrumentClassCall, 6000, "10", "12")
 	put := makeOption(databento.InstrumentClassPut, 6000, "8", "10")
 	oc.Add(call)
@@ -57,7 +57,7 @@ func TestAddCallThenPutBecomesReady(t *testing.T) {
 }
 
 func TestAddPutThenCallBecomesReady(t *testing.T) {
-	oc := NewOptions()
+	oc := NewChain()
 	put := makeOption(databento.InstrumentClassPut, 6000, "8", "10")
 	call := makeOption(databento.InstrumentClassCall, 6000, "10", "12")
 	oc.Add(put)
@@ -76,7 +76,7 @@ func TestAddPutThenCallBecomesReady(t *testing.T) {
 }
 
 func TestAddTakesOwnershipOfStrike(t *testing.T) {
-	oc := NewOptions()
+	oc := NewChain()
 	call := makeOption(databento.InstrumentClassCall, 6000, "10", "12")
 	origStrike := call.Strike
 	oc.Add(call)
@@ -86,7 +86,7 @@ func TestAddTakesOwnershipOfStrike(t *testing.T) {
 }
 
 func TestLinkedListPrevNext(t *testing.T) {
-	oc := NewOptions()
+	oc := NewChain()
 	// Add three strikes in order: 5990, 6000, 6010
 	prices := []int{5990, 6000, 6010}
 	for _, p := range prices {
@@ -119,7 +119,7 @@ func TestLinkedListPrevNext(t *testing.T) {
 }
 
 func TestLinkedListInsertBetween(t *testing.T) {
-	oc := NewOptions()
+	oc := NewChain()
 	// Add 5990 and 6010 first, then insert 6000 between them.
 	for _, p := range []int{5990, 6010} {
 		call := makeOption(databento.InstrumentClassCall, p, "10", "12")
@@ -152,7 +152,7 @@ func TestLinkedListInsertBetween(t *testing.T) {
 }
 
 func TestAtTheMoneyTracksClosestStrike(t *testing.T) {
-	oc := NewOptions()
+	oc := NewChain()
 	// Strike 6000: call mid=50, put mid=48 → underlying ≈ 6000+50-48 = 6002
 	// Strike 6005: call mid=47, put mid=51 → underlying ≈ 6005+47-51 = 6001
 	call6000 := makeOption(databento.InstrumentClassCall, 6000, "49", "51")
@@ -177,7 +177,7 @@ func TestAtTheMoneyTracksClosestStrike(t *testing.T) {
 }
 
 func TestPriceReflectsUnderlyingFromATM(t *testing.T) {
-	oc := NewOptions()
+	oc := NewChain()
 	// call mid = (49+51)/2 = 50, put mid = (47+49)/2 = 48
 	// underlying = 6000 + 50 - 48 = 6002
 	call := makeOption(databento.InstrumentClassCall, 6000, "49", "51")
@@ -191,7 +191,7 @@ func TestPriceReflectsUnderlyingFromATM(t *testing.T) {
 }
 
 func TestAddWithoutQuotesDoesNotSetATM(t *testing.T) {
-	oc := NewOptions()
+	oc := NewChain()
 	call := &Option{
 		Class:  databento.InstrumentClassCall,
 		Strike: &Strike{Price: decimal.FromInt(6000)},
@@ -208,14 +208,14 @@ func TestAddWithoutQuotesDoesNotSetATM(t *testing.T) {
 }
 
 func TestEmptyOptionsChain(t *testing.T) {
-	oc := NewOptions()
+	oc := NewChain()
 	if oc.Strikes.Size() != 0 {
-		t.Error("new Options should have no strikes")
+		t.Error("new Chain should have no strikes")
 	}
 	if oc.AtTheMoney != nil {
-		t.Error("new Options should have nil AtTheMoney")
+		t.Error("new Chain should have nil AtTheMoney")
 	}
 	if !oc.Price.IsZero() {
-		t.Error("new Options should have zero Price")
+		t.Error("new Chain should have zero Price")
 	}
 }

@@ -5,16 +5,6 @@ import (
 	"testing"
 )
 
-var (
-	AAPL  = MustParse("AAPL")
-	GOOG  = MustParse("GOOG")
-	GOOGL = MustParse("GOOGL")
-	MSFT  = MustParse("MSFT")
-	GLD   = MustParse("GLD")
-	PM    = MustParse("PM")
-	NVDA  = MustParse("NVDA")
-)
-
 func TestParseFile(t *testing.T) {
 	tests := []struct {
 		name    string

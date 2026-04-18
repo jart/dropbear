@@ -13,7 +13,7 @@ func TestParse(t *testing.T) {
 		want    Symbol
 		wantErr bool
 	}{
-		{"simple", "AAPL", Symbol('A' | 'A'<<8 | 'P'<<16 | 'L'<<24), false},
+		{"simple", "AAPL", AAPL, false},
 		{"simple", "AAPL", MustParse("AAPL"), false},
 		{"omfg", "SOXL", Symbol(0x4c584f53), false},
 		{"max length", "ABCDEFG", MustParse("ABCDEFG"), false},
@@ -40,7 +40,7 @@ func TestSymbol_String(t *testing.T) {
 		s    Symbol
 		want string
 	}{
-		{"math", Symbol('A' | 'A'<<8 | 'P'<<16 | 'L'<<24), "AAPL"},
+		{"math", AAPL, "AAPL"},
 		{"simple", MustParse("AAPL"), "AAPL"},
 		{"max length", MustParse("ABCDEFG"), "ABCDEFG"},
 		{"single char", MustParse("Z"), "Z"},

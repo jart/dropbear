@@ -1,14 +1,16 @@
 package main
 
 import (
-	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/symbol"
 )
 
 type Config struct {
+	Symbol     symbol.Symbol
+	Direction  decimal.Decimal
 	Straddles  decimal.Decimal
 	Quantum    decimal.Decimal
 	Spread     decimal.Decimal
-	Think      clocky.Duration
+	Strikes    int
 	StartOfDay int
 }

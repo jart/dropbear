@@ -120,7 +120,7 @@ func (order *Order) Send() error {
 		}
 	}
 	tick, bigTick := getTicks(underlyingSymbol)
-	if len(order.Legs) == 1 && order.Price.Abs().Cmp(kThree) >= 0 {
+	if len(order.Legs) == 1 && order.Price.Abs().Cmp(decimal.Three) >= 0 {
 		tick = bigTick // spreads always quantize on minimum tick size
 	}
 	if order.Price.Cmp(order.Price.QuantizeTruncate(tick)) != 0 {

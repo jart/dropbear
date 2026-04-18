@@ -27,20 +27,17 @@ type Option struct {
 	Year    int                       // option expiration year
 	Month   clocky.Month              // option expiration month
 	Day     int                       // option expiration day
-	Chain   *Options                  // parent options chain
+	Chain   *Chain                    // parent options chain
 	TS      clocky.Time               // timestamp of when Bid / Ask was last updated
 	IV      decimal.Decimal           // implied volatility at last tick
 	Delta   decimal.Decimal           // Black-76 delta at last tick (dPrice/dES)
 	Gamma   decimal.Decimal           // Black-76 gamma at last tick (d²Price/dES²)
 	Theta   decimal.Decimal           // Black-76 theta at last tick (dPrice/dES)
 	Vega    decimal.Decimal           // Black-76 vega at last tick (dPrice/dES)
-	mid     decimal.Decimal           // market price when last tick was received
-	fut     decimal.Decimal           // es price when last tick was received
 	exp     clocky.Time               // caches expiration for quick access
 	osi     string                    // caches OSI code for quick access
 }
 
-func (o *Option) GetName() string           { return o.OSI() }
 func (o *Option) GetID() uint32             { return o.ID }
 func (o *Option) GetBid() decimal.Decimal   { return o.Bid }
 func (o *Option) GetAsk() decimal.Decimal   { return o.Ask }
@@ -101,8 +98,8 @@ func (o *Option) StringAligned() string {
 	return fmt.Sprintf("%6s %-8s %-4s %d-%02d-%02d", o.Symbol, o.Strike, o.Class, o.Year, o.Month, o.Day)
 }
 
-// OSI returns the OSI code for the option, e.g. "SPXW240621C04000000".
-func (o *Option) OSI() string {
+// Name returns the OSI code for the option, e.g. "SPXW240621C04000000".
+func (o *Option) Name() string {
 	if o.osi != "" {
 		return o.osi
 	}
@@ -112,22 +109,21 @@ func (o *Option) OSI() string {
 
 // ComputeGreeks recomputes the Black-76 delta from the current market mid and SPX price.
 // Called on each fresh option tick after Bid/Ask/SPX are updated.
-func (o *Option) ComputeGreeks(underlyingPrice, riskFreeRate, futuresPrice decimal.Decimal) {
+func (o *Option) ComputeGreeks(underlyingPrice, riskFreeRate decimal.Decimal) {
 	if !o.HasQuotes() || !underlyingPrice.IsPositive() {
 		o.Got &^= GotGreeks
 		return
 	}
-	o.fut = futuresPrice
-	o.mid = o.MidPrice()
 	F := underlyingPrice.Float64()
 	K := o.Strike.Price.Float64()
 	r := riskFreeRate.Float64()
+	P := o.MidPrice().Float64()
 	E := o.Expiry().Sub(o.TS)
 	if E <= 0 {
 		o.Got &^= GotGreeks
 		return
 	}
-	iv := black76.IV(F, K, r, E, o.mid.Float64(), o.Class == databento.InstrumentClassCall)
+	iv := black76.IV(F, K, r, E, P, o.Class == databento.InstrumentClassCall)
 	if iv <= 0 || math.IsNaN(iv) || math.IsInf(iv, 0) {
 		o.Got &^= GotGreeks
 		return
@@ -144,4 +140,13 @@ func (o *Option) ComputeGreeks(underlyingPrice, riskFreeRate, futuresPrice decim
 	o.Vega = decimal.FromFloat64(vega / 100)
 	o.IV = decimal.FromFloat64(iv)
 	o.Got |= GotGreeks
+}
+
+func (o *Option) Ticks() (decimal.Decimal, decimal.Decimal) {
+	switch o.Symbol {
+	case symbol.SPXW, symbol.NDX, symbol.RUTW:
+		return cboe.Tick05, cboe.Tick10
+	default:
+		return cboe.Tick01, cboe.Tick05
+	}
 }

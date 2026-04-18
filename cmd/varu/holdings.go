@@ -24,7 +24,7 @@ type Holdings struct {
 func (h *Holdings) Sorted() []*Holding {
 	holdings := slices.Collect(maps.Values(h.Positions))
 	slices.SortFunc(holdings, func(a, b *Holding) int {
-		return strings.Compare(a.Option.OSI(), b.Option.OSI())
+		return strings.Compare(a.Option.Name(), b.Option.Name())
 	})
 	return holdings
 }

@@ -8,8 +8,8 @@ import (
 	"github.com/emirpasic/gods/v2/maps/treemap"
 )
 
-// Options represents the current state of an option chain.
-type Options struct {
+// Chain represents the current state of an option chain.
+type Chain struct {
 	Price          decimal.Decimal
 	AtTheMoney     *Strike
 	LastPopulate   clocky.Time
@@ -17,9 +17,9 @@ type Options struct {
 	pendingStrikes *treemap.Map[decimal.Decimal, *Strike]
 }
 
-// NewOptions creates a new Options instance with an initialized strikes map.
-func NewOptions() *Options {
-	return &Options{
+// NewChain creates new options chain.
+func NewChain() *Chain {
+	return &Chain{
 		Strikes:        treemap.New[decimal.Decimal, *Strike](),
 		pendingStrikes: treemap.New[decimal.Decimal, *Strike](),
 	}
@@ -34,12 +34,12 @@ func NewOptions() *Options {
 // sigma, there's a 99.7% probability the underlying will settle within that range. In
 // other words, a one sigma move happens about every one out of three trading days, a
 // two sigma move happens about once a month, and three sigma happens about once a year.
-func (oc *Options) ExpectedMove() decimal.Decimal {
-	if oc.AtTheMoney == nil || !oc.AtTheMoney.IsReady() {
+func (c *Chain) ExpectedMove() decimal.Decimal {
+	if c.AtTheMoney == nil || !c.AtTheMoney.IsReady() {
 		return decimal.Zero
 	}
-	x := oc.AtTheMoney.Call.MidPrice()
-	y := oc.AtTheMoney.Put.MidPrice()
+	x := c.AtTheMoney.Call.MidPrice()
+	y := c.AtTheMoney.Put.MidPrice()
 	if !x.IsPositive() || !y.IsPositive() {
 		return decimal.Zero
 	}
@@ -49,32 +49,32 @@ func (oc *Options) ExpectedMove() decimal.Decimal {
 // Add includes option in chain.
 // This should be called repeatedly each time its quotes are updated.
 // Returns true if this operation resulted in Price/AtTheMoney being updated.
-func (oc *Options) Add(o *Option) bool {
+func (c *Chain) Add(o *Option) bool {
 	strikePrice := o.Strike.Price
-	strike, _ := oc.Strikes.Get(strikePrice)
+	strike, _ := c.Strikes.Get(strikePrice)
 	if strike == nil {
-		strike = oc.populateStrike(o, strikePrice)
+		strike = c.populateStrike(o, strikePrice)
 	}
 	if o.HasQuotes() && strike.IsReady() {
-		if oc.AtTheMoney == nil && strike.underlyingPrice().IsPositive() {
-			oc.AtTheMoney = strike
+		if c.AtTheMoney == nil && strike.underlyingPrice().IsPositive() {
+			c.AtTheMoney = strike
 		}
-		if strike == oc.AtTheMoney {
-			return oc.updateFields()
+		if strike == c.AtTheMoney {
+			return c.updateFields()
 		}
 	}
 	return false
 }
 
 //go:noinline
-func (oc *Options) updateFields() bool {
-	newPrice := oc.AtTheMoney.underlyingPrice()
+func (c *Chain) updateFields() bool {
+	newPrice := c.AtTheMoney.underlyingPrice()
 	if !newPrice.IsPositive() {
 		return false
 	}
 	var atm *Strike
-	_, strike1, _ := oc.Strikes.Floor(newPrice)
-	_, strike2, _ := oc.Strikes.Ceiling(newPrice)
+	_, strike1, _ := c.Strikes.Floor(newPrice)
+	_, strike2, _ := c.Strikes.Ceiling(newPrice)
 	if strike1 != nil && strike2 != nil {
 		distance1 := strike1.Price.Sub(newPrice).Abs()
 		distance2 := strike2.Price.Sub(newPrice).Abs()
@@ -88,43 +88,43 @@ func (oc *Options) updateFields() bool {
 	} else {
 		atm = strike1
 	}
-	if atm != oc.AtTheMoney {
-		oc.AtTheMoney = atm
+	if atm != c.AtTheMoney {
+		c.AtTheMoney = atm
 		newPrice = atm.underlyingPrice()
 	}
-	if !newPrice.IsPositive() || newPrice == oc.Price {
+	if !newPrice.IsPositive() || newPrice == c.Price {
 		return false
 	}
-	oc.Price = newPrice
+	c.Price = newPrice
 	return true
 }
 
 //go:noinline
-func (oc *Options) populateStrike(o *Option, strikePrice decimal.Decimal) *Strike {
-	strike, _ := oc.pendingStrikes.Get(strikePrice)
+func (c *Chain) populateStrike(o *Option, strikePrice decimal.Decimal) *Strike {
+	strike, _ := c.pendingStrikes.Get(strikePrice)
 	if strike == nil {
-		strike = &Strike{Price: strikePrice, Chain: oc}
-		oc.pendingStrikes.Put(strikePrice, strike)
+		strike = &Strike{Price: strikePrice, Chain: c}
+		c.pendingStrikes.Put(strikePrice, strike)
 	}
 	o.Strike = strike
-	o.Chain = oc
+	o.Chain = c
 	if o.Class == databento.InstrumentClassCall {
 		strike.Call = o
 	} else {
 		strike.Put = o
 	}
 	if strike.IsReady() {
-		oc.pendingStrikes.Remove(strikePrice)
-		_, strike.Prev, _ = oc.Strikes.Floor(strikePrice)
-		_, strike.Next, _ = oc.Strikes.Ceiling(strikePrice)
-		oc.Strikes.Put(strikePrice, strike)
+		c.pendingStrikes.Remove(strikePrice)
+		_, strike.Prev, _ = c.Strikes.Floor(strikePrice)
+		_, strike.Next, _ = c.Strikes.Ceiling(strikePrice)
+		c.Strikes.Put(strikePrice, strike)
 		if strike.Prev != nil {
 			strike.Prev.Next = strike
 		}
 		if strike.Next != nil {
 			strike.Next.Prev = strike
 		}
-		oc.LastPopulate = clocky.Now()
+		c.LastPopulate = clocky.Now()
 	}
 	return strike
 }

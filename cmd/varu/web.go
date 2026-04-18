@@ -249,7 +249,7 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 			prob := strike.Probability().MulInt(100).Format(2)
 			if strike.Call != nil {
 				snap.Positions = append(snap.Positions, PositionRow{
-					OSI:    strike.Call.OSI(),
+					OSI:    strike.Call.Name(),
 					Strike: strike.Price.String(),
 					Class:  "C",
 					Qty:    t.Holdings.GetQuantity(strike.Call).String(),
@@ -263,7 +263,7 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 			}
 			if strike.Put != nil {
 				snap.Positions = append(snap.Positions, PositionRow{
-					OSI:    strike.Put.OSI(),
+					OSI:    strike.Put.Name(),
 					Strike: strike.Price.String(),
 					Class:  "P",
 					Qty:    t.Holdings.GetQuantity(strike.Put).String(),

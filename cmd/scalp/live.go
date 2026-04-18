@@ -84,7 +84,7 @@ func (t *Trader) Live() {
 		case <-readySteadyGo.C:
 			if !ready && t.Chain.LastPopulate != 0 && clocky.Now().After(t.Chain.LastPopulate.Add(clocky.Second)) {
 				t.restorePortfolio()
-				t.onOptionDefEnd()
+				t.onDefEnd()
 				ready = true
 			}
 		}
@@ -100,15 +100,15 @@ func (t *Trader) streamEquities(key databento.ApiKey, defs chan<- *options.Equit
 	client.MustSubscribe(databento.Subscription{
 		Schema:  databento.SchemaDefinition,
 		SType:   databento.STypeParent,
-		Symbols: []string{t.Symbol.String()},
+		Symbols: []string{t.Config.Symbol.String()},
 	})
 	client.MustSubscribe(databento.Subscription{
 		Schema:  databento.SchemaMBP1,
 		SType:   databento.STypeParent,
-		Symbols: []string{t.Symbol.String()},
+		Symbols: []string{t.Config.Symbol.String()},
 	})
 	meta := client.MustStart()
-	log.Printf("streaming %s (dbn v%d)", t.Symbol, meta.Version)
+	log.Printf("streaming %s (dbn v%d)", t.Config.Symbol, meta.Version)
 	for {
 		rec, err := client.Read()
 		if err != nil {
@@ -129,7 +129,7 @@ func (t *Trader) streamEquities(key databento.ApiKey, defs chan<- *options.Equit
 			if err != nil {
 				continue
 			}
-			if sym != t.Symbol {
+			if sym != t.Config.Symbol {
 				continue
 			}
 			log.Printf("got equity definition: %s (id %d)", str, id)
@@ -157,7 +157,7 @@ func (t *Trader) streamOptions(key databento.ApiKey, defs chan<- *options.Option
 		log.Fatalf("dial: %v", err)
 	}
 	defer client.Close()
-	dbSymbol := fmt.Sprintf("%s.OPT", t.Symbol)
+	dbSymbol := fmt.Sprintf("%s.OPT", t.Config.Symbol)
 	client.MustSubscribe(databento.Subscription{
 		Schema:  databento.SchemaDefinition,
 		SType:   databento.STypeParent,
@@ -191,7 +191,7 @@ func (t *Trader) streamOptions(key databento.ApiKey, defs chan<- *options.Option
 			if err != nil {
 				continue
 			}
-			if sym != t.Symbol || year != wantYear || clocky.Month(monthy) != wantMonth || day != wantDay {
+			if sym != t.Config.Symbol || year != wantYear || clocky.Month(monthy) != wantMonth || day != wantDay {
 				continue
 			}
 			log.Printf("got option definition: %s (id %d)", str, id)
@@ -301,7 +301,7 @@ func (t *Trader) sendLiveOrder(order *Order) {
 			Instruction: instruction,
 			Instrument: schwab.Instrument{
 				AssetType: schwab.AssetTypeOption,
-				Symbol:    leg.Security.GetName(),
+				Symbol:    leg.Security.Name(),
 			},
 		})
 	}
@@ -438,7 +438,7 @@ func (t *Trader) onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 
 	// update holdings
 	log.Printf("#%d leg filled for order id %d: %s %s @ %s, route: %s, improvement: %s, fee: %s",
-		order.ID, orderID, fill.OrderInfoForTransactionPosting.BuySellCode, security.GetName(), fillPrice, routeName, priceImprovement, fee)
+		order.ID, orderID, fill.OrderInfoForTransactionPosting.BuySellCode, security.Name(), fillPrice, routeName, priceImprovement, fee)
 
 	// mark leg filled
 	for _, leg := range order.Legs {

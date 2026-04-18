@@ -172,7 +172,7 @@ func (t *Trader) simulateFillOrder(order *Order) bool {
 			priceThatMarketDemands = priceThatMarketDemands.QuantizeFloor(tick)
 		} else {
 			tick, bigTick := getTicks(order.Legs[0].Option.Symbol)
-			if priceThatMarketDemands.Abs().Cmp(kThree) >= 0 {
+			if priceThatMarketDemands.Abs().Cmp(decimal.Three) >= 0 {
 				tick = bigTick
 			}
 			priceThatMarketDemands = priceThatMarketDemands.QuantizeFloor(tick)

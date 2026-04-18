@@ -32,7 +32,7 @@ func (hs *Holdings) LiquidationValue() decimal.Decimal {
 func (h *Holdings) Sorted() []*Holding {
 	holdings := slices.Collect(maps.Values(h.Positions))
 	slices.SortFunc(holdings, func(a, b *Holding) int {
-		return strings.Compare(a.Security.GetName(), b.Security.GetName())
+		return strings.Compare(a.Security.Name(), b.Security.Name())
 	})
 	return holdings
 }

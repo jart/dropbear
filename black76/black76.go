@@ -24,23 +24,23 @@ import (
 // - K is the option strike
 // - r is the risk free rate (e.g. 0.05 for 5%)
 // - E is the time to expiration
-// - marketPrice is the observed option price
-// - isCall is true for calls, false for puts
-func IV(F, K, r float64, E clocky.Duration, marketPrice float64, isCall bool) float64 {
+// - P is the observed option price
+// - C is true for calls, false for puts
+func IV(F, K, r float64, E clocky.Duration, P float64, C bool) float64 {
 	T := Annualize(E)
-	if T <= 0 || marketPrice <= 0 {
+	if T <= 0 || P <= 0 {
 		return 0
 	}
 	// bisection to find initial bounds [lo, hi] bracketing the solution
 	lo, hi := .001, .5
 	for hi < 100 {
 		price := 0.0
-		if isCall {
+		if C {
 			price = CallPrice(F, K, r, E, hi)
 		} else {
 			price = PutPrice(F, K, r, E, hi)
 		}
-		if price >= marketPrice {
+		if price >= P {
 			break
 		}
 		hi *= 2
@@ -61,12 +61,12 @@ func IV(F, K, r float64, E clocky.Duration, marketPrice float64, isCall bool) fl
 		d2 := d1 - sigmaT
 		// compute price inline to reuse d1/d2
 		var p float64
-		if isCall {
+		if C {
 			p = disc * (F*norm.CDF(d1) - K*norm.CDF(d2))
 		} else {
 			p = disc * (K*norm.CDF(-d2) - F*norm.CDF(-d1))
 		}
-		diff := p - marketPrice
+		diff := p - P
 		if math.Abs(diff) < 1e-10 {
 			break
 		}

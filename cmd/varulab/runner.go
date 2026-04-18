@@ -31,7 +31,8 @@ func executeRun(ctx context.Context, db *sql.DB, run *Run) {
 	broadcastRunStatus(run.ID, "running")
 
 	// build command
-	args := []string{"run", "./cmd/varu",
+	args := []string{
+		"run", *programFlag,
 		"-dbn", run.DbnPath,
 		"-symbol", run.Symbol,
 		"-date", run.Date,

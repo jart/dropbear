@@ -314,7 +314,7 @@ func (t *Trader) liquidatePair() {
 			if x == y {
 				continue
 			}
-			if x.OSI() >= y.OSI() {
+			if x.Name() >= y.Name() {
 				continue
 			}
 			qty := xh.Quantity.Abs().Min(yh.Quantity.Abs())

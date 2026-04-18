@@ -8,22 +8,21 @@ import (
 	"dropbear/decimal"
 	"dropbear/loggy"
 	"dropbear/options"
-	"dropbear/symbol"
-	"fmt"
 	"log"
 )
 
 type State int
 
 const (
-	StateInit State = iota
+	StateNeedCall State = iota
+	StateNeedPut
 	StateReady
 )
 
 type Trader struct {
-	Symbol                  symbol.Symbol
 	Config                  *Config
-	Chain                   *options.Options
+	Chain                   *options.Chain
+	Underlying              *options.Equity
 	Holdings                Holdings
 	OrderEvents             chan *schwab.OrderEvent
 	OrderUpdates            chan OrderUpdate
@@ -39,11 +38,10 @@ type Trader struct {
 	OrderCounter            int
 }
 
-func NewTrader(symbol symbol.Symbol, config *Config) *Trader {
+func NewTrader(config *Config) *Trader {
 	return &Trader{
-		Symbol:                  symbol,
 		Config:                  config,
-		Chain:                   options.NewOptions(),
+		Chain:                   options.NewChain(),
 		Holdings:                Holdings{Positions: map[options.Security]*Holding{}},
 		OrderEvents:             make(chan *schwab.OrderEvent, 64),
 		OrderUpdates:            make(chan OrderUpdate, 64),
@@ -67,53 +65,79 @@ func (t *Trader) onThought(now clocky.Time) {
 		t.Hinter.Hint("not trading: market closed")
 		return
 	}
-	if len(t.PendingOrdersBySecurity) != 0 {
+	if len(t.PendingOrdersBySecurity) != 0 || len(t.OrdersBySchwabID) != 0 {
+		return // don't run when there's pending orders
+	}
+	if t.Underlying == nil || !t.Underlying.Bid.IsPositive() || !t.Underlying.Ask.IsPositive() {
 		return
 	}
 	switch t.State {
-	case StateInit:
-		log.Printf("buying straddle")
-		t.buyCall()
-		t.buyPut()
-		t.State = StateReady
+	case StateNeedCall:
+		log.Printf("buying call")
+		if t.buyCall() {
+			t.State = StateNeedPut
+		}
+	case StateNeedPut:
+		log.Printf("buying put")
+		if t.buyPut() {
+			t.State = StateReady
+		}
 	case StateReady:
 		t.hedgeDelta()
 	}
 }
 
-func (t *Trader) buyCall() {
-	atm := t.Chain.AtTheMoney.Next
-	if atm == nil || !atm.IsReady() {
-		return
-	}
+func (t *Trader) marketOrder(security options.Security, quantity decimal.Decimal) {
 	t.OrderCounter++
 	order := &Order{
-		Trader: t,
-		ID:     t.OrderCounter,
-		Legs:   []*Leg{{Security: atm.Call, Quantity: t.Config.Straddles}},
+		Trader:  t,
+		ID:      t.OrderCounter,
+		Created: clocky.Now(),
+		Legs: []*Leg{{
+			Security: security,
+			Quantity: quantity,
+		}},
 	}
 	order.Send()
 }
 
-func (t *Trader) buyPut() {
-	atm := t.Chain.AtTheMoney.Prev
-	if atm == nil || !atm.IsReady() {
-		return
+func (t *Trader) buyCall() bool {
+	strike := t.Chain.AtTheMoney
+	n := t.Config.Strikes / 2
+	for n > 0 {
+		if strike == nil || !strike.IsReady() {
+			return false
+		}
+		strike = strike.Next
+		n--
 	}
-	t.OrderCounter++
-	order := &Order{
-		Trader: t,
-		ID:     t.OrderCounter,
-		Legs:   []*Leg{{Security: atm.Put, Quantity: t.Config.Straddles}},
+	if !strike.Call.HasGreeks() {
+		return false
 	}
-	order.Send()
+	quantity := t.Config.Straddles.Mul(t.Config.Direction)
+	t.marketOrder(strike.Call, quantity)
+	return true
+}
+
+func (t *Trader) buyPut() bool {
+	strike := t.Chain.AtTheMoney
+	n := (t.Config.Strikes + 1) / 2
+	for n > 0 {
+		if strike == nil || !strike.IsReady() {
+			return false
+		}
+		strike = strike.Prev
+		n--
+	}
+	if !strike.Put.HasGreeks() {
+		return false
+	}
+	quantity := t.Config.Straddles.Mul(t.Config.Direction)
+	t.marketOrder(strike.Put, quantity)
+	return true
 }
 
 func (t *Trader) hedgeDelta() {
-	equity := t.SecuritiesByName[t.Symbol.String()]
-	if equity == nil || !equity.GetBid().IsPositive() || !equity.GetAsk().IsPositive() {
-		return
-	}
 	delta := t.computeDelta()
 	qty := delta.QuantizeTruncate(t.Config.Quantum).Neg()
 	if qty.IsZero() {
@@ -121,28 +145,19 @@ func (t *Trader) hedgeDelta() {
 	}
 	t.onHeartbeat()
 	log.Printf("buying %s shares to hedge delta of %s\n", qty, delta)
-	order := &Order{
-		Trader: t,
-		ID:     t.OrderCounter,
-		Legs:   []*Leg{{Security: equity, Quantity: qty}},
-	}
-	order.Send()
+	t.marketOrder(t.Underlying, qty)
 }
 
 func (t *Trader) onHeartbeat() {
-	equity := t.SecuritiesByName[t.Symbol.String()]
-	if equity == nil {
-		return
-	}
 	cost := decimal.Zero
 	shares := decimal.Zero
-	holding := t.Holdings.Positions[equity]
+	holding := t.Holdings.Positions[t.Underlying]
 	if holding != nil {
 		shares = holding.Quantity
 		cost = holding.AverageCost
 	}
 	log.Printf("price:%s shares:%s cost:%s delta:%s cash:%s equity:%s",
-		equity.MidPrice(), shares, cost, t.computeDelta(),
+		t.Underlying.MidPrice(), shares, cost, t.computeDelta(),
 		t.Holdings.Cash, t.Holdings.LiquidationValue())
 }
 
@@ -155,11 +170,14 @@ func (t *Trader) computeDelta() decimal.Decimal {
 }
 
 func (t *Trader) onEndOfDay() {
-	fmt.Printf("%s\n", t.Holdings.LiquidationValue())
+	balance := t.Holdings.LiquidationValue()
+	totalFees := t.Holdings.TotalFees
+	log.Printf("ending balance %s less %s fees winning %s",
+		balance, totalFees, balance.Sub(totalFees))
 }
 
 func (t *Trader) onOptionDef(o *options.Option) {
-	name := o.GetName()
+	name := o.Name()
 	if existing := t.SecuritiesByName[name]; existing != nil {
 		o2 := existing.(*options.Option)
 		o2.ID = o.ID
@@ -170,7 +188,7 @@ func (t *Trader) onOptionDef(o *options.Option) {
 }
 
 func (t *Trader) onEquityDef(e *options.Equity) {
-	name := e.GetName()
+	name := e.Name()
 	if existing := t.SecuritiesByName[name]; existing != nil {
 		e2 := existing.(*options.Equity)
 		e2.ID = e.ID
@@ -178,68 +196,15 @@ func (t *Trader) onEquityDef(e *options.Equity) {
 	}
 	t.EquitiesByID[e.GetID()] = e
 	t.SecuritiesByName[name] = e
+	if e.Symbol == t.Config.Symbol {
+		t.Underlying = e
+	}
 }
 
-func (t *Trader) onOptionDefEnd() {
-
-	// get close time
+func (t *Trader) onDefEnd() {
 	now := clocky.Now()
 	year, month, day := now.Date()
 	t.MarketClose = cboe.GetCloseTime(year, month, day)
-
-	// initialize options restrictions after loading schwab order history
-	for security, holding := range t.Holdings.Positions {
-		if option := security.(*options.Option); option != nil {
-			if holding.Quantity.IsPositive() {
-				option.Mode = options.ModeLong
-			} else if holding.Quantity.IsNegative() {
-				option.Mode = options.ModeShort
-			}
-		}
-	}
-
-	// ensure puts and calls at same strike have opposite restriction
-	for it := t.Chain.Strikes.Iterator(); it.Next(); {
-		strike := it.Value()
-		switch strike.Call.Mode {
-		case options.ModeNone:
-			if strike.Put.Mode != options.ModeNone {
-				strike.Call.Mode = strike.Put.Mode.Invert()
-			}
-		case options.ModeLong:
-			if strike.Put.Mode == options.ModeNone {
-				strike.Put.Mode = options.ModeShort
-			}
-		case options.ModeShort:
-			if strike.Put.Mode == options.ModeNone {
-				strike.Put.Mode = options.ModeLong
-			}
-		}
-	}
-
-	// ensure at-the-money has a restriction
-	if t.Chain.AtTheMoney.Call.Mode == options.ModeNone {
-		t.Chain.AtTheMoney.Call.Mode = options.ModeShort
-		t.Chain.AtTheMoney.Put.Mode = options.ModeLong
-	}
-
-	// now color remaining strikes as checkered as possible
-	for s := t.Chain.AtTheMoney.Next; s != nil; s = s.Next {
-		if s.Call.Mode == options.ModeNone {
-			s.Call.Mode = s.Prev.Call.Mode.Invert()
-		}
-		if s.Put.Mode == options.ModeNone {
-			s.Put.Mode = s.Prev.Put.Mode.Invert()
-		}
-	}
-	for s := t.Chain.AtTheMoney.Prev; s != nil; s = s.Prev {
-		if s.Call.Mode == options.ModeNone {
-			s.Call.Mode = s.Next.Call.Mode.Invert()
-		}
-		if s.Put.Mode == options.ModeNone {
-			s.Put.Mode = s.Next.Put.Mode.Invert()
-		}
-	}
 }
 
 func (t *Trader) onEquityTick(m *databento.MBP1) *options.Equity {
@@ -265,8 +230,12 @@ func (t *Trader) onEquityTrade(e *options.Equity, m *databento.MBP1) {
 func (t *Trader) onEquityQuote(e *options.Equity, m *databento.MBP1) {
 	e.TS = m.Header.TSEvent
 	bid := m.Levels[0].BidPx
+	mustRecomputeGreeks := false
 	if bid != databento.UndefPrice {
 		price := decimal.Decimal(bid / 1000)
+		if price.Cmp(e.Bid) != 0 {
+			mustRecomputeGreeks = true
+		}
 		e.Bid = price
 		e.BidSize = m.Levels[0].BidSz
 	} else {
@@ -276,17 +245,19 @@ func (t *Trader) onEquityQuote(e *options.Equity, m *databento.MBP1) {
 	ask := m.Levels[0].AskPx
 	if ask != databento.UndefPrice {
 		price := decimal.Decimal(ask / 1000)
+		if price.Cmp(e.Ask) != 0 {
+			mustRecomputeGreeks = true
+		}
 		e.Ask = price
 		e.AskSize = m.Levels[0].AskSz
 	} else {
 		e.Ask = decimal.Zero
 		e.AskSize = 0
 	}
-	if e.Ask.IsPositive() && e.Bid.IsPositive() {
-		underlyingPrice := e.MidPrice()
+	if mustRecomputeGreeks {
 		for _, holding := range t.Holdings.Positions {
-			if o, ok := holding.Security.(*options.Option); ok {
-				o.ComputeGreeks(underlyingPrice, kRiskFreeRate, decimal.Zero)
+			if o, ok := holding.Security.(*options.Option); ok && o.Symbol == e.Symbol {
+				o.ComputeGreeks(e.MidPrice(), kRiskFreeRate)
 			}
 		}
 	}
@@ -347,13 +318,7 @@ func (t *Trader) onOptionQuote(o *options.Option, m *databento.CMBP1) {
 		mustRecomputeGreeks = true
 	}
 	mustRecomputeGreeks = true
-	if mustRecomputeGreeks {
-		equity := t.SecuritiesByName[o.Symbol.String()]
-		if equity != nil {
-			underlyingPrice := equity.MidPrice()
-			if underlyingPrice.IsPositive() {
-				o.ComputeGreeks(underlyingPrice, kRiskFreeRate, decimal.Zero)
-			}
-		}
+	if mustRecomputeGreeks && t.Underlying != nil {
+		o.ComputeGreeks(t.Underlying.MidPrice(), kRiskFreeRate)
 	}
 }

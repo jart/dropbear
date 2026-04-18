@@ -2,6 +2,7 @@ package main
 
 import (
 	"dropbear/broker/schwab"
+	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/options"
 	"errors"
@@ -11,11 +12,13 @@ import (
 type Order struct {
 	Trader    *Trader
 	ID        int
+	Created   clocky.Time
 	OrderID   schwab.OrderID
 	Legs      []*Leg
 	Price     decimal.Decimal
 	Sent      bool
 	Canceling bool
+	Making    bool
 }
 
 func (order *Order) String() string {
@@ -121,14 +124,8 @@ func (order *Order) Send() error {
 			return errors.New("all legs must have same underlying")
 		}
 	}
-	if !order.Price.IsZero() {
-		tick, bigTick := getTicks(underlyingSymbol)
-		if len(order.Legs) == 1 && order.Price.Abs().Cmp(kThree) >= 0 {
-			tick = bigTick // spreads always quantize on minimum tick size
-		}
-		if order.Price.Cmp(order.Price.QuantizeTruncate(tick)) != 0 {
-			return errors.New("order price must be quantized properly")
-		}
+	if order.Price.Cmp(order.Price.QuantizeTruncate(order.priceTick())) != 0 {
+		return errors.New("order price must be quantized properly")
 	}
 	if *dryFlag {
 		return errors.New("won't send order in dry run mode")
@@ -189,4 +186,46 @@ func (order *Order) HasFill() bool {
 func (order *Order) Vertical() bool {
 	opts := order.Options()
 	return len(opts) == 2 && opts[0].Class == opts[1].Class
+}
+
+func (order *Order) EstimateFee(marketable bool) decimal.Decimal {
+	fee := decimal.Zero
+	if order.hasEquityLeg() {
+		fee = fee.Add(kCatFeePerTrade)
+		fee = fee.Add(kBrokerFeePerTrade)
+	}
+	for _, leg := range order.Legs {
+		fee = fee.Add(leg.EstimateFee(marketable))
+	}
+	return fee
+}
+
+func (order *Order) hasEquityLeg() bool {
+	for _, leg := range order.Legs {
+		if _, ok := leg.Security.(*options.Equity); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (order *Order) Ticks() (decimal.Decimal, decimal.Decimal) {
+	tick, bigTick := decimal.Max, decimal.Max
+	for _, leg := range order.Legs {
+		t, bigT := leg.Security.Ticks()
+		tick = tick.Min(t)
+		bigTick = bigTick.Min(bigT)
+	}
+	if len(order.Legs) > 1 {
+		bigTick = tick // spreads always quantize on minimum tick size
+	}
+	return tick, bigTick
+}
+
+func (order *Order) priceTick() decimal.Decimal {
+	tick, bigTick := order.Ticks()
+	if order.Price.Abs().Cmp(decimal.Three) >= 0 {
+		return bigTick
+	}
+	return tick
 }

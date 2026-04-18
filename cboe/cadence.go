@@ -116,53 +116,27 @@ func isThirdWeek(day int) bool {
 }
 
 var kOptionCadence = map[symbol.Symbol]OptionCadence{
-	kSPXW:  OptionCadenceDaily,
-	kRUTW:  OptionCadenceDaily,
-	kXSP:   OptionCadenceDaily,
-	kNDX:   OptionCadenceDaily,
-	kSPY:   OptionCadenceDaily,
-	kQQQ:   OptionCadenceDaily,
-	kIWM:   OptionCadenceDaily,
-	kGOOGL: OptionCadenceTweekly,
-	kAAPL:  OptionCadenceTweekly,
-	kMSFT:  OptionCadenceTweekly,
-	kAMZN:  OptionCadenceTweekly,
-	kNVDA:  OptionCadenceTweekly,
-	kTSLA:  OptionCadenceTweekly,
-	kAVGO:  OptionCadenceTweekly,
-	kMETA:  OptionCadenceTweekly,
-	kIBIT:  OptionCadenceTweekly,
-	kTLT:   OptionCadenceTweekly,
-	kGLD:   OptionCadenceTweekly,
-	kSLV:   OptionCadenceTweekly,
-	kSPEQX: OptionCadenceMonthly,
-	kBTI:   OptionCadenceMonthly,
-	kVIXW:  OptionCadenceVIXWeekly,
-	kVIX:   OptionCadenceVIXMonthly,
+	symbol.SPXW:  OptionCadenceDaily,
+	symbol.RUTW:  OptionCadenceDaily,
+	symbol.XSP:   OptionCadenceDaily,
+	symbol.NDX:   OptionCadenceDaily,
+	symbol.SPY:   OptionCadenceDaily,
+	symbol.QQQ:   OptionCadenceDaily,
+	symbol.IWM:   OptionCadenceDaily,
+	symbol.GOOGL: OptionCadenceTweekly,
+	symbol.AAPL:  OptionCadenceTweekly,
+	symbol.MSFT:  OptionCadenceTweekly,
+	symbol.AMZN:  OptionCadenceTweekly,
+	symbol.NVDA:  OptionCadenceTweekly,
+	symbol.TSLA:  OptionCadenceTweekly,
+	symbol.AVGO:  OptionCadenceTweekly,
+	symbol.META:  OptionCadenceTweekly,
+	symbol.IBIT:  OptionCadenceTweekly,
+	symbol.TLT:   OptionCadenceTweekly,
+	symbol.GLD:   OptionCadenceTweekly,
+	symbol.SLV:   OptionCadenceTweekly,
+	symbol.SPEQX: OptionCadenceMonthly,
+	symbol.BTI:   OptionCadenceMonthly,
+	symbol.VIXW:  OptionCadenceVIXWeekly,
+	symbol.VIX:   OptionCadenceVIXMonthly,
 }
-
-const (
-	kSPXW  = symbol.Symbol('S' | 'P'<<8 | 'X'<<16 | 'W'<<24)
-	kRUTW  = symbol.Symbol('R' | 'U'<<8 | 'T'<<16 | 'W'<<24)
-	kXSP   = symbol.Symbol('X' | 'S'<<8 | 'P'<<16)
-	kNDX   = symbol.Symbol('N' | 'D'<<8 | 'X'<<16)
-	kSPY   = symbol.Symbol('S' | 'P'<<8 | 'Y'<<16)
-	kQQQ   = symbol.Symbol('Q' | 'Q'<<8 | 'Q'<<16)
-	kSLV   = symbol.Symbol('S' | 'L'<<8 | 'V'<<16)
-	kIWM   = symbol.Symbol('I' | 'W'<<8 | 'M'<<16)
-	kTLT   = symbol.Symbol('T' | 'L'<<8 | 'T'<<16)
-	kGLD   = symbol.Symbol('G' | 'L'<<8 | 'D'<<16)
-	kIBIT  = symbol.Symbol('I' | 'B'<<8 | 'I'<<16 | 'T'<<24)
-	kNVDA  = symbol.Symbol('N' | 'V'<<8 | 'D'<<16 | 'A'<<24)
-	kTSLA  = symbol.Symbol('T' | 'S'<<8 | 'L'<<16 | 'A'<<24)
-	kAVGO  = symbol.Symbol('A' | 'V'<<8 | 'G'<<16 | 'O'<<24)
-	kMETA  = symbol.Symbol('M' | 'E'<<8 | 'T'<<16 | 'A'<<24)
-	kMSFT  = symbol.Symbol('M' | 'S'<<8 | 'F'<<16 | 'T'<<24)
-	kAAPL  = symbol.Symbol('A' | 'A'<<8 | 'P'<<16 | 'L'<<24)
-	kGOOGL = symbol.Symbol('G' | 'O'<<8 | 'O'<<16 | 'G'<<24 | 'L'<<32)
-	kBTI   = symbol.Symbol('B' | 'T'<<8 | 'I'<<16)
-	kVIX   = symbol.Symbol('V' | 'I'<<8 | 'X'<<16)
-	kVIXW  = symbol.Symbol('V' | 'I'<<8 | 'X'<<16 | 'W'<<24)
-	kSPEQX = symbol.Symbol('S' | 'P'<<8 | 'E'<<16 | 'Q'<<24 | 'X'<<32)
-	kAMZN  = symbol.Symbol('A' | 'M'<<8 | 'Z'<<16 | 'N'<<24)
-)

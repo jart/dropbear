@@ -10,7 +10,7 @@ type Strike struct {
 	Put   *Option
 	Prev  *Strike
 	Next  *Strike
-	Chain *Options
+	Chain *Chain
 }
 
 func (s *Strike) String() string {

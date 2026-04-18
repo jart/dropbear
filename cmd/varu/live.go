@@ -264,7 +264,7 @@ func (t *Trader) sendLiveOrder(order *Order) {
 			Instruction: instruction,
 			Instrument: schwab.Instrument{
 				AssetType: schwab.AssetTypeOption,
-				Symbol:    leg.Option.OSI(),
+				Symbol:    leg.Option.Name(),
 			},
 		})
 	}

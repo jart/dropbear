@@ -18,7 +18,7 @@ import (
 // activeDirs returns the subset of dataDirs that exist on disk.
 func activeDirs() []string {
 	var dirs []string
-	for _, d := range dataDirs {
+	for _, d := range kDataDirs {
 		if fi, err := os.Stat(d); err == nil && fi.IsDir() {
 			dirs = append(dirs, d)
 		}
@@ -76,8 +76,8 @@ func runDownloader(symbols []symbol.Symbol, quit <-chan struct{}) {
 		default:
 		}
 
-		if date.Format("2006-01-02") < earliestDate {
-			log.Printf("downloader reached earliest date %s, stopping", earliestDate)
+		if date.Format("2006-01-02") < kEarliestDate {
+			log.Printf("downloader reached earliest date %s, stopping", kEarliestDate)
 			<-quit
 			return
 		}

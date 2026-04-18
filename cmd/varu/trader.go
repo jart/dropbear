@@ -21,7 +21,7 @@ import (
 type Trader struct {
 	Symbol                symbol.Symbol
 	Config                *Config
-	Chain                 *options.Options
+	Chain                 *options.Chain
 	Holdings              Holdings
 	OrderEvents           chan *schwab.OrderEvent
 	OrderUpdates          chan OrderUpdate
@@ -57,7 +57,7 @@ func NewTrader(symbol symbol.Symbol, config *Config) *Trader {
 	return &Trader{
 		Symbol:                symbol,
 		Config:                config,
-		Chain:                 options.NewOptions(),
+		Chain:                 options.NewChain(),
 		Holdings:              Holdings{Positions: map[*options.Option]*Holding{}},
 		OrderEvents:           make(chan *schwab.OrderEvent, 64),
 		OrderUpdates:          make(chan OrderUpdate, 64),
@@ -390,7 +390,7 @@ func (t *Trader) choosePriceAtSpread(spread decimal.Decimal) decimal.Decimal {
 	}
 	// apply our read on penny pilot program rules
 	tick, bigTick := getTicks(t.Symbol)
-	if len(t.StagedLegs) == 1 && price.Abs().Cmp(kThree) >= 0 {
+	if len(t.StagedLegs) == 1 && price.Abs().Cmp(decimal.Three) >= 0 {
 		tick = bigTick // spreads always quantize on minimum tick size
 	}
 	// buying is negative (debit) and selling is positive (credit)
@@ -623,13 +623,13 @@ func (t *Trader) computeGreeks() (delta, gamma, theta, vega decimal.Decimal) {
 }
 
 func (t *Trader) onOptionDef(o *options.Option) {
-	osi := o.OSI()
-	if existing := t.OptionsByOSI[osi]; existing != nil {
+	name := o.Name()
+	if existing := t.OptionsByOSI[name]; existing != nil {
 		existing.ID = o.ID
 		o = existing
 	}
 	t.OptionsByID[o.ID] = o
-	t.OptionsByOSI[osi] = o
+	t.OptionsByOSI[name] = o
 }
 
 func (t *Trader) onOptionDefEnd() {
@@ -720,9 +720,7 @@ func (t *Trader) onUnderlyingTick(m *databento.MBP1) {
 	if bid != databento.UndefPrice && ask != databento.UndefPrice {
 		bidPrice := decimal.Decimal(bid / 1000)
 		askPrice := decimal.Decimal(ask / 1000)
-		if bidPrice.IsPositive() && askPrice.IsPositive() {
-			t.UnderlyingPrice = bidPrice.Add(askPrice).Half()
-		}
+		t.UnderlyingPrice = bidPrice.Add(askPrice).Half()
 	}
 }
 
@@ -764,6 +762,6 @@ func (t *Trader) onOptionQuote(o *options.Option, m *databento.CMBP1) {
 		mustRecomputeGreeks = true
 	}
 	if mustRecomputeGreeks {
-		o.ComputeGreeks(t.Chain.Price, kRiskFreeRate, t.UnderlyingPrice)
+		o.ComputeGreeks(t.Chain.Price, kRiskFreeRate)
 	}
 }

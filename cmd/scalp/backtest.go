@@ -4,6 +4,7 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/netty"
 	"dropbear/options"
 	"dropbear/osi"
 	"dropbear/symbol"
@@ -14,9 +15,10 @@ import (
 )
 
 func (t *Trader) Backtest(dbn string, date clocky.Time) error {
+	netty.SetOffline()
 	wantYear, wantMonth, wantDay := date.Date()
 	log.Printf("starting backtest for %s on %04d-%02d-%02d",
-		t.Symbol, wantYear, wantMonth, wantDay)
+		t.Config.Symbol, wantYear, wantMonth, wantDay)
 	quoteReader, err := databento.OpenFileReader(dbn)
 	if err != nil {
 		return err
@@ -25,8 +27,9 @@ func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 	clocky.Now = clocky.FakeNow
 	clocky.Sleep = clocky.FakeSleep
 	ready := false
-	var nextThought, nextHeartbeat clocky.Time
-	for {
+	finished := false
+	var nextHeartbeat clocky.Time
+	for !finished {
 		rec, err := quoteReader.Read()
 		if err != nil {
 			if err == io.EOF {
@@ -34,12 +37,13 @@ func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 			}
 			return err
 		}
+		var now clocky.Time
 		switch m := rec.(type) {
 		case *databento.Instrument:
 			rs := m.GetRawSymbol()
 			sym, strike, class, expYear, expMonth, expDay, err := osi.Parse(rs)
 			if err == nil {
-				if sym == t.Symbol && expYear == wantYear && expMonth == wantMonth && expDay == wantDay {
+				if sym == t.Config.Symbol && expYear == wantYear && expMonth == wantMonth && expDay == wantDay {
 					t.onOptionDef(&options.Option{
 						ID:     m.Header.InstrumentID,
 						Class:  databento.InstrumentClass(class),
@@ -60,37 +64,39 @@ func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 			} else {
 				log.Printf("skipping instrument %s\n", rs)
 			}
+			continue
 		case *databento.MBP1:
+			now = m.TSRecv
+			clocky.SetNow(now)
 			e := t.onEquityTick(m)
 			if e == nil {
 				continue
 			}
 			t.simulateFills(e)
 		case *databento.CMBP1:
-			now := m.TSRecv
+			now = m.TSRecv
 			clocky.SetNow(now)
 			o := t.onOptionTick(m)
 			if o == nil {
 				continue
 			}
 			t.simulateFills(o)
-			if t.MarketClose != 0 && now.After(t.MarketClose) {
-				break
-			}
-			if !ready && t.Chain.AtTheMoney != nil {
-				t.onOptionDefEnd()
-				ready = true
-			}
-			if ready && now >= nextThought {
-				nextThought = now.Add(t.Config.Think)
-				t.onThought(now)
-			}
+		default:
+			return fmt.Errorf("unexpected record type %T", rec)
+		}
+		if t.MarketClose != 0 && now.After(t.MarketClose) {
+			finished = true
+		}
+		if !ready && t.Chain.AtTheMoney != nil {
+			t.onDefEnd()
+			ready = true
+		}
+		if ready {
+			t.onThought(now)
 			if now.After(nextHeartbeat) {
 				nextHeartbeat = now.Add(*heartbeatFlag)
 				t.onHeartbeat()
 			}
-		default:
-			return fmt.Errorf("unexpected record type %T", rec)
 		}
 	}
 	t.onEndOfDay()
@@ -114,23 +120,28 @@ func (t *Trader) simulateFillOrder(order *Order) bool {
 		panic("order already filled")
 	}
 
+	// simulate network and broker latency
+	now := clocky.Now()
+	if now.Before(order.Created.Add(*latencyFlag)) {
+		return false
+	}
+
 	// choose execution price
 	var priceThatMarketDemands decimal.Decimal
 	if *hostileFlag {
 		priceThatMarketDemands = order.NaturalPrice()
 	} else {
 		priceThatMarketDemands = order.MidPrice()
-		if len(order.Legs) > 1 {
-			tick, _ := getTicks(order.Legs[0].Security.GetSymbol())
-			priceThatMarketDemands = priceThatMarketDemands.QuantizeFloor(tick)
-		} else {
-			tick, bigTick := getTicks(order.Legs[0].Security.GetSymbol())
-			if priceThatMarketDemands.Abs().Cmp(kThree) >= 0 {
-				tick = bigTick
-			}
-			priceThatMarketDemands = priceThatMarketDemands.QuantizeFloor(tick)
-		}
 	}
+	var roundedPrice decimal.Decimal
+	tick, bigTick := order.Ticks()
+	if priceThatMarketDemands.Abs().Cmp(decimal.Three) >= 0 {
+		roundedPrice = priceThatMarketDemands.QuantizeFloor(bigTick)
+	} else {
+		roundedPrice = priceThatMarketDemands.QuantizeFloor(tick)
+	}
+	skew := priceThatMarketDemands.Sub(roundedPrice)
+	priceThatMarketDemands = roundedPrice
 
 	// market orders should fill immediately at price that market demands
 	if order.Price.IsZero() {
@@ -141,6 +152,7 @@ func (t *Trader) simulateFillOrder(order *Order) bool {
 	// e.g. order.price is -.5 (debit/buy) would fill when market moves from -.6 to -.4
 	// e.g. order.price is +.5 (credit/sell) would fill when market moves from +.4 to +.6
 	if priceThatMarketDemands.Cmp(order.Price) < 0 {
+		order.Making = true
 		return false // market hasn't reached our limit yet
 	}
 
@@ -157,7 +169,8 @@ func (t *Trader) simulateFillOrder(order *Order) bool {
 	// simulate fill by updating holdings and cash
 	log.Printf("simulated fill of order #%d at price %s -> %s\n",
 		order.ID, order.Price, priceThatMarketDemands)
-	for _, leg := range order.Legs {
+	fillPriceSum := decimal.Zero
+	for i, leg := range order.Legs {
 		var fillPrice decimal.Decimal
 		if *hostileFlag {
 			if leg.Quantity.IsPositive() {
@@ -168,11 +181,29 @@ func (t *Trader) simulateFillOrder(order *Order) bool {
 		} else {
 			fillPrice = leg.Security.MidPrice()
 		}
+		// apply quantization skew to last leg so fills sum to order price
+		if i == len(order.Legs)-1 {
+			if leg.Quantity.IsPositive() {
+				fillPrice = fillPrice.Add(skew)
+			} else {
+				fillPrice = fillPrice.Sub(skew)
+			}
+		}
+		if leg.Quantity.IsPositive() {
+			fillPriceSum = fillPriceSum.Sub(fillPrice)
+		} else {
+			fillPriceSum = fillPriceSum.Add(fillPrice)
+		}
 		t.Holdings.Add(leg.Security, leg.Quantity, fillPrice)
-		// fee := kFeePerContract.Mul(leg.Quantity.Abs())
-		// t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
 		leg.Filled = true
 	}
+	if fillPriceSum.Cmp(priceThatMarketDemands) != 0 {
+		panic(fmt.Sprintf("fill price sum %s does not match execution price %s", fillPriceSum, priceThatMarketDemands))
+	}
+
+	// simulate commission and regulatory fees
+	fee := order.EstimateFee(!order.Making)
+	t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
 
 	// caller should now call removePendingOrder if it was added
 	return true
