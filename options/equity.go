@@ -24,7 +24,7 @@ func (e *Equity) GetBid() decimal.Decimal   { return e.Bid }
 func (e *Equity) GetAsk() decimal.Decimal   { return e.Ask }
 func (e *Equity) GetBidSize() uint32        { return e.BidSize }
 func (e *Equity) GetAskSize() uint32        { return e.AskSize }
-func (e *Equity) MidPrice() decimal.Decimal { return e.Bid.Add(e.Ask).DivInt(2) }
+func (e *Equity) MidPrice() decimal.Decimal { return e.Bid.Add(e.Ask).Half() }
 func (e *Equity) Multiplier() int           { return 1 }
 func (e *Equity) GetDelta() decimal.Decimal { return decimal.One }
 

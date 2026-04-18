@@ -109,7 +109,7 @@ func TestProbabilitySumApproximatesOne(t *testing.T) {
 	sigma := 0.15
 	E := clocky.Day
 	spread := decimal.Parse("0.2")
-	halfSpread := spread.DivInt(2)
+	halfSpread := spread.Half()
 	var strikes []*Strike
 	for k := 5900; k <= 6100; k += 5 {
 		K := float64(k)

@@ -36,7 +36,7 @@ func (b *Book) BestBidAsk() (bid, ask decimal.Decimal) {
 
 func (b *Book) MidPrice() decimal.Decimal {
 	bid, ask := b.BestBidAsk()
-	return bid.Add(ask).DivInt(2)
+	return bid.Add(ask).Half()
 }
 
 func (b *Book) UpdateBid(price, size decimal.Decimal) {
@@ -150,7 +150,7 @@ func (b *Book) MidPriceAtDepth(valueDepth decimal.Decimal) decimal.Decimal {
 	if bid.IsZero() || ask.IsZero() {
 		return decimal.Zero
 	}
-	return bid.Add(ask).DivInt(2)
+	return bid.Add(ask).Half()
 }
 
 // MarketBuyCost estimates total cost to buy baseQty.

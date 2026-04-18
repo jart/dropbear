@@ -256,7 +256,7 @@ options:
 		// figure out our price
 		limitPrice := *flagLimit
 		if orderType == alpaca.OrderTypeLimit && limitPrice.IsZero() {
-			limitPrice = quote.BidPrice.Add(quote.AskPrice).DivInt(2)
+			limitPrice = quote.BidPrice.Add(quote.AskPrice).Half()
 			if side == ds.SideBuy {
 				limitPrice = limitPrice.Mul(decimal.One.Sub(*flagGreed))
 				limitPrice = limitPrice.QuantizeTruncate(decimal.Cent)

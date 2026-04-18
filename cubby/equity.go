@@ -57,7 +57,7 @@ func (e *Equity) GetMaxOrderQuantity(price decimal.Decimal) decimal.Decimal {
 	lo := decimal.Zero
 	hi := decimal.FromInt(100_000)
 	for lo.Cmp(hi) < 0 {
-		mid := lo.Add(hi.Sub(lo).Add(decimal.One).DivInt(2))
+		mid := lo.Add(hi.Sub(lo).Add(decimal.One).Half())
 		newQty := e.Quantity.Add(mid)
 		newMargin := e.Asset.GetInitialMargin(newQty, price)
 		marginNeeded := newMargin.Sub(oldMargin)

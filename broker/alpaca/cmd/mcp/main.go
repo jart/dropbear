@@ -938,7 +938,7 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 
 		orderLimitPrice := limitPrice
 		if orderType == alpaca.OrderTypeLimit && orderLimitPrice.IsZero() {
-			orderLimitPrice = bidPrice.Add(askPrice).DivInt(2)
+			orderLimitPrice = bidPrice.Add(askPrice).Half()
 			if side == ds.SideBuy {
 				orderLimitPrice = orderLimitPrice.Mul(decimal.One.Sub(greed))
 				orderLimitPrice = orderLimitPrice.QuantizeTruncate(decimal.Cent)
@@ -1100,7 +1100,7 @@ func placeMlegViaPlaceOrder(args map[string]any, client *alpaca.Client, qty deci
 		}
 		if snap.LatestQuote != nil {
 			q := snap.LatestQuote
-			mid := q.BidPrice.Add(q.AskPrice).DivInt(2)
+			mid := q.BidPrice.Add(q.AskPrice).Half()
 			quoteLines = append(quoteLines, fmt.Sprintf("  %s (%s): bid %s ask %s mid %s",
 				leg.Symbol, leg.Side, q.BidPrice, q.AskPrice, mid))
 		} else {
@@ -1164,7 +1164,7 @@ func getQuote(args map[string]any) ToolCallResult {
 
 		if snap.LatestQuote != nil {
 			q := snap.LatestQuote
-			midpoint := q.BidPrice.Add(q.AskPrice).DivInt(2)
+			midpoint := q.BidPrice.Add(q.AskPrice).Half()
 			spread := q.AskPrice.Sub(q.BidPrice)
 			lines = append(lines, fmt.Sprintf("  Bid: %s (size: %d)", q.BidPrice, q.BidSize))
 			lines = append(lines, fmt.Sprintf("  Ask: %s (size: %d)", q.AskPrice, q.AskSize))
@@ -1195,7 +1195,7 @@ func getQuote(args map[string]any) ToolCallResult {
 		}
 	}
 
-	midpoint := quote.BidPrice.Add(quote.AskPrice).DivInt(2)
+	midpoint := quote.BidPrice.Add(quote.AskPrice).Half()
 	spread := quote.AskPrice.Sub(quote.BidPrice)
 	spreadBps := decimal.Zero
 	if !midpoint.IsZero() {
@@ -1557,7 +1557,7 @@ func getSnapshot(args map[string]any) ToolCallResult {
 
 		if snap.LatestQuote != nil {
 			q := snap.LatestQuote
-			midpoint := q.BidPrice.Add(q.AskPrice).DivInt(2)
+			midpoint := q.BidPrice.Add(q.AskPrice).Half()
 			spread := q.AskPrice.Sub(q.BidPrice)
 			lines = append(lines, "\nLatest Quote:")
 			lines = append(lines, fmt.Sprintf("  Bid: %s (size: %d)  Ask: %s (size: %d)",
@@ -1602,7 +1602,7 @@ func getSnapshot(args map[string]any) ToolCallResult {
 
 	if snapshot.LatestQuote != nil {
 		q := snapshot.LatestQuote
-		midpoint := q.BidPrice.Add(q.AskPrice).DivInt(2)
+		midpoint := q.BidPrice.Add(q.AskPrice).Half()
 		spread := q.AskPrice.Sub(q.BidPrice)
 		lines = append(lines, "\nLatest Quote:")
 		lines = append(lines, fmt.Sprintf("  Bid: %s (size: %s)  Ask: %s (size: %s)",
@@ -2044,7 +2044,7 @@ func placeMlegOrder(args map[string]any) ToolCallResult {
 		}
 		if snap.LatestQuote != nil {
 			q := snap.LatestQuote
-			mid := q.BidPrice.Add(q.AskPrice).DivInt(2)
+			mid := q.BidPrice.Add(q.AskPrice).Half()
 			quoteLines = append(quoteLines, fmt.Sprintf("  %s: bid %s ask %s mid %s (side: %s, ratio: %s)",
 				leg.Symbol, q.BidPrice, q.AskPrice, mid, leg.Side, leg.RatioQty))
 		} else {
@@ -2202,7 +2202,7 @@ func placeBoxSpread(args map[string]any) ToolCallResult {
 		}
 		if snap.LatestQuote != nil {
 			q := snap.LatestQuote
-			mid := q.BidPrice.Add(q.AskPrice).DivInt(2)
+			mid := q.BidPrice.Add(q.AskPrice).Half()
 			quoteLines = append(quoteLines, fmt.Sprintf("  %s (%s): bid %s ask %s mid %s",
 				leg.Symbol, leg.Side, q.BidPrice, q.AskPrice, mid))
 			if leg.Side == ds.SideBuy {

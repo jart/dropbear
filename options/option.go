@@ -63,7 +63,7 @@ func (o *Option) HasGreeks() bool {
 // MidPrice returns the mid price of the option, or zero if no quote is available.
 // This might not be a legal price for an order or quote, e.g. SPX ticks at 0.10 or 0.05 increments.
 func (o *Option) MidPrice() decimal.Decimal {
-	return o.Bid.Add(o.Ask).DivInt(2)
+	return o.Bid.Add(o.Ask).Half()
 }
 
 // GetSymbol returns the underlying symbol of the option.

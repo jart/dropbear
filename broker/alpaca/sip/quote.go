@@ -23,7 +23,7 @@ type Quote struct {
 
 // Midpoint returns the midpoint between bid and ask prices.
 func (q *Quote) Midpoint() decimal.Decimal {
-	return q.BidPrice.Add(q.AskPrice).DivInt(2)
+	return q.BidPrice.Add(q.AskPrice).Half()
 }
 
 // Spread returns the bid-ask spread.

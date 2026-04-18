@@ -134,7 +134,7 @@ func (t *Trader) computeBoxPrice(s1, s2 *options.Strike, direction int) decimal.
 
 func midSpread(o *options.Option, action int, spread decimal.Decimal) decimal.Decimal {
 	mid := o.MidPrice()
-	hlf := o.Ask.Sub(o.Bid).DivInt(2)
+	hlf := o.Ask.Sub(o.Bid).Half()
 	if action > 0 {
 		return mid.Add(hlf.Mul(spread))
 	}

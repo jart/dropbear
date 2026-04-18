@@ -56,7 +56,7 @@ func (s *Strike) rawProbability() decimal.Decimal {
 	l := s.Prev.computeProbability()
 	r := s.Next.computeProbability()
 	if l.IsPositive() && r.IsPositive() {
-		return l.Add(r).DivInt(2)
+		return l.Add(r).Half()
 	}
 	return decimal.Zero
 }

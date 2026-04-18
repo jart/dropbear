@@ -46,7 +46,7 @@ stores six decimal places in a single `int64` word, just like CTS.
 
 - `decimal.Parse("0.01")`
 - `decimal.FromInt(100)`
-- `bid.Add(ask).DivInt(2)` calculates midpoint
+- `bid.Add(ask).DivInt(2)` or `bid.Add(ask).Half()` calculates midpoint
 - `x.Cmp(y)` for comparisons
 - `x.{Min,Max}(y)` is nice and terse
 - `d.String()` produces string that shows decimal places be removes trailing zeroes

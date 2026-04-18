@@ -379,7 +379,7 @@ func (t *Trader) choosePriceAtSpread(spread decimal.Decimal) decimal.Decimal {
 	for _, leg := range t.StagedLegs {
 		opt := leg.Option
 		mid := opt.MidPrice()
-		hlf := opt.Ask.Sub(opt.Bid).DivInt(2)
+		hlf := opt.Ask.Sub(opt.Bid).Half()
 		if leg.Quantity.IsPositive() {
 			// buying: mid + halfSpread * spread
 			price = price.Sub(mid.Add(hlf.Mul(spread)))
@@ -721,7 +721,7 @@ func (t *Trader) onUnderlyingTick(m *databento.MBP1) {
 		bidPrice := decimal.Decimal(bid / 1000)
 		askPrice := decimal.Decimal(ask / 1000)
 		if bidPrice.IsPositive() && askPrice.IsPositive() {
-			t.UnderlyingPrice = bidPrice.Add(askPrice).DivInt(2)
+			t.UnderlyingPrice = bidPrice.Add(askPrice).Half()
 		}
 	}
 }

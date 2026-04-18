@@ -359,7 +359,7 @@ func calcDownwardMonotonicity(bars []dailyBar) decimal.Decimal {
 	nn := decimal.FromInt(n)
 	denom := nn.Mul(decimal.FromInt(n*n - 1))
 	spearman := decimal.One.Sub(sumD2.MulInt(6).Div(denom))
-	return decimal.One.Sub(spearman).DivInt(2)
+	return decimal.One.Sub(spearman).Half()
 }
 
 // calcAvgDailyNotional calculates average daily notional volume in millions.
@@ -383,7 +383,7 @@ func calcVolumeSweetSpot(avgNotional, target, sigma decimal.Decimal) decimal.Dec
 	logTarget := target.Log()
 	z := logVol.Sub(logTarget).Div(sigma)
 	// exp(-0.5 * z * z)
-	return z.Sqr().DivInt(2).Neg().Exp()
+	return z.Sqr().Half().Neg().Exp()
 }
 
 // calcDailySharpe calculates the daily Sharpe ratio.
