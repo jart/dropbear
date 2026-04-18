@@ -2,6 +2,7 @@ package options
 
 import (
 	"dropbear/broker/databento"
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"math"
@@ -39,6 +40,15 @@ type Option struct {
 	osi     string                    // caches OSI code for quick access
 }
 
+func (o *Option) GetName() string           { return o.OSI() }
+func (o *Option) GetID() uint32             { return o.ID }
+func (o *Option) GetBid() decimal.Decimal   { return o.Bid }
+func (o *Option) GetAsk() decimal.Decimal   { return o.Ask }
+func (o *Option) GetBidSize() uint32        { return o.BidSize }
+func (o *Option) GetAskSize() uint32        { return o.AskSize }
+func (o *Option) Multiplier() int           { return 100 }
+func (o *Option) GetDelta() decimal.Decimal { return o.Delta }
+
 // HasQuotes returns true if the option has valid bid and ask prices.
 func (o *Option) HasQuotes() bool {
 	return (o.Got & (GotBid | GotAsk)) == (GotBid | GotAsk)
@@ -66,25 +76,8 @@ func (o *Option) Expiry() clocky.Time {
 	if o.exp != 0 {
 		return o.exp
 	}
-	o.exp = clocky.Date(o.Year, o.Month, o.Day, 16, 0, 0, 0, clocky.NYC)
+	o.exp = cboe.GetCloseTime(o.Year, o.Month, o.Day)
 	return o.exp
-}
-
-// FairPrice returns the delta-adjusted mid price using the latest ES futures price.
-// This predicts what the option mid should be right now, even if the OPRA quote is stale,
-// by applying: fair = lastMid + delta * (currentES - esAtLastQuote).
-// Returns the stale market mid if delta hasn't been computed yet.
-func (o *Option) FairPrice(futuresPrice decimal.Decimal) decimal.Decimal {
-	if !o.HasGreeks() || futuresPrice.IsZero() || o.fut.IsZero() {
-		return o.MidPrice()
-	}
-	dES := futuresPrice.Sub(o.fut)
-	adj := o.Delta.Mul(dES)
-	fair := o.mid.Add(adj)
-	if !fair.IsPositive() {
-		panic("computed bad fair price")
-	}
-	return fair
 }
 
 // IntrinsicValue returns the intrinsic value of the option contract at the given underlying price.
@@ -151,36 +144,4 @@ func (o *Option) ComputeGreeks(underlyingPrice, riskFreeRate, futuresPrice decim
 	o.Vega = decimal.FromFloat64(vega / 100)
 	o.IV = decimal.FromFloat64(iv)
 	o.Got |= GotGreeks
-}
-
-func (o *Option) GetName() string {
-	return o.OSI()
-}
-
-func (o *Option) GetID() uint32 {
-	return o.ID
-}
-
-func (o *Option) GetBid() decimal.Decimal {
-	return o.Bid
-}
-
-func (o *Option) GetAsk() decimal.Decimal {
-	return o.Ask
-}
-
-func (o *Option) GetBidSize() uint32 {
-	return o.BidSize
-}
-
-func (o *Option) GetAskSize() uint32 {
-	return o.AskSize
-}
-
-func (o *Option) Multiplier() int {
-	return 100
-}
-
-func (o *Option) GetDelta() decimal.Decimal {
-	return o.Delta
 }

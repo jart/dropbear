@@ -15,7 +15,7 @@ package black76
 
 import (
 	"dropbear/clocky"
-	"dropbear/prob"
+	"dropbear/norm"
 	"math"
 )
 
@@ -62,9 +62,9 @@ func IV(F, K, r float64, E clocky.Duration, marketPrice float64, isCall bool) fl
 		// compute price inline to reuse d1/d2
 		var p float64
 		if isCall {
-			p = disc * (F*prob.NormCDF(d1) - K*prob.NormCDF(d2))
+			p = disc * (F*norm.CDF(d1) - K*norm.CDF(d2))
 		} else {
-			p = disc * (K*prob.NormCDF(-d2) - F*prob.NormCDF(-d1))
+			p = disc * (K*norm.CDF(-d2) - F*norm.CDF(-d1))
 		}
 		diff := p - marketPrice
 		if math.Abs(diff) < 1e-10 {
@@ -77,7 +77,7 @@ func IV(F, K, r float64, E clocky.Duration, marketPrice float64, isCall bool) fl
 			lo = sigma
 		}
 		// try halley step
-		vega := F * disc * prob.NormPDF(d1) * sqrtT
+		vega := F * disc * norm.PDF(d1) * sqrtT
 		if vega > 1e-12 {
 			next := sigma - 2*diff/(2*vega-diff*d1*d2/sigma)
 			if next > lo && next < hi {
@@ -116,9 +116,9 @@ func CallGreeks(F, K, r float64, E clocky.Duration, sigma float64) (delta, theta
 	sigmaT := sigma * sqrtT
 	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
 	d2 := d1 - sigmaT
-	Nd1 := prob.NormCDF(d1)
-	Nd2 := prob.NormCDF(d2)
-	npd1 := prob.NormPDF(d1)
+	Nd1 := norm.CDF(d1)
+	Nd2 := norm.CDF(d2)
+	npd1 := norm.PDF(d1)
 	FNd1 := F * Nd1
 	KNd2 := K * Nd2
 	callpv := FNd1 - KNd2
@@ -155,9 +155,9 @@ func PutGreeks(F, K, r float64, E clocky.Duration, sigma float64) (delta, theta,
 	sigmaT := sigma * sqrtT
 	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
 	d2 := d1 - sigmaT
-	Nd1 := prob.NormCDF(d1)
-	Nd2 := prob.NormCDF(d2)
-	npd1 := prob.NormPDF(d1)
+	Nd1 := norm.CDF(d1)
+	Nd2 := norm.CDF(d2)
+	npd1 := norm.PDF(d1)
 	FNd1 := F * Nd1
 	KNd2 := K * Nd2
 	putpv := K - KNd2 - F + FNd1
@@ -184,7 +184,7 @@ func CallPrice(F, K, r float64, E clocky.Duration, sigma float64) float64 {
 	sigmaT := sigma * sqrtT
 	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
 	d2 := d1 - sigmaT
-	return math.Exp(-r*T) * (F*prob.NormCDF(d1) - K*prob.NormCDF(d2))
+	return math.Exp(-r*T) * (F*norm.CDF(d1) - K*norm.CDF(d2))
 }
 
 // PutPrice computes the price of a put option using Black-76.
@@ -202,5 +202,5 @@ func PutPrice(F, K, r float64, E clocky.Duration, sigma float64) float64 {
 	sigmaT := sigma * sqrtT
 	d1 := math.FMA(.5, sigmaT, math.Log(F/K)/sigmaT)
 	d2 := d1 - sigma*sqrtT
-	return math.Exp(-r*T) * (K*prob.NormCDF(-d2) - F*prob.NormCDF(-d1))
+	return math.Exp(-r*T) * (K*norm.CDF(-d2) - F*norm.CDF(-d1))
 }

@@ -82,8 +82,8 @@ func (t *Trader) onThought(now clocky.Time) {
 }
 
 func (t *Trader) buyCall() {
-	atm := t.Chain.AtTheMoney.Prev
-	if atm == nil || !atm.IsReady() || !atm.Call.Ask.IsPositive() {
+	atm := t.Chain.AtTheMoney.Next
+	if atm == nil || !atm.IsReady() {
 		return
 	}
 	t.OrderCounter++
@@ -96,8 +96,8 @@ func (t *Trader) buyCall() {
 }
 
 func (t *Trader) buyPut() {
-	atm := t.Chain.AtTheMoney
-	if atm == nil || !atm.IsReady() || !atm.Put.Ask.IsPositive() {
+	atm := t.Chain.AtTheMoney.Prev
+	if atm == nil || !atm.IsReady() {
 		return
 	}
 	t.OrderCounter++
@@ -119,6 +119,7 @@ func (t *Trader) hedgeDelta() {
 	if qty.IsZero() {
 		return
 	}
+	t.onHeartbeat()
 	log.Printf("buying %s shares to hedge delta of %s\n", qty, delta)
 	order := &Order{
 		Trader: t,
@@ -133,12 +134,16 @@ func (t *Trader) onHeartbeat() {
 	if equity == nil {
 		return
 	}
+	cost := decimal.Zero
 	shares := decimal.Zero
-	if holding := t.Holdings.Positions[equity]; holding != nil {
+	holding := t.Holdings.Positions[equity]
+	if holding != nil {
 		shares = holding.Quantity
+		cost = holding.AverageCost
 	}
-	log.Printf("price:%s shares:%s delta:%s cash:%s equity:%s",
-		equity.MidPrice(), shares, t.computeDelta(), t.Holdings.Cash, t.Holdings.LiquidationValue())
+	log.Printf("price:%s shares:%s cost:%s delta:%s cash:%s equity:%s",
+		equity.MidPrice(), shares, cost, t.computeDelta(),
+		t.Holdings.Cash, t.Holdings.LiquidationValue())
 }
 
 func (t *Trader) computeDelta() decimal.Decimal {

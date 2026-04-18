@@ -16,50 +16,18 @@ type Equity struct {
 	TS      clocky.Time     // timestamp of this quote
 }
 
-func (e *Equity) String() string {
-	return e.GetName()
-}
-
-func (e *Equity) GetName() string {
-	return e.Symbol.String()
-}
-
-func (e *Equity) GetSymbol() symbol.Symbol {
-	return e.Symbol
-}
-
-func (e *Equity) GetID() uint32 {
-	return e.ID
-}
-
-func (e *Equity) GetBid() decimal.Decimal {
-	return e.Bid
-}
-
-func (e *Equity) GetAsk() decimal.Decimal {
-	return e.Ask
-}
-
-func (e *Equity) GetBidSize() uint32 {
-	return e.BidSize
-}
-
-func (e *Equity) GetAskSize() uint32 {
-	return e.AskSize
-}
-
-func (e *Equity) MidPrice() decimal.Decimal {
-	return e.Bid.Add(e.Ask).DivInt(2)
-}
+func (e *Equity) String() string            { return e.GetName() }
+func (e *Equity) GetName() string           { return e.Symbol.String() }
+func (e *Equity) GetSymbol() symbol.Symbol  { return e.Symbol }
+func (e *Equity) GetID() uint32             { return e.ID }
+func (e *Equity) GetBid() decimal.Decimal   { return e.Bid }
+func (e *Equity) GetAsk() decimal.Decimal   { return e.Ask }
+func (e *Equity) GetBidSize() uint32        { return e.BidSize }
+func (e *Equity) GetAskSize() uint32        { return e.AskSize }
+func (e *Equity) MidPrice() decimal.Decimal { return e.Bid.Add(e.Ask).DivInt(2) }
+func (e *Equity) Multiplier() int           { return 1 }
+func (e *Equity) GetDelta() decimal.Decimal { return decimal.One }
 
 func (e *Equity) IntrinsicValue(underlyingPrice decimal.Decimal) decimal.Decimal {
 	return underlyingPrice
-}
-
-func (e *Equity) Multiplier() int {
-	return 1
-}
-
-func (e *Equity) GetDelta() decimal.Decimal {
-	return decimal.One
 }

@@ -7,8 +7,8 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/loggy"
+	"dropbear/norm"
 	"dropbear/options"
-	"dropbear/prob"
 	"dropbear/symbol"
 	"log"
 	"math"
@@ -473,7 +473,7 @@ func (t *Trader) precomputeSettlements() {
 		if em > 0 {
 			movement := t.Chain.Price.Sub(strike.Price).Abs().Float64()
 			sigmas := movement / em
-			blend := (prob.NormCDF(sigmas) - .5) * 2
+			blend := (norm.CDF(sigmas) - .5) * 2
 			ss.maxLoss = math.FMA(t.Config.Floor-t.Config.Budget, blend, t.Config.Budget) * rr
 		}
 		t.BaselineSettlements = append(t.BaselineSettlements, ss)
