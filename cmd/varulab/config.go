@@ -28,7 +28,6 @@ var kBaseFlags = "-hostile"
 // absent) generates the full set of flag combinations to test.
 var kFlagDimensions = [][]string{
 	{"-direction=-1"},
-	{"-strikes=1", "-strikes=2"},
-	{"-quantum=50", "-quantum=100"},
+	{"-strikes=2", "-strikes=3"},
 	{"-latency=1s"},
 }

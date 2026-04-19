@@ -213,7 +213,7 @@ func (t *Trader) onEquityTick(m *databento.MBP1) *options.Equity {
 		switch m.Action {
 		case databento.ActionTrade:
 			t.onEquityTrade(e, m)
-		case databento.ActionAdd, databento.ActionCancel:
+		case databento.ActionAdd, databento.ActionCancel, databento.ActionClear, databento.ActionModify:
 			if m.Header.TSEvent > e.TS {
 				t.onEquityQuote(e, m)
 			}

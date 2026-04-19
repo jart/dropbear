@@ -50,7 +50,7 @@ func main() {
 	dateFlag := clocky.TimeFlag("date", "", "date of the trades")
 	directionFlag := decimal.Flag("direction", "1", "direction of options trade (1=long, -1=short)")
 	straddlesFlag := decimal.Flag("straddles", "5", "number of ATM straddles to buy at open")
-	quantumFlag := decimal.Flag("quantum", "30", "share lot size for delta hedging")
+	quantumFlag := decimal.Flag("quantum", "100", "share lot size for delta hedging")
 	spreadFlag := decimal.Flag("spread", "1", "spread crossing for straddle (-1=make, 0=mid, 1=take)")
 	startOfDayFlag := flag.Int("sod", 9_30_05, "start of day in HHMMSS")
 	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")

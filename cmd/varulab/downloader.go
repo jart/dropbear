@@ -122,6 +122,11 @@ func runDownloader(symbols []symbol.Symbol, quit <-chan struct{}) {
 				continue
 			}
 			log.Printf("downloaded %s %s", sym, dateStr)
+			for _, dataset := range equityDatasets(sym) {
+				if err := injectEquity(sym, path, dataset); err != nil {
+					log.Printf("equity inject failed %s %s %s: %v", sym, dateStr, dataset, err)
+				}
+			}
 			n := gScheduler.GenerateRuns(gGitRev)
 			if n > 0 {
 				log.Printf("generated %d new runs after download", n)
@@ -164,6 +169,36 @@ func downloadDbn(sym symbol.Symbol, date, outputPath string) error {
 	}
 
 	return os.Rename(tmpPath, outputPath)
+}
+
+// equityDatasets returns the Databento datasets for a symbol's underlying
+// equity quotes across the three DMA-routable exchanges, or nil for index
+// options with no tradeable underlying.
+func equityDatasets(sym symbol.Symbol) []string {
+	switch sym {
+	case symbol.SPXW, symbol.RUTW, symbol.XSP, symbol.NDX,
+		symbol.VIX, symbol.VIXW, symbol.SPEQX:
+		return nil
+	default:
+		return []string{"EQUS.MINI"}
+	}
+}
+
+func injectEquity(sym symbol.Symbol, dbnPath, dataset string) error {
+	args := []string{
+		"run", "./broker/databento/cmd/dbninject",
+		"-file", dbnPath,
+		"-dataset", dataset,
+		"-sym", sym.String(),
+		"-schema", "mbp-1",
+	}
+	log.Printf("exec: go %s", strings.Join(args, " "))
+	cmd := exec.Command("go", args...)
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("dbninject: %w", err)
+	}
+	return nil
 }
 
 func fileExists(path string) bool {
