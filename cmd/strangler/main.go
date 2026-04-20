@@ -93,6 +93,7 @@ func main() {
 		defer f.Close()
 	}
 
+	// backtesting
 	if !*liveFlag {
 		t := NewTrader(newConfig())
 		err := t.Backtest(*dbnFlag, *dateFlag)
@@ -102,7 +103,62 @@ func main() {
 		return
 	}
 
-	log.Fatal("live mode not yet implemented for strangler")
+	// production
+	var t *Trader
+	var traders []*Trader
+	loggy.AlsoLogToFile()
+	log.Printf("prepare to be strangled")
+
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.NVDA
+	t.Config.Strikes = 2
+	t.Config.Tolerance = decimal.Parse("-4")
+	t.Config.Patience = 30 * clocky.Second
+	traders = append(traders, t)
+
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.TSLA
+	t.Config.Strikes = 3
+	t.Config.Tolerance = decimal.Parse("-4")
+	t.Config.Patience = 30 * clocky.Second
+	traders = append(traders, t)
+
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.AMZN
+	t.Config.Strikes = 3
+	t.Config.Tolerance = decimal.Parse("-4")
+	t.Config.Patience = 30 * clocky.Second
+	traders = append(traders, t)
+
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.MSFT
+	t.Config.Direction = decimal.One
+	t.Config.Tolerance = decimal.Parse("-4")
+	t.Config.Patience = 30 * clocky.Second
+	traders = append(traders, t)
+
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.AAPL
+	t.Config.Strikes = 2
+	t.Config.Quantum = decimal.Ten
+	t.Config.Direction = decimal.One
+	t.Config.Tolerance = decimal.Parse("-4")
+	t.Config.Patience = 30 * clocky.Second
+	traders = append(traders, t)
+
+	// subscribe to schwab order updates
+	// they only let us have one connection
+	gSchwabClient = schwab.NewClient()
+	orderUpdates := gSchwabClient.OrderUpdates()
+	go fanoutSchwabOrderUpdates(orderUpdates, traders)
+
+	// start trading
+	for _, t := range traders {
+		go t.Live()
+	}
+
+	// wait forever
+	select {}
 }
 
 func fanoutSchwabOrderUpdates(orderEvents <-chan *schwab.OrderEvent, traders []*Trader) {
