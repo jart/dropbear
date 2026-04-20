@@ -30,5 +30,5 @@ var kFlagDimensions = [][]string{
 	{"-direction=1"},
 	{"-strikes=1", "-strikes=2", "-strikes=3"},
 	{"-quantum=10"},
-	{"-tolerance=-2", "-tolerance=-3", "-tolerance=-4", "-tolerance=-5", "-tolerance=-6"},
+	{"-tolerance=-2", "-tolerance=-3", "-tolerance=-4", "-tolerance=-5", "-tolerance=-6", "-tolerance=1", "-tolerance=2", "-tolerance=4", "-tolerance=6"},
 }

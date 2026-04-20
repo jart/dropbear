@@ -142,7 +142,7 @@ func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
 			order.ID, order.Quantity, demand, order.Price)
 		t.Holdings.Add(order.Security, order.Quantity, demand)
 		order.Filled = true
-		fee := order.EstimateFee(true, !order.Making)
+		fee := order.EstimateFee(order.Quantity, true, !order.Making)
 		t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
 		return true
 	case *options.Equity:
@@ -209,7 +209,7 @@ func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
 		if got.Cmp(need) == 0 {
 			order.Filled = true
 		}
-		fee := order.EstimateFee(first, !order.Making)
+		fee := order.EstimateFee(got, first, !order.Making)
 		t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
 		return order.Filled
 	default:

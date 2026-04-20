@@ -20,10 +20,10 @@ type Order struct {
 	Type           OrderType       `json:"type"`             // e.g. limit, market
 	TimeInForce    TimeInForce     `json:"time_in_force"`    //
 	Side           ds.Side         `json:"side"`             //
-	Notional       decimal.Decimal `json:"notional"`         // ordered notional amount. if entered, qty will be null. can take up to 9 decimal points [rounded to 8].
-	Qty            decimal.Decimal `json:"qty"`              // ordered quantity. if entered, notional will be null. can take up to 9 decimal points [rounded to 8]. required if order class is mleg.
-	FilledQty      decimal.Decimal `json:"filled_qty"`       //
-	FilledAvgPrice decimal.Decimal `json:"filled_avg_price"` //
+	Notional       decimal.Decimal `json:"notional"`         // ordered notional amount. if entered, qty will be null. can take up to 9 decimal points [rounded to 6].
+	Qty            decimal.Decimal `json:"qty"`              // always positive, ordered quantity. if entered, notional will be null. can take up to 9 decimal points [rounded to 6]. required if order class is mleg.
+	FilledQty      decimal.Decimal `json:"filled_qty"`       // always positive, even for sell orders
+	FilledAvgPrice decimal.Decimal `json:"filled_avg_price"` // average price of filled shares
 	LimitPrice     decimal.Decimal `json:"limit_price"`      //
 	StopPrice      decimal.Decimal `json:"stop_price"`       //
 	CreatedAt      clocky.Time     `json:"created_at"`       //

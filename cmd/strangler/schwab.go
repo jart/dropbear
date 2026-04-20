@@ -5,20 +5,16 @@ import (
 	"dropbear/broker/schwab"
 	"dropbear/clocky"
 	"dropbear/options"
-	"dropbear/osi"
-	"dropbear/symbol"
-	"fmt"
-	"io"
 	"log"
 	"os"
 )
 
-type OrderUpdate struct {
+type OrderUpdateSchwab struct {
 	Order   *Order
 	OrderID schwab.OrderID
 }
 
-func (t *Trader) Live() {
+func (t *Trader) LiveSchwab() {
 
 	// subscribe to databento data
 	key := databento.MustLoadDefaultKey()
@@ -47,11 +43,11 @@ func (t *Trader) Live() {
 		case m := <-optionTicks:
 			t.onOptionTick(m)
 			continue
-		case update := <-t.OrderEvents:
-			t.onOrderEvent(update)
+		case update := <-t.OrderEventsSchwab:
+			t.onOrderEventSchwab(update)
 			continue
-		case orderUpdate := <-t.OrderUpdates:
-			t.onOrderOrderID(orderUpdate.Order, orderUpdate.OrderID)
+		case orderUpdate := <-t.OrderUpdatesSchwab:
+			t.onOrderOrderIDSchwab(orderUpdate.Order, orderUpdate.OrderID)
 			continue
 		case <-heartbeat.C:
 			t.onHeartbeat()
@@ -75,15 +71,15 @@ func (t *Trader) Live() {
 			t.onEquityTick(m)
 		case m := <-optionTicks:
 			t.onOptionTick(m)
-		case update := <-t.OrderEvents:
-			t.onOrderEvent(update)
-		case orderUpdate := <-t.OrderUpdates:
-			t.onOrderOrderID(orderUpdate.Order, orderUpdate.OrderID)
+		case update := <-t.OrderEventsSchwab:
+			t.onOrderEventSchwab(update)
+		case orderUpdate := <-t.OrderUpdatesSchwab:
+			t.onOrderOrderIDSchwab(orderUpdate.Order, orderUpdate.OrderID)
 		case <-heartbeat.C:
 			t.onHeartbeat()
 		case <-readySteadyGo.C:
 			if !ready && t.Chain.LastPopulate != 0 && clocky.Now().After(t.Chain.LastPopulate.Add(clocky.Second)) {
-				t.restorePortfolio()
+				t.restorePortfolioSchwab()
 				t.onDefEnd()
 				ready = true
 			}
@@ -91,131 +87,7 @@ func (t *Trader) Live() {
 	}
 }
 
-func (t *Trader) streamEquities(key databento.ApiKey, defs chan<- *options.Equity, ticks chan<- *databento.MBP1) {
-	client, err := databento.Dial("EQUS.MINI", key)
-	if err != nil {
-		log.Fatalf("dial: %v", err)
-	}
-	defer client.Close()
-	client.MustSubscribe(databento.Subscription{
-		Schema:  databento.SchemaDefinition,
-		SType:   databento.STypeParent,
-		Symbols: []string{t.Config.Symbol.String()},
-	})
-	client.MustSubscribe(databento.Subscription{
-		Schema:  databento.SchemaMBP1,
-		SType:   databento.STypeParent,
-		Symbols: []string{t.Config.Symbol.String()},
-	})
-	meta := client.MustStart()
-	log.Printf("streaming %s (dbn v%d)", t.Config.Symbol, meta.Version)
-	for {
-		rec, err := client.Read()
-		if err != nil {
-			if err == io.EOF {
-				return
-			}
-			log.Fatalf("decode: %v", err)
-		}
-		switch m := rec.(type) {
-		case *databento.ErrorMsg:
-			log.Fatalf("option gateway error: %s", m.Err)
-		case *databento.SystemMsg:
-			log.Printf("option system message: %s", m.Msg)
-		case *databento.SymbolMappingMsg:
-			id := m.Header.InstrumentID
-			str := m.GetSTypeOutSymbol()
-			sym, err := symbol.Parse(str)
-			if err != nil {
-				continue
-			}
-			if sym != t.Config.Symbol {
-				continue
-			}
-			log.Printf("got equity definition: %s (id %d)", str, id)
-			defs <- &options.Equity{
-				ID:     id,
-				Symbol: sym,
-			}
-		case *databento.MBP1:
-			ticks <- m
-		case *databento.Instrument:
-			// ignore raw definitions; we use SymbolMappingMsg instead
-		default:
-			log.Printf("unknown record type: %T", m)
-		}
-	}
-}
-
-// streamOptions subscribes to both definitions and quotes on a single
-// live gateway connection. Definitions arrive via SymbolMappingMsg which
-// maps parent symbols to instrument IDs with OSI names. This avoids the
-// historical API which can time out.
-func (t *Trader) streamOptions(key databento.ApiKey, defs chan<- *options.Option, ticks chan<- *databento.CMBP1) {
-	client, err := databento.Dial("OPRA.PILLAR", key)
-	if err != nil {
-		log.Fatalf("dial: %v", err)
-	}
-	defer client.Close()
-	dbSymbol := fmt.Sprintf("%s.OPT", t.Config.Symbol)
-	client.MustSubscribe(databento.Subscription{
-		Schema:  databento.SchemaDefinition,
-		SType:   databento.STypeParent,
-		Symbols: []string{dbSymbol},
-	})
-	client.MustSubscribe(databento.Subscription{
-		Schema:  databento.SchemaCMBP1,
-		SType:   databento.STypeParent,
-		Symbols: []string{dbSymbol},
-	})
-	meta := client.MustStart()
-	log.Printf("streaming %s (dbn v%d)", dbSymbol, meta.Version)
-	wantYear, wantMonth, wantDay := clocky.Now().Date()
-	for {
-		rec, err := client.Read()
-		if err != nil {
-			if err == io.EOF {
-				return
-			}
-			log.Fatalf("decode: %v", err)
-		}
-		switch m := rec.(type) {
-		case *databento.ErrorMsg:
-			log.Fatalf("option gateway error: %s", m.Err)
-		case *databento.SystemMsg:
-			log.Printf("option system message: %s", m.Msg)
-		case *databento.SymbolMappingMsg:
-			id := m.Header.InstrumentID
-			str := m.GetSTypeOutSymbol()
-			sym, strike, class, year, monthy, day, err := osi.Parse(str)
-			if err != nil {
-				continue
-			}
-			if sym != t.Config.Symbol || year != wantYear || clocky.Month(monthy) != wantMonth || day != wantDay {
-				continue
-			}
-			log.Printf("got option definition: %s (id %d)", str, id)
-			defs <- &options.Option{
-				ID:     id,
-				Class:  databento.InstrumentClass(class),
-				Strike: &options.Strike{Price: strike},
-				Symbol: sym,
-				Year:   year,
-				Month:  clocky.Month(monthy),
-				Day:    day,
-			}
-		case *databento.CMBP1:
-			ticks <- m
-		case *databento.Instrument:
-			// ignore raw definitions; we use SymbolMappingMsg instead
-		default:
-			log.Printf("unknown record type: %T", m)
-		}
-	}
-}
-
-// restorePortfolio reloads portfolio across command invocations.
-func (t *Trader) restorePortfolio() {
+func (t *Trader) restorePortfolioSchwab() {
 	account, err := gSchwabClient.GetAccount()
 	if err != nil {
 		log.Printf("failed to fetch schwab account: %v", err)
@@ -232,7 +104,7 @@ func (t *Trader) restorePortfolio() {
 	}
 }
 
-func (t *Trader) sendLiveOrder(order *Order) {
+func (t *Trader) sendLiveOrderSchwab(order *Order) {
 	orderType := schwab.OrderTypeMarket
 	if order.Price.IsPositive() {
 		orderType = schwab.OrderTypeLimit
@@ -275,35 +147,35 @@ func (t *Trader) sendLiveOrder(order *Order) {
 		if err != nil {
 			log.Printf("#%d failed to place order: %v", order.ID, err)
 		}
-		t.OrderUpdates <- OrderUpdate{
+		t.OrderUpdatesSchwab <- OrderUpdateSchwab{
 			Order:   order,
 			OrderID: orderID,
 		}
 	}()
 }
 
-func (t *Trader) onOrderEvent(event *schwab.OrderEvent) {
+func (t *Trader) onOrderEventSchwab(event *schwab.OrderEvent) {
 	if event.BaseEvent.CancelAcceptedEvent != nil {
-		t.onCancelAcknowledgement(event, event.BaseEvent.CancelAcceptedEvent)
+		t.onCancelAcknowledgementSchwab(event, event.BaseEvent.CancelAcceptedEvent)
 	} else if event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo != nil {
-		t.onFillEvent(event, event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo)
+		t.onFillEventSchwab(event, event.BaseEvent.OrderFillCompletedEventOrderLegQuantityInfo)
 	} else if event.BaseEvent.OrderExpiredEvent != nil {
-		t.onExpiredEvent(event, event.BaseEvent.OrderExpiredEvent)
+		t.onExpiredEventSchwab(event, event.BaseEvent.OrderExpiredEvent)
 	} else if event.BaseEvent.ChangeCreatedEventEquityOrder != nil {
-		t.onChangeEvent(event, event.BaseEvent.ChangeCreatedEventEquityOrder)
+		t.onChangeEventSchwab(event, event.BaseEvent.ChangeCreatedEventEquityOrder)
 	} else if event.BaseEvent.OrderUROutCompletedEvent != nil {
-		t.onUROutCompletedEvent(event, event.BaseEvent.OrderUROutCompletedEvent)
+		t.onUROutCompletedEventSchwab(event, event.BaseEvent.OrderUROutCompletedEvent)
 	}
 }
 
-func (t *Trader) schwabCancelOrder(sim *Order) {
-	err := gSchwabClient.CancelOrder(sim.OrderID)
+func (t *Trader) cancelOrderSchwab(sim *Order) {
+	err := gSchwabClient.CancelOrder(sim.OrderIDSchwab)
 	if err != nil {
-		log.Printf("warning: #%d failed to cancel order id %d: %v", sim.ID, sim.OrderID, err)
+		log.Printf("warning: #%d failed to cancel order id %d: %v", sim.ID, sim.OrderIDSchwab, err)
 	}
 }
 
-func (t *Trader) onChangeEvent(event *schwab.OrderEvent, change *schwab.OrderChangeEvent) {
+func (t *Trader) onChangeEventSchwab(event *schwab.OrderEvent, change *schwab.OrderChangeEvent) {
 	newID := event.SchwabOrderID
 	oldID := change.ParentSchwabOrderID
 	if t.OrdersBySchwabID[newID] != nil {
@@ -330,19 +202,19 @@ func (t *Trader) onChangeEvent(event *schwab.OrderEvent, change *schwab.OrderCha
 	}
 	log.Printf("#%d order id changed %d->%s with limit price %s->%s", sim.ID, oldID, newID, sim.Price, limitPrice)
 	sim.Price = limitPrice
-	sim.OrderID = newID
+	sim.OrderIDSchwab = newID
 	t.OrdersBySchwabID[newID] = sim
 	delete(t.OrdersBySchwabID, oldID)
 }
 
-func (t *Trader) onCancelAcknowledgement(_ *schwab.OrderEvent, cancel *schwab.CancelAcknowledgement) {
+func (t *Trader) onCancelAcknowledgementSchwab(_ *schwab.OrderEvent, cancel *schwab.CancelAcknowledgement) {
 	for _, info := range cancel.LegCancelRequestInfoList {
 		sim := t.OrdersBySchwabID[info.LegID]
 		if sim == nil {
 			continue
 		}
-		if info.LegID != sim.OrderID {
-			log.Printf("warning: #%d leg for order id %d does not match cancel event leg id %d: %s", sim.ID, sim.OrderID, info.LegID, sim)
+		if info.LegID != sim.OrderIDSchwab {
+			log.Printf("warning: #%d leg for order id %d does not match cancel event leg id %d: %s", sim.ID, sim.OrderIDSchwab, info.LegID, sim)
 			continue
 		}
 		if info.ChangedNewSchwabOrderID != 0 {
@@ -353,28 +225,28 @@ func (t *Trader) onCancelAcknowledgement(_ *schwab.OrderEvent, cancel *schwab.Ca
 			// haven't seen this happen yet. the leg will usually be open when a
 			// cancel is acknowledged, after which it gets routed to market makers
 			// and a urout event is generated when the leg is closed.
-			t.onOrderCancel(sim)
+			t.onOrderCancelSchwab(sim)
 		}
 	}
 }
 
-func (t *Trader) onUROutCompletedEvent(event *schwab.OrderEvent, uro *schwab.OrderUROutCompleted) {
+func (t *Trader) onUROutCompletedEventSchwab(event *schwab.OrderEvent, uro *schwab.OrderUROutCompleted) {
 	order := t.OrdersBySchwabID[event.SchwabOrderID]
 	if order == nil {
 		return
 	}
-	if event.SchwabOrderID != order.OrderID {
-		log.Printf("warning: #%d leg for order id %d does not match urout event leg id %d: %s", order.ID, order.OrderID, uro.LegID, order)
+	if event.SchwabOrderID != order.OrderIDSchwab {
+		log.Printf("warning: #%d leg for order id %d does not match urout event leg id %d: %s", order.ID, order.OrderIDSchwab, uro.LegID, order)
 		return
 	}
 	if uro.LegStatus != "LegClosed" {
-		log.Printf("warning: #%d leg for order id %d has unexpected leg status for urout event: %s", order.ID, order.OrderID, uro.LegStatus)
+		log.Printf("warning: #%d leg for order id %d has unexpected leg status for urout event: %s", order.ID, order.OrderIDSchwab, uro.LegStatus)
 		return
 	}
-	t.onOrderCancel(order)
+	t.onOrderCancelSchwab(order)
 }
 
-func (t *Trader) onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
+func (t *Trader) onFillEventSchwab(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 
 	// figure out if fill was on chain we're trading
 	name := fill.OrderInfoForTransactionPosting.Symbol
@@ -407,28 +279,28 @@ func (t *Trader) onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	// mark order filled
 	order.Filled = true
 	t.deleteSchwabOrder(order)
-	log.Printf("#%d order complete for order id %d", order.ID, order.OrderID)
+	log.Printf("#%d order complete for order id %d", order.ID, order.OrderIDSchwab)
 }
 
-func (t *Trader) onExpiredEvent(event *schwab.OrderEvent, ee *schwab.ExpiredEvent) {
+func (t *Trader) onExpiredEventSchwab(event *schwab.OrderEvent, ee *schwab.ExpiredEvent) {
 	order := t.OrdersBySchwabID[event.SchwabOrderID]
 	if order == nil {
 		return
 	}
-	if event.SchwabOrderID != order.OrderID {
-		log.Printf("warning: #%d leg for order id %d does not match expired event leg id %d: %s", order.ID, order.OrderID, ee.LegID, order)
+	if event.SchwabOrderID != order.OrderIDSchwab {
+		log.Printf("warning: #%d leg for order id %d does not match expired event leg id %d: %s", order.ID, order.OrderIDSchwab, ee.LegID, order)
 		return
 	}
 	if ee.LegStatus != "LegClosed" {
-		log.Printf("warning: #%d leg for order id %d has unexpected leg status for expired event: %s", order.ID, order.OrderID, ee.LegStatus)
+		log.Printf("warning: #%d leg for order id %d has unexpected leg status for expired event: %s", order.ID, order.OrderIDSchwab, ee.LegStatus)
 	}
-	log.Printf("#%d leg expired for order id %d: %s", order.ID, order.OrderID, order)
-	t.onOrderCancel(order)
+	log.Printf("#%d leg expired for order id %d: %s", order.ID, order.OrderIDSchwab, order)
+	t.onOrderCancelSchwab(order)
 }
 
-func (t *Trader) onOrderOrderID(order *Order, orderID schwab.OrderID) {
+func (t *Trader) onOrderOrderIDSchwab(order *Order, orderID schwab.OrderID) {
 	if orderID != 0 {
-		order.OrderID = orderID
+		order.OrderIDSchwab = orderID
 		t.OrdersBySchwabID[orderID] = order
 		log.Printf("#%d got order id %d for order: %s", order.ID, orderID, order)
 	} else {
@@ -436,12 +308,12 @@ func (t *Trader) onOrderOrderID(order *Order, orderID schwab.OrderID) {
 	}
 }
 
-func (t *Trader) onOrderCancel(order *Order) {
+func (t *Trader) onOrderCancelSchwab(order *Order) {
 	t.deleteSchwabOrder(order)
-	log.Printf("leg canceled for order id %d: %s", order.OrderID, order)
+	log.Printf("leg canceled for order id %d: %s", order.OrderIDSchwab, order)
 }
 
 func (t *Trader) deleteSchwabOrder(order *Order) {
-	delete(t.OrdersBySchwabID, order.OrderID)
+	delete(t.OrdersBySchwabID, order.OrderIDSchwab)
 	t.removePendingOrder(order)
 }

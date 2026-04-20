@@ -7,7 +7,10 @@ import (
 	"dropbear/ds"
 	"flag"
 	"fmt"
+	"log"
 	"os"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -18,6 +21,7 @@ var (
 	flagIOC           = flag.Bool("ioc", false, "use immediate or cancel time in force")
 	flagTWAP          = flag.Bool("twap", false, "use time weighted average price algorithm")
 	flagVWAP          = flag.Bool("vwap", false, "use volume weighted average price algorithm")
+	flagWait          = flag.Bool("wait", false, "wait for order to fill")
 	flagDMA           = flag.String("dma", "", "directly route order to lit exchange (NYSE, NASDAQ, ARCA)")
 	flagExt           = flag.Bool("ext", false, "participate in extended hours trading (must be limit order with default (day) time in force)")
 	flagLimit         = decimal.Flag("limit", "0", "sets an explicit limit price (the default is to use the midpoint plus/minus greed depending on the side) must be positve")
@@ -209,6 +213,9 @@ options:
 	}
 	symbols := flag.Args()
 
+	// subscribe to websocket messages
+	orderUpdates := alpaca.OrderUpdates()
+
 	// loop over stocks
 	exitCode := 0
 	client := alpaca.NewClient()
@@ -280,7 +287,9 @@ options:
 		}
 
 		// give the order
-		_, err = client.CreateOrder(&alpaca.OrderRequest{
+		clientOrderID := uuid.New().String()
+		order, err := client.CreateOrder(&alpaca.OrderRequest{
+			ClientOrderID: clientOrderID,
 			Symbol:        sym,
 			Side:          side,
 			Qty:           qty,
@@ -306,7 +315,21 @@ options:
 		}
 
 		// log the order
-		fmt.Printf("order placed to %s %s shares of %s at %s\n", side, qty, sym, limitPrice)
+		fmt.Printf("order placed to %s %s shares of %s at %s with status %s\n", side, qty, sym, limitPrice, order.Status)
+
+		if *flagWait {
+			for orderUpdate := range orderUpdates {
+				if orderUpdate.Order.ClientOrderID != clientOrderID {
+					continue
+				}
+				log.Printf("order update for %s: %s price=%s status=%s qty=%s pos=%s filled=%s/%s avg_price=%s", sym,
+					orderUpdate.Event, orderUpdate.Price, orderUpdate.Order.Status, orderUpdate.Qty, orderUpdate.PositionQty,
+					orderUpdate.Order.FilledQty, orderUpdate.Order.Qty, orderUpdate.Order.FilledAvgPrice)
+				if orderUpdate.Order.Status.IsFinal() {
+					break
+				}
+			}
+		}
 	}
 
 	// report status to parent process

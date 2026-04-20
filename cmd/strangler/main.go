@@ -2,6 +2,7 @@ package main
 
 import (
 	"dropbear/black76"
+	"dropbear/broker/alpaca"
 	"dropbear/broker/schwab"
 	"dropbear/clocky"
 	"dropbear/decimal"
@@ -16,15 +17,18 @@ import (
 )
 
 var (
-	kExpectedPriceRange        = decimal.Parse("0.15")
-	kRiskFreeRate              = decimal.Parse("0.04")
-	kFeePerOptionsContract     = decimal.Parse("0.65")
-	kFeePerOptionsContractSPXW = decimal.Parse("1.2")
-	kBrokerFeePerTrade         = decimal.Parse("0.0025")
-	kCatFeePerTrade            = decimal.Parse("0.0003")
-	kTafFeePerShare            = decimal.Parse("0.0002")
-	kExchangeTakerFeePerShare  = decimal.Parse("0.0020")
-	kExchangeMakerFeePerShare  = decimal.Parse("-0.0018")
+	kExpectedPriceRange       = decimal.Parse("0.15")
+	kRiskFreeRate             = decimal.Parse("0.04")
+	kBrokerFeePerTrade        = decimal.Parse("0.0025") // alpaca elite smart router (first tier)
+	kCatFeePerTrade           = decimal.Parse("0.0003")
+	kTafFeePerShare           = decimal.Parse("0.000195")
+	kExchangeTakerFeePerShare = decimal.Parse("0.0020")
+	kExchangeMakerFeePerShare = decimal.Parse("-0.0018")
+	kOptionsFeeTAF            = decimal.Parse("0.00329") // per contract, sells only
+	kOptionsFeeORF            = decimal.Parse("0.02295") // per contract
+	kOptionsFeeOCC            = decimal.Parse("0.025")   // per contract
+	kOptionsFeeSchwab         = decimal.Parse("0.65")    // per contract
+	kOptionsFeeSchwabCBOE     = decimal.Parse("1.2")     // per contract
 )
 
 var (
@@ -35,7 +39,10 @@ var (
 	heartbeatFlag = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
 )
 
-var gSchwabClient *schwab.Client
+var (
+	gSchwabClient *schwab.Client
+	gAlpacaClient *alpaca.Client
+)
 
 func main() {
 	loggy.Init()
@@ -47,6 +54,7 @@ func main() {
 	symbolFlag := symbol.Flag("symbol", "", "symbol to trade (e.g. NVDA)")
 	strikesFlag := flag.Int("strikes", 2, "how many strikes wide strangle should be")
 	dateFlag := clocky.TimeFlag("date", "", "date of the trades")
+	schwabFlag := flag.Bool("schwab", false, "use schwab as broker instead of alpaca")
 	toleranceFlag := decimal.Flag("tolerance", "-1", "delta tolerance for market making")
 	directionFlag := decimal.Flag("direction", "-1", "direction of options trade (1=long, -1=short)")
 	straddlesFlag := decimal.Flag("straddles", "5", "number of ATM straddles to buy at open")
@@ -66,6 +74,7 @@ func main() {
 			Patience:   *patienceFlag,
 			StartOfDay: *startOfDayFlag,
 			Strikes:    *strikesFlag,
+			Schwab:     *schwabFlag,
 			Tolerance:  *toleranceFlag,
 		}
 	}
@@ -122,19 +131,19 @@ func main() {
 	t.Config.Patience = 30 * clocky.Second
 	traders = append(traders, t)
 
-	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.AMZN
-	t.Config.Strikes = 3
-	t.Config.Tolerance = decimal.Parse("-4")
-	t.Config.Patience = 30 * clocky.Second
-	traders = append(traders, t)
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.AMZN
+	// t.Config.Strikes = 3
+	// t.Config.Tolerance = decimal.Parse("-4")
+	// t.Config.Patience = 30 * clocky.Second
+	// traders = append(traders, t)
 
-	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.MSFT
-	t.Config.Direction = decimal.One
-	t.Config.Tolerance = decimal.Parse("-3")
-	t.Config.Patience = 30 * clocky.Second
-	traders = append(traders, t)
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.MSFT
+	// t.Config.Direction = decimal.One
+	// t.Config.Tolerance = decimal.Parse("-3")
+	// t.Config.Patience = 30 * clocky.Second
+	// traders = append(traders, t)
 
 	t = NewTrader(newConfig())
 	t.Config.Symbol = symbol.AAPL
@@ -145,15 +154,39 @@ func main() {
 	t.Config.Patience = 30 * clocky.Second
 	traders = append(traders, t)
 
+	// figure out what brokers we need
+	needSchwab := false
+	needAlpaca := false
+	for _, t := range traders {
+		if t.Config.Schwab {
+			needSchwab = true
+		} else {
+			needAlpaca = true
+		}
+	}
+
 	// subscribe to schwab order updates
 	// they only let us have one connection
-	gSchwabClient = schwab.NewClient()
-	orderUpdates := gSchwabClient.OrderUpdates()
-	go fanoutSchwabOrderUpdates(orderUpdates, traders)
+	if needSchwab {
+		gSchwabClient = schwab.NewClient()
+		orderUpdates := gSchwabClient.OrderUpdates()
+		go fanoutSchwabOrderUpdates(orderUpdates, traders)
+	}
+
+	// subscribe to alpaca order updates
+	if needAlpaca {
+		gAlpacaClient = alpaca.NewClient()
+		orderUpdates := alpaca.OrderUpdates()
+		go fanoutAlpacaOrderUpdates(orderUpdates, traders)
+	}
 
 	// start trading
 	for _, t := range traders {
-		go t.Live()
+		if t.Config.Schwab {
+			go t.LiveSchwab()
+		} else {
+			go t.LiveAlpaca()
+		}
 	}
 
 	// wait forever
@@ -163,7 +196,15 @@ func main() {
 func fanoutSchwabOrderUpdates(orderEvents <-chan *schwab.OrderEvent, traders []*Trader) {
 	for orderEvent := range orderEvents {
 		for _, trader := range traders {
-			trader.OrderEvents <- orderEvent
+			trader.OrderEventsSchwab <- orderEvent
+		}
+	}
+}
+
+func fanoutAlpacaOrderUpdates(orderEvents <-chan *alpaca.OrderUpdate, traders []*Trader) {
+	for orderEvent := range orderEvents {
+		for _, trader := range traders {
+			trader.OrderEventsAlpaca <- orderEvent
 		}
 	}
 }

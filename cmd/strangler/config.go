@@ -16,4 +16,5 @@ type Config struct {
 	Patience   clocky.Duration
 	Strikes    int
 	StartOfDay int
+	Schwab     bool
 }

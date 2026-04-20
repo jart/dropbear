@@ -1,6 +1,7 @@
 package main
 
 import (
+	"dropbear/broker/alpaca"
 	"dropbear/broker/databento"
 	"dropbear/broker/schwab"
 	"dropbear/cboe"
@@ -26,12 +27,14 @@ type Trader struct {
 	Chain                   *options.Chain
 	Underlying              *options.Equity
 	Holdings                Holdings
-	OrderEvents             chan *schwab.OrderEvent
-	OrderUpdates            chan OrderUpdate
+	OrderEventsSchwab       chan *schwab.OrderEvent
+	OrderEventsAlpaca       chan *alpaca.OrderUpdate
+	OrderUpdatesSchwab      chan OrderUpdateSchwab
 	OptionsByID             map[uint32]*options.Option
 	EquitiesByID            map[uint32]*options.Equity
 	SecuritiesByName        map[string]options.Security
 	OrdersBySchwabID        map[schwab.OrderID]*Order
+	OrdersByAlpacaID        map[string]*Order
 	PendingOrders           map[*Order]bool
 	PendingOrdersBySecurity map[options.Security][]*Order
 	MarketClose             clocky.Time
@@ -45,11 +48,13 @@ func NewTrader(config *Config) *Trader {
 		Config:                  config,
 		Chain:                   options.NewChain(),
 		Holdings:                Holdings{Positions: map[options.Security]*Holding{}},
-		OrderEvents:             make(chan *schwab.OrderEvent, 64),
-		OrderUpdates:            make(chan OrderUpdate, 64),
+		OrderEventsSchwab:       make(chan *schwab.OrderEvent, 64),
+		OrderEventsAlpaca:       make(chan *alpaca.OrderUpdate, 64),
+		OrderUpdatesSchwab:      make(chan OrderUpdateSchwab, 64),
 		PendingOrders:           map[*Order]bool{},
 		PendingOrdersBySecurity: map[options.Security][]*Order{},
 		OrdersBySchwabID:        map[schwab.OrderID]*Order{},
+		OrdersByAlpacaID:        map[string]*Order{},
 		OptionsByID:             map[uint32]*options.Option{},
 		EquitiesByID:            map[uint32]*options.Equity{},
 		SecuritiesByName:        map[string]options.Security{},
@@ -210,6 +215,7 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 	if !hasBuy && delta.Cmp(tolerance) < 0 {
 		// buying: mid + halfSpread * spread
 		qty := delta.Neg().QuantizeTruncate(t.Config.Quantum)
+		qty = t.clampTradeQuantity(t.Underlying, qty)
 		price = mid.Add(hlf.Mul(spread))
 		price = price.QuantizeTruncate(decimal.Cent)
 		log.Printf("buying %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty, price, mid.Sub(price), bid, ask, delta)
@@ -217,12 +223,26 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 	}
 	if !hasSell && delta.Neg().Cmp(tolerance) < 0 {
 		// selling: mid - halfSpread * spread
-		qty := delta.QuantizeTruncate(t.Config.Quantum)
+		qty := delta.QuantizeTruncate(t.Config.Quantum).Neg()
+		qty = t.clampTradeQuantity(t.Underlying, qty)
 		price = mid.Sub(hlf.Mul(spread))
 		price = price.QuantizeAway(decimal.Cent)
-		log.Printf("selling %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty, price, mid.Sub(price).Neg(), bid, ask, delta)
-		t.limitOrder(now, t.Underlying, qty.Neg(), price)
+		log.Printf("selling %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty.Neg(), price, mid.Sub(price).Neg(), bid, ask, delta)
+		t.limitOrder(now, t.Underlying, qty, price)
 	}
+}
+
+// clampTradeQuantity ensures we don't place an order that would flip our position from long to short or vice versa.
+func (t *Trader) clampTradeQuantity(security options.Security, quantity decimal.Decimal) decimal.Decimal {
+	holding := t.Holdings.Positions[security]
+	if holding == nil {
+		return quantity
+	}
+	pos := holding.Quantity
+	if pos.Mul(pos.Add(quantity)).IsNegative() {
+		return pos.Neg()
+	}
+	return quantity
 }
 
 func (t *Trader) onHeartbeat() {

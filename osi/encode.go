@@ -37,3 +37,32 @@ func Encode(sym symbol.Symbol, strike decimal.Decimal, class byte, year int, mon
 	}
 	return string(buf[:])
 }
+
+// EncodeSpaceless encodes the given option parameters into an OSI symbol string.
+// e.g. EncodeSpaceless(SPY, 400.50, 'C', 2026, 4, 17) -> "SPY260417C000400500"
+func EncodeSpaceless(sym symbol.Symbol, strike decimal.Decimal, class byte, year int, month clocky.Month, day int) string {
+	var buf [21]byte
+	i := 0
+	s := uint64(sym)
+	for i < 6 && s != 0 {
+		buf[i] = byte(s)
+		s >>= 8
+		i++
+	}
+	// expiration: YYMMDD
+	yy := year - 2000
+	buf[i+0] = byte(yy/10) + '0'
+	buf[i+1] = byte(yy%10) + '0'
+	buf[i+2] = byte(month/10) + '0'
+	buf[i+3] = byte(month%10) + '0'
+	buf[i+4] = byte(day/10) + '0'
+	buf[i+5] = byte(day%10) + '0'
+	buf[i+6] = class
+	// strike × 1000, 8 digits zero-padded
+	x := strike.MulInt(1000).Int64()
+	for j := i + 14; j >= i+7; j-- {
+		buf[j] = byte(x%10) + '0'
+		x /= 10
+	}
+	return string(buf[:i+15])
+}

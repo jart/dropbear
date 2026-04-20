@@ -13,11 +13,11 @@ type Position struct {
 	AssetClass             AssetClass      `json:"asset_class"`              // e.g. us_equity, us_option, crypto
 	Side                   PositionSide    `json:"side"`                     // e.g. long, short
 	AssetMarginable        bool            `json:"asset_marginable"`         //
-	Qty                    decimal.Decimal `json:"qty"`                      // the number of shares
-	QtyAvailable           decimal.Decimal `json:"qty_available"`            // total number of shares available, minus open orders / locked for options covered call
-	MarketValue            decimal.Decimal `json:"market_value"`             // total dollar amount of position
-	AvgEntryPrice          decimal.Decimal `json:"avg_entry_price"`          // average entry price of this position
-	CostBasis              decimal.Decimal `json:"cost_basis"`               // total cost basis in dollars
+	Qty                    decimal.Decimal `json:"qty"`                      // the number of shares (negative if short)
+	QtyAvailable           decimal.Decimal `json:"qty_available"`            // total number of shares available, minus open orders / locked for options covered call (negative if short)
+	MarketValue            decimal.Decimal `json:"market_value"`             // total dollar amount of position (negative if short)
+	AvgEntryPrice          decimal.Decimal `json:"avg_entry_price"`          // average entry price of this position (always positive)
+	CostBasis              decimal.Decimal `json:"cost_basis"`               // total cost basis in dollars (negative if short)
 	UnrealizedPL           decimal.Decimal `json:"unrealized_pl"`            // unrealized profit/loss in dollars
 	UnrealizedPLPC         decimal.Decimal `json:"unrealized_plpc"`          // unrealized profit/loss percent (by a factor of 1)
 	UnrealizedIntradayPL   decimal.Decimal `json:"unrealized_intraday_pl"`   // unrealized profit/loss in dollars for the day
