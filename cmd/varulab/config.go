@@ -3,7 +3,7 @@ package main
 import "os"
 
 // program is the program to run in each backtest if -program is not provided.
-const kProgram = "./cmd/scalp"
+const kProgram = "./cmd/strangler"
 
 // defaultSymbols is the default set of symbols to backtest if -symbols is not provided.
 const kDefaultSymbols = "NVDA TSLA GOOGL META AAPL MSFT AMZN"

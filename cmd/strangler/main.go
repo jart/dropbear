@@ -102,7 +102,7 @@ func main() {
 		return
 	}
 
-	log.Fatal("live mode not yet implemented for scalp")
+	log.Fatal("live mode not yet implemented for strangler")
 }
 
 func fanoutSchwabOrderUpdates(orderEvents <-chan *schwab.OrderEvent, traders []*Trader) {
