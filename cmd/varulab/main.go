@@ -16,7 +16,7 @@ import (
 var (
 	listenFlag   = flag.String("listen", "0.0.0.0:8585", "web dashboard bind address")
 	jobsFlag     = flag.Int("j", 0, "max concurrent backtests (defaults to number of cores)")
-	downloadFlag = flag.Bool("download", false, "enable background downloader")
+	downloadFlag = flag.Bool("download", true, "enable background downloader")
 	programFlag  = flag.String("program", kProgram, "program to run in each backtest")
 	symbolsFlag  = flag.String("symbols", kDefaultSymbols, "comma-separated symbols to backtest")
 	resumeFlag   = flag.Bool("resume", false, "resume the most recently modified experiment")

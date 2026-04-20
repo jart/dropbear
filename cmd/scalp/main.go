@@ -45,14 +45,14 @@ func main() {
 
 	dbnFlag := flag.String("dbn", "", "path to backtest data")
 	symbolFlag := symbol.Flag("symbol", "", "symbol to trade (e.g. NVDA)")
-	strikesFlag := flag.Int("strikes", 0, "how many strikes wide strangle should be")
+	strikesFlag := flag.Int("strikes", 2, "how many strikes wide strangle should be")
 	dateFlag := clocky.TimeFlag("date", "", "date of the trades")
-	directionFlag := decimal.Flag("direction", "1", "direction of options trade (1=long, -1=short)")
+	toleranceFlag := decimal.Flag("tolerance", "-1", "delta tolerance for market making")
+	directionFlag := decimal.Flag("direction", "-1", "direction of options trade (1=long, -1=short)")
 	straddlesFlag := decimal.Flag("straddles", "5", "number of ATM straddles to buy at open")
-	toleranceFlag := decimal.Flag("tolerance", "2", "absolute delta threshold in quantums for taking liquidity")
 	quantumFlag := decimal.Flag("quantum", "40", "share lot size for delta hedging")
 	patienceFlag := clocky.DurationFlag("patience", "5s", "how long to wait for order execution")
-	spreadFlag := decimal.Flag("spread", "-1", "spread crossing for straddle (-1=make, 0=mid, 1=take)")
+	spreadFlag := decimal.Flag("spread", "0", "spread crossing for straddle (-1=make, 0=mid, 1=take)")
 	startOfDayFlag := flag.Int("sod", 9_35_00, "start of day in HHMMSS")
 	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")
 

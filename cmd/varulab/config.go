@@ -6,7 +6,7 @@ import "os"
 const kProgram = "./cmd/scalp"
 
 // defaultSymbols is the default set of symbols to backtest if -symbols is not provided.
-const kDefaultSymbols = "NVDA TSLA GOOGL META"
+const kDefaultSymbols = "NVDA TSLA GOOGL META AAPL MSFT AMZN"
 
 // earliestDate is the oldest date the downloader will fetch.
 const kEarliestDate = "2025-05-01"
@@ -21,13 +21,11 @@ var kDataDirs = []string{
 }
 
 // kBaseFlags are included in every backtest run.
-var kBaseFlags = "-hostile"
+var kBaseFlags = ""
 
 // kFlagDimensions defines the search space. Each inner slice is a dimension;
 // the Cartesian product of all dimensions (plus a baseline with each dimension
 // absent) generates the full set of flag combinations to test.
 var kFlagDimensions = [][]string{
-	{"-direction=-1"},
-	{"-strikes=2", "-strikes=3"},
-	{"-latency=1s"},
+	{"-direction=1"},
 }

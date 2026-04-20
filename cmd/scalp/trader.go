@@ -176,45 +176,53 @@ func (t *Trader) buyPut(now clocky.Time) bool {
 	return true
 }
 
+func (t *Trader) hasOrder(orders []*Order) (hasBuy bool, hasSell bool) {
+	for _, order := range orders {
+		if order.Quantity.IsPositive() {
+			hasBuy = true
+		} else {
+			hasSell = true
+		}
+	}
+	return hasBuy, hasSell
+}
+
 func (t *Trader) hedgeDelta(now clocky.Time) {
 	orders := t.pendingOrders()
-	if len(orders) > 0 {
-		for _, order := range orders {
-			if !order.Canceling && now.After(order.Created.Add(t.Config.Patience)) {
-				log.Printf("canceling order #%d after waiting %s\n", order.ID, t.Config.Patience)
-				order.Cancel()
+	for _, order := range orders {
+		if !order.Canceling && now.After(order.Created.Add(t.Config.Patience)) {
+			log.Printf("canceling order #%d after waiting %s\n", order.ID, t.Config.Patience)
+			err := order.Cancel()
+			if err != nil {
+				log.Printf("failed to cancel order #%d: %v\n", order.ID, err)
 			}
 		}
-		return
-	}
-	delta := t.computeDelta()
-	qty := delta.QuantizeTruncate(t.Config.Quantum).Neg()
-	if qty.IsZero() {
-		return
-	}
-	t.onHeartbeat()
-	spread := t.Config.Spread
-	tolerance := t.Config.Tolerance.Mul(t.Config.Quantum)
-	if delta.Abs().Cmp(tolerance) >= 0 {
-		spread = decimal.Two
-		log.Printf("delta %s exceeds tolerance %s, crossing the spread\n", delta, tolerance)
 	}
 	price := decimal.Zero
+	spread := t.Config.Spread
 	bid := t.Underlying.GetBid()
 	ask := t.Underlying.GetAsk()
 	mid := bid.Add(ask).Half()
 	hlf := ask.Sub(bid).Half()
-	if qty.IsPositive() {
+	hasBuy, hasSell := t.hasOrder(orders)
+	tolerance := t.Config.Tolerance.Mul(t.Config.Quantum)
+	delta := t.computeDelta()
+	if !hasBuy && delta.Cmp(tolerance) < 0 {
 		// buying: mid + halfSpread * spread
+		qty := t.Config.Quantum
 		price = mid.Add(hlf.Mul(spread))
 		price = price.QuantizeTruncate(decimal.Cent)
-	} else {
+		log.Printf("buying %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty, price, mid.Sub(price), bid, ask, delta)
+		t.limitOrder(now, t.Underlying, qty, price)
+	}
+	if !hasSell && delta.Neg().Cmp(tolerance) < 0 {
 		// selling: mid - halfSpread * spread
+		qty := t.Config.Quantum
 		price = mid.Sub(hlf.Mul(spread))
 		price = price.QuantizeAway(decimal.Cent)
+		log.Printf("selling %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty, price, mid.Sub(price).Neg(), bid, ask, delta)
+		t.limitOrder(now, t.Underlying, qty.Neg(), price)
 	}
-	log.Printf("trading %s shares at %s to hedge delta of %s\n", qty, price, delta)
-	t.limitOrder(now, t.Underlying, qty, price)
 }
 
 func (t *Trader) onHeartbeat() {
