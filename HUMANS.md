@@ -13,8 +13,9 @@ See [CLAUDE.md](CLAUDE.md) for further information.
   - Sample DataBento data download: <https://drive.google.com/drive/folders/1sDr7hmdthRbn1iclui6I7PuooVn8IuQm>
   - Save to `~/databento`, directory structure example: `~/databento/SPXW/2026-04-01.dbn`
   - Save your DataBento API key to `~/.databento.key`
+  - Merge OPRA files with the underlying asset's quote data: `go run ./broker/databento/cmd/dbninject -file ~/databento/AVGO/2026-04-15.dbn -dataset EQUS.MINI -sym AVGO -schema mbp-1`
   - View data: `go run ./broker/databento/cmd/dbndump -strike 430 -call -expiry 2026-01-02 ~/databento/TSLA/2026-01-02.dbn |& less` 
-  - `varulab` supports automatic data downloading from Databento, last 12 months of OPRA data is free to download
+  - `varulab` supports automatic data downloading and merging from Databento
 
 ### Running Backtests
 
