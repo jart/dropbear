@@ -203,6 +203,7 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 			}
 		}
 	}
+	qty := decimal.Zero
 	price := decimal.Zero
 	spread := t.Config.Spread
 	bid := t.Underlying.GetBid()
@@ -213,22 +214,43 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 	tolerance := t.Config.Tolerance.Mul(t.Config.Quantum)
 	delta := t.computeDelta()
 	if !hasBuy && delta.Cmp(tolerance) < 0 {
-		// buying: mid + halfSpread * spread
-		qty := delta.Neg().QuantizeTruncate(t.Config.Quantum)
+		if delta.IsNegative() {
+			// we genuinely need to buy in order to hedge
+			// therefore we must be willing to buy as much as possible
+			qty = delta.Neg().QuantizeTruncate(t.Config.Quantum)
+		} else {
+			// we're market making (because tolerance is positive)
+			// therefore let's not trade any more than a round lot
+			qty = t.Config.Quantum
+		}
 		qty = t.clampTradeQuantity(t.Underlying, qty)
-		price = mid.Add(hlf.Mul(spread))
-		price = price.QuantizeTruncate(decimal.Cent)
-		log.Printf("buying %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty, price, mid.Sub(price), bid, ask, delta)
-		t.limitOrder(now, t.Underlying, qty, price)
+		if !qty.IsZero() {
+			// buying: mid + halfSpread * spread
+			price = mid.Add(hlf.Mul(spread))
+			price = price.QuantizeTruncate(decimal.Cent)
+			log.Printf("buying %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty, price, mid.Sub(price), bid, ask, delta)
+			t.limitOrder(now, t.Underlying, qty, price)
+		}
 	}
 	if !hasSell && delta.Neg().Cmp(tolerance) < 0 {
-		// selling: mid - halfSpread * spread
-		qty := delta.QuantizeTruncate(t.Config.Quantum).Neg()
+		if delta.IsPositive() {
+			// we genuinely need to sell in order to hedge
+			// therefore we must be willing to sell as much as possible
+			qty = delta.QuantizeTruncate(t.Config.Quantum).Neg()
+		} else {
+			// we're market making (because tolerance is positive)
+			// therefore let's not trade any more than a round lot
+			qty = t.Config.Quantum.Neg()
+		}
 		qty = t.clampTradeQuantity(t.Underlying, qty)
-		price = mid.Sub(hlf.Mul(spread))
-		price = price.QuantizeAway(decimal.Cent)
-		log.Printf("selling %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty.Neg(), price, mid.Sub(price).Neg(), bid, ask, delta)
-		t.limitOrder(now, t.Underlying, qty, price)
+		if !qty.IsZero() {
+			// selling: mid - halfSpread * spread
+			price = mid.Sub(hlf.Mul(spread))
+			price = price.QuantizeAway(decimal.Cent)
+			log.Printf("selling %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty.Neg(), price, mid.Sub(price), bid, ask, delta)
+			t.limitOrder(now, t.Underlying, qty, price)
+			t.onHeartbeat()
+		}
 	}
 }
 
@@ -238,9 +260,28 @@ func (t *Trader) clampTradeQuantity(security options.Security, quantity decimal.
 	if holding == nil {
 		return quantity
 	}
-	pos := holding.Quantity
-	if pos.Mul(pos.Add(quantity)).IsNegative() {
-		return pos.Neg()
+	if holding.Quantity.IsZero() {
+		return quantity
+	} else if holding.Quantity.IsPositive() {
+		if quantity.IsPositive() {
+			// we're long and buying more
+			return quantity
+		} else {
+			// we're long and selling
+			if quantity.Neg().Cmp(holding.Quantity) > 0 {
+				return holding.Quantity.Neg()
+			}
+		}
+	} else {
+		if quantity.IsNegative() {
+			// we're short and selling more
+			return quantity
+		} else {
+			// we're short and buying
+			if quantity.Cmp(holding.Quantity.Neg()) > 0 {
+				return holding.Quantity.Neg()
+			}
+		}
 	}
 	return quantity
 }
