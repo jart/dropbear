@@ -216,53 +216,17 @@ func (t *Trader) streamOptions(key databento.ApiKey, defs chan<- *options.Option
 
 // restorePortfolio reloads portfolio across command invocations.
 func (t *Trader) restorePortfolio() {
-	now := clocky.Now()
-	startTime := clocky.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, clocky.UTC)
-	endTime := clocky.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, clocky.UTC)
-	orders, err := gSchwabClient.GetOrders(&schwab.GetOrdersRequest{
-		FromEnteredTime: startTime,
-		ToEnteredTime:   endTime,
-		Status:          schwab.OrderStatusFilled,
-	})
+	account, err := gSchwabClient.GetAccount()
 	if err != nil {
-		log.Printf("warning: failed to reload previous orders from schwab for today: %v", err)
+		log.Printf("failed to fetch schwab account: %v", err)
 		os.Exit(1)
 	}
-	log.Printf("restoring portfolio from %d schwab orders placed today twixt %s to %s", len(orders), startTime, endTime)
-	for i := range orders {
-		t.loadSchwabOrder(&orders[i])
-	}
-}
-
-func (t *Trader) loadSchwabOrder(order *schwab.Order) {
-	if order.Status != schwab.OrderStatusFilled {
-		return
-	}
-	for _, leg := range order.OrderLegCollection {
-		if leg.Instrument.AssetType != schwab.AssetTypeOption {
-			continue
-		}
-		security := t.SecuritiesByName[leg.Instrument.Symbol]
-		if security == nil {
-			continue
-		}
-		for _, activity := range order.OrderActivityCollection {
-			if activity.ExecutionType != schwab.ExecutionTypeFill {
-				continue
-			}
-			for _, execLeg := range activity.ExecutionLegs {
-				if execLeg.InstrumentID != leg.Instrument.InstrumentID {
-					continue
-				}
-				if execLeg.LegID != leg.LegID {
-					continue
-				}
-				fillQuantity := execLeg.Quantity
-				switch leg.Instruction {
-				case schwab.InstructionSell, schwab.InstructionSellToOpen, schwab.InstructionSellToClose:
-					fillQuantity = fillQuantity.Neg()
-				}
-				t.Holdings.Add(security, fillQuantity, execLeg.Price)
+	for _, position := range account.SecuritiesAccount.Positions {
+		if security := t.SecuritiesByName[position.Instrument.Symbol]; security != nil {
+			t.Holdings.Positions[security] = &Holding{
+				Security:    security,
+				Quantity:    position.LongQuantity.Add(position.ShortQuantity),
+				AverageCost: position.AveragePrice,
 			}
 		}
 	}

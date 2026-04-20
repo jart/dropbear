@@ -111,7 +111,6 @@ func main() {
 
 	t = NewTrader(newConfig())
 	t.Config.Symbol = symbol.NVDA
-	t.Config.Strikes = 2
 	t.Config.Tolerance = decimal.Parse("-4")
 	t.Config.Patience = 30 * clocky.Second
 	traders = append(traders, t)
@@ -133,7 +132,7 @@ func main() {
 	t = NewTrader(newConfig())
 	t.Config.Symbol = symbol.MSFT
 	t.Config.Direction = decimal.One
-	t.Config.Tolerance = decimal.Parse("-4")
+	t.Config.Tolerance = decimal.Parse("-3")
 	t.Config.Patience = 30 * clocky.Second
 	traders = append(traders, t)
 
