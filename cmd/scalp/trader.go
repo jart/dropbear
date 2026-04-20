@@ -209,7 +209,7 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 	delta := t.computeDelta()
 	if !hasBuy && delta.Cmp(tolerance) < 0 {
 		// buying: mid + halfSpread * spread
-		qty := t.Config.Quantum
+		qty := delta.Neg().QuantizeTruncate(t.Config.Quantum)
 		price = mid.Add(hlf.Mul(spread))
 		price = price.QuantizeTruncate(decimal.Cent)
 		log.Printf("buying %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty, price, mid.Sub(price), bid, ask, delta)
@@ -217,7 +217,7 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 	}
 	if !hasSell && delta.Neg().Cmp(tolerance) < 0 {
 		// selling: mid - halfSpread * spread
-		qty := t.Config.Quantum
+		qty := delta.QuantizeTruncate(t.Config.Quantum)
 		price = mid.Sub(hlf.Mul(spread))
 		price = price.QuantizeAway(decimal.Cent)
 		log.Printf("selling %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty, price, mid.Sub(price).Neg(), bid, ask, delta)

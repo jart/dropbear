@@ -92,7 +92,7 @@ func (t *Trader) Live() {
 }
 
 func (t *Trader) streamEquities(key databento.ApiKey, defs chan<- *options.Equity, ticks chan<- *databento.MBP1) {
-	client, err := databento.Dial("XNAS.ITCH", key)
+	client, err := databento.Dial("EQUS.MINI", key)
 	if err != nil {
 		log.Fatalf("dial: %v", err)
 	}
@@ -288,6 +288,10 @@ func (t *Trader) sendLiveOrder(order *Order) {
 			instruction = schwab.InstructionSellToOpen
 		}
 	}
+	assetType := schwab.AssetTypeOption
+	if _, ok := order.Security.(*options.Equity); ok {
+		assetType = schwab.AssetTypeEquity
+	}
 	schwabOrder := &schwab.Order{
 		OrderType:         orderType,
 		Price:             order.Price,
@@ -296,7 +300,7 @@ func (t *Trader) sendLiveOrder(order *Order) {
 			Quantity:    order.Quantity.Abs(),
 			Instruction: instruction,
 			Instrument: schwab.Instrument{
-				AssetType: schwab.AssetTypeOption,
+				AssetType: assetType,
 				Symbol:    order.Security.Name(),
 			},
 		}},
