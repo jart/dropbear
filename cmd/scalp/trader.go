@@ -15,7 +15,9 @@ type State int
 
 const (
 	StateNeedCall State = iota
+	StateBuyingCall
 	StateNeedPut
+	StateBuyingPut
 	StateReady
 )
 
@@ -65,43 +67,80 @@ func (t *Trader) onThought(now clocky.Time) {
 		t.Hinter.Hint("not trading: market closed")
 		return
 	}
-	if len(t.PendingOrdersBySecurity) != 0 || len(t.OrdersBySchwabID) != 0 {
-		return // don't run when there's pending orders
-	}
-	if t.Underlying == nil || !t.Underlying.Bid.IsPositive() || !t.Underlying.Ask.IsPositive() {
+	if t.Underlying == nil || !t.Underlying.GetBid().IsPositive() || !t.Underlying.GetAsk().IsPositive() {
 		return
 	}
 	switch t.State {
 	case StateNeedCall:
 		log.Printf("buying call")
-		if t.buyCall() {
+		if t.buyCall(now) {
+			t.State = StateBuyingCall
+		}
+	case StateBuyingCall:
+		if t.orderCount() == 0 {
 			t.State = StateNeedPut
 		}
 	case StateNeedPut:
+		if t.orderCount() != 0 {
+			return // wait for call order to fill before buying put
+		}
 		log.Printf("buying put")
-		if t.buyPut() {
+		if t.buyPut(now) {
+			t.State = StateBuyingPut
+		}
+	case StateBuyingPut:
+		if t.orderCount() == 0 {
 			t.State = StateReady
 		}
 	case StateReady:
-		t.hedgeDelta()
+		t.hedgeDelta(now)
+	default:
+		panic("invalid state")
 	}
 }
 
-func (t *Trader) marketOrder(security options.Security, quantity decimal.Decimal) {
+func (t *Trader) orderCount() int {
+	if *liveFlag {
+		return len(t.OrdersBySchwabID)
+	}
+	return len(t.PendingOrders)
+}
+
+func (t *Trader) pendingOrders() []*Order {
+	var orders []*Order
+	if *liveFlag {
+		for _, order := range t.OrdersBySchwabID {
+			orders = append(orders, order)
+		}
+	} else {
+		for order := range t.PendingOrders {
+			orders = append(orders, order)
+		}
+	}
+	return orders
+}
+
+func (t *Trader) marketOrder(now clocky.Time, security options.Security, quantity decimal.Decimal) {
+	t.limitOrder(now, security, quantity, decimal.Zero)
+}
+
+func (t *Trader) limitOrder(now clocky.Time, security options.Security, quantity, price decimal.Decimal) {
 	t.OrderCounter++
 	order := &Order{
-		Trader:  t,
-		ID:      t.OrderCounter,
-		Created: clocky.Now(),
-		Legs: []*Leg{{
-			Security: security,
-			Quantity: quantity,
-		}},
+		Trader:   t,
+		ID:       t.OrderCounter,
+		Created:  now,
+		Security: security,
+		Quantity: quantity,
+		Price:    price,
 	}
-	order.Send()
+	err := order.Send()
+	if err != nil {
+		log.Printf("failed to place order: %v\n", err)
+	}
 }
 
-func (t *Trader) buyCall() bool {
+func (t *Trader) buyCall(now clocky.Time) bool {
 	strike := t.Chain.AtTheMoney
 	n := t.Config.Strikes / 2
 	for n > 0 {
@@ -115,11 +154,11 @@ func (t *Trader) buyCall() bool {
 		return false
 	}
 	quantity := t.Config.Straddles.Mul(t.Config.Direction)
-	t.marketOrder(strike.Call, quantity)
+	t.marketOrder(now, strike.Call, quantity)
 	return true
 }
 
-func (t *Trader) buyPut() bool {
+func (t *Trader) buyPut(now clocky.Time) bool {
 	strike := t.Chain.AtTheMoney
 	n := (t.Config.Strikes + 1) / 2
 	for n > 0 {
@@ -133,19 +172,49 @@ func (t *Trader) buyPut() bool {
 		return false
 	}
 	quantity := t.Config.Straddles.Mul(t.Config.Direction)
-	t.marketOrder(strike.Put, quantity)
+	t.marketOrder(now, strike.Put, quantity)
 	return true
 }
 
-func (t *Trader) hedgeDelta() {
+func (t *Trader) hedgeDelta(now clocky.Time) {
+	orders := t.pendingOrders()
+	if len(orders) > 0 {
+		for _, order := range orders {
+			if !order.Canceling && now.After(order.Created.Add(t.Config.Patience)) {
+				log.Printf("canceling order #%d after waiting %s\n", order.ID, t.Config.Patience)
+				order.Cancel()
+			}
+		}
+		return
+	}
 	delta := t.computeDelta()
 	qty := delta.QuantizeTruncate(t.Config.Quantum).Neg()
 	if qty.IsZero() {
 		return
 	}
 	t.onHeartbeat()
-	log.Printf("buying %s shares to hedge delta of %s\n", qty, delta)
-	t.marketOrder(t.Underlying, qty)
+	spread := t.Config.Spread
+	tolerance := t.Config.Tolerance.Mul(t.Config.Quantum)
+	if delta.Abs().Cmp(tolerance) >= 0 {
+		spread = decimal.Two
+		log.Printf("delta %s exceeds tolerance %s, crossing the spread\n", delta, tolerance)
+	}
+	price := decimal.Zero
+	bid := t.Underlying.GetBid()
+	ask := t.Underlying.GetAsk()
+	mid := bid.Add(ask).Half()
+	hlf := ask.Sub(bid).Half()
+	if qty.IsPositive() {
+		// buying: mid + halfSpread * spread
+		price = mid.Add(hlf.Mul(spread))
+		price = price.QuantizeTruncate(decimal.Cent)
+	} else {
+		// selling: mid - halfSpread * spread
+		price = mid.Sub(hlf.Mul(spread))
+		price = price.QuantizeAway(decimal.Cent)
+	}
+	log.Printf("trading %s shares at %s to hedge delta of %s\n", qty, price, delta)
+	t.limitOrder(now, t.Underlying, qty, price)
 }
 
 func (t *Trader) onHeartbeat() {
@@ -156,9 +225,9 @@ func (t *Trader) onHeartbeat() {
 		shares = holding.Quantity
 		cost = holding.AverageCost
 	}
-	log.Printf("price:%s shares:%s cost:%s delta:%s cash:%s equity:%s",
+	log.Printf("price:%s shares:%s cost:%s delta:%s cash:%s equity:%s orders:%d\n",
 		t.Underlying.MidPrice(), shares, cost, t.computeDelta(),
-		t.Holdings.Cash, t.Holdings.LiquidationValue())
+		t.Holdings.Cash, t.Holdings.LiquidationValue(), t.orderCount())
 }
 
 func (t *Trader) computeDelta() decimal.Decimal {
@@ -229,32 +298,7 @@ func (t *Trader) onEquityTrade(e *options.Equity, m *databento.MBP1) {
 
 func (t *Trader) onEquityQuote(e *options.Equity, m *databento.MBP1) {
 	e.TS = m.Header.TSEvent
-	bid := m.Levels[0].BidPx
-	mustRecomputeGreeks := false
-	if bid != databento.UndefPrice {
-		price := decimal.Decimal(bid / 1000)
-		if price.Cmp(e.Bid) != 0 {
-			mustRecomputeGreeks = true
-		}
-		e.Bid = price
-		e.BidSize = m.Levels[0].BidSz
-	} else {
-		e.Bid = decimal.Zero
-		e.BidSize = 0
-	}
-	ask := m.Levels[0].AskPx
-	if ask != databento.UndefPrice {
-		price := decimal.Decimal(ask / 1000)
-		if price.Cmp(e.Ask) != 0 {
-			mustRecomputeGreeks = true
-		}
-		e.Ask = price
-		e.AskSize = m.Levels[0].AskSz
-	} else {
-		e.Ask = decimal.Zero
-		e.AskSize = 0
-	}
-	if mustRecomputeGreeks {
+	if e.Book.UpdateMBP1(m) {
 		for _, holding := range t.Holdings.Positions {
 			if o, ok := holding.Security.(*options.Option); ok && o.Symbol == e.Symbol {
 				o.ComputeGreeks(e.MidPrice(), kRiskFreeRate)

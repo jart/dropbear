@@ -30,7 +30,6 @@ var (
 var (
 	liveFlag      = flag.Bool("live", false, "run in live trading mode")
 	dryFlag       = flag.Bool("dry", false, "don't send new orders in live mode")
-	hostileFlag   = flag.Bool("hostile", false, "simulate maximum hostility on fills")
 	maxErrorFlag  = decimal.Flag("max-error", "1", "maximum acceptable accounting error before panic")
 	latencyFlag   = clocky.DurationFlag("latency", "10ms", "simulated order latency")
 	heartbeatFlag = clocky.DurationFlag("heartbeat", "1m", "interval between status reports")
@@ -50,9 +49,11 @@ func main() {
 	dateFlag := clocky.TimeFlag("date", "", "date of the trades")
 	directionFlag := decimal.Flag("direction", "1", "direction of options trade (1=long, -1=short)")
 	straddlesFlag := decimal.Flag("straddles", "5", "number of ATM straddles to buy at open")
-	quantumFlag := decimal.Flag("quantum", "100", "share lot size for delta hedging")
-	spreadFlag := decimal.Flag("spread", "1", "spread crossing for straddle (-1=make, 0=mid, 1=take)")
-	startOfDayFlag := flag.Int("sod", 9_30_05, "start of day in HHMMSS")
+	toleranceFlag := decimal.Flag("tolerance", "2", "absolute delta threshold in quantums for taking liquidity")
+	quantumFlag := decimal.Flag("quantum", "40", "share lot size for delta hedging")
+	patienceFlag := clocky.DurationFlag("patience", "5s", "how long to wait for order execution")
+	spreadFlag := decimal.Flag("spread", "-1", "spread crossing for straddle (-1=make, 0=mid, 1=take)")
+	startOfDayFlag := flag.Int("sod", 9_35_00, "start of day in HHMMSS")
 	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")
 
 	newConfig := func() *Config {
@@ -62,8 +63,10 @@ func main() {
 			Straddles:  *straddlesFlag,
 			Quantum:    *quantumFlag,
 			Spread:     *spreadFlag,
+			Patience:   *patienceFlag,
 			StartOfDay: *startOfDayFlag,
 			Strikes:    *strikesFlag,
+			Tolerance:  *toleranceFlag,
 		}
 	}
 

@@ -72,7 +72,7 @@ func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 			if e == nil {
 				continue
 			}
-			t.simulateFills(e)
+			t.simulateFills(now, e)
 		case *databento.CMBP1:
 			now = m.TSRecv
 			clocky.SetNow(now)
@@ -80,7 +80,7 @@ func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 			if o == nil {
 				continue
 			}
-			t.simulateFills(o)
+			t.simulateFills(now, o)
 		default:
 			return fmt.Errorf("unexpected record type %T", rec)
 		}
@@ -107,106 +107,114 @@ func (t *Trader) simulateOrder(order *Order) {
 	t.addPendingOrder(order)
 }
 
-func (t *Trader) simulateFills(security options.Security) {
+func (t *Trader) simulateFills(now clocky.Time, security options.Security) {
 	for _, order := range slices.Clone(t.PendingOrdersBySecurity[security]) {
-		if t.simulateFillOrder(order) {
+		if t.simulateFillOrder(now, order) {
 			t.removePendingOrder(order)
 		}
 	}
 }
 
-func (t *Trader) simulateFillOrder(order *Order) bool {
-	if order.Filled() {
+func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
+	if order.Filled {
 		panic("order already filled")
 	}
-
-	// simulate network and broker latency
-	now := clocky.Now()
 	if now.Before(order.Created.Add(*latencyFlag)) {
 		return false
 	}
-
-	// choose execution price
-	var priceThatMarketDemands decimal.Decimal
-	if *hostileFlag {
-		priceThatMarketDemands = order.NaturalPrice()
-	} else {
-		priceThatMarketDemands = order.MidPrice()
-	}
-	var roundedPrice decimal.Decimal
-	tick, bigTick := order.Ticks()
-	if priceThatMarketDemands.Abs().Cmp(decimal.Three) >= 0 {
-		roundedPrice = priceThatMarketDemands.QuantizeFloor(bigTick)
-	} else {
-		roundedPrice = priceThatMarketDemands.QuantizeFloor(tick)
-	}
-	skew := priceThatMarketDemands.Sub(roundedPrice)
-	priceThatMarketDemands = roundedPrice
-
-	// market orders should fill immediately at price that market demands
-	if order.Price.IsZero() {
-		order.Price = priceThatMarketDemands
-	}
-
-	// determine if this order is able to be filled
-	// e.g. order.price is -.5 (debit/buy) would fill when market moves from -.6 to -.4
-	// e.g. order.price is +.5 (credit/sell) would fill when market moves from +.4 to +.6
-	if priceThatMarketDemands.Cmp(order.Price) < 0 {
-		order.Making = true
-		return false // market hasn't reached our limit yet
-	}
-
-	// check all legs have valid fill prices before committing
-	for _, leg := range order.Legs {
-		if leg.Quantity.IsPositive() && !leg.Security.GetAsk().IsPositive() {
-			return false // can't buy at zero ask
-		}
-		if leg.Quantity.IsNegative() && !leg.Security.GetBid().IsPositive() {
-			return false // can't sell at zero bid
-		}
-	}
-
-	// simulate fill by updating holdings and cash
-	log.Printf("simulated fill of order #%d at price %s -> %s\n",
-		order.ID, order.Price, priceThatMarketDemands)
-	fillPriceSum := decimal.Zero
-	for i, leg := range order.Legs {
-		var fillPrice decimal.Decimal
-		if *hostileFlag {
-			if leg.Quantity.IsPositive() {
-				fillPrice = leg.Security.GetAsk()
-			} else {
-				fillPrice = leg.Security.GetBid()
+	switch e := order.Security.(type) {
+	case *options.Option:
+		var demand decimal.Decimal
+		if order.Quantity.IsPositive() {
+			demand = e.Ask
+			if !order.Price.IsZero() && order.Price.Cmp(demand) < 0 {
+				order.Making = true
+				return false // market hasn't reached our limit yet
 			}
 		} else {
-			fillPrice = leg.Security.MidPrice()
-		}
-		// apply quantization skew to last leg so fills sum to order price
-		if i == len(order.Legs)-1 {
-			if leg.Quantity.IsPositive() {
-				fillPrice = fillPrice.Add(skew)
-			} else {
-				fillPrice = fillPrice.Sub(skew)
+			demand = e.Bid
+			if !order.Price.IsZero() && order.Price.Cmp(demand) > 0 {
+				order.Making = true
+				return false // market hasn't reached our limit yet
 			}
 		}
-		if leg.Quantity.IsPositive() {
-			fillPriceSum = fillPriceSum.Sub(fillPrice)
+		log.Printf("order #%d transacted %s options at price %s (limit %s)\n",
+			order.ID, order.Quantity, demand, order.Price)
+		t.Holdings.Add(order.Security, order.Quantity, demand)
+		order.Filled = true
+		fee := order.EstimateFee(true, !order.Making)
+		t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
+		return true
+	case *options.Equity:
+		got := decimal.Zero
+		need := order.Unfilled
+		first := need.Cmp(order.Quantity.Abs()) == 0
+		if order.Quantity.IsPositive() {
+			// let's buy stock
+			for {
+				if len(e.Book.Asks.Levels) == 0 {
+					break // no more asks, market hasn't reached our limit yet
+				}
+				level := e.Book.Asks.Levels[len(e.Book.Asks.Levels)-1]
+				if !order.Price.IsZero() && order.Price.Cmp(level.Price) < 0 {
+					break // market hasn't reached our limit yet
+				}
+				take := level.Size.Min(need.Sub(got))
+				if take.Cmp(level.Size) == 0 {
+					e.Book.Asks.Levels = e.Book.Asks.Levels[:len(e.Book.Asks.Levels)-1]
+				} else {
+					e.Book.Asks.Levels[len(e.Book.Asks.Levels)-1].Size = level.Size.Sub(take)
+				}
+				got = got.Add(take)
+				t.Holdings.Add(order.Security, take, level.Price)
+				log.Printf("order #%d bought %s at price %s (limit %s) after %s\n",
+					order.ID, got, level.Price, order.Price, now.Sub(order.Created))
+				if got.Cmp(need) == 0 {
+					break
+				}
+			}
 		} else {
-			fillPriceSum = fillPriceSum.Add(fillPrice)
+			// let's sell stock
+			for {
+				if len(e.Book.Bids.Levels) == 0 {
+					break // no more bids, market hasn't reached our limit yet
+				}
+				level := e.Book.Bids.Levels[len(e.Book.Bids.Levels)-1]
+				if !order.Price.IsZero() && order.Price.Cmp(level.Price) > 0 {
+					break // market hasn't reached our limit yet
+				}
+				take := level.Size.Min(need.Sub(got))
+				if take.Cmp(level.Size) == 0 {
+					e.Book.Bids.Levels = e.Book.Bids.Levels[:len(e.Book.Bids.Levels)-1]
+				} else {
+					e.Book.Bids.Levels[len(e.Book.Bids.Levels)-1].Size = level.Size.Sub(take)
+				}
+				got = got.Add(take)
+				t.Holdings.Add(order.Security, take.Neg(), level.Price)
+				log.Printf("order #%d sold %s at price %s (limit %s) after %s\n",
+					order.ID, got, level.Price, order.Price, now.Sub(order.Created))
+				if got.Cmp(need) == 0 {
+					break
+				}
+			}
 		}
-		t.Holdings.Add(leg.Security, leg.Quantity, fillPrice)
-		leg.Filled = true
+		if first && got.Cmp(need) != 0 {
+			order.Making = true
+		}
+		if got.IsZero() {
+			return false // market hasn't reached our limit yet
+		}
+		log.Printf("order #%d filled %s of %s after %s\n", order.ID, got, need, now.Sub(order.Created))
+		order.Unfilled = need.Sub(got)
+		if got.Cmp(need) == 0 {
+			order.Filled = true
+		}
+		fee := order.EstimateFee(first, !order.Making)
+		t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
+		return order.Filled
+	default:
+		panic("unsupported security type")
 	}
-	if fillPriceSum.Cmp(priceThatMarketDemands) != 0 {
-		panic(fmt.Sprintf("fill price sum %s does not match execution price %s", fillPriceSum, priceThatMarketDemands))
-	}
-
-	// simulate commission and regulatory fees
-	fee := order.EstimateFee(!order.Making)
-	t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
-
-	// caller should now call removePendingOrder if it was added
-	return true
 }
 
 func (t *Trader) simulateCancelOrder(order *Order) {

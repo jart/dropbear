@@ -269,41 +269,37 @@ func (t *Trader) loadSchwabOrder(order *schwab.Order) {
 }
 
 func (t *Trader) sendLiveOrder(order *Order) {
-	orderType := schwab.OrderTypeNetCredit
-	if order.Price.IsNegative() {
-		orderType = schwab.OrderTypeNetDebit
-	} else if order.Price.IsZero() {
-		orderType = schwab.OrderTypeMarket
+	orderType := schwab.OrderTypeMarket
+	if order.Price.IsPositive() {
+		orderType = schwab.OrderTypeLimit
+	}
+	var instruction schwab.Instruction
+	holding := t.Holdings.Positions[order.Security]
+	if order.Quantity.IsPositive() {
+		if holding != nil && holding.Quantity.IsNegative() {
+			instruction = schwab.InstructionBuyToClose
+		} else {
+			instruction = schwab.InstructionBuyToOpen
+		}
+	} else {
+		if holding != nil && holding.Quantity.IsPositive() {
+			instruction = schwab.InstructionSellToClose
+		} else {
+			instruction = schwab.InstructionSellToOpen
+		}
 	}
 	schwabOrder := &schwab.Order{
 		OrderType:         orderType,
-		Price:             order.Price.Abs(),
+		Price:             order.Price,
 		OrderStrategyType: schwab.OrderStrategyTypeSingle,
-	}
-	for _, leg := range order.Legs {
-		var instruction schwab.Instruction
-		holding := t.Holdings.Positions[leg.Security]
-		if leg.Quantity.IsPositive() {
-			if holding != nil && holding.Quantity.IsNegative() {
-				instruction = schwab.InstructionBuyToClose
-			} else {
-				instruction = schwab.InstructionBuyToOpen
-			}
-		} else {
-			if holding != nil && holding.Quantity.IsPositive() {
-				instruction = schwab.InstructionSellToClose
-			} else {
-				instruction = schwab.InstructionSellToOpen
-			}
-		}
-		schwabOrder.OrderLegCollection = append(schwabOrder.OrderLegCollection, schwab.OrderLeg{
-			Quantity:    leg.Quantity.Abs(),
+		OrderLegCollection: []schwab.OrderLeg{{
+			Quantity:    order.Quantity.Abs(),
 			Instruction: instruction,
 			Instrument: schwab.Instrument{
 				AssetType: schwab.AssetTypeOption,
-				Symbol:    leg.Security.Name(),
+				Symbol:    order.Security.Name(),
 			},
-		})
+		}},
 	}
 	t.addPendingOrder(order)
 	go func() {
@@ -437,38 +433,29 @@ func (t *Trader) onFillEvent(event *schwab.OrderEvent, fill *schwab.FillEvent) {
 	}
 
 	// update holdings
-	log.Printf("#%d leg filled for order id %d: %s %s @ %s, route: %s, improvement: %s, fee: %s",
+	log.Printf("#%d filled for order id %d %s %s @ %s, route: %s, improvement: %s, fee: %s",
 		order.ID, orderID, fill.OrderInfoForTransactionPosting.BuySellCode, security.Name(), fillPrice, routeName, priceImprovement, fee)
 
-	// mark leg filled
-	for _, leg := range order.Legs {
-		if leg.Security == security {
-			leg.Filled = true
-			break
-		}
-	}
-
-	// remove fully filled orders
-	if order.Filled() {
-		t.deleteSchwabOrder(order)
-		log.Printf("#%d order complete for order id %d", order.ID, order.OrderID)
-	}
+	// mark order filled
+	order.Filled = true
+	t.deleteSchwabOrder(order)
+	log.Printf("#%d order complete for order id %d", order.ID, order.OrderID)
 }
 
 func (t *Trader) onExpiredEvent(event *schwab.OrderEvent, ee *schwab.ExpiredEvent) {
-	sim := t.OrdersBySchwabID[event.SchwabOrderID]
-	if sim == nil {
+	order := t.OrdersBySchwabID[event.SchwabOrderID]
+	if order == nil {
 		return
 	}
-	if event.SchwabOrderID != sim.OrderID {
-		log.Printf("warning: #%d leg for order id %d does not match expired event leg id %d: %s", sim.ID, sim.OrderID, ee.LegID, sim)
+	if event.SchwabOrderID != order.OrderID {
+		log.Printf("warning: #%d leg for order id %d does not match expired event leg id %d: %s", order.ID, order.OrderID, ee.LegID, order)
 		return
 	}
 	if ee.LegStatus != "LegClosed" {
-		log.Printf("warning: #%d leg for order id %d has unexpected leg status for expired event: %s", sim.ID, sim.OrderID, ee.LegStatus)
+		log.Printf("warning: #%d leg for order id %d has unexpected leg status for expired event: %s", order.ID, order.OrderID, ee.LegStatus)
 	}
-	log.Printf("#%d leg expired for order id %d: %s", sim.ID, sim.OrderID, sim)
-	t.onOrderCancel(sim)
+	log.Printf("#%d leg expired for order id %d: %s", order.ID, order.OrderID, order)
+	t.onOrderCancel(order)
 }
 
 func (t *Trader) onOrderOrderID(order *Order, orderID schwab.OrderID) {

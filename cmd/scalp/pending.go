@@ -1,26 +1,26 @@
 package main
 
+import "log"
+
 func (t *Trader) addPendingOrder(order *Order) {
+	log.Printf("adding order #%d to pending\n", order.ID)
 	t.PendingOrders[order] = true
-	for _, leg := range order.Legs {
-		t.PendingOrdersBySecurity[leg.Security] = append(t.PendingOrdersBySecurity[leg.Security], order)
-	}
+	t.PendingOrdersBySecurity[order.Security] = append(t.PendingOrdersBySecurity[order.Security], order)
 }
 
 func (t *Trader) removePendingOrder(order *Order) {
+	log.Printf("removing order #%d from pending\n", order.ID)
 	delete(t.PendingOrders, order)
-	for _, leg := range order.Legs {
-		orders := t.PendingOrdersBySecurity[leg.Security]
-		for i, o := range orders {
-			if o == order {
-				orders = append(orders[:i], orders[i+1:]...)
-				if len(orders) == 0 {
-					delete(t.PendingOrdersBySecurity, leg.Security)
-				} else {
-					t.PendingOrdersBySecurity[leg.Security] = orders
-				}
-				break
+	orders := t.PendingOrdersBySecurity[order.Security]
+	for i, o := range orders {
+		if o == order {
+			orders = append(orders[:i], orders[i+1:]...)
+			if len(orders) == 0 {
+				delete(t.PendingOrdersBySecurity, order.Security)
+			} else {
+				t.PendingOrdersBySecurity[order.Security] = orders
 			}
+			break
 		}
 	}
 }

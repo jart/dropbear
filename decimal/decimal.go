@@ -46,6 +46,17 @@ func (d Decimal) Neg() Decimal {
 	return -d
 }
 
+// Sign returns -1 for negative numbers, 0 for zero, and +1 for positive numbers.
+func (d Decimal) Sign() Decimal {
+	if d > 0 {
+		return One
+	}
+	if d < 0 {
+		return NegOne
+	}
+	return Zero
+}
+
 // IsPositive returns true for positive non-zero numbers.
 func (d Decimal) IsPositive() bool {
 	return d > 0
