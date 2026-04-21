@@ -168,22 +168,13 @@ func (t *Trader) onThought(now clocky.Time) {
 }
 
 func (t *Trader) orderCount() int {
-	if *liveFlag {
-		return len(t.OrdersBySchwabID)
-	}
 	return len(t.PendingOrders)
 }
 
 func (t *Trader) pendingOrders() []*Order {
 	var orders []*Order
-	if *liveFlag {
-		for _, order := range t.OrdersBySchwabID {
-			orders = append(orders, order)
-		}
-	} else {
-		for order := range t.PendingOrders {
-			orders = append(orders, order)
-		}
+	for order := range t.PendingOrders {
+		orders = append(orders, order)
 	}
 	return orders
 }
