@@ -1,6 +1,9 @@
 package alpaca
 
-import "fmt"
+import (
+	"flag"
+	"fmt"
+)
 
 type OrderDestination uint8
 
@@ -15,11 +18,11 @@ func ParseOrderDestination(s string) (OrderDestination, error) {
 	switch s {
 	case "":
 		return OrderDestinationNone, nil
-	case "NYSE":
+	case "NYSE", "nyse":
 		return OrderDestinationNYSE, nil
-	case "NASDAQ":
+	case "NASDAQ", "nasdaq":
 		return OrderDestinationNASDAQ, nil
-	case "ARCA":
+	case "ARCA", "arca":
 		return OrderDestinationARCA, nil
 	default:
 		return 0, fmt.Errorf("unknown order destination: %s", s)
@@ -74,4 +77,36 @@ func (od *OrderDestination) UnmarshalJSON(data []byte) error {
 	}
 	*od = v
 	return nil
+}
+
+// OrderDestinationFlag defines an OrderDestination flag with specified name, default value, and usage string.
+// The return value is the address of an OrderDestination variable that stores the value of the flag.
+func OrderDestinationFlag(name string, value string, usage string) *OrderDestination {
+	p := new(OrderDestination)
+	var err error
+	*p, err = ParseOrderDestination(value)
+	if err != nil {
+		panic(err)
+	}
+	flag.Var((*orderDestinationValue)(p), name, usage)
+	return p
+}
+
+type orderDestinationValue OrderDestination
+
+func (d *orderDestinationValue) Set(s string) error {
+	v, err := ParseOrderDestination(s)
+	if err != nil {
+		return err
+	}
+	*d = orderDestinationValue(v)
+	return nil
+}
+
+func (d *orderDestinationValue) Get() any {
+	return OrderDestination(*d)
+}
+
+func (d *orderDestinationValue) String() string {
+	return OrderDestination(*d).String()
 }

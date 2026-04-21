@@ -5,6 +5,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/osi"
 	"flag"
 	"fmt"
 	"log"
@@ -22,7 +23,7 @@ var (
 	flagTWAP          = flag.Bool("twap", false, "use time weighted average price algorithm")
 	flagVWAP          = flag.Bool("vwap", false, "use volume weighted average price algorithm")
 	flagWait          = flag.Bool("wait", false, "wait for order to fill")
-	flagDMA           = flag.String("dma", "", "directly route order to lit exchange (NYSE, NASDAQ, ARCA)")
+	flagDMA           = alpaca.OrderDestinationFlag("dma", "", "directly route order to lit exchange (NYSE, NASDAQ, ARCA)")
 	flagExt           = flag.Bool("ext", false, "participate in extended hours trading (must be limit order with default (day) time in force)")
 	flagLimit         = decimal.Flag("limit", "0", "sets an explicit limit price (the default is to use the midpoint plus/minus greed depending on the side) must be positve")
 	flagAmt           = decimal.Flag("amt", "0", "usd notional value of order (negative to sell) which is mutually exclusive with -qty")
@@ -217,18 +218,25 @@ options:
 	orderUpdates := alpaca.OrderUpdates()
 
 	// loop over stocks
+	var err error
 	exitCode := 0
 	client := alpaca.NewClient()
 	for _, sym := range symbols {
 
-		// get quote
-		quote, err := client.GetQuote(sym)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting quote for %s: %v\n", sym, err)
-			if exitCode < 255 {
-				exitCode++
+		// lazy fetch quote once
+		gotQuote := false
+		bidPrice := decimal.Zero
+		askPrice := decimal.Zero
+		needQuote := func() {
+			if gotQuote {
+				return
 			}
-			continue
+			bidPrice, askPrice, err = getQuote(client, sym)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error getting quote for %s: %v\n", sym, err)
+				os.Exit(1)
+			}
+			gotQuote = true
 		}
 
 		// figure out qty
@@ -242,13 +250,14 @@ options:
 		} else {
 			price := decimal.Zero
 			amt := *flagAmt
+			needQuote()
 			if amt.IsNegative() {
 				side = ds.SideSell
-				price := quote.BidPrice
+				price := bidPrice
 				amt = amt.Neg()
 				qty = amt.Div(price).Truncate()
 			} else {
-				price := quote.AskPrice
+				price := askPrice
 				qty = amt.Div(price).Truncate()
 			}
 			if qty.IsZero() {
@@ -263,26 +272,14 @@ options:
 		// figure out our price
 		limitPrice := *flagLimit
 		if orderType == alpaca.OrderTypeLimit && limitPrice.IsZero() {
-			limitPrice = quote.BidPrice.Add(quote.AskPrice).Half()
+			needQuote()
+			limitPrice = bidPrice.Add(askPrice).Half()
 			if side == ds.SideBuy {
 				limitPrice = limitPrice.Mul(decimal.One.Sub(*flagGreed))
 				limitPrice = limitPrice.QuantizeTruncate(decimal.Cent)
 			} else {
 				limitPrice = limitPrice.Mul(decimal.One.Add(*flagGreed))
 				limitPrice = limitPrice.QuantizeAway(decimal.Cent)
-			}
-		}
-
-		// figure out exchange destination
-		var destination alpaca.OrderDestination
-		if *flagDMA != "" {
-			destination, err = alpaca.ParseOrderDestination(*flagDMA)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "invalid DMA destination %s: %v\n", *flagDMA, err)
-				if exitCode < 255 {
-					exitCode++
-				}
-				continue
 			}
 		}
 
@@ -304,7 +301,7 @@ options:
 				Algorithm:     algorithm,
 				EndTime:       endTime,
 				MaxPercentage: maxPercentage,
-				Destination:   destination,
+				Destination:   *flagDMA,
 			},
 		})
 		if err != nil {
@@ -317,6 +314,7 @@ options:
 		// log the order
 		fmt.Printf("order placed to %s %s shares of %s at %s with status %s\n", side, qty, sym, limitPrice, order.Status)
 
+		// print order updates until order is done if -wait is specified
 		if *flagWait {
 			for orderUpdate := range orderUpdates {
 				if orderUpdate.Order.ClientOrderID != clientOrderID {
@@ -334,4 +332,22 @@ options:
 
 	// report status to parent process
 	os.Exit(exitCode)
+}
+
+func getQuote(client *alpaca.Client, sym string) (decimal.Decimal, decimal.Decimal, error) {
+	_, _, _, _, _, _, err := osi.Parse(sym)
+	if err != nil {
+		// assume this is an equity symbol
+		quote, err := client.GetQuote(sym)
+		if err != nil {
+			return decimal.Zero, decimal.Zero, err
+		}
+		return quote.BidPrice, quote.AskPrice, nil
+	}
+	// this is an options symbol
+	snapshot, err := client.GetOptionSnapshot(sym)
+	if err != nil {
+		return decimal.Zero, decimal.Zero, err
+	}
+	return snapshot.LatestQuote.BidPrice, snapshot.LatestQuote.AskPrice, nil
 }
