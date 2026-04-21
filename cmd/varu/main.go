@@ -302,6 +302,15 @@ func main() {
 	// t.Config.WeightDelta = decimal.Zero
 	// traders = append(traders, t)
 
+	// // AMZN strategy
+	// t = NewTrader(symbol.MustParse("AMZN"), newConfig())
+	// t.Config.Listen = "127.0.0.1:8494"
+	// t.Config.Strategies[kStrategySellCallVertical] = true // bearish
+	// t.Config.StartOfDay = 10_00_00
+	// t.Config.Panic = 1 * clocky.Minute
+	// t.Config.WeightDelta = decimal.Zero
+	// traders = append(traders, t)
+
 	// subscribe to schwab order updates
 	// they only let us have one connection
 	gSchwabClient = schwab.NewClient()

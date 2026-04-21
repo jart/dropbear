@@ -45,12 +45,21 @@ func (t *Trader) LiveSchwab() {
 			continue
 		case update := <-t.OrderEventsSchwab:
 			t.onOrderEventSchwab(update)
+			if t.Web != nil {
+				t.Web.broadcastState()
+			}
 			continue
 		case orderUpdate := <-t.OrderUpdatesSchwab:
 			t.onOrderOrderIDSchwab(orderUpdate.Order, orderUpdate.OrderID)
 			continue
+		case req := <-t.Web.WebRequests:
+			t.Web.processWebRequest(req)
+			continue
 		case <-heartbeat.C:
 			t.onHeartbeat()
+			if t.Web != nil {
+				t.Web.broadcastState()
+			}
 			continue
 		default:
 			// all channels empty
@@ -73,14 +82,25 @@ func (t *Trader) LiveSchwab() {
 			t.onOptionTick(m)
 		case update := <-t.OrderEventsSchwab:
 			t.onOrderEventSchwab(update)
+			if t.Web != nil {
+				t.Web.broadcastState()
+			}
 		case orderUpdate := <-t.OrderUpdatesSchwab:
 			t.onOrderOrderIDSchwab(orderUpdate.Order, orderUpdate.OrderID)
+		case req := <-t.Web.WebRequests:
+			t.Web.processWebRequest(req)
 		case <-heartbeat.C:
 			t.onHeartbeat()
+			if t.Web != nil {
+				t.Web.broadcastState()
+			}
 		case <-readySteadyGo.C:
 			if !ready && t.Chain.LastPopulate != 0 && clocky.Now().After(t.Chain.LastPopulate.Add(clocky.Second)) {
 				t.restorePortfolioSchwab()
 				t.onDefEnd()
+				if t.Web != nil {
+					t.Web.broadcastState()
+				}
 				ready = true
 			}
 		}

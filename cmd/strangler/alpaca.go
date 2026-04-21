@@ -45,9 +45,14 @@ func (t *Trader) LiveAlpaca() {
 			continue
 		case update := <-t.OrderEventsAlpaca:
 			t.onOrderEventAlpaca(update)
+			t.Web.broadcastState()
+			continue
+		case req := <-t.Web.WebRequests:
+			t.Web.processWebRequest(req)
 			continue
 		case <-heartbeat.C:
 			t.onHeartbeat()
+			t.Web.broadcastState()
 			continue
 		default:
 			// all channels empty
@@ -70,12 +75,17 @@ func (t *Trader) LiveAlpaca() {
 			t.onOptionTick(m)
 		case update := <-t.OrderEventsAlpaca:
 			t.onOrderEventAlpaca(update)
+			t.Web.broadcastState()
+		case req := <-t.Web.WebRequests:
+			t.Web.processWebRequest(req)
 		case <-heartbeat.C:
 			t.onHeartbeat()
+			t.Web.broadcastState()
 		case <-readySteadyGo.C:
 			if !ready && t.Chain.LastPopulate != 0 && clocky.Now().After(t.Chain.LastPopulate.Add(clocky.Second)) {
 				t.restorePortfolioAlpaca()
 				t.onDefEnd()
+				t.Web.broadcastState()
 				ready = true
 			}
 		}
@@ -130,6 +140,9 @@ func (t *Trader) sendLiveOrderAlpaca(order *Order) {
 			LimitPrice:    order.Price,
 			TimeInForce:   alpaca.TimeInForceDay,
 			ClientOrderID: order.ClientOrderID,
+			AdvancedInstructions: &alpaca.AdvancedInstructions{
+				Destination: t.Config.DMA,
+			},
 		})
 		if err != nil {
 			log.Fatalf("failed to send order #%d to alpaca: %v", order.ID, err)

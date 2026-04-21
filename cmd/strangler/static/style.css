@@ -1,0 +1,163 @@
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: TinyPragmataProMonoVF, monospace;
+  font-size: 14px;
+  padding: 12px;
+}
+
+h1 {
+  display: inline;
+  font-size: 18px;
+}
+
+h2 {
+  border-bottom: 1px solid #333;
+  color: #888;
+  font-size: 14px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+}
+
+header {
+  align-items: center;
+  border-bottom: 1px solid #333;
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 8px 0 12px;
+}
+
+header span {
+  color: #aaa;
+}
+
+button {
+  background: #2a2a4a;
+  border: 1px solid #444;
+  color: #e0e0e0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 4px 12px;
+}
+
+button:hover {
+  background: #3a3a5a;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: .4;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 300px;
+}
+
+.chart-section {
+  grid-column: 1;
+}
+
+.stats-section {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.positions-section {
+  grid-column: 1 / -1;
+}
+
+.flags-section {
+  grid-column: 2;
+}
+
+section {
+  background: #16213e;
+  border: 1px solid #333;
+  padding: 12px;
+}
+
+canvas {
+  background: #0f0f23;
+  height: 400px;
+  width: 100%;
+}
+
+table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+
+th,
+td {
+  padding: 2px 8px;
+  text-align: right;
+}
+
+th {
+  border-bottom: 1px solid #333;
+  color: #888;
+  font-weight: normal;
+}
+
+td:first-child,
+th:first-child {
+  text-align: left;
+}
+
+.pos { color: #66bb6a; }
+.neg { color: #ef5350; }
+.zero { color: #666; }
+
+.strike-col {
+  background: #1a2040;
+  border-left: 1px solid #444;
+  border-right: 1px solid #444;
+  font-weight: bold;
+  text-align: center;
+}
+
+td.itm {
+  background: #1e3a5f;
+}
+
+#flagsForm label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+#flagsForm input {
+  background: #0f0f23;
+  border: 1px solid #444;
+  color: #e0e0e0;
+  font-family: inherit;
+  padding: 2px 4px;
+}
+
+#flagsForm button {
+  margin-top: 8px;
+}
+
+#status {
+  font-size: 12px;
+}
+
+.status-connected { color: #4caf50; }
+.status-disconnected { color: #f44336; }
+
+.state-label {
+  color: #4fc3f7;
+  font-size: 13px;
+}

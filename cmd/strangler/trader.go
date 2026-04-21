@@ -27,11 +27,37 @@ const (
 	StateReady
 )
 
+func (s State) String() string {
+	switch s {
+	case StateWingCall:
+		return "buying wing call"
+	case StateWingCall2:
+		return "filling wing call"
+	case StateWingPut:
+		return "buying wing put"
+	case StateWingPut2:
+		return "filling wing put"
+	case StateStrangleCall:
+		return "opening call"
+	case StateStrangleCall2:
+		return "filling call"
+	case StateStranglePut:
+		return "opening put"
+	case StateStranglePut2:
+		return "filling put"
+	case StateReady:
+		return "hedging"
+	default:
+		return "unknown"
+	}
+}
+
 type Trader struct {
 	Config                  *Config
 	Chain                   *options.Chain
 	Underlying              *options.Equity
 	Holdings                Holdings
+	Web                     *Web
 	OrderEventsSchwab       chan *schwab.OrderEvent
 	OrderEventsAlpaca       chan *alpaca.OrderUpdate
 	OrderUpdatesSchwab      chan OrderUpdateSchwab
@@ -46,11 +72,13 @@ type Trader struct {
 	Hinter                  *loggy.Hinter
 	State                   State
 	OrderCounter            int
+	Paused                  bool
 }
 
 func NewTrader(config *Config) *Trader {
 	return &Trader{
 		Config:                  config,
+		Web:                     NewWeb(),
 		Chain:                   options.NewChain(),
 		Holdings:                Holdings{Positions: map[options.Security]*Holding{}},
 		OrderEventsSchwab:       make(chan *schwab.OrderEvent, 64),
@@ -68,6 +96,10 @@ func NewTrader(config *Config) *Trader {
 }
 
 func (t *Trader) onThought(now clocky.Time) {
+	if t.Paused {
+		t.Hinter.Hint("not trading: paused")
+		return
+	}
 	clock := now.ClockInt()
 	if clock < t.Config.StartOfDay {
 		t.Hinter.Hint("not trading: before market open (%d < %d)", clock, t.Config.StartOfDay)

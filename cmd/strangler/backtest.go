@@ -92,10 +92,24 @@ func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 			ready = true
 		}
 		if ready {
+			if t.Web != nil {
+				for {
+					select {
+					case req := <-t.Web.WebRequests:
+						t.Web.processWebRequest(req)
+					default:
+						goto doneWebRequests
+					}
+				}
+			doneWebRequests:
+			}
 			t.onThought(now)
 			if now.After(nextHeartbeat) {
 				nextHeartbeat = now.Add(*heartbeatFlag)
 				t.onHeartbeat()
+				if t.Web != nil {
+					t.Web.broadcastState()
+				}
 			}
 		}
 	}

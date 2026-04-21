@@ -1,6 +1,7 @@
 package main
 
 import (
+	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/symbol"
@@ -18,4 +19,6 @@ type Config struct {
 	Strikes    int
 	StartOfDay int
 	Schwab     bool
+	DMA        alpaca.OrderDestination
+	Listen     string
 }

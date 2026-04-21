@@ -7,6 +7,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/loggy"
+	"dropbear/osi"
 	"dropbear/symbol"
 	"flag"
 	"log"
@@ -50,6 +51,7 @@ func main() {
 	black76.DaysPerYear = 252
 	black76.HoursPerDay = 6.5
 
+	webFlag := flag.Bool("web", false, "enable web dashboard feature")
 	dbnFlag := flag.String("dbn", "", "path to backtest data")
 	symbolFlag := symbol.Flag("symbol", "", "symbol to trade (e.g. NVDA)")
 	strikesFlag := flag.Int("strikes", 2, "how many strikes wide strangle should be")
@@ -64,6 +66,7 @@ func main() {
 	spreadFlag := decimal.Flag("spread", "0", "spread crossing for straddle (-1=make, 0=mid, 1=take)")
 	startOfDayFlag := flag.Int("sod", 9_45_00, "start of day in HHMMSS")
 	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")
+	dmaFlag := alpaca.OrderDestinationFlag("dma", "", "directly route order to lit exchange (NYSE, NASDAQ, ARCA)")
 
 	newConfig := func() *Config {
 		return &Config{
@@ -78,6 +81,7 @@ func main() {
 			Schwab:     *schwabFlag,
 			Tolerance:  *toleranceFlag,
 			Wing:       *wingFlag,
+			DMA:        *dmaFlag,
 		}
 	}
 
@@ -107,10 +111,14 @@ func main() {
 	// backtesting
 	if !*liveFlag {
 		t := NewTrader(newConfig())
+		if *webFlag {
+			t.Web.Start(t)
+		}
 		err := t.Backtest(*dbnFlag, *dateFlag)
 		if err != nil {
 			log.Fatalf("backtest error: %v", err)
 		}
+		t.Web.broadcastState()
 		return
 	}
 
@@ -128,6 +136,7 @@ func main() {
 
 	t = NewTrader(newConfig())
 	t.Config.Symbol = symbol.TSLA
+	t.Config.Listen = "127.0.0.1:8485"
 	t.Config.Strikes = 3
 	t.Config.Tolerance = decimal.Parse("-4")
 	t.Config.Patience = 30 * clocky.Second
@@ -135,6 +144,7 @@ func main() {
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.AMZN
+	// t.Config.Listen = "127.0.0.1:8494"
 	// t.Config.Strikes = 3
 	// t.Config.Tolerance = decimal.Parse("-4")
 	// t.Config.Patience = 30 * clocky.Second
@@ -142,6 +152,7 @@ func main() {
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.MSFT
+	// t.Config.Listen = "127.0.0.1:8492"
 	// t.Config.Direction = decimal.One
 	// t.Config.Tolerance = decimal.Parse("-3")
 	// t.Config.Patience = 30 * clocky.Second
@@ -149,6 +160,7 @@ func main() {
 
 	t = NewTrader(newConfig())
 	t.Config.Symbol = symbol.AAPL
+	t.Config.Listen = "127.0.0.1:8493"
 	t.Config.Strikes = 2
 	t.Config.Quantum = decimal.Ten
 	t.Config.Direction = decimal.One
@@ -182,6 +194,13 @@ func main() {
 		go fanoutAlpacaOrderUpdates(orderUpdates, traders)
 	}
 
+	// start web server for each trader
+	for _, t := range traders {
+		if *webFlag {
+			t.Web.Start(t)
+		}
+	}
+
 	// start trading
 	for _, t := range traders {
 		if t.Config.Schwab {
@@ -204,9 +223,25 @@ func fanoutSchwabOrderUpdates(orderEvents <-chan *schwab.OrderEvent, traders []*
 }
 
 func fanoutAlpacaOrderUpdates(orderEvents <-chan *alpaca.OrderUpdate, traders []*Trader) {
+	tradersByUnderlyingSymbol := map[symbol.Symbol]*Trader{}
+	for _, trader := range traders {
+		tradersByUnderlyingSymbol[trader.Config.Symbol] = trader
+	}
 	for orderEvent := range orderEvents {
-		for _, trader := range traders {
+		if trader := tradersByUnderlyingSymbol[tickerSymbol(orderEvent.Order.Symbol)]; trader != nil {
 			trader.OrderEventsAlpaca <- orderEvent
 		}
 	}
+}
+
+func tickerSymbol(ticker string) symbol.Symbol {
+	underlyingSymbol, _, _, _, _, _, err := osi.Parse(ticker)
+	if err == nil {
+		return underlyingSymbol
+	}
+	symbol, err := symbol.Parse(ticker)
+	if err == nil {
+		return symbol
+	}
+	return 0
 }
