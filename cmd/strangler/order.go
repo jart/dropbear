@@ -8,6 +8,7 @@ import (
 	"dropbear/symbol"
 	"errors"
 	"fmt"
+	"log"
 )
 
 type Order struct {
@@ -21,6 +22,7 @@ type Order struct {
 	Quantity      decimal.Decimal // negative for sell, positive for buy, never zero
 	Price         decimal.Decimal // always positive, or zero for market orders
 	Unfilled      decimal.Decimal // always positive, or zero if fully filled
+	NextChase     clocky.Time
 	Sent          bool
 	Making        bool
 	Filled        bool
@@ -53,6 +55,7 @@ func (order *Order) Send() error {
 	}
 	order.Sent = true
 	order.Unfilled = order.Quantity.Abs()
+	order.NextChase = clocky.Now().Add(order.Trader.Config.Chase)
 	if *liveFlag {
 		if order.Trader.Config.Schwab {
 			order.Trader.sendLiveOrderSchwab(order)
@@ -61,6 +64,36 @@ func (order *Order) Send() error {
 		}
 	} else {
 		order.Trader.simulateOrder(order)
+	}
+	return nil
+}
+
+func (order *Order) Update(price decimal.Decimal) error {
+	if !order.Sent {
+		return errors.New("order not sent")
+	}
+	if order.Filled {
+		return errors.New("order filled")
+	}
+	if order.Canceling {
+		return errors.New("order canceling")
+	}
+	if order.Price.IsNegative() {
+		return errors.New("negative price")
+	}
+	if *dryFlag {
+		return errors.New("won't send order in dry run mode")
+	}
+	order.Price = price
+	order.NextChase = clocky.Now().Add(order.Trader.Config.Chase)
+	if *liveFlag {
+		if order.Trader.Config.Schwab {
+			log.Fatalf("todo")
+		} else {
+			order.Trader.updateOrderAlpaca(order)
+		}
+	} else {
+		order.Price = price
 	}
 	return nil
 }

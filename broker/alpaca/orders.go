@@ -10,30 +10,31 @@ import (
 
 // Order represents an Alpaca order.
 type Order struct {
-	ID             string          `json:"id"`               //
-	Symbol         string          `json:"symbol"`           // e.g. SOLUSD
-	AssetID        string          `json:"asset_id"`         //
-	ClientOrderID  string          `json:"client_order_id"`  //
-	Replaces       string          `json:"replaces"`         // id of the order this order replaces
-	Status         OrderStatus     `json:"status"`           // e.g. filled
-	Class          OrderClass      `json:"order_class"`      // e.g. simple
-	Type           OrderType       `json:"type"`             // e.g. limit, market
-	TimeInForce    TimeInForce     `json:"time_in_force"`    //
-	Side           ds.Side         `json:"side"`             //
-	Notional       decimal.Decimal `json:"notional"`         // ordered notional amount. if entered, qty will be null. can take up to 9 decimal points [rounded to 6].
-	Qty            decimal.Decimal `json:"qty"`              // always positive, ordered quantity. if entered, notional will be null. can take up to 9 decimal points [rounded to 6]. required if order class is mleg.
-	FilledQty      decimal.Decimal `json:"filled_qty"`       // always positive, even for sell orders
-	FilledAvgPrice decimal.Decimal `json:"filled_avg_price"` // average price of filled shares
-	LimitPrice     decimal.Decimal `json:"limit_price"`      //
-	StopPrice      decimal.Decimal `json:"stop_price"`       //
-	CreatedAt      clocky.Time     `json:"created_at"`       //
-	UpdatedAt      clocky.Time     `json:"updated_at"`       //
-	FilledAt       clocky.Time     `json:"filled_at"`        //
-	CanceledAt     clocky.Time     `json:"canceled_at"`      //
-	FailedAt       clocky.Time     `json:"failed_at"`        //
-	ReplacedAt     clocky.Time     `json:"replaced_at"`      //
-	ExtendedHours  bool            `json:"extended_hours"`   // eligible for execution outside regular trading hours
-	Legs           []Order         `json:"legs,omitempty"`   // nested leg orders for multi-leg orders
+	ID             string          `json:"id"`                    //
+	Symbol         string          `json:"symbol"`                // e.g. SOLUSD
+	AssetID        string          `json:"asset_id"`              //
+	ClientOrderID  string          `json:"client_order_id"`       //
+	Replaces       string          `json:"replaces"`              // id of the order this order replaces
+	Status         OrderStatus     `json:"status"`                // e.g. filled
+	Class          OrderClass      `json:"order_class"`           // e.g. simple
+	Type           OrderType       `json:"type"`                  // e.g. limit, market
+	TimeInForce    TimeInForce     `json:"time_in_force"`         //
+	Side           ds.Side         `json:"side"`                  //
+	Notional       decimal.Decimal `json:"notional"`              // ordered notional amount. if entered, qty will be null. can take up to 9 decimal points [rounded to 6].
+	Qty            decimal.Decimal `json:"qty"`                   // always positive, ordered quantity. if entered, notional will be null. can take up to 9 decimal points [rounded to 6]. required if order class is mleg.
+	FilledQty      decimal.Decimal `json:"filled_qty"`            // always positive, even for sell orders
+	FilledAvgPrice decimal.Decimal `json:"filled_avg_price"`      // average price of filled shares
+	LimitPrice     decimal.Decimal `json:"limit_price"`           //
+	StopPrice      decimal.Decimal `json:"stop_price"`            //
+	CreatedAt      clocky.Time     `json:"created_at"`            //
+	UpdatedAt      clocky.Time     `json:"updated_at"`            //
+	FilledAt       clocky.Time     `json:"filled_at"`             //
+	CanceledAt     clocky.Time     `json:"canceled_at"`           //
+	FailedAt       clocky.Time     `json:"failed_at"`             //
+	ReplacedAt     clocky.Time     `json:"replaced_at"`           //
+	ReplacedBy     string          `json:"replaced_by,omitempty"` //
+	ExtendedHours  bool            `json:"extended_hours"`        // eligible for execution outside regular trading hours
+	Legs           []Order         `json:"legs,omitempty"`        // nested leg orders for multi-leg orders
 }
 
 // OrderLeg represents a single leg in a multi-leg order.

@@ -1,29 +1,19 @@
 'use strict';
 
-var pollTimer = null;
-
-function startPolling() {
-  beginPolling(500);
-}
-
-function beginPolling(interval) {
+function connect() {
   var status = document.getElementById('status');
-  function poll() {
-    fetch('/api/state')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        status.textContent = 'live';
-        status.className = 'status-connected';
-        if (data && data.symbol)
-          render(data);
-      })
-      .catch(function() {
-        status.textContent = 'disconnected';
-        status.className = 'status-disconnected';
-      });
-  }
-  poll();
-  pollTimer = setInterval(poll, interval);
+  var es = new EventSource('/api/events');
+  es.onmessage = function(e) {
+    status.textContent = 'live';
+    status.className = 'status-connected';
+    var data = JSON.parse(e.data);
+    if (data && data.symbol)
+      render(data);
+  };
+  es.onerror = function() {
+    status.textContent = 'disconnected';
+    status.className = 'status-disconnected';
+  };
 }
 
 function render(d) {
@@ -278,4 +268,4 @@ function submitFlags(e) {
   return false;
 }
 
-startPolling();
+connect();

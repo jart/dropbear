@@ -27,13 +27,11 @@ var (
 )
 
 type Web struct {
-	Trader           *Trader
-	WebRequests      chan WebRequest
-	SSEBroadcast     chan []byte
-	SSEMu            sync.Mutex
-	SSESubscribers   map[chan []byte]struct{}
-	LastSnapshotMu   sync.RWMutex
-	LastSnapshotJSON []byte
+	Trader         *Trader
+	WebRequests    chan WebRequest
+	SSEBroadcast   chan []byte
+	SSEMu          sync.Mutex
+	SSESubscribers map[chan []byte]struct{}
 }
 
 func NewWeb() *Web {
@@ -276,16 +274,13 @@ func (t *Trader) computeSettlementAt(underlyingPrice decimal.Decimal) decimal.De
 	return value
 }
 
-// broadcastState builds a snapshot and caches it for polling.
+// broadcastState builds a snapshot and pushes it to all SSE subscribers.
 // Must be called from the main goroutine.
 func (w *Web) broadcastState() {
 	data, err := json.Marshal(w.buildStateSnapshot())
 	if err != nil {
 		return
 	}
-	w.LastSnapshotMu.Lock()
-	w.LastSnapshotJSON = data
-	w.LastSnapshotMu.Unlock()
 	select {
 	case w.SSEBroadcast <- data:
 	default:
@@ -353,19 +348,6 @@ func (web *Web) handleIndex(w http.ResponseWriter, r *http.Request) {
 	web.noCache(w)
 	w.Header().Set("Content-Type", "text/html")
 	w.Write(data)
-}
-
-func (web *Web) handleStateAPI(w http.ResponseWriter, r *http.Request) {
-	web.LastSnapshotMu.RLock()
-	data := web.LastSnapshotJSON
-	web.LastSnapshotMu.RUnlock()
-	web.noCache(w)
-	w.Header().Set("Content-Type", "application/json")
-	if data != nil {
-		w.Write(data)
-	} else {
-		w.Write([]byte("{}"))
-	}
 }
 
 func (web *Web) noCache(w http.ResponseWriter) {
@@ -477,7 +459,6 @@ func (web *Web) Start(t *Trader) {
 
 	// protected dashboard routes
 	mux.HandleFunc("/", a.RequireAuth(web.handleIndex))
-	mux.HandleFunc("/api/state", a.RequireAuth(web.handleStateAPI))
 	mux.HandleFunc("/api/events", a.RequireAuth(web.handleEventsAPI))
 	mux.HandleFunc("/api/flags", a.RequireAuthReadOnly(web.handleFlagsAPI))
 	mux.HandleFunc("/api/pause", a.RequireAuthReadOnly(web.handlePauseAPI))

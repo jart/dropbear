@@ -2,6 +2,9 @@ package symbol
 
 const (
 	AAPL  = Symbol('A' | 'A'<<8 | 'P'<<16 | 'L'<<24)
+	ADBE  = Symbol('A' | 'D'<<8 | 'B'<<16 | 'E'<<24)
+	AKAM  = Symbol('A' | 'K'<<8 | 'A'<<16 | 'M'<<24)
+	AMD   = Symbol('A' | 'M'<<8 | 'D'<<16)
 	AMZN  = Symbol('A' | 'M'<<8 | 'Z'<<16 | 'N'<<24)
 	AVGO  = Symbol('A' | 'V'<<8 | 'G'<<16 | 'O'<<24)
 	BTI   = Symbol('B' | 'T'<<8 | 'I'<<16)
@@ -9,6 +12,7 @@ const (
 	GOOG  = Symbol('G' | 'O'<<8 | 'O'<<16 | 'G'<<24)
 	GOOGL = Symbol('G' | 'O'<<8 | 'O'<<16 | 'G'<<24 | 'L'<<32)
 	IBIT  = Symbol('I' | 'B'<<8 | 'I'<<16 | 'T'<<24)
+	INTU  = Symbol('I' | 'N'<<8 | 'T'<<16 | 'U'<<24)
 	IWM   = Symbol('I' | 'W'<<8 | 'M'<<16)
 	META  = Symbol('M' | 'E'<<8 | 'T'<<16 | 'A'<<24)
 	MSFT  = Symbol('M' | 'S'<<8 | 'F'<<16 | 'T'<<24)

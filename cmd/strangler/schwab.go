@@ -25,9 +25,10 @@ func (t *Trader) LiveSchwab() {
 	go t.streamEquities(key, equityDefs, equityTicks)
 	go t.streamOptions(key, optionDefs, optionTicks)
 
-	// varu is the trading strategy with a heart
 	heartbeat := clocky.NewTicker(*heartbeatFlag)
 	defer heartbeat.Stop()
+	dumpTimer := clocky.NewTicker(100 * clocky.Millisecond)
+	defer dumpTimer.Stop()
 
 	// we must wait for options chain to become available
 	readySteadyGo := clocky.NewTicker(clocky.Second)
@@ -45,9 +46,6 @@ func (t *Trader) LiveSchwab() {
 			continue
 		case update := <-t.OrderEventsSchwab:
 			t.onOrderEventSchwab(update)
-			if t.Web != nil {
-				t.Web.broadcastState()
-			}
 			continue
 		case orderUpdate := <-t.OrderUpdatesSchwab:
 			t.onOrderOrderIDSchwab(orderUpdate.Order, orderUpdate.OrderID)
@@ -57,9 +55,9 @@ func (t *Trader) LiveSchwab() {
 			continue
 		case <-heartbeat.C:
 			t.onHeartbeat()
-			if t.Web != nil {
-				t.Web.broadcastState()
-			}
+			continue
+		case <-dumpTimer.C:
+			t.Web.broadcastState()
 			continue
 		default:
 			// all channels empty
@@ -82,25 +80,18 @@ func (t *Trader) LiveSchwab() {
 			t.onOptionTick(m)
 		case update := <-t.OrderEventsSchwab:
 			t.onOrderEventSchwab(update)
-			if t.Web != nil {
-				t.Web.broadcastState()
-			}
 		case orderUpdate := <-t.OrderUpdatesSchwab:
 			t.onOrderOrderIDSchwab(orderUpdate.Order, orderUpdate.OrderID)
 		case req := <-t.Web.WebRequests:
 			t.Web.processWebRequest(req)
 		case <-heartbeat.C:
 			t.onHeartbeat()
-			if t.Web != nil {
-				t.Web.broadcastState()
-			}
+		case <-dumpTimer.C:
+			t.Web.broadcastState()
 		case <-readySteadyGo.C:
 			if !ready && t.Chain.LastPopulate != 0 && clocky.Now().After(t.Chain.LastPopulate.Add(clocky.Second)) {
 				t.restorePortfolioSchwab()
 				t.onDefEnd()
-				if t.Web != nil {
-					t.Web.broadcastState()
-				}
 				ready = true
 			}
 		}

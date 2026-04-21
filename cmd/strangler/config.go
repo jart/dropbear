@@ -16,6 +16,7 @@ type Config struct {
 	Spread     decimal.Decimal
 	Wing       decimal.Decimal
 	Patience   clocky.Duration
+	Chase      clocky.Duration
 	Strikes    int
 	StartOfDay int
 	Schwab     bool

@@ -25,9 +25,10 @@ func (t *Trader) LiveAlpaca() {
 	go t.streamEquities(key, equityDefs, equityTicks)
 	go t.streamOptions(key, optionDefs, optionTicks)
 
-	// varu is the trading strategy with a heart
 	heartbeat := clocky.NewTicker(*heartbeatFlag)
 	defer heartbeat.Stop()
+	dumpTimer := clocky.NewTicker(100 * clocky.Millisecond)
+	defer dumpTimer.Stop()
 
 	// we must wait for options chain to become available
 	readySteadyGo := clocky.NewTicker(clocky.Second)
@@ -45,17 +46,20 @@ func (t *Trader) LiveAlpaca() {
 			continue
 		case update := <-t.OrderEventsAlpaca:
 			t.onOrderEventAlpaca(update)
-			t.Web.broadcastState()
 			continue
 		case req := <-t.Web.WebRequests:
 			t.Web.processWebRequest(req)
 			continue
 		case <-heartbeat.C:
 			t.onHeartbeat()
+			continue
+		case <-dumpTimer.C:
 			t.Web.broadcastState()
 			continue
 		case order := <-t.FailedOrders:
 			t.onOrderFail(order)
+		case r := <-t.ReplacedOrders:
+			t.onOrderReplacement(r)
 		default:
 			// all channels empty
 		}
@@ -77,19 +81,20 @@ func (t *Trader) LiveAlpaca() {
 			t.onOptionTick(m)
 		case update := <-t.OrderEventsAlpaca:
 			t.onOrderEventAlpaca(update)
-			t.Web.broadcastState()
 		case req := <-t.Web.WebRequests:
 			t.Web.processWebRequest(req)
 		case <-heartbeat.C:
 			t.onHeartbeat()
+		case <-dumpTimer.C:
 			t.Web.broadcastState()
 		case order := <-t.FailedOrders:
 			t.onOrderFail(order)
+		case r := <-t.ReplacedOrders:
+			t.onOrderReplacement(r)
 		case <-readySteadyGo.C:
 			if !ready && t.Chain.LastPopulate != 0 && clocky.Now().After(t.Chain.LastPopulate.Add(clocky.Second)) {
 				t.restorePortfolioAlpaca()
 				t.onDefEnd()
-				t.Web.broadcastState()
 				ready = true
 			}
 		}
@@ -151,10 +156,44 @@ func (t *Trader) sendLiveOrderAlpaca(order *Order) {
 	}()
 }
 
+type OrderReplacement struct {
+	Order          *Order
+	NewAlpacaID    string
+	NewClientOrder string
+}
+
+func (t *Trader) updateOrderAlpaca(order *Order) {
+	go func() {
+		newOrder, err := gAlpacaClient.ReplaceOrder(order.OrderIDAlpaca, order.Unfilled, order.Price)
+		if err != nil {
+			log.Printf("failed to update price #%d on alpaca: %v", order.ID, err)
+			return
+		}
+		t.ReplacedOrders <- OrderReplacement{
+			Order:          order,
+			NewAlpacaID:    newOrder.ID,
+			NewClientOrder: newOrder.ClientOrderID,
+		}
+	}()
+}
+
+func (t *Trader) onOrderReplacement(r OrderReplacement) {
+	delete(t.OrdersByAlpacaID, r.Order.OrderIDAlpaca)
+	delete(t.OrdersByAlpacaID, r.Order.ClientOrderID)
+	r.Order.OrderIDAlpaca = r.NewAlpacaID
+	r.Order.ClientOrderID = r.NewClientOrder
+	t.OrdersByAlpacaID[r.NewAlpacaID] = r.Order
+	t.OrdersByAlpacaID[r.NewClientOrder] = r.Order
+	log.Printf("order #%d remapped to alpaca id %s", r.Order.ID, r.NewAlpacaID)
+}
+
 func (t *Trader) onOrderEventAlpaca(orderUpdate *alpaca.OrderUpdate) {
 	order := t.OrdersByAlpacaID[orderUpdate.Order.ClientOrderID]
 	if order == nil {
-		return
+		order = t.OrdersByAlpacaID[orderUpdate.Order.ID]
+		if order == nil {
+			return
+		}
 	}
 	order.OrderIDAlpaca = orderUpdate.Order.ID
 	log.Printf("order #%d update for %s: %s price=%s status=%s qty=%s pos=%s filled=%s/%s avg_price=%s id=%s",
@@ -181,7 +220,17 @@ func (t *Trader) onOrderEventAlpaca(orderUpdate *alpaca.OrderUpdate) {
 			}
 		}
 	}
+	if orderUpdate.Order.ReplacedBy != "" {
+		// remap tracking to the replacement order; alpaca gives it a new ID
+		// and a new client_order_id, but its `id` matches our ReplacedBy
+		delete(t.OrdersByAlpacaID, orderUpdate.Order.ID)
+		delete(t.OrdersByAlpacaID, orderUpdate.Order.ClientOrderID)
+		order.OrderIDAlpaca = orderUpdate.Order.ReplacedBy
+		t.OrdersByAlpacaID[order.OrderIDAlpaca] = order
+		return // replacement is still live, not final
+	}
 	if orderUpdate.Order.Status.IsFinal() {
+		delete(t.OrdersByAlpacaID, order.OrderIDAlpaca)
 		delete(t.OrdersByAlpacaID, order.ClientOrderID)
 		t.removePendingOrder(order)
 	}

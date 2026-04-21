@@ -144,6 +144,7 @@ var kOptionCadence = map[symbol.Symbol]OptionCadence{
 	symbol.TLT:   OptionCadenceTweekly,
 	symbol.GLD:   OptionCadenceTweekly,
 	symbol.SLV:   OptionCadenceTweekly,
+	symbol.ADBE:  OptionCadenceTweekly,
 	symbol.SPEQX: OptionCadenceMonthly,
 	symbol.BTI:   OptionCadenceMonthly,
 	symbol.VIXW:  OptionCadenceVIXWeekly,

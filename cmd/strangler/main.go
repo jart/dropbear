@@ -62,7 +62,8 @@ func main() {
 	directionFlag := decimal.Flag("direction", "-1", "direction of options trade (+1 is long; -1 is short)")
 	straddlesFlag := decimal.Flag("straddles", "5", "number of ATM straddles to buy at open")
 	quantumFlag := decimal.Flag("quantum", "40", "share lot size for delta hedging")
-	patienceFlag := clocky.DurationFlag("patience", "15s", "how long to wait for order execution")
+	chaseFlag := clocky.DurationFlag("chase", "2s", "how long to wait before chasing nbbo")
+	patienceFlag := clocky.DurationFlag("patience", "60s", "how long to wait for order execution")
 	spreadFlag := decimal.Flag("spread", "2", "spread crossing for straddle (-1=make, 0=mid, 1=take)")
 	startOfDayFlag := flag.Int("sod", 9_45_00, "start of day in HHMMSS")
 	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")
@@ -76,6 +77,7 @@ func main() {
 			Quantum:    *quantumFlag,
 			Spread:     *spreadFlag,
 			Patience:   *patienceFlag,
+			Chase:      *chaseFlag,
 			StartOfDay: *startOfDayFlag,
 			Strikes:    *strikesFlag,
 			Schwab:     *schwabFlag,
@@ -144,15 +146,15 @@ func main() {
 	// t.Config.Spread = decimal.NegOne
 	// traders = append(traders, t)
 
-	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.GOOGL
-	t.Config.Listen = "127.0.0.1:8491"
-	t.Config.Strikes = 0
-	t.Config.Quantum = decimal.Lot
-	t.Config.Tolerance = decimal.Two
-	t.Config.Direction = decimal.One
-	t.Config.Spread = decimal.Parse("-.5")
-	traders = append(traders, t)
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.GOOGL
+	// t.Config.Listen = "127.0.0.1:8491"
+	// t.Config.Strikes = 2
+	// t.Config.Quantum = decimal.Lot
+	// t.Config.Tolerance = decimal.Two
+	// t.Config.Direction = decimal.One
+	// t.Config.Spread = decimal.NegOne
+	// traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.AMZN
@@ -174,9 +176,45 @@ func main() {
 	// t.Config.Symbol = symbol.AAPL
 	// t.Config.Listen = "127.0.0.1:8493"
 	// t.Config.Strikes = 1
+	// t.Config.Quantum = decimal.One
 	// t.Config.Direction = decimal.One
 	// t.Config.Spread = decimal.NegOne
+	// t.Config.Tolerance = decimal.Parse("-10")
 	// traders = append(traders, t)
+
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.IBIT
+	// t.Config.Listen = "127.0.0.1:8495"
+	// t.Config.Strikes = 2
+	// t.Config.Quantum = decimal.Lot
+	// traders = append(traders, t)
+
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.SLV
+	// t.Config.Listen = "127.0.0.1:8496"
+	// t.Config.Strikes = 3
+	// t.Config.Direction = decimal.One
+	// t.Config.Spread = decimal.NegOne
+	// t.Config.Quantum = decimal.Lot
+	// traders = append(traders, t)
+
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.AKAM
+	t.Config.Listen = "127.0.0.1:8497"
+	t.Config.Strikes = 0
+	t.Config.Spread = decimal.NegOne
+	t.Config.Direction = decimal.One
+	t.Config.Quantum = decimal.Lot
+	traders = append(traders, t)
+
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.ADBE
+	t.Config.Listen = "127.0.0.1:8498"
+	t.Config.Strikes = 0
+	t.Config.Spread = decimal.NegOne
+	t.Config.Direction = decimal.One
+	t.Config.Quantum = decimal.Lot
+	traders = append(traders, t)
 
 	// figure out what brokers we need
 	needSchwab := false

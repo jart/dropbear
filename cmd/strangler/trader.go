@@ -62,6 +62,7 @@ type Trader struct {
 	OrderEventsAlpaca       chan *alpaca.OrderUpdate
 	OrderUpdatesSchwab      chan OrderUpdateSchwab
 	FailedOrders            chan *Order
+	ReplacedOrders          chan OrderReplacement
 	OptionsByID             map[uint32]*options.Option
 	EquitiesByID            map[uint32]*options.Equity
 	SecuritiesByName        map[string]options.Security
@@ -87,6 +88,7 @@ func NewTrader(config *Config) *Trader {
 		OrderEventsAlpaca:       make(chan *alpaca.OrderUpdate, 64),
 		OrderUpdatesSchwab:      make(chan OrderUpdateSchwab, 64),
 		FailedOrders:            make(chan *Order, 64),
+		ReplacedOrders:          make(chan OrderReplacement, 64),
 		PendingOrders:           map[*Order]bool{},
 		PendingOrdersBySecurity: map[options.Security][]*Order{},
 		OrdersBySchwabID:        map[schwab.OrderID]*Order{},
@@ -310,11 +312,32 @@ func (t *Trader) hasOrder(orders []*Order) (hasBuy bool, hasSell bool) {
 func (t *Trader) hedgeDelta(now clocky.Time) {
 	orders := t.pendingOrders()
 	for _, order := range orders {
-		if !order.Canceling && now.After(order.Created.Add(t.Config.Patience)) {
+		if order.Canceling {
+			continue
+		}
+		if now.After(order.Created.Add(t.Config.Patience)) {
 			log.Printf("canceling order #%d after waiting %s\n", order.ID, t.Config.Patience)
 			err := order.Cancel()
 			if err != nil {
 				log.Printf("failed to cancel order #%d: %v\n", order.ID, err)
+			}
+		} else if now.After(order.NextChase) {
+			bid := t.Underlying.GetBid()
+			ask := t.Underlying.GetAsk()
+			if order.Quantity.IsPositive() {
+				// buying: chase upward if bid improved
+				if bid.Cmp(order.Price) > 0 {
+					log.Printf("chasing order #%d buy price %s -> %s (bid:%s ask:%s)\n",
+						order.ID, order.Price, bid, bid, ask)
+					order.Update(bid)
+				}
+			} else {
+				// selling: chase downward if ask improved
+				if ask.Cmp(order.Price) < 0 {
+					log.Printf("chasing order #%d sell price %s -> %s (bid:%s ask:%s)\n",
+						order.ID, order.Price, ask, bid, ask)
+					order.Update(ask)
+				}
 			}
 		}
 	}
