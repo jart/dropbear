@@ -128,43 +128,45 @@ func main() {
 	loggy.AlsoLogToFile()
 	log.Printf("prepare to be strangled")
 
-	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.NVDA
-	t.Config.Tolerance = decimal.Parse("-4")
-	t.Config.Patience = 30 * clocky.Second
-	traders = append(traders, t)
-
-	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.TSLA
-	t.Config.Listen = "127.0.0.1:8485"
-	t.Config.Strikes = 3
-	t.Config.Tolerance = decimal.Parse("-4")
-	t.Config.Patience = 30 * clocky.Second
-	traders = append(traders, t)
-
 	// t = NewTrader(newConfig())
-	// t.Config.Symbol = symbol.AMZN
-	// t.Config.Listen = "127.0.0.1:8494"
-	// t.Config.Strikes = 3
+	// t.Config.Symbol = symbol.NVDA
+	// t.Config.Listen = "127.0.0.1:8486"
 	// t.Config.Tolerance = decimal.Parse("-4")
 	// t.Config.Patience = 30 * clocky.Second
 	// traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
-	// t.Config.Symbol = symbol.MSFT
-	// t.Config.Listen = "127.0.0.1:8492"
-	// t.Config.Direction = decimal.One
-	// t.Config.Tolerance = decimal.Parse("-3")
+	// t.Config.Symbol = symbol.TSLA
+	// t.Config.Listen = "127.0.0.1:8485"
+	// t.Config.Strikes = 3
+	// t.Config.Tolerance = decimal.Parse("-4")
 	// t.Config.Patience = 30 * clocky.Second
 	// traders = append(traders, t)
 
 	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.AMZN
+	t.Config.Listen = "127.0.0.1:8494"
+	t.Config.Strikes = 2
+	t.Config.Quantum = decimal.Parse("100")
+	t.Config.Patience = 30 * clocky.Second
+	traders = append(traders, t)
+
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.MSFT
+	t.Config.Listen = "127.0.0.1:8492"
+	t.Config.Strikes = 1
+	t.Config.Spread = decimal.NegOne
+	t.Config.Direction = decimal.One
+	t.Config.Quantum = decimal.Parse("100")
+	t.Config.Patience = 30 * clocky.Second
+	traders = append(traders, t)
+
+	t = NewTrader(newConfig())
 	t.Config.Symbol = symbol.AAPL
 	t.Config.Listen = "127.0.0.1:8493"
-	t.Config.Strikes = 2
-	t.Config.Quantum = decimal.Ten
+	t.Config.Strikes = 1
 	t.Config.Direction = decimal.One
-	t.Config.Tolerance = decimal.Parse("-4")
+	t.Config.Spread = decimal.NegOne
 	t.Config.Patience = 30 * clocky.Second
 	traders = append(traders, t)
 
