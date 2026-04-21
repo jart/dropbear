@@ -330,7 +330,7 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 		if delta.IsNegative() {
 			// we genuinely need to buy in order to hedge
 			// therefore we must be willing to buy as much as possible
-			qty = delta.Neg().QuantizeTruncate(t.Config.Quantum)
+			qty = delta.Neg().QuantizeAway(t.Config.Quantum)
 		} else {
 			// we're market making (because tolerance is positive)
 			// therefore let's not trade any more than a round lot
@@ -354,7 +354,7 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 		if delta.IsPositive() {
 			// we genuinely need to sell in order to hedge
 			// therefore we must be willing to sell as much as possible
-			qty = delta.QuantizeTruncate(t.Config.Quantum).Neg()
+			qty = delta.QuantizeAway(t.Config.Quantum).Neg()
 		} else {
 			// we're market making (because tolerance is positive)
 			// therefore let's not trade any more than a round lot

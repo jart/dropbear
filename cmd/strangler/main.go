@@ -134,9 +134,19 @@ func main() {
 	// t.Config.Tolerance = decimal.Parse("-4")
 	// traders = append(traders, t)
 
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.TSLA
+	// t.Config.Listen = "127.0.0.1:8485"
+	// t.Config.Strikes = 0
+	// t.Config.Quantum = decimal.Lot
+	// t.Config.Tolerance = decimal.One
+	// t.Config.Direction = decimal.One
+	// t.Config.Spread = decimal.NegOne
+	// traders = append(traders, t)
+
 	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.TSLA
-	t.Config.Listen = "127.0.0.1:8485"
+	t.Config.Symbol = symbol.GOOGL
+	t.Config.Listen = "127.0.0.1:8491"
 	t.Config.Strikes = 0
 	t.Config.Quantum = decimal.Lot
 	t.Config.Tolerance = decimal.One
