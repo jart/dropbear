@@ -143,13 +143,13 @@ func main() {
 	// t.Config.Patience = 30 * clocky.Second
 	// traders = append(traders, t)
 
-	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.AMZN
-	t.Config.Listen = "127.0.0.1:8494"
-	t.Config.Strikes = 2
-	t.Config.Quantum = decimal.Parse("100")
-	t.Config.Patience = 30 * clocky.Second
-	traders = append(traders, t)
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.AMZN
+	// t.Config.Listen = "127.0.0.1:8494"
+	// t.Config.Strikes = 2
+	// t.Config.Quantum = decimal.Parse("100")
+	// t.Config.Patience = 30 * clocky.Second
+	// traders = append(traders, t)
 
 	t = NewTrader(newConfig())
 	t.Config.Symbol = symbol.MSFT
