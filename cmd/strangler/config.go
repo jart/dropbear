@@ -13,6 +13,7 @@ type Config struct {
 	Tolerance  decimal.Decimal
 	Quantum    decimal.Decimal
 	Spread     decimal.Decimal
+	Wing       decimal.Decimal
 	Patience   clocky.Duration
 	Strikes    int
 	StartOfDay int

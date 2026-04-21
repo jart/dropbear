@@ -9,16 +9,21 @@ import (
 	"dropbear/decimal"
 	"dropbear/loggy"
 	"dropbear/options"
+	"fmt"
 	"log"
 )
 
 type State int
 
 const (
-	StateNeedCall State = iota
-	StateBuyingCall
-	StateNeedPut
-	StateBuyingPut
+	StateWingCall State = iota
+	StateWingCall2
+	StateWingPut
+	StateWingPut2
+	StateStrangleCall
+	StateStrangleCall2
+	StateStranglePut
+	StateStranglePut2
 	StateReady
 )
 
@@ -75,25 +80,49 @@ func (t *Trader) onThought(now clocky.Time) {
 	if t.Underlying == nil || !t.Underlying.GetBid().IsPositive() || !t.Underlying.GetAsk().IsPositive() {
 		return
 	}
+	// either buy a strangle or sell an iron condor
+	// we open one leg at a time so we don't have to support multi-leg orders
+	// for short strangles we buy the wings first to reduce our margin requirements
 	switch t.State {
-	case StateNeedCall:
-		log.Printf("buying call")
-		if t.buyCall(now) {
-			t.State = StateBuyingCall
+	case StateWingCall:
+		if t.Config.Direction.IsPositive() {
+			// we don't need wings on a long strangle
+			t.State = StateStrangleCall
+			break
 		}
-	case StateBuyingCall:
+		if t.Config.Wing.IsZero() {
+			// you better have plenty of margin
+			t.State = StateStrangleCall
+			break
+		}
+		if t.buyWingCall(now) {
+			t.State = StateWingCall2
+		}
+	case StateWingCall2:
 		if t.orderCount() == 0 {
-			t.State = StateNeedPut
+			t.State = StateWingPut
 		}
-	case StateNeedPut:
-		if t.orderCount() != 0 {
-			return // wait for call order to fill before buying put
+	case StateWingPut:
+		if t.buyWingPut(now) {
+			t.State = StateWingPut2
 		}
-		log.Printf("buying put")
-		if t.buyPut(now) {
-			t.State = StateBuyingPut
+	case StateWingPut2:
+		if t.orderCount() == 0 {
+			t.State = StateStrangleCall
 		}
-	case StateBuyingPut:
+	case StateStrangleCall:
+		if t.openStrangleCall(now) {
+			t.State = StateStrangleCall2
+		}
+	case StateStrangleCall2:
+		if t.orderCount() == 0 {
+			t.State = StateStranglePut
+		}
+	case StateStranglePut:
+		if t.openStranglePut(now) {
+			t.State = StateStranglePut2
+		}
+	case StateStranglePut2:
 		if t.orderCount() == 0 {
 			t.State = StateReady
 		}
@@ -145,7 +174,63 @@ func (t *Trader) limitOrder(now clocky.Time, security options.Security, quantity
 	}
 }
 
-func (t *Trader) buyCall(now clocky.Time) bool {
+// buyWingCall buys the cheapest call to reduce margin requirement when -direction=-1
+// this effectively turns the short strangle into a short iron condor
+func (t *Trader) buyWingCall(now clocky.Time) bool {
+	strike := t.Chain.AtTheMoney
+	for {
+		if strike == nil {
+			t.Hinter.Hint("ran out of strikes")
+			return false
+		}
+		if !strike.IsReady() {
+			t.Hinter.Hint("strike %s not ready", strike)
+			return false
+		}
+		if !strike.Call.HasGreeks() {
+			t.Hinter.Hint("greeks not ready yet for strike %s underlying is %s", strike, t.Underlying.MidPrice())
+			return false
+		}
+		if strike.Call.Ask.IsPositive() && strike.Call.Ask.Cmp(t.Config.Wing) <= 0 {
+			break
+		}
+		strike = strike.Next
+	}
+	quantity := t.Config.Straddles
+	log.Printf("we shall buy %s wing call at strike %s with ask price %s underlying is %s\n", quantity, strike, strike.Call.Ask, t.Underlying.MidPrice())
+	t.marketOrder(now, strike.Call, quantity)
+	return true
+}
+
+// buyWingPut buys the cheapest put to reduce margin requirement when -direction=-1
+// this effectively turns the short strangle into a short iron condor
+func (t *Trader) buyWingPut(now clocky.Time) bool {
+	strike := t.Chain.AtTheMoney
+	for {
+		if strike == nil {
+			t.Hinter.Hint("ran out of strikes")
+			return false
+		}
+		if !strike.IsReady() {
+			t.Hinter.Hint("strike %s not ready", strike)
+			return false
+		}
+		if !strike.Put.HasGreeks() {
+			t.Hinter.Hint("greeks not ready yet for strike %s underlying is %s", strike, t.Underlying.MidPrice())
+			return false
+		}
+		if strike.Put.Ask.IsPositive() && strike.Put.Ask.Cmp(t.Config.Wing) <= 0 {
+			break
+		}
+		strike = strike.Prev
+	}
+	quantity := t.Config.Straddles
+	log.Printf("we shall buy %s wing put at strike %s with ask price %s underlying is %s\n", quantity, strike, strike.Put.Ask, t.Underlying.MidPrice())
+	t.marketOrder(now, strike.Put, quantity)
+	return true
+}
+
+func (t *Trader) openStrangleCall(now clocky.Time) bool {
 	strike := t.Chain.AtTheMoney
 	n := t.Config.Strikes / 2
 	for n > 0 {
@@ -159,11 +244,12 @@ func (t *Trader) buyCall(now clocky.Time) bool {
 		return false
 	}
 	quantity := t.Config.Straddles.Mul(t.Config.Direction)
+	log.Printf("we shall trade %s strangle call at strike %s with ask price %s underlying is %s\n", quantity, strike, strike.Call.Ask, t.Underlying.MidPrice())
 	t.marketOrder(now, strike.Call, quantity)
 	return true
 }
 
-func (t *Trader) buyPut(now clocky.Time) bool {
+func (t *Trader) openStranglePut(now clocky.Time) bool {
 	strike := t.Chain.AtTheMoney
 	n := (t.Config.Strikes + 1) / 2
 	for n > 0 {
@@ -177,6 +263,7 @@ func (t *Trader) buyPut(now clocky.Time) bool {
 		return false
 	}
 	quantity := t.Config.Straddles.Mul(t.Config.Direction)
+	log.Printf("we shall trade %s strangle put at strike %s with ask price %s underlying is %s\n", quantity, strike, strike.Put.Ask, t.Underlying.MidPrice())
 	t.marketOrder(now, strike.Put, quantity)
 	return true
 }
@@ -212,6 +299,7 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 	hlf := ask.Sub(bid).Half()
 	hasBuy, hasSell := t.hasOrder(orders)
 	tolerance := t.Config.Tolerance.Mul(t.Config.Quantum)
+	holding := t.Holdings.Positions[t.Underlying]
 	delta := t.computeDelta()
 	if !hasBuy && delta.Cmp(tolerance) < 0 {
 		if delta.IsNegative() {
@@ -228,7 +316,12 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 			// buying: mid + halfSpread * spread
 			price = mid.Add(hlf.Mul(spread))
 			price = price.QuantizeTruncate(decimal.Cent)
-			log.Printf("buying %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty, price, mid.Sub(price), bid, ask, delta)
+			extra := ""
+			if holding != nil && holding.Quantity.IsNegative() {
+				gain := holding.AverageCost.Sub(price)
+				extra = fmt.Sprintf(" to realize gain %s", gain.Mul(qty))
+			}
+			log.Printf("buying %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s%s\n", qty, price, mid.Sub(price), bid, ask, delta, extra)
 			t.limitOrder(now, t.Underlying, qty, price)
 		}
 	}
@@ -247,7 +340,12 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 			// selling: mid - halfSpread * spread
 			price = mid.Sub(hlf.Mul(spread))
 			price = price.QuantizeAway(decimal.Cent)
-			log.Printf("selling %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s\n", qty.Neg(), price, mid.Sub(price), bid, ask, delta)
+			extra := ""
+			if holding != nil && holding.Quantity.IsPositive() {
+				gain := price.Sub(holding.AverageCost)
+				extra = fmt.Sprintf(" to realize gain %s", gain.Mul(qty.Neg()))
+			}
+			log.Printf("selling %s shares at %s (edge:%s bid:%s ask:%s) to hedge delta of %s%s\n", qty.Neg(), price, mid.Sub(price), bid, ask, delta, extra)
 			t.limitOrder(now, t.Underlying, qty, price)
 			t.onHeartbeat()
 		}

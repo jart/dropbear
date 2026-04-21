@@ -55,13 +55,14 @@ func main() {
 	strikesFlag := flag.Int("strikes", 2, "how many strikes wide strangle should be")
 	dateFlag := clocky.TimeFlag("date", "", "date of the trades")
 	schwabFlag := flag.Bool("schwab", false, "use schwab as broker instead of alpaca")
-	toleranceFlag := decimal.Flag("tolerance", "-1", "delta tolerance for market making")
-	directionFlag := decimal.Flag("direction", "-1", "direction of options trade (1=long, -1=short)")
+	wingFlag := decimal.Flag("wing", "0.05", "how much to pay for each wing of short strangle insurance, where zero means naked")
+	toleranceFlag := decimal.Flag("tolerance", "-1", "delta imbalance tolerance (negative minimizes trading; positive does symmetrical market making)")
+	directionFlag := decimal.Flag("direction", "-1", "direction of options trade (+1 is long; -1 is short)")
 	straddlesFlag := decimal.Flag("straddles", "5", "number of ATM straddles to buy at open")
 	quantumFlag := decimal.Flag("quantum", "40", "share lot size for delta hedging")
-	patienceFlag := clocky.DurationFlag("patience", "5s", "how long to wait for order execution")
+	patienceFlag := clocky.DurationFlag("patience", "15s", "how long to wait for order execution")
 	spreadFlag := decimal.Flag("spread", "0", "spread crossing for straddle (-1=make, 0=mid, 1=take)")
-	startOfDayFlag := flag.Int("sod", 9_35_00, "start of day in HHMMSS")
+	startOfDayFlag := flag.Int("sod", 9_45_00, "start of day in HHMMSS")
 	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")
 
 	newConfig := func() *Config {
@@ -76,6 +77,7 @@ func main() {
 			Strikes:    *strikesFlag,
 			Schwab:     *schwabFlag,
 			Tolerance:  *toleranceFlag,
+			Wing:       *wingFlag,
 		}
 	}
 
