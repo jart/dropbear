@@ -149,9 +149,9 @@ func main() {
 	t.Config.Listen = "127.0.0.1:8491"
 	t.Config.Strikes = 0
 	t.Config.Quantum = decimal.Lot
-	t.Config.Tolerance = decimal.One
+	t.Config.Tolerance = decimal.Two
 	t.Config.Direction = decimal.One
-	t.Config.Spread = decimal.NegOne
+	t.Config.Spread = decimal.Parse("-.5")
 	traders = append(traders, t)
 
 	// t = NewTrader(newConfig())

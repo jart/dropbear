@@ -54,6 +54,8 @@ func (t *Trader) LiveAlpaca() {
 			t.onHeartbeat()
 			t.Web.broadcastState()
 			continue
+		case order := <-t.FailedOrders:
+			t.onOrderFail(order)
 		default:
 			// all channels empty
 		}
@@ -81,6 +83,8 @@ func (t *Trader) LiveAlpaca() {
 		case <-heartbeat.C:
 			t.onHeartbeat()
 			t.Web.broadcastState()
+		case order := <-t.FailedOrders:
+			t.onOrderFail(order)
 		case <-readySteadyGo.C:
 			if !ready && t.Chain.LastPopulate != 0 && clocky.Now().After(t.Chain.LastPopulate.Add(clocky.Second)) {
 				t.restorePortfolioAlpaca()
@@ -145,7 +149,8 @@ func (t *Trader) sendLiveOrderAlpaca(order *Order) {
 			},
 		})
 		if err != nil {
-			log.Fatalf("failed to send order #%d to alpaca: %v", order.ID, err)
+			log.Printf("failed to send order #%d to alpaca: %v", order.ID, err)
+			t.FailedOrders <- order
 		}
 	}()
 }
@@ -167,15 +172,17 @@ func (t *Trader) onOrderEventAlpaca(orderUpdate *alpaca.OrderUpdate) {
 		order.Unfilled = absoluteOrderQuantity.Sub(absoluteFilledQuantity)
 		t.Holdings.Add(order.Security, orderUpdate.Qty.Mul(decimal.Decimal(orderUpdate.Order.Side)), orderUpdate.Price)
 		holding := t.Holdings.Positions[order.Security]
-		if holding.Quantity.Cmp(orderUpdate.PositionQty) != 0 {
-			log.Fatalf("position quantity mismatch for %s: we think it's %s but alpaca says it's %s",
-				orderUpdate.Order.Symbol, holding.Quantity, orderUpdate.PositionQty)
-		}
-		ourAvgPrice := holding.AverageCost
-		alpacaAvgPrice := orderUpdate.Order.FilledAvgPrice
-		if ourAvgPrice.Sub(alpacaAvgPrice).Abs().Cmp(decimal.Cent) > 0 {
-			log.Printf("warning: average price mismatch for %s: we think it's %s but alpaca says it's %s",
-				orderUpdate.Order.Symbol, ourAvgPrice, alpacaAvgPrice)
+		if holding != nil {
+			if holding.Quantity.Cmp(orderUpdate.PositionQty) != 0 {
+				log.Fatalf("position quantity mismatch for %s: we think it's %s but alpaca says it's %s",
+					orderUpdate.Order.Symbol, holding.Quantity, orderUpdate.PositionQty)
+			}
+			ourAvgPrice := holding.AverageCost
+			alpacaAvgPrice := orderUpdate.Order.FilledAvgPrice
+			if ourAvgPrice.Sub(alpacaAvgPrice).Abs().Cmp(decimal.Cent) > 0 {
+				log.Printf("warning: average price mismatch for %s: we think it's %s but alpaca says it's %s",
+					orderUpdate.Order.Symbol, ourAvgPrice, alpacaAvgPrice)
+			}
 		}
 	}
 	if orderUpdate.Order.Status.IsFinal() {

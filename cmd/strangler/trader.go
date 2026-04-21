@@ -61,6 +61,7 @@ type Trader struct {
 	OrderEventsSchwab       chan *schwab.OrderEvent
 	OrderEventsAlpaca       chan *alpaca.OrderUpdate
 	OrderUpdatesSchwab      chan OrderUpdateSchwab
+	FailedOrders            chan *Order
 	OptionsByID             map[uint32]*options.Option
 	EquitiesByID            map[uint32]*options.Equity
 	SecuritiesByName        map[string]options.Security
@@ -70,6 +71,7 @@ type Trader struct {
 	PendingOrdersBySecurity map[options.Security][]*Order
 	MarketClose             clocky.Time
 	Hinter                  *loggy.Hinter
+	NextHedge               clocky.Time
 	State                   State
 	OrderCounter            int
 	Paused                  bool
@@ -84,6 +86,7 @@ func NewTrader(config *Config) *Trader {
 		OrderEventsSchwab:       make(chan *schwab.OrderEvent, 64),
 		OrderEventsAlpaca:       make(chan *alpaca.OrderUpdate, 64),
 		OrderUpdatesSchwab:      make(chan OrderUpdateSchwab, 64),
+		FailedOrders:            make(chan *Order, 64),
 		PendingOrders:           map[*Order]bool{},
 		PendingOrdersBySecurity: map[options.Security][]*Order{},
 		OrdersBySchwabID:        map[schwab.OrderID]*Order{},
@@ -315,6 +318,9 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 			}
 		}
 	}
+	if now.Before(t.NextHedge) {
+		return
+	}
 	qty := decimal.Zero
 	price := decimal.Zero
 	spread := t.Config.Spread
@@ -375,6 +381,12 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 			t.onHeartbeat()
 		}
 	}
+}
+
+func (t *Trader) onOrderFail(order *Order) {
+	t.removePendingOrder(order)
+	delete(t.OrdersByAlpacaID, order.ClientOrderID)
+	t.NextHedge = clocky.Now().Add(clocky.Second)
 }
 
 // clampTradeQuantity ensures we don't place an order that would flip our position from long to short or vice versa.
