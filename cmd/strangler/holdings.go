@@ -107,6 +107,28 @@ func (h *Holdings) Add(security options.Security, delta, price decimal.Decimal) 
 	}
 }
 
+// Restore adds a position from a broker portfolio snapshot without generating
+// volume. It mirrors the cash flows that Add would have produced so that the
+// accounting invariants in check() hold.
+func (h *Holdings) Restore(security options.Security, quantity, averageCost decimal.Decimal) {
+	if quantity.IsZero() {
+		return
+	}
+	dollars := averageCost.Mul(quantity.Abs()).MulInt(security.Multiplier())
+	if quantity.IsPositive() {
+		h.Cash = h.Cash.Sub(dollars)
+		h.TotalDebits = h.TotalDebits.Add(dollars)
+	} else {
+		h.Cash = h.Cash.Add(dollars)
+		h.TotalCredits = h.TotalCredits.Add(dollars)
+	}
+	h.Positions[security] = &Holding{
+		Security:    security,
+		Quantity:    quantity,
+		AverageCost: averageCost,
+	}
+}
+
 func (h *Holdings) GetQuantity(security options.Security) decimal.Decimal {
 	holding := h.Positions[security]
 	if holding == nil {

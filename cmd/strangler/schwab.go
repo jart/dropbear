@@ -115,11 +115,7 @@ func (t *Trader) restorePortfolioSchwab() {
 	}
 	for _, position := range account.SecuritiesAccount.Positions {
 		if security := t.SecuritiesByName[position.Instrument.Symbol]; security != nil {
-			t.Holdings.Positions[security] = &Holding{
-				Security:    security,
-				Quantity:    position.LongQuantity.Add(position.ShortQuantity),
-				AverageCost: position.AveragePrice,
-			}
+			t.Holdings.Restore(security, position.LongQuantity.Add(position.ShortQuantity), position.AveragePrice)
 		}
 	}
 }

@@ -112,11 +112,7 @@ func (t *Trader) restorePortfolioAlpaca() {
 	for _, position := range positions {
 		symbol := osi.Canonicalize(position.Symbol)
 		if security := t.SecuritiesByName[symbol]; security != nil {
-			t.Holdings.Positions[security] = &Holding{
-				Security:    security,
-				Quantity:    position.Qty,
-				AverageCost: position.AvgEntryPrice,
-			}
+			t.Holdings.Restore(security, position.Qty, position.AvgEntryPrice)
 		}
 	}
 }
