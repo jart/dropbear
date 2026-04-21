@@ -4,6 +4,7 @@ import (
 	"dropbear/broker/databento"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"log"
 
 	"github.com/emirpasic/gods/v2/maps/treemap"
 )
@@ -124,6 +125,7 @@ func (c *Chain) populateStrike(o *Option, strikePrice decimal.Decimal) *Strike {
 		if strike.Next != nil {
 			strike.Next.Prev = strike
 		}
+		log.Printf("populated strike %s", strike)
 		c.LastPopulate = clocky.Now()
 	}
 	return strike

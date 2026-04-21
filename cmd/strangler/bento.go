@@ -2,6 +2,7 @@ package main
 
 import (
 	"dropbear/broker/databento"
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/options"
 	"dropbear/osi"
@@ -92,6 +93,7 @@ func (t *Trader) streamOptions(key databento.ApiKey, defs chan<- *options.Option
 	meta := client.MustStart()
 	log.Printf("streaming %s (dbn v%d)", dbSymbol, meta.Version)
 	wantYear, wantMonth, wantDay := clocky.Now().Date()
+	wantYear, wantMonth, wantDay = cboe.GetNextOptionChain(t.Config.Symbol, wantYear, wantMonth, wantDay)
 	for {
 		rec, err := client.Read()
 		if err != nil {
