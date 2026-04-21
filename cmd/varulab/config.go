@@ -6,10 +6,10 @@ import "os"
 const kProgram = "./cmd/strangler"
 
 // defaultSymbols is the default set of symbols to backtest if -symbols is not provided.
-const kDefaultSymbols = "NVDA TSLA GOOGL META AAPL MSFT AMZN"
+const kDefaultSymbols = "NVDA TSLA GOOGL META AAPL MSFT AMZN AVGO IBIT SLV"
 
 // earliestDate is the oldest date the downloader will fetch.
-const kEarliestDate = "2025-05-01"
+const kEarliestDate = "2026-01-01"
 
 // dataDirs is the list of databento directories in order of preference.
 // Downloads go to the first one that exists and has <90% disk usage.
@@ -27,8 +27,9 @@ var kBaseFlags = ""
 // the Cartesian product of all dimensions (plus a baseline with each dimension
 // absent) generates the full set of flag combinations to test.
 var kFlagDimensions = [][]string{
-	{"-direction=1"},
+	{"-spread=0", "-direction=1 -spread=-1"},
 	{"-strikes=1", "-strikes=2", "-strikes=3"},
-	{"-quantum=10"},
-	{"-tolerance=-2", "-tolerance=-3", "-tolerance=-4", "-tolerance=-5", "-tolerance=-6", "-tolerance=1", "-tolerance=2", "-tolerance=4", "-tolerance=6"},
+	{"-tolerance=-2"},
+	{"-quantum=100"},
+	{"-wing=0.20"},
 }

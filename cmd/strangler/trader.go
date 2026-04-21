@@ -76,7 +76,7 @@ type Trader struct {
 }
 
 func NewTrader(config *Config) *Trader {
-	return &Trader{
+	t := &Trader{
 		Config:                  config,
 		Web:                     NewWeb(),
 		Chain:                   options.NewChain(),
@@ -93,6 +93,8 @@ func NewTrader(config *Config) *Trader {
 		SecuritiesByName:        map[string]options.Security{},
 		Hinter:                  loggy.NewHinter(),
 	}
+	t.Web.Trader = t
+	return t
 }
 
 func (t *Trader) onThought(now clocky.Time) {
@@ -417,6 +419,9 @@ func (t *Trader) clampTradeQuantity(security options.Security, quantity decimal.
 }
 
 func (t *Trader) onHeartbeat() {
+	if t.Underlying == nil {
+		return
+	}
 	cost := decimal.Zero
 	shares := decimal.Zero
 	holding := t.Holdings.Positions[t.Underlying]
