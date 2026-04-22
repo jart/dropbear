@@ -8,6 +8,7 @@ const (
 	TapeA Tape = 'A' // NYSE listed securities
 	TapeB Tape = 'B' // NYSE Arca, BATS, and regional exchanges
 	TapeC Tape = 'C' // NASDAQ listed securities
+	TapeN Tape = 'N' // BOATS?
 )
 
 var tapeJSON [256][]byte
@@ -26,6 +27,8 @@ func (t Tape) GoString() string {
 		return "sip.TapeB"
 	case TapeC:
 		return "sip.TapeC"
+	case TapeN:
+		return "sip.TapeN"
 	default:
 		panic("invalid tape")
 	}
@@ -53,7 +56,7 @@ func (t *Tape) UnmarshalJSON(data []byte) error {
 	if len(data) == 3 && data[0] == '"' && data[2] == '"' {
 		x := Tape(data[1])
 		switch x {
-		case TapeA, TapeB, TapeC:
+		case TapeA, TapeB, TapeC, TapeN:
 			*t = x
 			return nil
 		default:

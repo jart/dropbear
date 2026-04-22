@@ -32,12 +32,15 @@ const (
 	ReasonCodeQuotationNotAvail  ReasonCode = 'M' | '2'<<8                     // "M2" - Quotation Not Available
 	ReasonCodeLULDPause          ReasonCode = 'L' | 'U'<<8 | 'D'<<16 | 'P'<<24 // "LUDP" - Limit Up-Limit Down Pause
 	ReasonCodeVolatilityPause    ReasonCode = 'M' | 'W'<<8 | 'C'<<16 | 'B'<<24 // "MWCB" - Market Wide Circuit Breaker
+	ReasonCodeHaltOtherRegAuth   ReasonCode = 'C' | '1'<<8 | '1'<<16           // "C11" - Trade Halt Concluded By Other Regulatory Auth
 )
 
 // ParseReasonCode converts a byte slice to a ReasonCode.
 func ParseReasonCode(b []byte) (ReasonCode, error) {
 	var rc ReasonCode
 	switch len(b) {
+	case 0:
+		return 0, nil
 	case 1:
 		rc = ReasonCode(b[0])
 	case 2:
@@ -58,14 +61,14 @@ func ParseReasonCode(b []byte) (ReasonCode, error) {
 // IsValid returns true if this is a known reason code.
 func (rc ReasonCode) IsValid() bool {
 	switch rc {
-	case ReasonCodeNewsReleased, ReasonCodeOrderImb, ReasonCodeLULD,
+	case 0, ReasonCodeNewsReleased, ReasonCodeOrderImb, ReasonCodeLULD,
 		ReasonCodeNewsPending, ReasonCodeOperational, ReasonCodeSubPenny,
 		ReasonCodeCircuitLvl1, ReasonCodeCircuitLvl2, ReasonCodeCircuitLvl3,
 		ReasonCodeHaltNewsPending, ReasonCodeHaltNewsDissem, ReasonCodeHaltSECOrderSIP,
 		ReasonCodeHaltInfoRequested, ReasonCodeHaltNonCompliance, ReasonCodeHaltFilingsNotCurr,
 		ReasonCodeHaltSECOrderNotSIP, ReasonCodeHaltRegConcern, ReasonCodeIPONotYetTrading,
 		ReasonCodeCorporateAction, ReasonCodeQuotationNotAvail, ReasonCodeLULDPause,
-		ReasonCodeVolatilityPause:
+		ReasonCodeVolatilityPause, ReasonCodeHaltOtherRegAuth:
 		return true
 	}
 	return false
@@ -154,6 +157,8 @@ func (rc ReasonCode) GoString() string {
 		return "sip.ReasonCodeLULDPause"
 	case ReasonCodeVolatilityPause:
 		return "sip.ReasonCodeVolatilityPause"
+	case ReasonCodeHaltOtherRegAuth:
+		return "sip.ReasonCodeHaltOtherRegAuth"
 	default:
 		return fmt.Sprintf("sip.ReasonCode(0x%x)", uint32(rc))
 	}

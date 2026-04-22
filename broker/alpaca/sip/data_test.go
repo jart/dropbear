@@ -256,8 +256,8 @@ func TestParseQuote2(t *testing.T) {
 	if quote.AskSize != 200 {
 		t.Errorf("AskSize = %d, want 200", quote.AskSize)
 	}
-	if quote.BidExchange != ExchangeNYSEArca {
-		t.Errorf("BidExchange = %v, want %v", quote.BidExchange, ExchangeNYSEArca)
+	if quote.BidExchange != ExchangeARCA {
+		t.Errorf("BidExchange = %v, want %v", quote.BidExchange, ExchangeARCA)
 	}
 	if quote.BidPrice.String() != "150.24" {
 		t.Errorf("BidPrice = %s, want 150.24", quote.BidPrice)

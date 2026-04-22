@@ -151,9 +151,6 @@ func (t *Trade) Parse(data []byte) (int, error) {
 				if x < 0 {
 					return 0, ErrNegativeTradeSize
 				}
-				if x > 0x7fffffffffffffff {
-					return 0, ErrOverflow
-				}
 				t.Size = x
 				g |= gotSize
 			case 'c': // "c":["@"]

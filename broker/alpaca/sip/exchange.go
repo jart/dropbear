@@ -1,34 +1,36 @@
 package sip
 
+import "fmt"
+
 // Exchange represents a market center in the SIP consolidated feed.
 // These are single-letter codes defined by the CTA and UTP plans.
 type Exchange byte
 
 const (
-	ExchangeNYSEAmerican   Exchange = 'A' // NYSE American (AMEX)
-	ExchangeNASDAQBX       Exchange = 'B' // NASDAQ OMX BX
-	ExchangeNationalStock  Exchange = 'C' // National Stock Exchange
-	ExchangeFINRAADF       Exchange = 'D' // FINRA ADF
-	ExchangeMarketIndep    Exchange = 'E' // Market Independent
-	ExchangeNasdaqGMX      Exchange = 'F' // Nasdaq Global/Select Market (?)
-	ExchangeMIAXPearl      Exchange = 'G' // MIAX Pearl (?)
-	ExchangeMIAX           Exchange = 'H' // MIAX
-	ExchangeISE            Exchange = 'I' // International Securities Exchange
-	ExchangeCboeEDGA       Exchange = 'J' // Cboe EDGA
-	ExchangeCboeEDGX       Exchange = 'K' // Cboe EDGX
-	ExchangeLTSE           Exchange = 'L' // Long Term Stock Exchange
-	ExchangeChicago        Exchange = 'M' // Chicago Stock Exchange
-	ExchangeNYSE           Exchange = 'N' // New York Stock Exchange
-	ExchangeNYSEArca       Exchange = 'P' // NYSE Arca
-	ExchangeNASDAQ         Exchange = 'Q' // NASDAQ OMX
-	ExchangeNASDAQSmallCap Exchange = 'S' // NASDAQ Small Cap
-	ExchangeNASDAQInt      Exchange = 'T' // NASDAQ Int
-	ExchangeMEMX           Exchange = 'U' // Members Exchange
-	ExchangeIEX            Exchange = 'V' // IEX
-	ExchangeCBOE           Exchange = 'W' // CBOE
-	ExchangeNASDAQPSX      Exchange = 'X' // NASDAQ OMX PSX
-	ExchangeCboeBYX        Exchange = 'Y' // Cboe BYX
-	ExchangeCboeBZX        Exchange = 'Z' // Cboe BZX
+	ExchangeAMEX   Exchange = 'A' // New York Curb Exchange (NYSE American)
+	ExchangeBSE    Exchange = 'B' // Boston Stock Exchange (NASDAQ OMX BX)
+	ExchangeNSE    Exchange = 'C' // National Stock Exchange
+	ExchangeADF    Exchange = 'D' // FINRA ADF
+	ExchangeIndy   Exchange = 'E' // Market Independent
+	ExchangeGMX    Exchange = 'F' // Nasdaq Global/Select Market (?)
+	ExchangePearl  Exchange = 'G' // MIAX Pearl (?)
+	ExchangeMIAX   Exchange = 'H' // MIAX
+	ExchangeISE    Exchange = 'I' // International Securities Exchange
+	ExchangeEDGA   Exchange = 'J' // Cboe EDGA
+	ExchangeEDGX   Exchange = 'K' // Cboe EDGX
+	ExchangeLTSE   Exchange = 'L' // Long Term Stock Exchange
+	ExchangeCSE    Exchange = 'M' // Chicago Stock Exchange
+	ExchangeNYSE   Exchange = 'N' // New York Stock Exchange
+	ExchangeARCA   Exchange = 'P' // NYSE Arca
+	ExchangeNASDAQ Exchange = 'Q' // NASDAQ OMX
+	ExchangePOG    Exchange = 'S' // NASDAQ Small Cap
+	ExchangeINT    Exchange = 'T' // NASDAQ International
+	ExchangeMEMX   Exchange = 'U' // Members Exchange
+	ExchangeIEX    Exchange = 'V' // IEX
+	ExchangeCBOE   Exchange = 'W' // CBOE
+	ExchangePSX    Exchange = 'X' // NASDAQ OMX PSX
+	ExchangeBYX    Exchange = 'Y' // Cboe BYX
+	ExchangeBZX    Exchange = 'Z' // Cboe BZX
 )
 
 // Pre-computed JSON representations (no allocation on marshal)
@@ -40,63 +42,114 @@ func init() {
 	}
 }
 
+func (e Exchange) String() string {
+	switch e {
+	case ExchangeAMEX:
+		return "AMEX"
+	case ExchangeBSE:
+		return "BSE"
+	case ExchangeNSE:
+		return "NSE"
+	case ExchangeADF:
+		return "ADF"
+	case ExchangeIndy:
+		return "Indy"
+	case ExchangeGMX:
+		return "GMX"
+	case ExchangePearl:
+		return "Pearl"
+	case ExchangeMIAX:
+		return "MIAX"
+	case ExchangeISE:
+		return "ISE"
+	case ExchangeEDGA:
+		return "EDGA"
+	case ExchangeEDGX:
+		return "EDGX"
+	case ExchangeLTSE:
+		return "LTSE"
+	case ExchangeCSE:
+		return "CSE"
+	case ExchangeNYSE:
+		return "NYSE"
+	case ExchangeARCA:
+		return "ARCA"
+	case ExchangeNASDAQ:
+		return "NASDAQ"
+	case ExchangePOG:
+		return "POG"
+	case ExchangeINT:
+		return "INT"
+	case ExchangeMEMX:
+		return "MEMX"
+	case ExchangeIEX:
+		return "IEX"
+	case ExchangeCBOE:
+		return "CBOE"
+	case ExchangePSX:
+		return "PSX"
+	case ExchangeBYX:
+		return "BYX"
+	case ExchangeBZX:
+		return "BZX"
+	default:
+		return string(byte(e))
+	}
+}
+
 func (e Exchange) GoString() string {
 	switch e {
-	case ExchangeNYSEAmerican:
-		return "sip.ExchangeNYSEAmerican"
-	case ExchangeNASDAQBX:
-		return "sip.ExchangeNASDAQBX"
-	case ExchangeNationalStock:
-		return "sip.ExchangeNationalStock"
-	case ExchangeFINRAADF:
-		return "sip.ExchangeFINRAADF"
-	case ExchangeMarketIndep:
-		return "sip.ExchangeMarketIndep"
-	case ExchangeNasdaqGMX:
-		return "sip.ExchangeNasdaqGMX"
-	case ExchangeMIAXPearl:
-		return "sip.ExchangeMIAXPearl"
+	case ExchangeAMEX:
+		return "sip.ExchangeAMEX"
+	case ExchangeBSE:
+		return "sip.ExchangeBSE"
+	case ExchangeNSE:
+		return "sip.ExchangeNSE"
+	case ExchangeADF:
+		return "sip.ExchangeADF"
+	case ExchangeIndy:
+		return "sip.ExchangeIndy"
+	case ExchangeGMX:
+		return "sip.ExchangeGMX"
+	case ExchangePearl:
+		return "sip.ExchangePearl"
 	case ExchangeMIAX:
 		return "sip.ExchangeMIAX"
 	case ExchangeISE:
 		return "sip.ExchangeISE"
-	case ExchangeCboeEDGA:
-		return "sip.ExchangeCboeEDGA"
-	case ExchangeCboeEDGX:
-		return "sip.ExchangeCboeEDGX"
+	case ExchangeEDGA:
+		return "sip.ExchangeEDGA"
+	case ExchangeEDGX:
+		return "sip.ExchangeEDGX"
 	case ExchangeLTSE:
 		return "sip.ExchangeLTSE"
-	case ExchangeChicago:
-		return "sip.ExchangeChicago"
+	case ExchangeCSE:
+		return "sip.ExchangeCSE"
 	case ExchangeNYSE:
 		return "sip.ExchangeNYSE"
-	case ExchangeNYSEArca:
-		return "sip.ExchangeNYSEArca"
+	case ExchangeARCA:
+		return "sip.ExchangeARCA"
 	case ExchangeNASDAQ:
 		return "sip.ExchangeNASDAQ"
-	case ExchangeNASDAQSmallCap:
-		return "sip.ExchangeNASDAQSmallCap"
-	case ExchangeNASDAQInt:
-		return "sip.ExchangeNASDAQInt"
+	case ExchangePOG:
+		return "sip.ExchangePOG"
+	case ExchangeINT:
+		return "sip.ExchangeINT"
 	case ExchangeMEMX:
 		return "sip.ExchangeMEMX"
 	case ExchangeIEX:
 		return "sip.ExchangeIEX"
 	case ExchangeCBOE:
 		return "sip.ExchangeCBOE"
-	case ExchangeNASDAQPSX:
-		return "sip.ExchangeNASDAQPSX"
-	case ExchangeCboeBYX:
-		return "sip.ExchangeCboeBYX"
-	case ExchangeCboeBZX:
-		return "sip.ExchangeCboeBZX"
+	case ExchangePSX:
+		return "sip.ExchangePSX"
+	case ExchangeBYX:
+		return "sip.ExchangeBYX"
+	case ExchangeBZX:
+		return "sip.ExchangeBZX"
 	default:
-		panic("invalid exchange")
+		return fmt.Sprintf("sip.Exchange('%c')", e)
 	}
-}
-
-func (e Exchange) String() string {
-	return e.GoString()
 }
 
 func (e Exchange) Code() string {
@@ -109,21 +162,8 @@ func (e Exchange) MarshalJSON() ([]byte, error) {
 
 func (e *Exchange) UnmarshalJSON(data []byte) error {
 	if len(data) == 3 && data[0] == '"' && data[2] == '"' {
-		x := Exchange(data[1])
-		switch x {
-		case ExchangeNYSEAmerican, ExchangeNASDAQBX, ExchangeNationalStock,
-			ExchangeFINRAADF, ExchangeMarketIndep, ExchangeNasdaqGMX,
-			ExchangeMIAXPearl, ExchangeMIAX, ExchangeISE,
-			ExchangeCboeEDGA, ExchangeCboeEDGX, ExchangeLTSE,
-			ExchangeChicago, ExchangeNYSE, ExchangeNYSEArca,
-			ExchangeNASDAQ, ExchangeNASDAQSmallCap, ExchangeNASDAQInt,
-			ExchangeMEMX, ExchangeIEX, ExchangeCBOE,
-			ExchangeNASDAQPSX, ExchangeCboeBYX, ExchangeCboeBZX:
-			*e = x
-			return nil
-		default:
-			return ErrInvalidExchange
-		}
+		*e = Exchange(data[1])
+		return nil
 	}
 	return ErrInvalidExchange
 }

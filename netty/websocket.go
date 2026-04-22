@@ -13,11 +13,7 @@ const wsReadTimeout = 30 * time.Second
 
 // fastWSDialer is optimized for low-latency market data streams.
 var fastWSDialer = &websocket.Dialer{
-	NetDialContext:    Dialer.DialContext,
-	HandshakeTimeout:  5 * time.Second,
-	ReadBufferSize:    4096,
-	WriteBufferSize:   1024,
-	EnableCompression: false,
+	NetDialContext: Dialer.DialContext,
 	TLSClientConfig: &tls.Config{
 		SessionTicketsDisabled: false,
 		ClientSessionCache:     tls.NewLRUClientSessionCache(32),

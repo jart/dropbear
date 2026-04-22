@@ -3,6 +3,7 @@ package sip
 import (
 	"dropbear/clocky"
 	"dropbear/symbol"
+	"log"
 	"unsafe"
 )
 
@@ -54,6 +55,7 @@ func (m *Message) Parse(data []byte) (int, error) {
 	// Alpaca always sends them like: {"T":"q",...}
 	// The sub-parsers will verify the rest of the structure.
 	if len(data) < 7 {
+		log.Printf("boop %s", string(data))
 		return 0, ErrParsingError
 	}
 	switch data[6] {

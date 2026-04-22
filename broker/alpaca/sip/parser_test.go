@@ -3,6 +3,8 @@ package sip
 import (
 	"bufio"
 	"bytes"
+	"dropbear/decimal"
+	"dropbear/symbol"
 	_ "embed"
 	"encoding/json"
 	"testing"
@@ -17,8 +19,8 @@ func TestSIPParserRoundtrip(t *testing.T) {
 	scanner.Buffer(buf, 1024*1024)
 
 	lineNum := 0
-	trades, quotes, statuses := 0, 0, 0
-	tradeErrs, quoteErrs, statusErrs := 0, 0, 0
+	trades, quotes, statuses, lulds := 0, 0, 0, 0
+	tradeErrs, quoteErrs, statusErrs, luldErrs := 0, 0, 0, 0
 
 	for scanner.Scan() {
 		lineNum++
@@ -57,6 +59,15 @@ func TestSIPParserRoundtrip(t *testing.T) {
 					t.Fatal("too many status errors")
 				}
 			}
+		case 'l':
+			lulds++
+			if err := verifyLULDRoundtrip(t, line, lineNum); err != nil {
+				luldErrs++
+				t.Errorf("line %d: luld: %v\ndata: %s", lineNum, err, line)
+				if luldErrs > 10 {
+					t.Fatal("too many luld errors")
+				}
+			}
 		}
 	}
 
@@ -64,8 +75,8 @@ func TestSIPParserRoundtrip(t *testing.T) {
 		t.Fatalf("scanner error: %v", err)
 	}
 
-	t.Logf("verified %d messages (trades:%d quotes:%d statuses:%d)",
-		lineNum, trades, quotes, statuses)
+	t.Logf("verified %d messages (trades:%d quotes:%d statuses:%d lulds:%d)",
+		lineNum, trades, quotes, statuses, lulds)
 
 	if trades == 0 {
 		t.Error("no trades found in test data")
@@ -226,4 +237,75 @@ func verifyStatusRoundtrip(t *testing.T, data []byte, lineNum int) error {
 	}
 
 	return nil
+}
+
+func verifyLULDRoundtrip(t *testing.T, data []byte, lineNum int) error {
+	var fast LULD
+	if _, err := fast.Parse(data); err != nil {
+		return err
+	}
+
+	var original LULD
+	if err := json.Unmarshal(data, &original); err != nil {
+		return err
+	}
+
+	if fast.Type != original.Type {
+		t.Errorf("line %d: Type mismatch: fast=%v original=%v", lineNum, fast.Type, original.Type)
+	}
+	if fast.Symbol != original.Symbol {
+		t.Errorf("line %d: Symbol mismatch: fast=%q original=%q", lineNum, fast.Symbol, original.Symbol)
+	}
+	if fast.UpperLimit != original.UpperLimit {
+		t.Errorf("line %d: UpperLimit mismatch: fast=%v original=%v", lineNum, fast.UpperLimit, original.UpperLimit)
+	}
+	if fast.LowerLimit != original.LowerLimit {
+		t.Errorf("line %d: LowerLimit mismatch: fast=%v original=%v", lineNum, fast.LowerLimit, original.LowerLimit)
+	}
+	if fast.Indicator != original.Indicator {
+		t.Errorf("line %d: Indicator mismatch: fast=%v original=%v", lineNum, fast.Indicator, original.Indicator)
+	}
+	if fast.Timestamp != original.Timestamp {
+		t.Errorf("line %d: Timestamp mismatch: fast=%v original=%v", lineNum, fast.Timestamp, original.Timestamp)
+	}
+	if fast.Tape != original.Tape {
+		t.Errorf("line %d: Tape mismatch: fast=%v original=%v", lineNum, fast.Tape, original.Tape)
+	}
+
+	return nil
+}
+
+func TestSIPParserTrade(t *testing.T) {
+	line := []byte(`{"T":"t","S":"TSLA","i":493818,"x":"D","p":390.4499,"s":25,"c":["@","I"],"z":"C","t":"2026-04-22T16:28:55.110808386Z"}`)
+	var trade Trade
+	if _, err := trade.Parse(line); err != nil {
+		t.Fatalf("failed to parse trade: %v", err)
+	}
+	if trade.Type != MessageTypeTrade {
+		t.Errorf("expected Type %v, got %v", MessageTypeTrade, trade.Type)
+	}
+	if trade.Symbol != symbol.MustParse("TSLA") {
+		t.Errorf("expected Symbol 'TSLA', got '%s'", trade.Symbol)
+	}
+	if trade.TradeID != 493818 {
+		t.Errorf("expected TradeID 493818, got %d", trade.TradeID)
+	}
+	if trade.Exchange != ExchangeADF {
+		t.Errorf("expected Exchange 'D', got '%c'", trade.Exchange)
+	}
+	if trade.Price.Cmp(decimal.Parse("390.4499")) != 0 {
+		t.Errorf("expected Price 390.4499, got %v", trade.Price)
+	}
+	if trade.Size != 25 {
+		t.Errorf("expected Size 25, got %d", trade.Size)
+	}
+	if trade.Conditions != (TradeCondRegularSale | TradeCondOddLot) {
+		t.Errorf("expected Conditions %v, got %v", TradeCondRegularSale|TradeCondOddLot, trade.Conditions)
+	}
+	if trade.Timestamp.RFC3339() != "2026-04-22T16:28:55.110808386Z" {
+		t.Errorf("expected Timestamp '2026-04-22T16:28:55.110808386Z', got '%s'", trade.Timestamp.RFC3339())
+	}
+	if trade.Tape != 'C' {
+		t.Errorf("expected Tape 'C', got '%c'", trade.Tape)
+	}
 }

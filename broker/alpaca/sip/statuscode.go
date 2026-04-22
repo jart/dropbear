@@ -1,5 +1,7 @@
 package sip
 
+import "fmt"
+
 // StatusCode represents a trading status code from the SIP feed.
 // CTA (Tape A/B) and UTP (Tape C) use different code sets.
 type StatusCode byte
@@ -87,7 +89,7 @@ func (c StatusCode) GoString() string {
 	case StatusCodeTradingResumptionUTP:
 		return "sip.StatusCodeTradingResumptionUTP"
 	default:
-		panic("invalid status code")
+		return fmt.Sprintf("sip.StatusCode('%c')", c)
 	}
 }
 
@@ -101,20 +103,8 @@ func (c StatusCode) MarshalJSON() ([]byte, error) {
 
 func (c *StatusCode) UnmarshalJSON(data []byte) error {
 	if len(data) == 3 && data[0] == '"' && data[2] == '"' {
-		x := StatusCode(data[1])
-		switch x {
-		case StatusCodeTradingHaltCTA, StatusCodeResumeCTA, StatusCodePriceIndication,
-			StatusCodeTradingRangeIndication, StatusCodeMarketImbalanceBuy,
-			StatusCodeMarketImbalanceSell, StatusCodeMOCImbalanceBuy, StatusCodeMOCImbalanceSell,
-			StatusCodeNoMarketImbalance, StatusCodeNoMOCImbalance,
-			StatusCodeShortSaleRestriction, StatusCodeLimitUpLimitDown,
-			StatusCodeTradingHaltUTP, StatusCodeVolatilityPause,
-			StatusCodeQuotationResumption, StatusCodeTradingResumptionUTP:
-			*c = x
-			return nil
-		default:
-			return ErrInvalidStatusCode
-		}
+		*c = StatusCode(data[1])
+		return nil
 	}
 	return ErrInvalidStatusCode
 }
