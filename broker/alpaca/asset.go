@@ -31,6 +31,8 @@ type Asset struct {
 	OptionsLateClose       ds.Bool         // options trade 15 min past close
 	PTPNoException         ds.Bool         // publicly traded partnership subject to 10% withholding
 	PTPWithException       ds.Bool         // publicly traded partnership currently exempt from withholding
+	OvernightTradable      ds.Bool         // indicates asset is eligable for overnight session
+	OvernightHalted        ds.Bool         // indicates asset is currently halted in the overnight session
 	MarginRequirementLong  decimal.Decimal // initial margin requirement to buy this asset (e.g., 0.25 for 25%)
 	MarginRequirementShort decimal.Decimal // maintenance margin requirement to hold a short position (e.g., 0.30 for 30%)
 	MinTradeIncrement      decimal.Decimal // smallest amount of the asset that can be traded (e.g., 0.000000001 for crypto)

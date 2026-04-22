@@ -64,8 +64,10 @@ func (c *Client) SyncAssets() error {
 		IPO := false
 		HasOptions := false
 		PTPNoException := false
+		OvernightHalted := false
 		PTPWithException := false
 		OptionsLateClose := false
+		OvernightTradable := false
 		FractionableExtHours := false
 		for _, attr := range ja.Attributes {
 			switch attr {
@@ -81,6 +83,10 @@ func (c *Client) SyncAssets() error {
 				OptionsLateClose = true
 			case "fractional_eh_enabled":
 				FractionableExtHours = true
+			case "overnight_tradable":
+				OvernightTradable = true
+			case "overnight_halted":
+				OvernightHalted = true
 			default:
 				err = fmt.Errorf("unknown asset attribute for %s: %s", ja.Symbol, attr)
 			}
@@ -104,6 +110,8 @@ func (c *Client) SyncAssets() error {
 		asset.MinTradeIncrement.Store(minTradeIncrement)
 		asset.PriceIncrement.Store(priceIncrement)
 		asset.Status.Store(ja.Status)
+		asset.OvernightHalted.Store(OvernightHalted)
+		asset.OvernightTradable.Store(OvernightTradable)
 	}
 	for sym, del := range shouldDelete {
 		if del {
