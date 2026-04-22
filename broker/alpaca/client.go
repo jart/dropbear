@@ -33,7 +33,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		APITokenBucket:  netty.NewTokenBucketPerMinute(200),
-		DataTokenBucket: netty.NewTokenBucketPerMinute(5000),
+		DataTokenBucket: netty.NewTokenBucketPerMinute(200),
 	}
 }
 
