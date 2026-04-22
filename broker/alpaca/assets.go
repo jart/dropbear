@@ -143,7 +143,7 @@ type jsonAsset struct {
 func (c *Client) fetchAssets() ([]jsonAsset, error) {
 	var jsonAssets []jsonAsset
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/assets", nil, &jsonAssets)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/assets", false, nil, &jsonAssets)
 	if err != nil {
 		return nil, err
 	}

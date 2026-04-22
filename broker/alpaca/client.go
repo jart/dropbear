@@ -2,6 +2,7 @@ package alpaca
 
 import (
 	"bytes"
+	"dropbear/clocky"
 	"dropbear/ds"
 	"dropbear/netty"
 	"encoding/json"
@@ -11,6 +12,9 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -49,7 +53,11 @@ func (c *Client) Get(path string) (*http.Response, error) {
 // Your responseBody must be nil for endpoints that return 204 No Content.
 // Any 404 errors are canonicalized to an ds.ErrNotFound return value.
 // Other API error responses are unmarshaled into an alpaca.Error.
-func (c *Client) RequestJSON(client *http.Client, method, url string, requestBody, responseBody any) error {
+func (c *Client) RequestJSON(client *http.Client, method, url string, logging bool, requestBody, responseBody any) error {
+	var flog *os.File
+	if logging {
+		flog = getLog()
+	}
 	var requestBodyBytes []byte
 	if requestBody != nil {
 		var err error
@@ -57,6 +65,27 @@ func (c *Client) RequestJSON(client *http.Client, method, url string, requestBod
 		if err != nil {
 			return fmt.Errorf("marshaling request body: %w", err)
 		}
+		if flog != nil {
+			var sb strings.Builder
+			sb.WriteString(clocky.Now().String())
+			sb.WriteString(" sending ")
+			sb.WriteString(method)
+			sb.WriteString(" ")
+			sb.WriteString(url)
+			sb.WriteString(" with body ")
+			sb.Write(requestBodyBytes)
+			sb.WriteRune('\n')
+			flog.Write([]byte(sb.String()))
+		}
+	} else if flog != nil {
+		var sb strings.Builder
+		sb.WriteString(clocky.Now().String())
+		sb.WriteString(" sending ")
+		sb.WriteString(method)
+		sb.WriteString(" ")
+		sb.WriteString(url)
+		sb.WriteRune('\n')
+		flog.Write([]byte(sb.String()))
 	}
 	tries := 0
 	for {
@@ -65,19 +94,40 @@ func (c *Client) RequestJSON(client *http.Client, method, url string, requestBod
 			return err
 		}
 		defer resp.Body.Close()
-		decoder := json.NewDecoder(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			if !errors.Is(err, syscall.ECONNRESET) {
+				return fmt.Errorf("reading response from %s: %w", url, err)
+			}
+			resp.Body.Close()
+			delay := time.Duration(100<<min(tries, 8)) * time.Millisecond
+			log.Printf("alpaca: got %d read reset, retrying in %v (attempt %d)", resp.StatusCode, delay, tries)
+			time.Sleep(delay)
+			tries++
+			continue
+		}
+		if flog != nil {
+			var sb strings.Builder
+			sb.WriteString(clocky.Now().String())
+			sb.WriteString(" got ")
+			sb.WriteString(strconv.Itoa(resp.StatusCode))
+			sb.WriteString(" from ")
+			sb.WriteString(method)
+			sb.WriteString(" ")
+			sb.WriteString(url)
+			if len(bodyBytes) > 0 && strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+				sb.WriteString(" with body ")
+				sb.Write(bodyBytes)
+			}
+			sb.WriteRune('\n')
+			flog.Write([]byte(sb.String()))
+		}
 		switch resp.StatusCode {
 		case http.StatusOK, http.StatusCreated:
 			if responseBody == nil {
 				panic("usage error: nil responseBody for 200 OK")
 			}
-			err := decoder.Decode(responseBody)
-			if err == nil {
-				return nil
-			}
-			if !errors.Is(err, syscall.ECONNRESET) {
-				return fmt.Errorf("failed to decode json response from %s: %w", url, err)
-			}
+			return json.Unmarshal(bodyBytes, responseBody)
 		case http.StatusNoContent:
 			if responseBody != nil {
 				panic("usage error: non-nil responseBody for 204 No Content")
@@ -87,19 +137,11 @@ func (c *Client) RequestJSON(client *http.Client, method, url string, requestBod
 			return ds.ErrNotFound
 		default:
 			var apiErr Error
-			err := decoder.Decode(&apiErr)
-			if err == nil {
+			if json.Unmarshal(bodyBytes, &apiErr) == nil {
 				return &apiErr
 			}
-			if !errors.Is(err, syscall.ECONNRESET) {
-				return fmt.Errorf("failed to decode error response from %s: %w", url, err)
-			}
+			return fmt.Errorf("unexpected %d response from %s", resp.StatusCode, url)
 		}
-		resp.Body.Close()
-		delay := time.Duration(100<<min(tries, 8)) * time.Millisecond
-		log.Printf("alpaca: got %d read reset, retrying in %v (attempt %d)", resp.StatusCode, delay, tries)
-		time.Sleep(delay)
-		tries++
 	}
 }
 

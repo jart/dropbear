@@ -202,7 +202,7 @@ func (e *Equity) sendOrder(order *Order, now clocky.Time) (*Order, error) {
 		}
 	}
 	ordersByCID[order.ClientOrderID] = order
-	alpacaOrder, err := Client.CreateOrder(&alpaca.OrderRequest{
+	alpacaOrder, err := Client.CreateOrder(&alpaca.CreateOrderRequest{
 		Symbol:               e.Symbol.String(),
 		Side:                 order.Side,
 		Qty:                  order.Quantity,

@@ -5,45 +5,37 @@ import (
 	"dropbear/decimal"
 	"dropbear/netty"
 	"encoding/json"
-	"flag"
 	"fmt"
-	"log"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
-var (
-	alpacaLogFlag = flag.String("alpaca-log", os.ExpandEnv("$HOME/.alpaca.log"), "log file for alpaca websocket messages")
-)
-
 type OrderUpdate struct {
 	Event       OrderEvent      `json:"event"`
-	EventtID    string          `json:"event_id"`     // e.g. 01KPNZVTK5HHCV1RZSC3HTTDTQ
-	ExecutionID string          `json:"execution_id"` // e.g. 78e5a6fc-bdd2-4133-a043-1cfaa7121518 (empty for some events like pending_new)
-	PositionQty decimal.Decimal `json:"position_qty"` // quantity of the position after the order update (negative if short)
-	Price       decimal.Decimal `json:"price"`
-	Qty         decimal.Decimal `json:"qty"` // always positive, even for sales
+	EventtID    string          `json:"event_id"`               // e.g. 01KPNZVTK5HHCV1RZSC3HTTDTQ
+	ExecutionID string          `json:"execution_id,omitempty"` // e.g. 78e5a6fc-bdd2-4133-a043-1cfaa7121518 (empty for some events like pending_new)
+	PositionQty decimal.Decimal `json:"position_qty,omitempty"` // quantity of the position after the order update (negative if short)
+	Price       decimal.Decimal `json:"price,omitempty"`
+	Qty         decimal.Decimal `json:"qty,omitempty"` // always positive, even for sales
 	Timestamp   clocky.Time     `json:"timestamp"`
 	At          clocky.Time     `json:"at"` // this usually comes slightly after timestamp
-	Order       Order           `json:"order"`
+	Order       *Order          `json:"order"`
 }
 
+// OrderUpdates connects to the Alpaca trade_updates websocket.
 func OrderUpdates() <-chan *OrderUpdate {
-	flog, err := os.OpenFile(*alpacaLogFlag, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("could not open alpaca log file: %v", err)
-	}
 	c := make(chan *OrderUpdate, 64)
-	d := &orderUpdatesDaemon{c: c, flog: flog}
+	ready := make(chan struct{})
+	d := &orderUpdatesDaemon{c: c, ready: ready}
 	go d.run()
+	<-ready
 	return c
 }
 
 type orderUpdatesDaemon struct {
-	c    chan<- *OrderUpdate
-	flog *os.File
+	c     chan<- *OrderUpdate
+	ready chan struct{}
 }
 
 func (d *orderUpdatesDaemon) run() {
@@ -53,7 +45,7 @@ func (d *orderUpdatesDaemon) run() {
 		err := d.impl()
 		ts2 := time.Now()
 		if err != nil {
-			log.Printf("alpaca trade ws: %v, reconnecting...", err)
+			logf("error reading message: %v\n", err)
 		}
 		elapsed := ts2.Sub(ts1)
 		if elapsed > 30*time.Second {
@@ -85,7 +77,7 @@ func (d *orderUpdatesDaemon) impl() error {
 		return err
 	}
 
-	// need auth response
+	// read auth response
 	_, authResponseBytes, err := conn.ReadMessage()
 	if err != nil {
 		return err
@@ -104,7 +96,7 @@ func (d *orderUpdatesDaemon) impl() error {
 		return fmt.Errorf("authentication failed: %s", string(authResponseBytes))
 	}
 
-	// Subscribe to trade updates
+	// subscribe to trade updates
 	subscribe := map[string]any{
 		"action": "listen",
 		"data": map[string]any{
@@ -117,6 +109,33 @@ func (d *orderUpdatesDaemon) impl() error {
 		return err
 	}
 
+	// read subscribe response
+	_, subscribeResponseBytes, err := conn.ReadMessage()
+	if err != nil {
+		return err
+	}
+	var subscribeResponseMessage struct {
+		Stream string `json:"stream"`
+		Data   struct {
+			Streams []string `json:"streams"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(subscribeResponseBytes, &subscribeResponseMessage); err != nil {
+		return err
+	}
+	if subscribeResponseMessage.Stream != "listening" {
+		return fmt.Errorf("failed to subscribe to trade_updates")
+	}
+
+	// signal that we're connected and subscribed
+	select {
+	case <-d.ready:
+		// already closed from a previous connection
+	default:
+		close(d.ready)
+	}
+
+	flog := getLog()
 	for {
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
@@ -124,15 +143,17 @@ func (d *orderUpdatesDaemon) impl() error {
 		}
 
 		// log message with timestamp
-		var sb strings.Builder
-		sb.Grow(128 + len(message))
-		sb.WriteString(clocky.Now().String())
-		sb.WriteString(" got message type ")
-		sb.WriteString(strconv.Itoa(messageType))
-		sb.WriteString(": ")
-		sb.Write(message)
-		sb.WriteRune('\n')
-		d.flog.Write([]byte(sb.String()))
+		if flog != nil {
+			var sb strings.Builder
+			sb.Grow(128 + len(message))
+			sb.WriteString(clocky.Now().String())
+			sb.WriteString(" got message type ")
+			sb.WriteString(strconv.Itoa(messageType))
+			sb.WriteString(": ")
+			sb.Write(message)
+			sb.WriteRune('\n')
+			flog.Write([]byte(sb.String()))
+		}
 
 		// https://docs.alpaca.markets/docs/websocket-streaming
 		var msg struct {
@@ -140,7 +161,7 @@ func (d *orderUpdatesDaemon) impl() error {
 			Data   *OrderUpdate `json:"data"`
 		}
 		if err := json.Unmarshal(message, &msg); err != nil {
-			log.Printf("alpaca trade ws: error parsing message: %v", err)
+			logf("alpaca trade ws: error parsing message: %v\n", err)
 			continue
 		}
 		if msg.Stream != "trade_updates" {

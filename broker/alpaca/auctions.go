@@ -65,7 +65,7 @@ func (c *Client) GetAuctions(sym string, start, end clocky.Time, feed DataFeed, 
 		Auctions  []Auction `json:"auctions"`
 		NextToken string    `json:"next_page_token"`
 	}
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), false, nil, &result)
 	if err != nil {
 		return nil, "", err
 	}
@@ -113,7 +113,7 @@ func (c *Client) GetAuctionsForSymbols(symbols []string, start, end clocky.Time,
 		Auctions  map[string][]Auction `json:"auctions"`
 		NextToken string               `json:"next_page_token"`
 	}
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), false, nil, &result)
 	if err != nil {
 		return nil, "", err
 	}

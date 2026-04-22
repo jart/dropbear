@@ -28,7 +28,7 @@ func (c *Client) GetQuote(sym string) (*Quote, error) {
 		Symbol string `json:"symbol"`
 	}
 	c.DataTokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, nil, &result)
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, false, nil, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func (c *Client) GetQuotes(symbols []string) (map[string]*Quote, error) {
 		Symbol string            `json:"symbol"`
 	}
 	c.DataTokenBucket.Get()
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", url.String(), nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", url.String(), false, nil, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (c *Client) GetCryptoQuote(sym string) (*Quote, error) {
 		Quotes map[string]*Quote `json:"quotes"`
 	}
 	c.DataTokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, nil, &result)
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, false, nil, &result)
 	if err != nil {
 		return nil, err
 	}

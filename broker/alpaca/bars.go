@@ -65,7 +65,7 @@ func (c *Client) GetBars(sym symbol.Symbol, timeframe clocky.Duration, start, en
 		Bars      []ds.Bar `json:"bars"`
 		NextToken string   `json:"next_page_token"`
 	}
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), false, nil, &result)
 	if err != nil {
 		return nil, "", err
 	}
@@ -132,7 +132,7 @@ func (c *Client) GetBarsForSymbols(symbols []symbol.Symbol, timeframe clocky.Dur
 		Bars      map[symbol.Symbol][]ds.Bar `json:"bars"`
 		NextToken string                     `json:"next_page_token"`
 	}
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), false, nil, &result)
 	if err != nil {
 		return nil, "", err
 	}

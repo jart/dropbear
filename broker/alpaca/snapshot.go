@@ -26,7 +26,7 @@ func (c *Client) GetSnapshot(sym string) (*Snapshot, error) {
 	url := fmt.Sprintf("https://%s/v2/stocks/%s/snapshot", DataHost, sym)
 	var result Snapshot
 	c.DataTokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, nil, &result)
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, false, nil, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (c *Client) GetSnapshots(symbols []string) (map[string]*Snapshot, error) {
 	}
 	var result map[string]*Snapshot
 	c.DataTokenBucket.Get()
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", url.String(), nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", url.String(), false, nil, &result)
 	if err != nil {
 		return nil, err
 	}

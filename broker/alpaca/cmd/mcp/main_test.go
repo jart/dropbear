@@ -23,7 +23,7 @@ func init() {
 // symbol/side, legs array with string ratio_qty, and all numeric fields as
 // quoted strings.
 func TestMlegOrderRequestJSON(t *testing.T) {
-	req := alpaca.OrderRequest{
+	req := alpaca.CreateOrderRequest{
 		Qty:         decimal.FromInt(400),
 		Type:        alpaca.OrderTypeLimit,
 		TimeInForce: alpaca.TimeInForceDay,

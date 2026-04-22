@@ -61,7 +61,7 @@ type UserConfigurations struct {
 func (c *Client) GetAccount() (*Account, error) {
 	var result Account
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/account", nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/account", true, nil, &result)
 	if err != nil {
 		return nil, err
 	}

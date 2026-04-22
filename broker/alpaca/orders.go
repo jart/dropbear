@@ -45,7 +45,7 @@ type OrderLeg struct {
 	PositionIntent PositionIntent  `json:"position_intent,omitempty"`
 }
 
-type OrderRequest struct {
+type CreateOrderRequest struct {
 	Symbol               string                `json:"symbol,omitempty"`
 	Qty                  decimal.Decimal       `json:"qty"`
 	Side                 ds.Side               `json:"side,omitempty"`
@@ -88,24 +88,62 @@ type StopLoss struct {
 }
 
 // CreateOrder places a new order.
-func (c *Client) CreateOrder(body *OrderRequest) (*Order, error) {
+func (c *Client) CreateOrder(body *CreateOrderRequest) (*Order, error) {
 	var result Order
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "POST", "/v2/orders", body, &result)
+	err := c.RequestJSON(netty.FastHTTPClient, "POST", "/v2/orders", true, body, &result)
 	if err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
 
-// ReplaceOrder modifies an existing order's quantity and/or limit price.
-func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, limitPrice decimal.Decimal) (*Order, error) {
-	c.APITokenBucket.Get()
+type ReplaceOrderRequest struct {
+	LimitPrice           decimal.Decimal       `json:"limit_price,omitempty"` // required if original order type was limit or stop limit
+	Qty                  decimal.Decimal       `json:"qty,omitempty"`
+	TimeInForce          TimeInForce           `json:"time_in_force"`
+	StopPrice            decimal.Decimal       `json:"stop_price,omitempty"` // required if original order type was stop limit
+	Trail                decimal.Decimal       `json:"trail,omitempty"`      // new value of trail price or trail percent
+	ClientOrderID        string                `json:"client_order_id,omitempty"`
+	AdvancedInstructions *AdvancedInstructions `json:"advanced_instructions,omitempty"`
+}
+
+// ReplaceOrder modifies a single order with updated parameters. Each parameter
+// overrides the corresponding attribute of the existing order. The other
+// attributes remain the same as the existing order.
+//
+// A success return code from a replaced order does NOT guarantee the existing
+// open order has been replaced. If the existing open order is filled before the
+// replacing (new) order reaches the execution venue, the replacing (new) order
+// is rejected, and these events are sent in the OrderUpdates() stream channel.
+//
+// While an order is being replaced, buying power is reduced by the larger of
+// the two orders that have been placed (the old order being replaced, and the
+// newly placed order to replace it). If you are replacing a buy entry order
+// with a higher limit price than the original order, the buying power is
+// calculated based on the newly placed order. If you are replacing it with a
+// lower limit price, the buying power is calculated based on the old order.
+//
+// If AdvancedInstructions is not included in the replace payload then it will
+// remain the same. If AdvancedInstructions is included in the replace payload
+// then it will replace the original one. So if the client wants to update only
+// the EndTime and keep the rest parameters as is, then the whole
+// AdvancedInstructions payload needs to be sent in the replace request,
+// including the unchanged parameters. Parameter replacement is not supported
+// for DMA orders.
+//
+// Note: Order cannot be replaced when the status is OrderStatusAccepted,
+// OrderStatusPendingNew, OrderStatusPendingCancel or OrderStatusPendingReplace.
+//
+// Note: Notional orders cannot be replaced. Any attempt to modify a notional
+// order via this endpoint will be rejected. To change a notional order, cancel
+// it and submit a new one.
+//
+// Note: Fractional share orders cannot have their quantity modified.
+func (c *Client) ReplaceOrder(orderID string, body *ReplaceOrderRequest) (*Order, error) {
 	var result Order
-	err := c.RequestJSON(netty.FastHTTPClient, "PATCH", "/v2/orders/"+orderID, &struct {
-		Qty        decimal.Decimal `json:"qty,omitempty"`
-		LimitPrice decimal.Decimal `json:"limit_price,omitempty"`
-	}{qty, limitPrice}, &result)
+	c.APITokenBucket.Get()
+	err := c.RequestJSON(netty.FastHTTPClient, "PATCH", "/v2/orders/"+orderID, true, body, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +154,7 @@ func (c *Client) ReplaceOrder(orderID string, qty decimal.Decimal, limitPrice de
 // Returns ds.ErrNotFound if order doesn't exist or was already filled/canceled.
 func (c *Client) CancelOrder(orderID string) error {
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "DELETE", "/v2/orders/"+orderID, nil, nil)
+	err := c.RequestJSON(netty.FastHTTPClient, "DELETE", "/v2/orders/"+orderID, false, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -126,7 +164,7 @@ func (c *Client) CancelOrder(orderID string) error {
 // CancelAllOrders cancels all open orders.
 func (c *Client) CancelAllOrders() error {
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "DELETE", "/v2/orders", nil, nil)
+	err := c.RequestJSON(netty.FastHTTPClient, "DELETE", "/v2/orders", false, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -137,7 +175,7 @@ func (c *Client) CancelAllOrders() error {
 func (c *Client) GetOrder(orderID string) (*Order, error) {
 	var result Order
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/orders/"+orderID, nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/orders/"+orderID, false, nil, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +244,7 @@ func (c *Client) GetOrders(req *GetOrdersRequest) ([]Order, error) {
 	}
 	var result []Order
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", path, nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", path, false, nil, &result)
 	if err != nil {
 		return nil, err
 	}

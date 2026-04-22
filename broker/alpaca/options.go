@@ -104,7 +104,7 @@ func (c *Client) GetOptionChain(underlying string, req *OptionChainRequest) (map
 		NextPageToken string                     `json:"next_page_token"`
 	}
 	c.DataTokenBucket.Get()
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", u.String(), false, nil, &result)
 	if err != nil {
 		return nil, "", err
 	}
@@ -119,7 +119,7 @@ func (c *Client) GetOptionSnapshot(symbol string) (*OptionSnapshot, error) {
 		Snapshots map[string]*OptionSnapshot `json:"snapshots"`
 	}
 	c.DataTokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, nil, &result)
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, false, nil, &result)
 	if err != nil {
 		return nil, err
 	}

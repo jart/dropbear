@@ -9,7 +9,7 @@ type OrderDestination uint8
 
 const (
 	OrderDestinationNone   OrderDestination = iota // unspecified destination
-	OrderDestinationNYSE                           // route to New York Stock Exchange
+	OrderDestinationNYSE                           // route to New York Stock Exchange (does not support extended hours trading)
 	OrderDestinationNASDAQ                         // route to NASDAQ exchange
 	OrderDestinationARCA                           // route to NYSE Arca (electronic exchange, big for ETFs)
 )

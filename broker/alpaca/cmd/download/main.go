@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -51,9 +50,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid adjustment: %v", err)
 	}
-
-	// clean up any leftover temp files from interrupted runs
-	cleanupTempFiles()
 
 	// get symbols from args, otherwise fetch everything
 	var symbolMap = make(map[string]struct{})
@@ -138,22 +134,6 @@ func main() {
 	os.Exit(min(int(errorCount.Load()), 255))
 }
 
-func cleanupTempFiles() {
-	dir := ds.EquityMinutesDir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return // directory might not exist yet
-	}
-	for _, entry := range entries {
-		if strings.HasSuffix(entry.Name(), ".tmp") {
-			tmpPath := filepath.Join(dir, entry.Name())
-			if err := os.Remove(tmpPath); err == nil {
-				log.Printf("cleaned up: %s", entry.Name())
-			}
-		}
-	}
-}
-
 func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) bool {
 	outPath := filepath.Join(ds.EquityMinutesDir(), sym)
 	tmpPath := outPath + ".tmp"
@@ -161,11 +141,10 @@ func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) boo
 	// read existing data and find where to resume from
 	var existingData []byte
 	var lastTime clocky.Time
-	if data, err := os.ReadFile(outPath); err == nil && len(data) >= barSize {
-		existingData = data
-		n := len(data) / barSize
-		lastBar := (*ds.Bar)(unsafe.Pointer(&data[(n-1)*barSize]))
+	if bars, err := ds.OpenBars(outPath); err == nil && bars.Count() > 0 {
+		lastBar := bars.Get(bars.Count() - 1)
 		lastTime = lastBar.Timestamp
+		bars.Close()
 	}
 
 	// determine start time
@@ -175,8 +154,7 @@ func downloadSymbol(client *alpaca.Client, sym string, stopped *atomic.Bool) boo
 		start = lastTime.Add(clocky.Minute)
 	} else {
 		// Start from beginning of Alpaca's data
-		loc, _ := time.LoadLocation("America/New_York")
-		start = clocky.Time(time.Date(2016, 1, 1, 0, 0, 0, 0, loc).UnixMicro())
+		start = clocky.Time(time.Date(2016, 1, 1, 0, 0, 0, 0, clocky.NYC).UnixMicro())
 	}
 
 	// end at now

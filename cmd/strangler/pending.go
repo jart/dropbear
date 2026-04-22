@@ -6,6 +6,9 @@ func (t *Trader) addPendingOrder(order *Order) {
 }
 
 func (t *Trader) removePendingOrder(order *Order) {
+	for _, clientOrderID := range order.clientOrderIDs {
+		delete(t.OrdersByClientOrderID, clientOrderID)
+	}
 	delete(t.PendingOrders, order)
 	orders := t.PendingOrdersBySecurity[order.Security]
 	for i, o := range orders {

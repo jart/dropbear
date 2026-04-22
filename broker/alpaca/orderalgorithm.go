@@ -5,16 +5,13 @@ import "fmt"
 type OrderAlgorithm uint8
 
 const (
-	OrderAlgorithmNone OrderAlgorithm = iota // unspecified algorithm
-	OrderAlgorithmDMA                        // send order directly to exchange
+	OrderAlgorithmDMA  OrderAlgorithm = iota // send order directly to exchange
 	OrderAlgorithmTWAP                       // execute order over time to achieve time-weighted average price
 	OrderAlgorithmVWAP                       // execute order over time to achieve volume-weighted average price
 )
 
 func ParseOrderAlgorithm(s string) (OrderAlgorithm, error) {
 	switch s {
-	case "":
-		return OrderAlgorithmNone, nil
 	case "DMA":
 		return OrderAlgorithmDMA, nil
 	case "TWAP":
@@ -28,8 +25,6 @@ func ParseOrderAlgorithm(s string) (OrderAlgorithm, error) {
 
 func (oa OrderAlgorithm) String() string {
 	switch oa {
-	case OrderAlgorithmNone:
-		return ""
 	case OrderAlgorithmDMA:
 		return "DMA"
 	case OrderAlgorithmTWAP:
@@ -43,8 +38,6 @@ func (oa OrderAlgorithm) String() string {
 
 func (oa OrderAlgorithm) GoString() string {
 	switch oa {
-	case OrderAlgorithmNone:
-		return "OrderAlgorithmNone"
 	case OrderAlgorithmDMA:
 		return "OrderAlgorithmDMA"
 	case OrderAlgorithmTWAP:
@@ -61,10 +54,6 @@ func (oa OrderAlgorithm) MarshalJSON() ([]byte, error) {
 }
 
 func (oa *OrderAlgorithm) UnmarshalJSON(data []byte) error {
-	if len(data) == 0 {
-		*oa = OrderAlgorithmNone
-		return nil
-	}
 	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
 		return fmt.Errorf("invalid order algorithm: %s", data)
 	}

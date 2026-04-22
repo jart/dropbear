@@ -141,6 +141,11 @@ var tools = []Tool{
 					Description: "Execution algorithm: none, twap, vwap",
 					Enum:        []string{"none", "twap", "vwap"},
 				},
+				"dma": {
+					Type:        "string",
+					Description: "Direct Market Access",
+					Enum:        []string{"none", "nasdaq", "arca", "nyse"},
+				},
 				"duration": {
 					Type:        "string",
 					Description: "Duration for TWAP/VWAP orders (e.g., 1h30m)",
@@ -785,13 +790,16 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 		timeInForce = alpaca.TimeInForceIOC
 	}
 
-	algoStr := getStr(args, "algorithm")
-	algorithm := alpaca.OrderAlgorithmNone
-	switch algoStr {
-	case "twap":
-		algorithm = alpaca.OrderAlgorithmTWAP
-	case "vwap":
-		algorithm = alpaca.OrderAlgorithmVWAP
+	participation := decimal.FromInt(15).DivInt(100)
+	if s := getStr(args, "participation"); s != "" {
+		var err error
+		participation, err = decimal.ParseString(s)
+		if err != nil {
+			return ToolCallResult{
+				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid participation: %v", err)}},
+				IsError: true,
+			}
+		}
 	}
 
 	var endTime clocky.Time
@@ -806,15 +814,49 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 		endTime = clocky.Now().Add(d)
 	}
 
-	participation := decimal.FromInt(15).DivInt(100)
-	if s := getStr(args, "participation"); s != "" {
-		var err error
-		participation, err = decimal.ParseString(s)
-		if err != nil {
-			return ToolCallResult{
-				Content: []Content{{Type: "text", Text: fmt.Sprintf("invalid participation: %v", err)}},
-				IsError: true,
-			}
+	var advanced *alpaca.AdvancedInstructions
+	switch getStr(args, "algorithm") {
+	case "", "none":
+	case "twap", "TWAP":
+		advanced = &alpaca.AdvancedInstructions{
+			Algorithm:     alpaca.OrderAlgorithmTWAP,
+			EndTime:       endTime,
+			MaxPercentage: participation,
+		}
+	case "vwap", "VWAP":
+		advanced = &alpaca.AdvancedInstructions{
+			Algorithm:     alpaca.OrderAlgorithmVWAP,
+			EndTime:       endTime,
+			MaxPercentage: participation,
+		}
+	default:
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "invalid algorithm"}},
+			IsError: true,
+		}
+	}
+
+	switch getStr(args, "dma") {
+	case "", "none":
+	case "nasdaq", "NASDAQ":
+		advanced = &alpaca.AdvancedInstructions{
+			Algorithm:   alpaca.OrderAlgorithmTWAP,
+			Destination: alpaca.OrderDestinationNASDAQ,
+		}
+	case "arca", "ARCA":
+		advanced = &alpaca.AdvancedInstructions{
+			Algorithm:   alpaca.OrderAlgorithmTWAP,
+			Destination: alpaca.OrderDestinationARCA,
+		}
+	case "nyse", "NYSE":
+		advanced = &alpaca.AdvancedInstructions{
+			Algorithm:   alpaca.OrderAlgorithmTWAP,
+			Destination: alpaca.OrderDestinationNYSE,
+		}
+	default:
+		return ToolCallResult{
+			Content: []Content{{Type: "text", Text: "invalid dma"}},
+			IsError: true,
 		}
 	}
 
@@ -948,25 +990,21 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 			}
 		}
 
-		order, err := client.CreateOrder(&alpaca.OrderRequest{
-			Symbol:        sym,
-			Side:          side,
-			Qty:           orderQty,
-			LimitPrice:    orderLimitPrice,
-			StopPrice:     stopPrice,
-			TrailPrice:    trailPrice,
-			TrailPercent:  trailPercent,
-			Type:          orderType,
-			TimeInForce:   timeInForce,
-			ExtendedHours: extendedHours,
-			OrderClass:    orderClass,
-			StopLoss:      stopLoss,
-			TakeProfit:    takeProfit,
-			AdvancedInstructions: &alpaca.AdvancedInstructions{
-				Algorithm:     algorithm,
-				EndTime:       endTime,
-				MaxPercentage: participation,
-			},
+		order, err := client.CreateOrder(&alpaca.CreateOrderRequest{
+			Symbol:               sym,
+			Side:                 side,
+			Qty:                  orderQty,
+			LimitPrice:           orderLimitPrice,
+			StopPrice:            stopPrice,
+			TrailPrice:           trailPrice,
+			TrailPercent:         trailPercent,
+			Type:                 orderType,
+			TimeInForce:          timeInForce,
+			ExtendedHours:        extendedHours,
+			OrderClass:           orderClass,
+			StopLoss:             stopLoss,
+			TakeProfit:           takeProfit,
+			AdvancedInstructions: advanced,
 		})
 		if err != nil {
 			results = append(results, fmt.Sprintf("%s: error placing order: %v", sym, err))
@@ -1108,7 +1146,7 @@ func placeMlegViaPlaceOrder(args map[string]any, client *alpaca.Client, qty deci
 		}
 	}
 
-	order, err := client.CreateOrder(&alpaca.OrderRequest{
+	order, err := client.CreateOrder(&alpaca.CreateOrderRequest{
 		Qty:         qty,
 		Type:        orderType,
 		TimeInForce: timeInForce,
@@ -2052,7 +2090,7 @@ func placeMlegOrder(args map[string]any) ToolCallResult {
 		}
 	}
 
-	order, err := client.CreateOrder(&alpaca.OrderRequest{
+	order, err := client.CreateOrder(&alpaca.CreateOrderRequest{
 		Qty:         qty,
 		Type:        alpaca.OrderTypeLimit,
 		TimeInForce: timeInForce,
@@ -2256,7 +2294,7 @@ func placeBoxSpread(args map[string]any) ToolCallResult {
 		timeInForce = alpaca.TimeInForceIOC
 	}
 
-	order, err := client.CreateOrder(&alpaca.OrderRequest{
+	order, err := client.CreateOrder(&alpaca.CreateOrderRequest{
 		Qty:         qty,
 		Type:        alpaca.OrderTypeLimit,
 		TimeInForce: timeInForce,

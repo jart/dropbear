@@ -1,6 +1,7 @@
 package options
 
 import (
+	"dropbear/broker/alpaca"
 	"dropbear/broker/databento"
 	"dropbear/cboe"
 	"dropbear/clocky"
@@ -74,6 +75,9 @@ func (o *Option) Expiry() clocky.Time {
 		return o.exp
 	}
 	o.exp = cboe.GetCloseTime(o.Year, o.Month, o.Day)
+	if hasLateClose(o.Symbol) {
+		o.exp = o.exp.Add(15 * clocky.Minute)
+	}
 	return o.exp
 }
 
@@ -148,5 +152,15 @@ func (o *Option) Ticks() (decimal.Decimal, decimal.Decimal) {
 		return cboe.Tick05, cboe.Tick10
 	default:
 		return cboe.Tick01, cboe.Tick05
+	}
+}
+
+func hasLateClose(sym symbol.Symbol) bool {
+	switch sym {
+	case symbol.SPXW, symbol.NDX, symbol.RUTW, symbol.XSP:
+		return true
+	default:
+		asset := alpaca.GetAsset(sym)
+		return asset != nil && asset.OptionsLateClose.Load()
 	}
 }

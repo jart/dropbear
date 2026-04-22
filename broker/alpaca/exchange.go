@@ -5,16 +5,14 @@ import "fmt"
 type Exchange int
 
 const (
-	ExchangeUnknown Exchange = iota
-	ExchangeNYSE
-	ExchangeNASDAQ
-	ExchangeAMEX
-	ExchangeARCA
-	ExchangeASCX
-	ExchangeBATS
-	ExchangeNYSEARCA
-	ExchangeCrypto
-	ExchangeOTC
+	ExchangeUnknown Exchange = iota //
+	ExchangeNASDAQ                  // National Association of Securities Dealers Automated Quotations (everything good)
+	ExchangeNYSE                    // New York Stock Exchange (some old school stuff is listed here)
+	ExchangeAMEX                    // New York Curb Exchange (older school stuff is listed here)
+	ExchangeARCA                    // Archipelago Exchange (where most popular ETFs are listed)
+	ExchangeBATS                    // Better Alternative Trading System (some stuff here)
+	ExchangeCrypto                  // cryptography proofs
+	ExchangeOTC                     // many penny stocks
 )
 
 func ParseExchange(s string) (Exchange, error) {
@@ -29,12 +27,8 @@ func ParseExchange(s string) (Exchange, error) {
 		return ExchangeAMEX, nil
 	case "ARCA":
 		return ExchangeARCA, nil
-	case "ASCX":
-		return ExchangeASCX, nil
 	case "BATS":
 		return ExchangeBATS, nil
-	case "NYSEARCA":
-		return ExchangeNYSEARCA, nil
 	case "CRYPTO":
 		return ExchangeCrypto, nil
 	case "OTC":
@@ -56,12 +50,8 @@ func (ex Exchange) String() string {
 		return "AMEX"
 	case ExchangeARCA:
 		return "ARCA"
-	case ExchangeASCX:
-		return "ASCX"
 	case ExchangeBATS:
 		return "BATS"
-	case ExchangeNYSEARCA:
-		return "NYSEARCA"
 	case ExchangeCrypto:
 		return "CRYPTO"
 	case ExchangeOTC:
@@ -83,12 +73,8 @@ func (ex Exchange) GoString() string {
 		return "ExchangeAMEX"
 	case ExchangeARCA:
 		return "ExchangeARCA"
-	case ExchangeASCX:
-		return "ExchangeASCX"
 	case ExchangeBATS:
 		return "ExchangeBATS"
-	case ExchangeNYSEARCA:
-		return "ExchangeNYSEARCA"
 	case ExchangeCrypto:
 		return "ExchangeCrypto"
 	case ExchangeOTC:

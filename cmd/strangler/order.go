@@ -9,24 +9,26 @@ import (
 	"errors"
 	"fmt"
 	"log"
+
+	"github.com/google/uuid"
 )
 
 type Order struct {
-	Trader        *Trader
-	ID            int
-	Created       clocky.Time
-	OrderIDSchwab schwab.OrderID
-	OrderIDAlpaca string
-	ClientOrderID string
-	Security      options.Security
-	Quantity      decimal.Decimal // negative for sell, positive for buy, never zero
-	Price         decimal.Decimal // always positive, or zero for market orders
-	Unfilled      decimal.Decimal // always positive, or zero if fully filled
-	NextChase     clocky.Time
-	Sent          bool
-	Making        bool
-	Filled        bool
-	Canceling     bool
+	Trader         *Trader
+	ID             int
+	Created        clocky.Time
+	OrderIDSchwab  schwab.OrderID
+	OrderIDAlpaca  string
+	Security       options.Security
+	Quantity       decimal.Decimal // negative for sell, positive for buy, never zero
+	Price          decimal.Decimal // always positive, or zero for market orders
+	Unfilled       decimal.Decimal // always positive, or zero if fully filled
+	NextChase      clocky.Time
+	Sent           bool
+	Making         bool
+	Filled         bool
+	Canceling      bool
+	clientOrderIDs []string
 }
 
 func (order *Order) String() string {
@@ -78,8 +80,11 @@ func (order *Order) Update(price decimal.Decimal) error {
 	if order.Canceling {
 		return errors.New("order canceling")
 	}
-	if order.Price.IsNegative() {
+	if price.IsNegative() {
 		return errors.New("negative price")
+	}
+	if order.Price.IsZero() {
+		return errors.New("cannot update price of market order")
 	}
 	if *dryFlag {
 		return errors.New("won't send order in dry run mode")
@@ -175,4 +180,10 @@ func (order *Order) priceTick() decimal.Decimal {
 		return bigTick
 	}
 	return tick
+}
+
+func (order *Order) generateClientOrderID() string {
+	cid := uuid.New().String()
+	order.clientOrderIDs = append(order.clientOrderIDs, cid)
+	return cid
 }

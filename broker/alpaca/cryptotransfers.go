@@ -28,7 +28,7 @@ type CryptoTransfer struct {
 func (c *Client) GetCryptoTransfers() ([]CryptoTransfer, error) {
 	var result []CryptoTransfer
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/wallets/transfers", nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", "/v2/wallets/transfers", false, nil, &result)
 	if err != nil {
 		return nil, err
 	}

@@ -10,8 +10,6 @@ import (
 	"dropbear/osi"
 	"log"
 	"os"
-
-	"github.com/google/uuid"
 )
 
 func (t *Trader) LiveAlpaca() {
@@ -58,8 +56,6 @@ func (t *Trader) LiveAlpaca() {
 			continue
 		case order := <-t.FailedOrders:
 			t.onOrderFail(order)
-		case r := <-t.ReplacedOrders:
-			t.onOrderReplacement(r)
 		default:
 			// all channels empty
 		}
@@ -89,8 +85,6 @@ func (t *Trader) LiveAlpaca() {
 			t.Web.broadcastState()
 		case order := <-t.FailedOrders:
 			t.onOrderFail(order)
-		case r := <-t.ReplacedOrders:
-			t.onOrderReplacement(r)
 		case <-readySteadyGo.C:
 			if !ready && t.Chain.LastPopulate != 0 && clocky.Now().After(t.Chain.LastPopulate.Add(clocky.Second)) {
 				t.restorePortfolioAlpaca()
@@ -123,8 +117,8 @@ func (t *Trader) restorePortfolioAlpaca() {
 }
 
 func (t *Trader) sendLiveOrderAlpaca(order *Order) {
-	order.ClientOrderID = uuid.New().String()
-	t.OrdersByAlpacaID[order.ClientOrderID] = order
+	clientOrderID := order.generateClientOrderID()
+	t.OrdersByClientOrderID[clientOrderID] = order
 	t.addPendingOrder(order)
 	go func() {
 		sid := ds.SideBuy
@@ -137,15 +131,16 @@ func (t *Trader) sendLiveOrderAlpaca(order *Order) {
 		if order.Price.IsZero() {
 			orderType = alpaca.OrderTypeMarket
 		}
-		_, err := gAlpacaClient.CreateOrder(&alpaca.OrderRequest{
+		_, err := gAlpacaClient.CreateOrder(&alpaca.CreateOrderRequest{
 			Symbol:        osi.Uncanonicalize(order.Security.Name()),
 			Side:          sid,
 			Qty:           qty,
 			Type:          orderType,
 			LimitPrice:    order.Price,
 			TimeInForce:   alpaca.TimeInForceDay,
-			ClientOrderID: order.ClientOrderID,
+			ClientOrderID: clientOrderID,
 			AdvancedInstructions: &alpaca.AdvancedInstructions{
+				Algorithm:   alpaca.OrderAlgorithmDMA,
 				Destination: t.Config.DMA,
 			},
 		})
@@ -156,44 +151,29 @@ func (t *Trader) sendLiveOrderAlpaca(order *Order) {
 	}()
 }
 
-type OrderReplacement struct {
-	Order          *Order
-	NewAlpacaID    string
-	NewClientOrder string
-}
-
 func (t *Trader) updateOrderAlpaca(order *Order) {
+	clientOrderID := order.generateClientOrderID()
+	t.OrdersByClientOrderID[clientOrderID] = order
 	go func() {
-		newOrder, err := gAlpacaClient.ReplaceOrder(order.OrderIDAlpaca, order.Unfilled, order.Price)
+		_, err := gAlpacaClient.ReplaceOrder(order.OrderIDAlpaca, &alpaca.ReplaceOrderRequest{
+			LimitPrice:    order.Price,
+			ClientOrderID: clientOrderID,
+			AdvancedInstructions: &alpaca.AdvancedInstructions{
+				Algorithm:   alpaca.OrderAlgorithmDMA,
+				Destination: t.Config.DMA,
+			},
+		})
 		if err != nil {
 			log.Printf("failed to update price #%d on alpaca: %v", order.ID, err)
 			return
 		}
-		t.ReplacedOrders <- OrderReplacement{
-			Order:          order,
-			NewAlpacaID:    newOrder.ID,
-			NewClientOrder: newOrder.ClientOrderID,
-		}
 	}()
 }
 
-func (t *Trader) onOrderReplacement(r OrderReplacement) {
-	delete(t.OrdersByAlpacaID, r.Order.OrderIDAlpaca)
-	delete(t.OrdersByAlpacaID, r.Order.ClientOrderID)
-	r.Order.OrderIDAlpaca = r.NewAlpacaID
-	r.Order.ClientOrderID = r.NewClientOrder
-	t.OrdersByAlpacaID[r.NewAlpacaID] = r.Order
-	t.OrdersByAlpacaID[r.NewClientOrder] = r.Order
-	log.Printf("order #%d remapped to alpaca id %s", r.Order.ID, r.NewAlpacaID)
-}
-
 func (t *Trader) onOrderEventAlpaca(orderUpdate *alpaca.OrderUpdate) {
-	order := t.OrdersByAlpacaID[orderUpdate.Order.ClientOrderID]
+	order := t.OrdersByClientOrderID[orderUpdate.Order.ClientOrderID]
 	if order == nil {
-		order = t.OrdersByAlpacaID[orderUpdate.Order.ID]
-		if order == nil {
-			return
-		}
+		return
 	}
 	order.OrderIDAlpaca = orderUpdate.Order.ID
 	log.Printf("order #%d update for %s: %s price=%s status=%s qty=%s pos=%s filled=%s/%s avg_price=%s id=%s",
@@ -220,18 +200,10 @@ func (t *Trader) onOrderEventAlpaca(orderUpdate *alpaca.OrderUpdate) {
 			}
 		}
 	}
-	if orderUpdate.Order.ReplacedBy != "" {
-		// remap tracking to the replacement order; alpaca gives it a new ID
-		// and a new client_order_id, but its `id` matches our ReplacedBy
-		delete(t.OrdersByAlpacaID, orderUpdate.Order.ID)
-		delete(t.OrdersByAlpacaID, orderUpdate.Order.ClientOrderID)
+	switch orderUpdate.Order.Status {
+	case alpaca.OrderStatusReplaced:
 		order.OrderIDAlpaca = orderUpdate.Order.ReplacedBy
-		t.OrdersByAlpacaID[order.OrderIDAlpaca] = order
-		return // replacement is still live, not final
-	}
-	if orderUpdate.Order.Status.IsFinal() {
-		delete(t.OrdersByAlpacaID, order.OrderIDAlpaca)
-		delete(t.OrdersByAlpacaID, order.ClientOrderID)
+	case alpaca.OrderStatusFilled, alpaca.OrderStatusCanceled, alpaca.OrderStatusExpired, alpaca.OrderStatusRejected:
 		t.removePendingOrder(order)
 	}
 }

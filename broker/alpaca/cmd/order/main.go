@@ -5,6 +5,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/loggy"
 	"dropbear/osi"
 	"flag"
 	"fmt"
@@ -31,16 +32,19 @@ var (
 	flagGreed         = decimal.FlagBPS("greed", "0", "number of basis points improvement over market midpoint to demand (or negative to increase likelihood of execution); only applies to limit orders without an explicit -price")
 	flagDuration      = clocky.DurationFlag("duration", "0", "duration over which to execute TWAP/VWAP orders (e.g. 1h30m; default is until end of day)")
 	flagParticipation = decimal.Flag("participation", "0.15", "maximum volume participation rate if TWAP/VWAP order")
+	flagDisplay       = decimal.Flag("display", "0", "max amount of shares to display on exchange in dma mode")
 	flagStop          = decimal.Flag("stop", "0", "stop loss price")
+	flagTrail         = flag.String("trail", "", "trailing stop distance in dollars (e.g. 0.50) or percent (e.g. 1%)")
 	flagOCO           = flag.Bool("oco", false, "use one cancels other (OCO) order class")
 	flagOTO           = flag.Bool("oto", false, "use one triggers other (OTO) order class")
 	flagBracket       = flag.Bool("bracket", false, "use bracket order class")
 	flagStopLimit     = decimal.Flag("stop-limit", "0", "stop limit price")
-	flagTakeProfit    = decimal.Flag("take-profit", "0", "take profit price")
+	flagTakeProfit    = decimal.Flag("take", "0", "take profit price")
 	flagMarket        = flag.Bool("market", false, "use market order")
 )
 
 func main() {
+	loggy.Init()
 
 	// parse flags
 	flag.Usage = func() {
@@ -59,52 +63,21 @@ options:
 	flag.Parse()
 
 	// validate some flags
-	if (*flagQty).IsZero() && (*flagAmt).IsZero() {
+	if flagQty.IsZero() && flagAmt.IsZero() {
 		fmt.Fprintf(os.Stderr, "no -qty or -amt specified\n")
 		os.Exit(1)
 	}
-	if (*flagLimit).IsNegative() {
+	if flagLimit.IsNegative() {
 		fmt.Fprintf(os.Stderr, "-limit cannot be negative\n")
 		os.Exit(1)
 	}
-	if !(*flagLimit).IsZero() && !(*flagGreed).IsZero() {
+	if flagStop.IsNegative() {
+		fmt.Fprintf(os.Stderr, "-stop cannot be negative\n")
+		os.Exit(1)
+	}
+	if !flagLimit.IsZero() && !flagGreed.IsZero() {
 		fmt.Fprintf(os.Stderr, "-limit and -greed cannot both be specified\n")
 		os.Exit(1)
-	}
-
-	// figure out algorithm
-	var endTime clocky.Time
-	var maxPercentage decimal.Decimal
-	orderType := alpaca.OrderTypeLimit
-	if *flagMarket {
-		orderType = alpaca.OrderTypeMarket
-		if !(*flagLimit).IsZero() {
-			fmt.Fprintf(os.Stderr, "-limit can't be used with market orders\n")
-			os.Exit(1)
-		}
-		if !(*flagGreed).IsZero() {
-			fmt.Fprintf(os.Stderr, "-greed only works with limit orders\n")
-			os.Exit(1)
-		}
-	} else if *flagLimit <= decimal.Zero {
-		fmt.Fprintf(os.Stderr, "must specify either -limit or -market\n")
-		os.Exit(1)
-	}
-	if *flagTWAP && *flagVWAP {
-		fmt.Fprintf(os.Stderr, "cannot specify both -twap and -vwap\n")
-		os.Exit(1)
-	}
-	algorithm := alpaca.OrderAlgorithmNone
-	if *flagTWAP {
-		algorithm = alpaca.OrderAlgorithmTWAP
-	} else if *flagVWAP {
-		algorithm = alpaca.OrderAlgorithmVWAP
-	}
-	if algorithm != alpaca.OrderAlgorithmNone {
-		if *flagDuration > 0 {
-			endTime = clocky.Now().Add(*flagDuration)
-		}
-		maxPercentage = *flagParticipation
 	}
 
 	// figure out time in force
@@ -117,7 +90,7 @@ options:
 	if *flagOPG {
 		timeInForce = alpaca.TimeInForceOPG
 		tifs++
-		if algorithm != alpaca.OrderAlgorithmNone {
+		if *flagTWAP || *flagVWAP {
 			fmt.Fprintf(os.Stderr, "TWAP/VWAP orders cannot participate in opening auction\n")
 			os.Exit(1)
 		}
@@ -125,7 +98,7 @@ options:
 	if *flagCLS {
 		timeInForce = alpaca.TimeInForceCLS
 		tifs++
-		if algorithm != alpaca.OrderAlgorithmNone {
+		if *flagTWAP || *flagVWAP {
 			fmt.Fprintf(os.Stderr, "TWAP/VWAP orders cannot participate in closing auction\n")
 			os.Exit(1)
 		}
@@ -133,7 +106,7 @@ options:
 	if *flagFOK {
 		timeInForce = alpaca.TimeInForceFOK
 		tifs++
-		if algorithm != alpaca.OrderAlgorithmNone {
+		if *flagTWAP || *flagVWAP {
 			fmt.Fprintf(os.Stderr, "TWAP/VWAP orders cannot use fill or kill time in force\n")
 			os.Exit(1)
 		}
@@ -141,53 +114,210 @@ options:
 	if *flagIOC {
 		timeInForce = alpaca.TimeInForceIOC
 		tifs++
-		if algorithm != alpaca.OrderAlgorithmNone {
+		if *flagTWAP || *flagVWAP {
 			fmt.Fprintf(os.Stderr, "TWAP/VWAP orders cannot use immediate or cancel time in force\n")
 			os.Exit(1)
 		}
 	}
 	if tifs > 1 {
-		fmt.Fprintf(os.Stderr, "cannot specify more than one time in force\n")
+		fmt.Fprintf(os.Stderr, "only one of -gtc, -opg, -cls, -fok, -ioc can be specified\n")
 		os.Exit(1)
 	}
 
 	// figure out order class
 	orderClass := alpaca.OrderClassSimple
-	if *flagBracket || *flagOTO || *flagOCO {
-		if *flagBracket {
-			orderClass = alpaca.OrderClassBracket
+	orderClasses := 0
+	if *flagBracket {
+		orderClass = alpaca.OrderClassBracket
+		orderClasses++
+		if *flagExt {
+			fmt.Fprintf(os.Stderr, "bracket orders cannot participate in extended hours\n")
+			os.Exit(1)
 		}
-		if *flagOTO {
-			if orderClass != alpaca.OrderClassSimple {
-				fmt.Fprintf(os.Stderr, "cannot combine -oto with other order classes\n")
+		if timeInForce != alpaca.TimeInForceDay && timeInForce != alpaca.TimeInForceGTC {
+			fmt.Fprintf(os.Stderr, "bracket orders can only use day or GTC time in force\n")
+			os.Exit(1)
+		}
+	}
+	if *flagOTO {
+		orderClass = alpaca.OrderClassOTO
+		orderClasses++
+	}
+	if *flagOCO {
+		orderClass = alpaca.OrderClassOCO
+		orderClasses++
+	}
+	if orderClasses > 1 {
+		fmt.Fprintf(os.Stderr, "cannot combine -bracket, -oto, and -oco order classes\n")
+		os.Exit(1)
+	}
+
+	// figure out order type
+	orderType := alpaca.OrderTypeLimit
+	stopPrice := decimal.Zero
+	trailPrice := decimal.Zero
+	trailPercent := decimal.Zero
+	if *flagMarket {
+		orderType = alpaca.OrderTypeMarket
+		if !flagLimit.IsZero() {
+			fmt.Fprintf(os.Stderr, "-limit can't be used with market orders\n")
+			os.Exit(1)
+		}
+		if !flagGreed.IsZero() {
+			fmt.Fprintf(os.Stderr, "-greed only works with limit orders\n")
+			os.Exit(1)
+		}
+		if !flagStop.IsZero() {
+			fmt.Fprintf(os.Stderr, "-stop cannot be used with market orders\n")
+			os.Exit(1)
+		}
+		if *flagTrail != "" {
+			fmt.Fprintf(os.Stderr, "-trail cannot be used with market orders\n")
+			os.Exit(1)
+		}
+		if orderClass == alpaca.OrderClassOCO {
+			fmt.Fprintf(os.Stderr, "-oco orders should not specify -market or -limit (use -take and/or -stop)\n")
+			os.Exit(1)
+		}
+	} else if !flagStop.IsZero() && orderClass == alpaca.OrderClassSimple {
+		if flagLimit.IsZero() {
+			orderType = alpaca.OrderTypeStop
+		} else {
+			orderType = alpaca.OrderTypeStopLimit
+		}
+		stopPrice = *flagStop
+		if !flagGreed.IsZero() {
+			fmt.Fprintf(os.Stderr, "-greed only works with limit orders\n")
+			os.Exit(1)
+		}
+		if *flagTrail != "" {
+			fmt.Fprintf(os.Stderr, "-trail cannot be used with stop orders\n")
+			os.Exit(1)
+		}
+		if !flagStopLimit.IsZero() {
+			fmt.Fprintf(os.Stderr, "-stop-limit is meant for -bracket or -oco or -oto orders\n")
+			os.Exit(1)
+		}
+	} else if *flagTrail != "" {
+		orderType = alpaca.OrderTypeTrailingStop
+		if !flagGreed.IsZero() {
+			fmt.Fprintf(os.Stderr, "-greed only works with limit orders\n")
+			os.Exit(1)
+		}
+		if !flagLimit.IsZero() {
+			fmt.Fprintf(os.Stderr, "-limit can't be used with -trail orders\n")
+			os.Exit(1)
+		}
+		if !flagStopLimit.IsZero() {
+			fmt.Fprintf(os.Stderr, "-stop-limit is meant for -bracket or -oco or -oto orders\n")
+			os.Exit(1)
+		}
+		if orderClass != alpaca.OrderClassSimple {
+			fmt.Fprintf(os.Stderr, "-trail orders cannot be used with -bracket or -oco or -oto order classes\n")
+			os.Exit(1)
+		}
+		if timeInForce != alpaca.TimeInForceDay && timeInForce != alpaca.TimeInForceGTC {
+			fmt.Fprintf(os.Stderr, "-trail orders can only use day or -gtc time in force\n")
+			os.Exit(1)
+		}
+		ts := *flagTrail
+		if ts[len(ts)-1] == '%' {
+			percent, err := decimal.ParseString(ts[:len(ts)-1])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "invalid trail percentage: %v\n", err)
 				os.Exit(1)
 			}
-			orderClass = alpaca.OrderClassOTO
-		}
-		if *flagOCO {
-			if orderClass != alpaca.OrderClassSimple {
-				fmt.Fprintf(os.Stderr, "cannot combine -oco with other order classes\n")
+			trailPercent = percent
+		} else {
+			price, err := decimal.ParseString(ts)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "invalid trail price: %v\n", err)
 				os.Exit(1)
 			}
-			orderClass = alpaca.OrderClassOCO
+			trailPrice = price
+		}
+	} else if orderClass == alpaca.OrderClassOCO {
+		if flagTakeProfit.IsZero() || flagStop.IsZero() {
+			fmt.Fprintf(os.Stderr, "-oco orders require both -take and -stop to be set\n")
+			os.Exit(1)
+		}
+	} else if flagLimit.IsZero() {
+		fmt.Fprintf(os.Stderr, "must specify either -limit or -market or -stop or -trail\n")
+		os.Exit(1)
+	}
+
+	// figure out algorithm
+	if *flagTWAP && *flagVWAP {
+		fmt.Fprintf(os.Stderr, "cannot specify both -twap and -vwap\n")
+		os.Exit(1)
+	}
+	var advanced *alpaca.AdvancedInstructions
+	if *flagDMA != alpaca.OrderDestinationNone {
+		advanced = &alpaca.AdvancedInstructions{
+			Algorithm:   alpaca.OrderAlgorithmDMA,
+			Destination: *flagDMA,
+			DisplayQty:  *flagDisplay,
+		}
+		if advanced.DisplayQty.QuantizeTruncate(decimal.Lot).Cmp(advanced.MaxPercentage) != 0 {
+			fmt.Fprintf(os.Stderr, "-display must be in round lots\n")
+			os.Exit(1)
+		}
+		if *flagBracket || *flagOTO || *flagOCO || *flagTWAP || *flagVWAP {
+			fmt.Fprintf(os.Stderr, "-dma only supports -market and -limit orders\n")
+			os.Exit(1)
+		}
+		if timeInForce != alpaca.TimeInForceDay {
+			fmt.Fprintf(os.Stderr, "-dma only supports day time in force\n")
+			os.Exit(1)
+		}
+		if *flagExt && advanced.Destination != alpaca.OrderDestinationNASDAQ && advanced.Destination != alpaca.OrderDestinationARCA {
+			fmt.Fprintf(os.Stderr, "extended hours only supported with NASDAQ and ARCA destinations\n")
+			os.Exit(1)
+		}
+	} else if *flagTWAP || *flagVWAP {
+		advanced = &alpaca.AdvancedInstructions{}
+		if *flagTWAP {
+			advanced.Algorithm = alpaca.OrderAlgorithmTWAP
+		} else {
+			advanced.Algorithm = alpaca.OrderAlgorithmVWAP
+		}
+		if *flagDuration > 0 {
+			advanced.EndTime = clocky.Now().Add(*flagDuration)
+		}
+		advanced.MaxPercentage = *flagParticipation
+		if advanced.MaxPercentage.QuantizeTruncate(decimal.Parse(".001")).Cmp(advanced.MaxPercentage) != 0 {
+			fmt.Fprintf(os.Stderr, "-participation only allows three decimal places of precision\n")
+			os.Exit(1)
+		}
+	}
+
+	// sanity check fractional trading
+	if flagQty.Truncate().Cmp(*flagQty) != 0 {
+		if timeInForce != alpaca.TimeInForceDay {
+			fmt.Fprintf(os.Stderr, "fractional shares only supported with day time in force\n")
+			os.Exit(1)
+		}
+		if advanced != nil {
+			fmt.Fprintf(os.Stderr, "fractional shares not supported with advanced order types\n")
+			os.Exit(1)
 		}
 	}
 
 	// figure out stop loss
 	var stopLoss *alpaca.StopLoss
-	if !(*flagStop).IsZero() {
+	if orderClass != alpaca.OrderClassSimple && !flagStop.IsZero() {
 		stopLoss = &alpaca.StopLoss{
 			StopPrice:  *flagStop,
 			LimitPrice: *flagStopLimit,
 		}
-	} else if !(*flagStopLimit).IsZero() {
-		fmt.Fprintf(os.Stderr, "-stop-limit requires -stop to be set\n")
+	} else if !flagStopLimit.IsZero() {
+		fmt.Fprintf(os.Stderr, "-stop-limit requires -stop to be set along with -bracket or -oco or -oto\n")
 		os.Exit(1)
 	}
 
 	// figure out take profit
 	var takeProfit *alpaca.TakeProfit
-	if !(*flagTakeProfit).IsZero() {
+	if !flagTakeProfit.IsZero() {
 		takeProfit = &alpaca.TakeProfit{
 			LimitPrice: *flagTakeProfit,
 		}
@@ -215,7 +345,10 @@ options:
 	symbols := flag.Args()
 
 	// subscribe to websocket messages
-	orderUpdates := alpaca.OrderUpdates()
+	var orderUpdates <-chan *alpaca.OrderUpdate
+	if *flagWait {
+		orderUpdates = alpaca.OrderUpdates()
+	}
 
 	// loop over stocks
 	var err error
@@ -285,30 +418,29 @@ options:
 
 		// give the order
 		clientOrderID := uuid.New().String()
-		order, err := client.CreateOrder(&alpaca.OrderRequest{
-			ClientOrderID: clientOrderID,
-			Symbol:        sym,
-			Side:          side,
-			Qty:           qty,
-			LimitPrice:    limitPrice,
-			Type:          orderType,
-			TimeInForce:   timeInForce,
-			ExtendedHours: extendedHours,
-			OrderClass:    orderClass,
-			StopLoss:      stopLoss,
-			TakeProfit:    takeProfit,
-			AdvancedInstructions: &alpaca.AdvancedInstructions{
-				Algorithm:     algorithm,
-				EndTime:       endTime,
-				MaxPercentage: maxPercentage,
-				Destination:   *flagDMA,
-			},
+		order, err := client.CreateOrder(&alpaca.CreateOrderRequest{
+			ClientOrderID:        clientOrderID,
+			Symbol:               sym,
+			Side:                 side,
+			Qty:                  qty,
+			LimitPrice:           limitPrice,
+			Type:                 orderType,
+			TimeInForce:          timeInForce,
+			ExtendedHours:        extendedHours,
+			OrderClass:           orderClass,
+			StopPrice:            stopPrice,
+			TrailPrice:           trailPrice,
+			TrailPercent:         trailPercent,
+			StopLoss:             stopLoss,
+			TakeProfit:           takeProfit,
+			AdvancedInstructions: advanced,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error opening %s: %v\n", sym, err)
 			if exitCode < 255 {
 				exitCode++
 			}
+			continue
 		}
 
 		// log the order

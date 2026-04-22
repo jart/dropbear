@@ -31,7 +31,7 @@ type Position struct {
 func (c *Client) GetPositions() ([]Position, error) {
 	var result []Position
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "GET", "/v2/positions", nil, &result)
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", "/v2/positions", false, nil, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (c *Client) GetPositions() ([]Position, error) {
 func (c *Client) GetPosition(symbolOrAssetID string) (*Position, error) {
 	var result Position
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "GET", "/v2/positions/"+symbolOrAssetID, nil, &result)
+	err := c.RequestJSON(netty.FastHTTPClient, "GET", "/v2/positions/"+symbolOrAssetID, false, nil, &result)
 	if err != nil {
 		return nil, err
 	}

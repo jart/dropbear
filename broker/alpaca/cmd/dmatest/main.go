@@ -221,7 +221,7 @@ func main() {
 	log.Printf("Placing order...")
 	result.OrderSubmitTime = time.Now()
 
-	order, err := client.CreateOrder(&alpaca.OrderRequest{
+	order, err := client.CreateOrder(&alpaca.CreateOrderRequest{
 		Symbol:               *flagSymbol,
 		Qty:                  *flagQty,
 		Side:                 side,
