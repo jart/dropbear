@@ -246,9 +246,6 @@ options:
 			fmt.Fprintf(os.Stderr, "-oco orders require both -take and -stop to be set\n")
 			os.Exit(1)
 		}
-	} else if flagLimit.IsZero() {
-		fmt.Fprintf(os.Stderr, "must specify either -limit or -market or -stop or -trail\n")
-		os.Exit(1)
 	}
 
 	// figure out algorithm
