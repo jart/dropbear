@@ -107,10 +107,10 @@ func HasOptionChain(sym symbol.Symbol, year int, month clocky.Month, day int) bo
 
 func GetNextOptionChain(sym symbol.Symbol, year int, month clocky.Month, day int) (int, clocky.Month, int) {
 	for {
-		year, month, day = addDays(year, month, day, 1)
 		if HasOptionChain(sym, year, month, day) {
 			return year, month, day
 		}
+		year, month, day = addDays(year, month, day, 1)
 	}
 }
 
