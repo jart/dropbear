@@ -133,34 +133,26 @@ func main() {
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.NVDA
 	// t.Config.Listen = "127.0.0.1:8486"
-	// t.Config.Tolerance = decimal.Parse("-4")
 	// traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.TSLA
 	// t.Config.Listen = "127.0.0.1:8485"
 	// t.Config.Strikes = 0
-	// t.Config.Quantum = decimal.Lot
 	// t.Config.Tolerance = decimal.One
 	// t.Config.Direction = decimal.One
 	// t.Config.Spread = decimal.NegOne
 	// traders = append(traders, t)
 
-	// t = NewTrader(newConfig())
-	// t.Config.Symbol = symbol.GOOGL
-	// t.Config.Listen = "127.0.0.1:8491"
-	// t.Config.Strikes = 2
-	// t.Config.Quantum = decimal.Lot
-	// t.Config.Tolerance = decimal.Two
-	// t.Config.Direction = decimal.One
-	// t.Config.Spread = decimal.NegOne
-	// traders = append(traders, t)
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.GOOGL
+	t.Config.Listen = "127.0.0.1:8491"
+	traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.AMZN
 	// t.Config.Listen = "127.0.0.1:8494"
 	// t.Config.Strikes = 2
-	// t.Config.Quantum = decimal.Lot
 	// traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
@@ -169,24 +161,20 @@ func main() {
 	// t.Config.Strikes = 1
 	// t.Config.Spread = decimal.NegOne
 	// t.Config.Direction = decimal.One
-	// t.Config.Quantum = decimal.Lot
 	// traders = append(traders, t)
 
-	// t = NewTrader(newConfig())
-	// t.Config.Symbol = symbol.AAPL
-	// t.Config.Listen = "127.0.0.1:8493"
-	// t.Config.Strikes = 1
-	// t.Config.Quantum = decimal.One
-	// t.Config.Direction = decimal.One
-	// t.Config.Spread = decimal.NegOne
-	// t.Config.Tolerance = decimal.Parse("-10")
-	// traders = append(traders, t)
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.AAPL
+	t.Config.Listen = "127.0.0.1:8493"
+	t.Config.Strikes = 1
+	t.Config.Direction = decimal.One
+	t.Config.Spread = decimal.NegOne
+	traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.IBIT
 	// t.Config.Listen = "127.0.0.1:8495"
 	// t.Config.Strikes = 2
-	// t.Config.Quantum = decimal.Lot
 	// traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
@@ -195,26 +183,23 @@ func main() {
 	// t.Config.Strikes = 3
 	// t.Config.Direction = decimal.One
 	// t.Config.Spread = decimal.NegOne
-	// t.Config.Quantum = decimal.Lot
 	// traders = append(traders, t)
 
-	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.AKAM
-	t.Config.Listen = "127.0.0.1:8497"
-	t.Config.Strikes = 0
-	t.Config.Spread = decimal.NegOne
-	t.Config.Direction = decimal.One
-	t.Config.Quantum = decimal.Lot
-	traders = append(traders, t)
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.AKAM
+	// t.Config.Listen = "127.0.0.1:8497"
+	// t.Config.Strikes = 0
+	// t.Config.Spread = decimal.NegOne
+	// t.Config.Direction = decimal.One
+	// traders = append(traders, t)
 
-	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.ADBE
-	t.Config.Listen = "127.0.0.1:8498"
-	t.Config.Strikes = 0
-	t.Config.Spread = decimal.NegOne
-	t.Config.Direction = decimal.One
-	t.Config.Quantum = decimal.Lot
-	traders = append(traders, t)
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.ADBE
+	// t.Config.Listen = "127.0.0.1:8498"
+	// t.Config.Strikes = 0
+	// t.Config.Spread = decimal.NegOne
+	// t.Config.Direction = decimal.One
+	// traders = append(traders, t)
 
 	// figure out what brokers we need
 	needSchwab := false
