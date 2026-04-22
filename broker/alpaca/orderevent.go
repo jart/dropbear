@@ -74,6 +74,9 @@ const (
 
 	// OrderEventCancelRejected is sent when the order cancel has been rejected. (rare)
 	OrderEventCancelRejected
+
+	// OrderEventHeld is sent when the parent order is filled but child orders are still pending.
+	OrderEventHeld
 )
 
 func ParseOrderEvent(s string) (OrderEvent, error) {
@@ -112,6 +115,8 @@ func ParseOrderEvent(s string) (OrderEvent, error) {
 		return OrderEventReplaceRejected, nil
 	case "order_cancel_rejected":
 		return OrderEventCancelRejected, nil
+	case "held":
+		return OrderEventHeld, nil
 	default:
 		return 0, fmt.Errorf("unknown order event: %s", s)
 	}
@@ -153,6 +158,8 @@ func (oe OrderEvent) String() string {
 		return "order_replace_rejected"
 	case OrderEventCancelRejected:
 		return "order_cancel_rejected"
+	case OrderEventHeld:
+		return "held"
 	default:
 		panic("unknown order event")
 	}
@@ -194,6 +201,8 @@ func (oe OrderEvent) GoString() string {
 		return "OrderEventReplaceRejected"
 	case OrderEventCancelRejected:
 		return "OrderEventCancelRejected"
+	case OrderEventHeld:
+		return "OrderEventHeld"
 	default:
 		panic("unknown order event")
 	}

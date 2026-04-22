@@ -7,6 +7,7 @@ import (
 	"dropbear/ds"
 	"dropbear/loggy"
 	"dropbear/osi"
+	"dropbear/symbol"
 	"flag"
 	"fmt"
 	"log"
@@ -41,6 +42,10 @@ var (
 	flagStopLimit     = decimal.Flag("stop-limit", "0", "stop limit price")
 	flagTakeProfit    = decimal.Flag("take", "0", "take profit price")
 	flagMarket        = flag.Bool("market", false, "use market order")
+	flagStrike        = decimal.Flag("strike", "0", "use strike price")
+	flagExp           = clocky.TimeFlag("exp", "", "use expiration date in YYYY-MM-DD format")
+	flagCall          = flag.Bool("call", false, "trade call option")
+	flagPut           = flag.Bool("put", false, "trade put option")
 )
 
 func main() {
@@ -338,11 +343,51 @@ options:
 	}
 
 	// get list of stocks
-	if len(flag.Args()) == 0 {
+	symbols := flag.Args()
+	if len(symbols) == 0 {
 		fmt.Fprintf(os.Stderr, "no symbols specified\n")
 		os.Exit(1)
 	}
-	symbols := flag.Args()
+
+	// turn into option symbols if necessary
+	if !flagStrike.IsZero() || !flagExp.IsZero() || *flagCall || *flagPut {
+		if len(symbols) != 1 {
+			fmt.Fprintf(os.Stderr, "option orders must specify exactly one symbol\n")
+			os.Exit(1)
+		}
+		sym, err := symbol.Parse(symbols[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "invalid symbol: %v\n", err)
+			os.Exit(1)
+		}
+		if flagStrike.IsZero() {
+			fmt.Fprintf(os.Stderr, "must specify -strike for option orders\n")
+			os.Exit(1)
+		}
+		if flagExp.IsZero() {
+			fmt.Fprintf(os.Stderr, "must specify -exp for option orders\n")
+			os.Exit(1)
+		}
+		if !*flagCall && !*flagPut {
+			fmt.Fprintf(os.Stderr, "must specify either -call or -put for option orders\n")
+			os.Exit(1)
+		}
+		if *flagCall && *flagPut {
+			fmt.Fprintf(os.Stderr, "cannot specify both -call and -put for option orders\n")
+			os.Exit(1)
+		}
+		class := byte('C')
+		if *flagPut {
+			class = byte('P')
+		}
+		year, month, day := flagExp.Date()
+		symbols[0] = osi.EncodeSpaceless(sym, *flagStrike, class, year, month, day)
+	}
+
+	// uncanonicalize options symbology
+	for i, sym := range symbols {
+		symbols[i] = osi.Uncanonicalize(sym)
+	}
 
 	// subscribe to websocket messages
 	var orderUpdates <-chan *alpaca.OrderUpdate

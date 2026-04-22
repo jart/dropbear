@@ -24,6 +24,7 @@ const (
 	OrderStatusRejected                              // order has been rejected by exchanges (rare)
 	OrderStatusSuspended                             // order has been suspended, not eligible for trading (rare)
 	OrderStatusCalculated                            // order completed but settlement calculations still pending (rare)
+	OrderStatusHeld                                  // parent order is filled but child orders are still pending
 )
 
 func ParseOrderStatus(s string) (OrderStatus, error) {
@@ -60,6 +61,8 @@ func ParseOrderStatus(s string) (OrderStatus, error) {
 		return OrderStatusSuspended, nil
 	case "calculated":
 		return OrderStatusCalculated, nil
+	case "held":
+		return OrderStatusHeld, nil
 	default:
 		return 0, fmt.Errorf("unknown order status: %s", s)
 	}
@@ -99,6 +102,8 @@ func (os OrderStatus) String() string {
 		return "suspended"
 	case OrderStatusCalculated:
 		return "calculated"
+	case OrderStatusHeld:
+		return "held"
 	default:
 		panic("unknown order status")
 	}
@@ -138,6 +143,8 @@ func (os OrderStatus) GoString() string {
 		return "OrderStatusSuspended"
 	case OrderStatusCalculated:
 		return "OrderStatusCalculated"
+	case OrderStatusHeld:
+		return "OrderStatusHeld"
 	default:
 		panic("unknown order status")
 	}
@@ -162,7 +169,7 @@ func (os *OrderStatus) UnmarshalJSON(data []byte) error {
 // IsFinal returns true if the order is in a terminal state and will not change.
 func (os OrderStatus) IsFinal() bool {
 	switch os {
-	case OrderStatusFilled, OrderStatusCanceled, OrderStatusExpired, OrderStatusReplaced, OrderStatusRejected:
+	case OrderStatusFilled, OrderStatusCanceled, OrderStatusExpired, OrderStatusReplaced, OrderStatusRejected, OrderStatusHeld:
 		return true
 	default:
 		return false
