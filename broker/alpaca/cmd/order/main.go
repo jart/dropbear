@@ -573,7 +573,6 @@ options:
 			orders[orderUpdate.Order.ClientOrderID] = orderUpdate.Order
 			if orderUpdate.Order.Status.IsFinal() {
 				delete(orders, orderUpdate.Order.ClientOrderID)
-				break
 			}
 		case <-sigChan:
 			for _, order := range orders {

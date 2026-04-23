@@ -59,12 +59,13 @@ func (d *stockUpdatesDaemon) connect() error {
 	if err != nil {
 		return err
 	}
-	defer d.conn.Close()
 	connectResponse, err := d.readControlMessage()
 	if err != nil {
+		d.conn.Close()
 		return err
 	}
 	if connectResponse.Type != "success" || connectResponse.Msg != "connected" {
+		d.conn.Close()
 		return fmt.Errorf("connection failed: %v", connectResponse)
 	}
 
@@ -76,25 +77,31 @@ func (d *stockUpdatesDaemon) connect() error {
 		"secret": key.Secret,
 	}
 	if err := d.conn.WriteJSON(auth); err != nil {
+		d.conn.Close()
 		return err
 	}
 	authResponse, err := d.readControlMessage()
 	if err != nil {
+		d.conn.Close()
 		return err
 	}
 	if authResponse.Type != "success" || authResponse.Msg != "authenticated" {
+		d.conn.Close()
 		return fmt.Errorf("authentication failed: %v", authResponse)
 	}
 
 	// subscribe to data
 	if err := d.conn.WriteJSON(d.req); err != nil {
+		d.conn.Close()
 		return err
 	}
 	subscribeResponse, err := d.readControlMessage()
 	if err != nil {
+		d.conn.Close()
 		return err
 	}
 	if subscribeResponse.Type != "subscription" {
+		d.conn.Close()
 		return fmt.Errorf("failed to subscribe: %v", subscribeResponse)
 	}
 
@@ -128,6 +135,7 @@ func (d *stockUpdatesDaemon) run() {
 }
 
 func (d *stockUpdatesDaemon) impl() error {
+	defer d.conn.Close()
 	for {
 		_, bytes, err := d.conn.ReadMessage()
 		if err != nil {
