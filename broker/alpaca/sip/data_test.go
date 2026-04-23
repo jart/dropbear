@@ -298,16 +298,16 @@ func TestStatusCode_IsResume(t *testing.T) {
 }
 
 func TestReasonCode_IsCircuitBreaker(t *testing.T) {
-	if !ReasonCodeCircuitLvl1.IsCircuitBreaker() {
+	if !ReasonCodeCircuitLvl1.IsHalt() {
 		t.Error("ReasonCodeCircuitLvl1 should be circuit breaker")
 	}
-	if !ReasonCodeCircuitLvl2.IsCircuitBreaker() {
+	if !ReasonCodeCircuitLvl2.IsHalt() {
 		t.Error("ReasonCodeCircuitLvl2 should be circuit breaker")
 	}
-	if !ReasonCodeCircuitLvl3.IsCircuitBreaker() {
+	if !ReasonCodeCircuitLvl3.IsHalt() {
 		t.Error("ReasonCodeCircuitLvl3 should be circuit breaker")
 	}
-	if ReasonCodeNewsPending.IsCircuitBreaker() {
+	if ReasonCodeNewsPending.IsHalt() {
 		t.Error("ReasonCodeNewsPending should not be circuit breaker")
 	}
 }

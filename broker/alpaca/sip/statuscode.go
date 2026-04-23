@@ -22,7 +22,7 @@ const (
 	StatusCodeLimitUpLimitDown       StatusCode = 'F' // Limit Up-Limit Down
 )
 
-// UTP Status Codes (Tape C)
+// UTP Status Codes (Tape C & O)
 const (
 	StatusCodeTradingHaltUTP       StatusCode = 'H' // Trading Halt
 	StatusCodeVolatilityPause      StatusCode = 'P' // Volatility Trading Pause

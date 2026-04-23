@@ -6,6 +6,7 @@ import (
 	"dropbear/loggy"
 	"flag"
 	"fmt"
+	"os"
 )
 
 var (
@@ -63,7 +64,11 @@ func main() {
 	if *flagLULDs {
 		req.LULDs = symbols
 	}
-	messages := alpaca.StockUpdates(url, req)
+	messages, err := alpaca.StockUpdates(url, req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error connecting to websocket: %v\n", err)
+		os.Exit(1)
+	}
 
 	for msg := range messages {
 		switch msg.Type {

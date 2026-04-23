@@ -9,6 +9,7 @@ const (
 	TapeB Tape = 'B' // NYSE Arca, BATS, and regional exchanges
 	TapeC Tape = 'C' // NASDAQ listed securities
 	TapeN Tape = 'N' // BOATS?
+	TapeO Tape = 'O' // no idea
 )
 
 var tapeJSON [256][]byte
@@ -29,6 +30,8 @@ func (t Tape) GoString() string {
 		return "sip.TapeC"
 	case TapeN:
 		return "sip.TapeN"
+	case TapeO:
+		return "sip.TapeO"
 	default:
 		panic("invalid tape")
 	}
@@ -45,7 +48,7 @@ func (t Tape) IsCTA() bool {
 
 // IsUTP returns true if this tape uses UTP (Unlisted Trading Privileges) codes.
 func (t Tape) IsUTP() bool {
-	return t == TapeC
+	return t == TapeC || t == TapeO
 }
 
 func (t Tape) MarshalJSON() ([]byte, error) {
@@ -56,7 +59,7 @@ func (t *Tape) UnmarshalJSON(data []byte) error {
 	if len(data) == 3 && data[0] == '"' && data[2] == '"' {
 		x := Tape(data[1])
 		switch x {
-		case TapeA, TapeB, TapeC, TapeN:
+		case TapeA, TapeB, TapeC, TapeO:
 			*t = x
 			return nil
 		default:

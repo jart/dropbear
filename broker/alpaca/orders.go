@@ -133,7 +133,7 @@ type ReplaceOrderRequest struct {
 // for DMA orders.
 //
 // Note: Order cannot be replaced when the status is OrderStatusAccepted,
-// OrderStatusPendingNew, OrderStatusPendingCancel or OrderStatusPendingReplace.
+// OrderStatusPendingNew, OrderStatusPendingCancel, or OrderStatusPendingReplace.
 //
 // Note: Notional orders cannot be replaced. Any attempt to modify a notional
 // order via this endpoint will be rejected. To change a notional order, cancel

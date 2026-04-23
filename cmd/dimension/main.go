@@ -22,18 +22,19 @@ type size struct {
 }
 
 var z1dSizes = map[string]size{
-	"1":  {"z1d.large", "16 GB"},
-	"2":  {"z1d.xlarge", "32 GB"},
-	"4":  {"z1d.2xlarge", "64 GB"},
-	"6":  {"z1d.3xlarge", "96 GB"},
-	"12": {"z1d.6xlarge", "192 GB"},
-	"24": {"z1d.12xlarge", "384 GB"},
+	"0":  {"t3a.micro", "1 GB"},      // $7/month
+	"1":  {"z1d.large", "16 GB"},     // $70/month
+	"2":  {"z1d.xlarge", "32 GB"},    // $140/month
+	"4":  {"z1d.2xlarge", "64 GB"},   // $402/month
+	"6":  {"z1d.3xlarge", "96 GB"},   // $804/month
+	"12": {"z1d.6xlarge", "192 GB"},  // $1607/month
+	"24": {"z1d.12xlarge", "384 GB"}, // $3214/month
 }
 
 func main() {
 	if len(os.Args) != 3 {
 		fmt.Fprintf(os.Stderr, "usage: dimension <name> <cores>\n")
-		fmt.Fprintf(os.Stderr, "       cores: 1, 2, 4, 6, 12, 24\n")
+		fmt.Fprintf(os.Stderr, "       cores: 0, 1, 2, 4, 6, 12, 24\n")
 		names := make([]string, 0, len(instances))
 		for k := range instances {
 			names = append(names, k)

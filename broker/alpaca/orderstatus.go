@@ -24,7 +24,7 @@ const (
 	OrderStatusRejected                              // order has been rejected by exchanges (rare)
 	OrderStatusSuspended                             // order has been suspended, not eligible for trading (rare)
 	OrderStatusCalculated                            // order completed but settlement calculations still pending (rare)
-	OrderStatusHeld                                  // parent order is filled but child orders are still pending
+	OrderStatusHeld                                  // this is a child order (oto/bracket) that's waiting for its parent to fill
 )
 
 func ParseOrderStatus(s string) (OrderStatus, error) {
@@ -169,7 +169,7 @@ func (os *OrderStatus) UnmarshalJSON(data []byte) error {
 // IsFinal returns true if the order is in a terminal state and will not change.
 func (os OrderStatus) IsFinal() bool {
 	switch os {
-	case OrderStatusFilled, OrderStatusCanceled, OrderStatusExpired, OrderStatusReplaced, OrderStatusRejected, OrderStatusHeld:
+	case OrderStatusFilled, OrderStatusCanceled, OrderStatusExpired, OrderStatusReplaced, OrderStatusRejected:
 		return true
 	default:
 		return false
@@ -179,7 +179,7 @@ func (os OrderStatus) IsFinal() bool {
 // IsOpen returns true if the order is still active and may be canceled.
 func (os OrderStatus) IsOpen() bool {
 	switch os {
-	case OrderStatusNew, OrderStatusPartiallyFilled, OrderStatusAccepted, OrderStatusPendingNew, OrderStatusAcceptedForBidding, OrderStatusStopped, OrderStatusDoneForDay:
+	case OrderStatusNew, OrderStatusPartiallyFilled, OrderStatusAccepted, OrderStatusPendingNew, OrderStatusAcceptedForBidding, OrderStatusStopped, OrderStatusDoneForDay, OrderStatusHeld:
 		return true
 	default:
 		return false
