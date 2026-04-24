@@ -15,7 +15,8 @@ var (
 	flagTrades   = flag.Bool("trades", false, "subscribe to trade updates")
 	flagQuotes   = flag.Bool("quotes", false, "subscribe to quote updates")
 	flagStatuses = flag.Bool("statuses", false, "subscribe to status updates")
-	flagLULDs    = flag.Bool("lulds", false, "subscribe to limit-up-limit-down updates (not available in boats)")
+	flagLULDs      = flag.Bool("lulds", false, "subscribe to limit-up-limit-down updates (not available in boats)")
+	flagImbalances = flag.Bool("imbalances", false, "subscribe to order imbalance updates")
 	flagNASDAQ   = flag.Bool("nasdaq", false, "subscribe to NASDAQ updates")
 	flagNYSE     = flag.Bool("nyse", false, "subscribe to NYSE updates")
 	flagARCA     = flag.Bool("arca", false, "subscribe to ARCA updates")
@@ -35,8 +36,8 @@ func main() {
 	loggy.Init()
 	flag.Parse()
 	symbols := flag.Args()
-	if !*flagAll && !*flagTrades && !*flagQuotes && !*flagStatuses && !*flagLULDs {
-		fmt.Println("At least one of -all, -trades, -quotes, -statuses, or -lulds must be set")
+	if !*flagAll && !*flagTrades && !*flagQuotes && !*flagStatuses && !*flagLULDs && !*flagImbalances {
+		fmt.Println("At least one of -all, -trades, -quotes, -statuses, -lulds, or -imbalances must be set")
 		return
 	}
 
@@ -67,6 +68,7 @@ func main() {
 			req.Quotes = symbols
 			req.Statuses = symbols
 			req.LULDs = symbols
+			req.Imbalances = symbols
 		}
 	}
 	if *flagTrades {
@@ -80,6 +82,9 @@ func main() {
 	}
 	if *flagLULDs {
 		req.LULDs = symbols
+	}
+	if *flagImbalances {
+		req.Imbalances = symbols
 	}
 	messages, err := alpaca.StockUpdates(url, req)
 	if err != nil {
@@ -162,6 +167,10 @@ func main() {
 				luld.Symbol, luld.Tape,
 				luld.LowerLimit,
 				luld.UpperLimit)
+		case sip.MessageTypeImbalance:
+			imb := msg.Imbalance()
+			fmt.Printf("%8s imbalance %c price %8s\n",
+				imb.Symbol, imb.Tape, imb.Price)
 		case sip.MessageTypeStatus:
 			status := msg.Status()
 			fmt.Printf("%8s status %c code %s reason %s message %s reasonmsg %s\n",

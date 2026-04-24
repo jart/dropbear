@@ -95,10 +95,6 @@ func runDownloader(symbols []symbol.Symbol, quit <-chan struct{}) {
 			default:
 			}
 
-			if !shouldDownload(sym, date) {
-				continue
-			}
-
 			dateStr := date.Format("2006-01-02")
 			if findDbnFile(sym, dateStr) != "" {
 				continue
@@ -136,11 +132,6 @@ func runDownloader(symbols []symbol.Symbol, quit <-chan struct{}) {
 
 		date = date.Add(-clocky.Day)
 	}
-}
-
-func shouldDownload(sym symbol.Symbol, date clocky.Time) bool {
-	year, month, day := date.Date()
-	return cboe.HasOptionChain(sym, year, month, day)
 }
 
 func downloadDbn(sym symbol.Symbol, date, outputPath string) error {

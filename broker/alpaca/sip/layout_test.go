@@ -31,6 +31,9 @@ func TestStructLayout(t *testing.T) {
 	if off := unsafe.Offsetof(LULD{}.Type); off != 0 {
 		t.Errorf("LULD.Type offset = %d, want 0", off)
 	}
+	if off := unsafe.Offsetof(Imbalance{}.Type); off != 0 {
+		t.Errorf("Imbalance.Type offset = %d, want 0", off)
+	}
 
 	// Verify Tape field is at offset 1 for all structs
 	if off := unsafe.Offsetof(Message{}.Tape); off != 1 {
@@ -47,6 +50,9 @@ func TestStructLayout(t *testing.T) {
 	}
 	if off := unsafe.Offsetof(LULD{}.Tape); off != 1 {
 		t.Errorf("LULD.Tape offset = %d, want 1", off)
+	}
+	if off := unsafe.Offsetof(Imbalance{}.Tape); off != 1 {
+		t.Errorf("Imbalance.Tape offset = %d, want 1", off)
 	}
 
 	// Verify Timestamp field is at offset 8 for all structs
@@ -65,6 +71,9 @@ func TestStructLayout(t *testing.T) {
 	if off := unsafe.Offsetof(LULD{}.Timestamp); off != 8 {
 		t.Errorf("LULD.Timestamp offset = %d, want 8", off)
 	}
+	if off := unsafe.Offsetof(Imbalance{}.Timestamp); off != 8 {
+		t.Errorf("Imbalance.Timestamp offset = %d, want 8", off)
+	}
 
 	// Verify Symbol field is at offset 16 for all structs
 	if off := unsafe.Offsetof(Message{}.Symbol); off != 16 {
@@ -82,6 +91,9 @@ func TestStructLayout(t *testing.T) {
 	if off := unsafe.Offsetof(LULD{}.Symbol); off != 16 {
 		t.Errorf("LULD.Symbol offset = %d, want 16", off)
 	}
+	if off := unsafe.Offsetof(Imbalance{}.Symbol); off != 16 {
+		t.Errorf("Imbalance.Symbol offset = %d, want 16", off)
+	}
 }
 
 // TestStructSizes verifies all message structs are the same size (56 bytes).
@@ -96,6 +108,7 @@ func TestStructSizes(t *testing.T) {
 		{"Quote", unsafe.Sizeof(Quote{}), 56},
 		{"Status", unsafe.Sizeof(Status{}), 56},
 		{"LULD", unsafe.Sizeof(LULD{}), 56},
+		{"Imbalance", unsafe.Sizeof(Imbalance{}), 56},
 	}
 	for _, tt := range tests {
 		if tt.got != tt.want {
@@ -135,5 +148,8 @@ func TestHeaderOverlap(t *testing.T) {
 	}
 	if unsafe.Sizeof(LULD{}) < unsafe.Sizeof(Header{}) {
 		t.Error("LULD is smaller than Header")
+	}
+	if unsafe.Sizeof(Imbalance{}) < unsafe.Sizeof(Header{}) {
+		t.Error("Imbalance is smaller than Header")
 	}
 }

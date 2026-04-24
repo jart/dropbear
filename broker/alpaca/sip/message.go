@@ -49,6 +49,12 @@ func (m *Message) LULD() *LULD {
 	return (*LULD)(unsafe.Pointer(m))
 }
 
+// Imbalance returns a pointer to this message interpreted as an Imbalance.
+// The caller must ensure Type == MessageTypeImbalance before calling.
+func (m *Message) Imbalance() *Imbalance {
+	return (*Imbalance)(unsafe.Pointer(m))
+}
+
 // Parse decodes an Alpaca SIP message from JSON in a strict way.
 // Returns index past closing '}' on success.
 func (m *Message) Parse(data []byte) (int, error) {
@@ -67,6 +73,8 @@ func (m *Message) Parse(data []byte) (int, error) {
 		return m.Status().Parse(data)
 	case 'l':
 		return m.LULD().Parse(data)
+	case 'i':
+		return m.Imbalance().Parse(data)
 	default:
 		return 0, ErrInvalidMessageType
 	}

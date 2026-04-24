@@ -13,6 +13,7 @@ const (
 	MessageTypeBar        MessageType = 'b' // minute bar (not supported)
 	MessageTypeDailyBar   MessageType = 'd' // daily bar (not supported)
 	MessageTypeUpdatedBar MessageType = 'u' // updated bar (correction; not supported)
+	MessageTypeImbalance  MessageType = 'i' // order imbalance (during LULD/halts)
 )
 
 // Pre-computed JSON representations (no allocation on marshal)
@@ -40,6 +41,8 @@ func (t MessageType) GoString() string {
 		return "sip.MessageTypeStatus"
 	case MessageTypeLULD:
 		return "sip.MessageTypeLULD"
+	case MessageTypeImbalance:
+		return "sip.MessageTypeImbalance"
 	default:
 		return fmt.Sprintf("sip.MessageType(%c)", byte(t))
 	}

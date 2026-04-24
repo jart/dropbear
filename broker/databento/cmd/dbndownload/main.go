@@ -24,8 +24,10 @@ import (
 	"sync"
 
 	"dropbear/broker/databento"
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/osi"
+	"dropbear/symbol"
 
 	"github.com/emirpasic/gods/v2/trees/binaryheap"
 )
@@ -276,6 +278,7 @@ func fetchDefinitions(client *databento.HistoricalClient, start, end clocky.Time
 	defer resp.Close()
 
 	wantYear, wantMonth, wantDay := expiryFlag.Date()
+	wantYear, wantMonth, wantDay = cboe.GetNextOptionChain(symbol.MustParse(*symFlag), wantYear, wantMonth, wantDay)
 	var instruments []*databento.Instrument
 	for {
 		rec, err := resp.Read()

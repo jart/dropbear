@@ -2,6 +2,7 @@ package main
 
 import (
 	"dropbear/broker/databento"
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/netty"
@@ -17,6 +18,7 @@ import (
 func (t *Trader) Backtest(dbn string, date clocky.Time) error {
 	netty.SetOffline()
 	wantYear, wantMonth, wantDay := date.Date()
+	wantYear, wantMonth, wantDay = cboe.GetNextOptionChain(t.Config.Symbol, wantYear, wantMonth, wantDay)
 	log.Printf("starting backtest for %s on %04d-%02d-%02d",
 		t.Config.Symbol, wantYear, wantMonth, wantDay)
 	quoteReader, err := databento.OpenFileReader(dbn)
