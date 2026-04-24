@@ -31,7 +31,6 @@ import (
 var (
 	flagMaxSyms   = flag.Int("maxsyms", 300, "maximum number of symbols to trade simultaneously")
 	flagMaxPos    = flag.Int("maxpos", 4, "maximum position size per symbol (in shares)")
-	flagQty       = flag.Int("qty", 4, "shares per order")
 	flagMinEdge   = decimal.Flag("minedge", "0.02", "minimum spread in dollars to act")
 	flagMinPrice  = decimal.Flag("minprice", "1.0", "minimum stock price to consider")
 	flagMaxPrice  = decimal.Flag("maxprice", "500", "maximum stock price to consider")
@@ -39,6 +38,23 @@ var (
 	flagExitOnly  = flag.Bool("exit", false, "exit-only mode: close existing positions, no new entries")
 	flagWinner    = flag.Bool("winner", false, "never close a position at a loss (based on avg entry price)")
 )
+
+// tradeQuantity returns the number of shares to trade for a given price.
+// Targets ~$400 notional, capped at the round lot size, minimum 2 shares.
+//
+//   - $1 stock: 400/1 = 400, lot=100 → 100 shares (capped at lot)
+//   - $5 stock: 400/5 = 80, lot=100 → 80 shares
+//   - $50 stock: 400/50 = 8, lot=100 → 8 shares
+//   - $200 stock: 400/200 = 2, lot=40 → 2 shares (min floor)
+//   - $400 stock: 400/400 = 1, lot=40 → 2 shares (min floor)
+func tradeQuantity(price decimal.Decimal) decimal.Decimal {
+	lot := cboe.LotSize(price)
+	qty := decimal.FromInt(400).Div(price)
+	if qty.Cmp(lot) >= 0 {
+		return lot
+	}
+	return qty.Truncate().Max(decimal.Two)
+}
 
 // Fee/rebate constants for equity DMA orders (always making).
 var (
@@ -192,8 +208,8 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	log.Printf("trader started: maxpos=%d maxsyms=%d qty=%d minedge=%s threshold=%s price=[%s,%s]",
-		*flagMaxPos, *flagMaxSyms, *flagQty, flagMinEdge, flagThreshold, flagMinPrice, flagMaxPrice)
+	log.Printf("trader started: maxpos=%d maxsyms=%d minedge=%s threshold=%s price=[%s,%s]",
+		*flagMaxPos, *flagMaxSyms, flagMinEdge, flagThreshold, flagMinPrice, flagMaxPrice)
 
 	// place exit orders for existing positions
 	for _, st := range gSymbols {
@@ -401,7 +417,8 @@ func evaluate(st *symbolState) {
 	}
 
 	maxPos := decimal.FromInt(*flagMaxPos)
-	qty := decimal.FromInt(*flagQty)
+	mid := st.nbboBid.Add(st.nbboAsk).Half()
+	qty := tradeQuantity(mid)
 
 	// PRIORITY 1: Exit existing positions at a profit.
 	// Post AT the bid/ask (don't improve) so we capture the spread.
