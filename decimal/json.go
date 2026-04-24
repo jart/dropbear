@@ -39,8 +39,8 @@ func (d *Decimal) UnmarshalJSON(data []byte) error {
 func (d Decimal) MarshalJSON() ([]byte, error) {
 	var b [24]byte
 	buf := b[:0]
-	buf = append(buf, '"')
+	// buf = append(buf, '"')
 	buf = d.Append(buf)
-	buf = append(buf, '"')
+	// buf = append(buf, '"')
 	return buf, nil
 }

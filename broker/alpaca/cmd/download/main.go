@@ -28,7 +28,7 @@ var (
 )
 
 var (
-	feed       alpaca.DataFeed
+	feed       alpaca.Feed
 	adjustment alpaca.BarAdjustment
 	errorCount atomic.Int32
 )
@@ -42,7 +42,7 @@ func main() {
 
 	// parse flags into typed values
 	var err error
-	feed, err = alpaca.ParseDataFeed(*flagFeed)
+	feed, err = alpaca.ParseFeed(*flagFeed)
 	if err != nil {
 		log.Fatalf("invalid feed: %v", err)
 	}

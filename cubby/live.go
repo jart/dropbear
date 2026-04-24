@@ -262,7 +262,7 @@ func (lt *liveTrader) fetchAllBars(start, end clocky.Time) (map[symbol.Symbol][]
 			clocky.Minute,
 			start,
 			end,
-			alpaca.DataFeedSIP,
+			alpaca.FeedSIP,
 			alpaca.BarAdjustmentRaw,
 			10000, // max limit
 			false, // ascending order

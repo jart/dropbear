@@ -78,60 +78,59 @@ func (w *Web) sseBroadcaster() {
 
 // StateSnapshot is the JSON payload sent to the dashboard.
 type StateSnapshot struct {
-	Time      string        `json:"time"`
-	Symbol    string        `json:"symbol"`
-	Price     string        `json:"price"`
-	Sigma     string        `json:"sigma"`
-	Cash      string        `json:"cash"`
-	Paused    bool          `json:"paused"`
-	State     string        `json:"state"`
-	Positions []PositionRow `json:"positions"`
-	Risk      []RiskPoint   `json:"risk"`
-	Greeks    GreeksData    `json:"greeks"`
-	Stats     StatsData     `json:"stats"`
-	Flags     FlagsData     `json:"flags"`
+	Time      string          `json:"time"`
+	Symbol    string          `json:"symbol"`
+	Price     decimal.Decimal `json:"price"`
+	Sigma     decimal.Decimal `json:"sigma"`
+	Cash      decimal.Decimal `json:"cash"`
+	Paused    bool            `json:"paused"`
+	Positions []PositionRow   `json:"positions"`
+	Risk      []RiskPoint     `json:"risk"`
+	Greeks    GreeksData      `json:"greeks"`
+	Stats     StatsData       `json:"stats"`
+	Flags     FlagsData       `json:"flags"`
 }
 
 type PositionRow struct {
-	Strike string `json:"strike"`
-	Class  string `json:"class"`
-	Qty    string `json:"qty"`
-	Bid    string `json:"bid"`
-	Ask    string `json:"ask"`
-	Mid    string `json:"mid"`
-	Delta  string `json:"delta"`
-	ITM    bool   `json:"itm"`
+	Strike decimal.Decimal `json:"strike"`
+	Class  string          `json:"class"`
+	Qty    decimal.Decimal `json:"qty"`
+	Bid    decimal.Decimal `json:"bid"`
+	Ask    decimal.Decimal `json:"ask"`
+	Mid    decimal.Decimal `json:"mid"`
+	Delta  decimal.Decimal `json:"delta"`
+	ITM    bool            `json:"itm"`
 }
 
 type RiskPoint struct {
-	Strike     string `json:"strike"`
-	Settlement string `json:"settlement"`
+	Strike     decimal.Decimal `json:"strike"`
+	Settlement decimal.Decimal `json:"settlement"`
 }
 
 type GreeksData struct {
-	Delta string `json:"delta"`
-	Gamma string `json:"gamma"`
-	Theta string `json:"theta"`
-	Vega  string `json:"vega"`
+	Delta decimal.Decimal `json:"delta"`
+	Gamma decimal.Decimal `json:"gamma"`
+	Theta decimal.Decimal `json:"theta"`
+	Vega  decimal.Decimal `json:"vega"`
 }
 
 type StatsData struct {
-	Liquidation string `json:"liquidation"`
-	Realized    string `json:"realized"`
-	Fees        string `json:"fees"`
-	Volume      string `json:"volume"`
-	Error       string `json:"error"`
-	Shares      string `json:"shares"`
-	ShareCost   string `json:"shareCost"`
-	Orders      string `json:"orders"`
-	Worst       string `json:"worst"`
+	Liquidation decimal.Decimal `json:"liquidation"`
+	Realized    decimal.Decimal `json:"realized"`
+	Fees        decimal.Decimal `json:"fees"`
+	Volume      decimal.Decimal `json:"volume"`
+	Error       decimal.Decimal `json:"error"`
+	Shares      decimal.Decimal `json:"shares"`
+	ShareCost   decimal.Decimal `json:"shareCost"`
+	Worst       decimal.Decimal `json:"worst"`
+	Orders      string          `json:"orders"`
 }
 
 type FlagsData struct {
-	Tolerance string `json:"tolerance"`
-	Quantum   string `json:"quantum"`
-	Spread    string `json:"spread"`
-	Patience  string `json:"patience"`
+	Tolerance decimal.Decimal `json:"tolerance"`
+	Quantum   decimal.Decimal `json:"quantum"`
+	Spread    decimal.Decimal `json:"spread"`
+	Patience  string          `json:"patience"`
 }
 
 // buildStateSnapshot serializes all state into a snapshot.
@@ -145,10 +144,10 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 	}
 
 	// greeks
+	vega := decimal.Zero
 	delta := decimal.Zero
 	gamma := decimal.Zero
 	theta := decimal.Zero
-	vega := decimal.Zero
 	for security, holding := range t.Holdings.Positions {
 		qty := holding.Quantity
 		mult := security.Multiplier()
@@ -179,31 +178,30 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 	snap := StateSnapshot{
 		Time:   now.String(),
 		Symbol: t.Config.Symbol.String(),
-		Price:  price.Format(2),
-		Sigma:  em.Format(2),
-		Cash:   t.Holdings.Cash.FormatThousand(2),
+		Price:  price,
+		Sigma:  em,
+		Cash:   t.Holdings.Cash,
 		Paused: t.Paused,
-		State:  t.State.String(),
 		Greeks: GreeksData{
-			Delta: delta.Format(3),
-			Gamma: gamma.Format(3),
-			Theta: theta.Format(3),
-			Vega:  vega.Format(3),
+			Delta: delta,
+			Gamma: gamma,
+			Theta: theta,
+			Vega:  vega,
 		},
 		Stats: StatsData{
-			Liquidation: t.Holdings.LiquidationValue().Truncate().FormatThousand(2),
-			Realized:    t.Holdings.RealizedPnL.FormatThousand(2),
-			Fees:        t.Holdings.TotalFees.FormatThousand(2),
-			Volume:      t.Holdings.Volume.String(),
-			Error:       t.Holdings.TotalError.String(),
-			Shares:      shares.String(),
-			ShareCost:   shareCost.Format(2),
+			Liquidation: t.Holdings.LiquidationValue().Truncate(),
+			Realized:    t.Holdings.RealizedPnL,
+			Fees:        t.Holdings.TotalFees,
+			Volume:      t.Holdings.Volume,
+			Error:       t.Holdings.TotalError,
+			Shares:      shares,
+			ShareCost:   shareCost,
 			Orders:      fmt.Sprintf("%d", t.orderCount()),
 		},
 		Flags: FlagsData{
-			Tolerance: t.Config.Tolerance.String(),
-			Quantum:   t.Config.Quantum.String(),
-			Spread:    t.Config.Spread.String(),
+			Tolerance: t.Config.Tolerance,
+			Quantum:   t.Config.Quantum,
+			Spread:    t.Config.Spread,
 			Patience:  t.Config.Patience.String(),
 		},
 	}
@@ -221,13 +219,13 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 			itm = price.Cmp(o.Strike.Price) < 0
 		}
 		snap.Positions = append(snap.Positions, PositionRow{
-			Strike: o.Strike.Price.String(),
+			Strike: o.Strike.Price,
 			Class:  string(o.Class),
-			Qty:    holding.Quantity.String(),
-			Bid:    o.Bid.Format(2),
-			Ask:    o.Ask.Format(2),
-			Mid:    o.MidPrice().Format(2),
-			Delta:  o.Delta.Format(4),
+			Qty:    holding.Quantity,
+			Bid:    o.Bid,
+			Ask:    o.Ask,
+			Mid:    o.MidPrice(),
+			Delta:  o.Delta,
 			ITM:    itm,
 		})
 	}
@@ -243,8 +241,8 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 			}
 			settlement := t.computeSettlementAt(strike.Price)
 			snap.Risk = append(snap.Risk, RiskPoint{
-				Strike:     strike.Price.Format(2),
-				Settlement: settlement.Format(2),
+				Strike:     strike.Price,
+				Settlement: settlement,
 			})
 			if !worstSet || settlement.Cmp(worst) < 0 {
 				worst = settlement
@@ -252,7 +250,7 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 			}
 		}
 	}
-	snap.Stats.Worst = worst.FormatThousand(2)
+	snap.Stats.Worst = worst
 
 	return snap
 }
@@ -312,24 +310,16 @@ func (w *Web) processWebRequest(req WebRequest) {
 
 func (w *Web) applyFlags(f *FlagsData) {
 	t := w.Trader
-	if f.Tolerance != "" {
-		t.Config.Tolerance = decimal.Parse(f.Tolerance)
-		log.Printf("web: tolerance = %s", f.Tolerance)
-	}
-	if f.Quantum != "" {
-		t.Config.Quantum = decimal.Parse(f.Quantum)
-		log.Printf("web: quantum = %s", f.Quantum)
-	}
-	if f.Spread != "" {
-		t.Config.Spread = decimal.Parse(f.Spread)
-		log.Printf("web: spread = %s", f.Spread)
-	}
-	if f.Patience != "" {
-		d, err := clocky.ParseDuration(f.Patience)
-		if err == nil {
-			t.Config.Patience = d
-			log.Printf("web: patience = %s", f.Patience)
-		}
+	t.Config.Tolerance = f.Tolerance
+	log.Printf("web: tolerance = %s", f.Tolerance)
+	t.Config.Quantum = f.Quantum
+	log.Printf("web: quantum = %s", f.Quantum)
+	t.Config.Spread = f.Spread
+	log.Printf("web: spread = %s", f.Spread)
+	d, err := clocky.ParseDuration(f.Patience)
+	if err == nil {
+		t.Config.Patience = d
+		log.Printf("web: patience = %s", f.Patience)
 	}
 }
 

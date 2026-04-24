@@ -23,7 +23,7 @@ var (
 // limit defaults to 1000 if 0 is passed and the maximum is 10000.
 // bars are returned by this api in ascending order.
 // https://docs.alpaca.markets/reference/stockbars
-func (c *Client) GetBars(sym symbol.Symbol, timeframe clocky.Duration, start, end clocky.Time, feed DataFeed, adjustment BarAdjustment, limit int, desc bool, pageToken string) ([]ds.Bar, string, error) {
+func (c *Client) GetBars(sym symbol.Symbol, timeframe clocky.Duration, start, end clocky.Time, feed Feed, adjustment BarAdjustment, limit int, desc bool, pageToken string) ([]ds.Bar, string, error) {
 	if limit < 0 || limit > 10000 {
 		return nil, "", ErrBarsUnsupportedLimit
 	}
@@ -79,7 +79,7 @@ func (c *Client) GetBars(sym symbol.Symbol, timeframe clocky.Duration, start, en
 // limit defaults to 1000 if 0 is passed and the maximum is 10000.
 // bars are returned by this api in ascending order.
 // https://docs.alpaca.markets/reference/stockbars
-func (c *Client) GetBarsForSymbols(symbols []symbol.Symbol, timeframe clocky.Duration, start, end clocky.Time, feed DataFeed, adjustment BarAdjustment, limit int, desc bool, pageToken string) (map[symbol.Symbol][]ds.Bar, string, error) {
+func (c *Client) GetBarsForSymbols(symbols []symbol.Symbol, timeframe clocky.Duration, start, end clocky.Time, feed Feed, adjustment BarAdjustment, limit int, desc bool, pageToken string) (map[symbol.Symbol][]ds.Bar, string, error) {
 	if len(symbols) == 0 {
 		return nil, "", nil
 	}

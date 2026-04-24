@@ -21,7 +21,6 @@ function render(d) {
   document.getElementById('symbol').textContent = d.symbol;
   document.getElementById('price').textContent = d.price;
   document.getElementById('time').textContent = d.time;
-  document.getElementById('state').textContent = d.state;
   document.getElementById('pauseBtn').disabled = d.paused;
   document.getElementById('resumeBtn').disabled = !d.paused;
   renderStats(d);
@@ -48,7 +47,7 @@ function renderStats(d) {
   colorize('statRealized', d.stats.realized);
   setText('statError', d.stats.error);
   var errEl = document.getElementById('statError');
-  errEl.className = parseFloat(d.stats.error) === 0 ? 'zero' : 'neg';
+  errEl.className = d.stats.error == 0 ? 'zero' : 'neg';
   setText('statVolume', d.stats.volume);
 }
 
@@ -58,8 +57,7 @@ function setText(id, val) {
 
 function colorize(id, val) {
   var el = document.getElementById(id);
-  var n = parseFloat(val.replace(/,/g, ''));
-  el.className = n > 0 ? 'pos' : n < 0 ? 'neg' : 'zero';
+  el.className = val > 0 ? 'pos' : val < 0 ? 'neg' : 'zero';
 }
 
 function renderPositions(positions) {
@@ -75,7 +73,7 @@ function renderPositions(positions) {
     }
     strikes[k][p.class] = p;
   }
-  strikeList.sort(function(a, b) { return parseFloat(a) - parseFloat(b); });
+  strikeList.sort(function(a, b) { return a - b; });
   var html = '';
   var empty5 = '<td></td><td></td><td></td><td></td><td></td>';
   for (var i = 0; i < strikeList.length; i++) {
@@ -84,7 +82,7 @@ function renderPositions(positions) {
     var p = strikes[k]['P'];
     html += '<tr>';
     if (c) {
-      var cq = parseFloat(c.qty);
+      var cq = c.qty;
       var ci = c.itm ? ' itm' : '';
       html += '<td class="' + (cq > 0 ? 'pos' : cq < 0 ? 'neg' : 'zero') + ci + '">' + c.qty + '</td>';
       html += '<td class="' + ci + '">' + c.bid + '</td>';
@@ -96,7 +94,7 @@ function renderPositions(positions) {
     }
     html += '<td class="strike-col">' + k + '</td>';
     if (p) {
-      var pq = parseFloat(p.qty);
+      var pq = p.qty;
       var pi = p.itm ? ' itm' : '';
       html += '<td class="' + (pq > 0 ? 'pos' : pq < 0 ? 'neg' : 'zero') + pi + '">' + p.qty + '</td>';
       html += '<td class="' + pi + '">' + p.bid + '</td>';
@@ -120,13 +118,13 @@ function renderRiskChart(d) {
   ctx.clearRect(0, 0, w, h);
   if (risk.length < 2) return;
 
-  var price = parseFloat(d.price);
-  var sigma = parseFloat(d.sigma);
+  var price = d.price;
+  var sigma = d.sigma;
   var strikes = [];
   var settlements = [];
   for (var i = 0; i < risk.length; i++) {
-    strikes.push(parseFloat(risk[i].strike));
-    settlements.push(parseFloat(risk[i].settlement));
+    strikes.push(risk[i].strike);
+    settlements.push(risk[i].settlement);
   }
 
   var xMin = strikes[0], xMax = strikes[strikes.length - 1];

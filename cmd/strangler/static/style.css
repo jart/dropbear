@@ -157,7 +157,6 @@ td.itm {
 .status-connected { color: #4caf50; }
 .status-disconnected { color: #f44336; }
 
-.state-label {
-  color: #4fc3f7;
-  font-size: 13px;
+#price {
+  min-width: 5em;
 }

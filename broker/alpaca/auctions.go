@@ -31,7 +31,7 @@ type Auction struct {
 // end defaults to the current time.
 // limit defaults to 1000 if 0 is passed and the maximum is 10000.
 // https://docs.alpaca.markets/reference/stockauctionsingle-1
-func (c *Client) GetAuctions(sym string, start, end clocky.Time, feed DataFeed, limit int, desc bool, pageToken string) ([]Auction, string, error) {
+func (c *Client) GetAuctions(sym string, start, end clocky.Time, feed Feed, limit int, desc bool, pageToken string) ([]Auction, string, error) {
 	if limit < 0 || limit > 10000 {
 		return nil, "", ErrBarsUnsupportedLimit
 	}
@@ -75,7 +75,7 @@ func (c *Client) GetAuctions(sym string, start, end clocky.Time, feed DataFeed, 
 // GetAuctionsForSymbols fetches historical auction data for multiple stock symbols.
 // Returns a map of symbol to auctions and the next page token.
 // https://docs.alpaca.markets/reference/stockauctions
-func (c *Client) GetAuctionsForSymbols(symbols []string, start, end clocky.Time, feed DataFeed, limit int, desc bool, pageToken string) (map[string][]Auction, string, error) {
+func (c *Client) GetAuctionsForSymbols(symbols []string, start, end clocky.Time, feed Feed, limit int, desc bool, pageToken string) (map[string][]Auction, string, error) {
 	if len(symbols) == 0 {
 		return nil, "", nil
 	}

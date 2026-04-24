@@ -80,6 +80,14 @@ func (t Time) Clock() (hour, min, sec int) {
 	return t.goTime().Clock()
 }
 
+// DateClock returns the date and time with a single timezone lookup.
+func (t Time) DateClock() (year int, month Month, day, hour, min, sec int) {
+	gt := t.goTime()
+	y, m, d := gt.Date()
+	h, mi, s := gt.Clock()
+	return y, Month(m), d, h, mi, s
+}
+
 // DateInt returns the date in YYYYMMDD format.
 func (t Time) DateInt() int {
 	y, m, d := t.Date()

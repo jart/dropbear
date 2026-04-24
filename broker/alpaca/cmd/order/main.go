@@ -20,6 +20,7 @@ import (
 )
 
 var (
+	flagV              = flag.Bool("v", false, "verbose output")
 	flagOPG            = flag.Bool("opg", false, "schedule order to occur in opening auction")
 	flagCLS            = flag.Bool("cls", false, "schedule order to occur in closing auction")
 	flagFOK            = flag.Bool("fok", false, "use fill or kill time in force")
@@ -27,6 +28,8 @@ var (
 	flagIOC            = flag.Bool("ioc", false, "use immediate or cancel time in force")
 	flagTWAP           = flag.Bool("twap", false, "use time weighted average price algorithm")
 	flagVWAP           = flag.Bool("vwap", false, "use volume weighted average price algorithm")
+	flagTaker          = flag.Bool("taker", false, "take liquidity (equivalent to -spread=1)")
+	flagMaker          = flag.Bool("maker", false, "make liquidity (equivalent to -spread=-1)")
 	flagWait           = flag.Bool("wait", false, "wait for order to fill")
 	flagDMA            = alpaca.OrderDestinationFlag("dma", "", "directly route order to lit exchange (NYSE, NASDAQ, ARCA)")
 	flagExt            = flag.Bool("ext", false, "participate in extended hours trading (must be limit order with default (day) time in force)")
@@ -36,7 +39,7 @@ var (
 	flagLiquidate      = flag.Bool("liquidate", false, "set quantity to liquidate existing position")
 	flagLiquidateLong  = flag.Bool("liquidate-long", false, "set quantity to liquidate existing long position")
 	flagLiquidateShort = flag.Bool("liquidate-short", false, "set quantity to liquidate existing short position")
-	flagGreed          = decimal.FlagBPS("greed", "0", "number of basis points improvement over market midpoint to demand (or negative to increase likelihood of execution); only applies to limit orders without an explicit -price")
+	flagGreed          = decimal.FlagBPS("greed", "0", "number of basis points improvement over market midpoint to demand (or negative to increase likelihood of execution); only applies to limit orders without an explicit -limit")
 	flagSpread         = decimal.Flag("spread", "0", "set limit price based on bid/ask spread (e.g. -1 for making, 0 for midpoint, +1 for taking) instead of -greed based percentage")
 	flagDuration       = clocky.DurationFlag("duration", "0", "duration over which to execute TWAP/VWAP orders (e.g. 1h30m; default is until end of day)")
 	flagParticipation  = decimal.Flag("participation", "0.15", "maximum volume participation rate if TWAP/VWAP order")
@@ -63,6 +66,8 @@ func main() {
 description:
   places an order for the given stock symbols via alpaca.
 examples:
+  order -qty=1 BTI                                   # buy one share of BTI at midpoint price
+  order -qty=-1 ADBE                                 # sell one share of ADBE at midpoint price
   order -limit=329.23 -qty=40 GOOGL                  # buy round lot of goog at specific limit price
   order -vwap -amt=10_000.00 AAPL MSFT               # buy $10,000 worth of AAPL and $10,000 worth of MSFT at midpoint price using dash's volume-weighted algorithm
   order -twap -duration=1h -greed=-5 -qty=-1000 ADBE # sell (or short) 1000 shares of Adobo for an hour allowing up to 5 basis points of slippage over mid price right now
@@ -102,11 +107,11 @@ options:
 		fmt.Fprintf(os.Stderr, "-stop cannot be negative\n")
 		os.Exit(1)
 	}
-	if moreThanOneSpecified(!flagLimit.IsZero(), !flagGreed.IsZero(), !flagSpread.IsZero()) {
-		fmt.Fprintf(os.Stderr, "-limit, -greed, and -spread are mutually exclusive\n")
+	if moreThanOne(!flagLimit.IsZero(), !flagGreed.IsZero(), !flagSpread.IsZero(), *flagMarket, *flagTaker, *flagMaker) {
+		fmt.Fprintf(os.Stderr, "-limit, -greed, -spread, -market, -taker, and -maker are mutually exclusive\n")
 		os.Exit(1)
 	}
-	if moreThanOneSpecified(!flagQty.IsZero(), !flagAmt.IsZero(), *flagLiquidate, *flagLiquidate, *flagLiquidateLong, *flagLiquidateShort) {
+	if moreThanOne(!flagQty.IsZero(), !flagAmt.IsZero(), *flagLiquidate, *flagLiquidate, *flagLiquidateLong, *flagLiquidateShort) {
 		fmt.Fprintf(os.Stderr, "-qty, -amt, -liquidate, -liquidate-long, and -liquidate-short are mutually exclusive\n")
 		os.Exit(1)
 	}
@@ -114,15 +119,15 @@ options:
 		fmt.Fprintf(os.Stderr, "either -qty, -amt, -liquidate, -liquidate-long, or -liquidate-short must be specified\n")
 		os.Exit(1)
 	}
-	if moreThanOneSpecified(*flagGTC, *flagOPG, *flagCLS, *flagFOK, *flagIOC) {
+	if moreThanOne(*flagGTC, *flagOPG, *flagCLS, *flagFOK, *flagIOC) {
 		fmt.Fprintf(os.Stderr, "-gtc, -opg, -cls, -fok, and -ioc are mutually exclusive\n")
 		os.Exit(1)
 	}
-	if moreThanOneSpecified(*flagBracket, *flagOTO, *flagOCO) {
+	if moreThanOne(*flagBracket, *flagOTO, *flagOCO) {
 		fmt.Fprintf(os.Stderr, "-bracket, -oto, and -oco are mutually exclusive\n")
 		os.Exit(1)
 	}
-	if moreThanOneSpecified(*flagTWAP, *flagVWAP, *flagDMA != alpaca.OrderDestinationNone) {
+	if moreThanOne(*flagTWAP, *flagVWAP, *flagDMA != alpaca.OrderDestinationNone) {
 		fmt.Fprintf(os.Stderr, "-twap, -vwap, and -dma are mutually exclusive\n")
 		os.Exit(1)
 	}
@@ -130,12 +135,28 @@ options:
 		fmt.Fprintf(os.Stderr, "TWAP/VWAP orders must use day time in force\n")
 		os.Exit(1)
 	}
+	if !allOrNone(!flagStrike.IsZero(), !flagExp.IsZero(), *flagCall || *flagPut) {
+		fmt.Fprintf(os.Stderr, "-strike, -exp, and -call/-put must be specified together or not at all\n")
+		os.Exit(1)
+	}
+	if moreThanOne(*flagCall, *flagPut) {
+		fmt.Fprintf(os.Stderr, "-call and -put are mutually exclusive\n")
+		os.Exit(1)
+	}
+
+	// translate flags
+	if *flagTaker {
+		*flagSpread = decimal.One
+	}
+	if *flagMaker {
+		*flagSpread = decimal.NegOne
+	}
 
 	// figure out order class
 	orderClass := alpaca.OrderClassSimple
 	if *flagBracket {
 		orderClass = alpaca.OrderClassBracket
-		if *flagBracket && *flagExt {
+		if *flagExt {
 			fmt.Fprintf(os.Stderr, "bracket orders cannot participate in extended hours\n")
 			os.Exit(1)
 		}
@@ -228,15 +249,6 @@ options:
 			fmt.Fprintf(os.Stderr, "-oco orders require both -take and -stop to be set\n")
 			os.Exit(1)
 		}
-	}
-
-	if !flagGreed.IsZero() && orderType != alpaca.OrderTypeLimit {
-		fmt.Fprintf(os.Stderr, "-greed only works with limit orders\n")
-		os.Exit(1)
-	}
-	if !flagSpread.IsZero() && orderType != alpaca.OrderTypeLimit {
-		fmt.Fprintf(os.Stderr, "-spread only works with limit orders\n")
-		os.Exit(1)
 	}
 
 	// figure out algorithm
@@ -369,32 +381,20 @@ options:
 		}
 		symbols = symbols2
 	}
+	if hasDuplicates(symbols) {
+		fmt.Fprintf(os.Stderr, "duplicate symbols are not allowed: %v\n", getDuplicates(symbols))
+		os.Exit(1)
+	}
 
 	// turn into option symbols if necessary
-	if !flagStrike.IsZero() || !flagExp.IsZero() || *flagCall || *flagPut {
+	if *flagCall || *flagPut {
 		if len(symbols) != 1 {
 			fmt.Fprintf(os.Stderr, "option orders must specify exactly one symbol\n")
 			os.Exit(1)
 		}
 		sym, err := symbol.Parse(symbols[0])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "invalid symbol: %v\n", err)
-			os.Exit(1)
-		}
-		if flagStrike.IsZero() {
-			fmt.Fprintf(os.Stderr, "must specify -strike for option orders\n")
-			os.Exit(1)
-		}
-		if flagExp.IsZero() {
-			fmt.Fprintf(os.Stderr, "must specify -exp for option orders\n")
-			os.Exit(1)
-		}
-		if !*flagCall && !*flagPut {
-			fmt.Fprintf(os.Stderr, "must specify either -call or -put for option orders\n")
-			os.Exit(1)
-		}
-		if *flagCall && *flagPut {
-			fmt.Fprintf(os.Stderr, "cannot specify both -call and -put for option orders\n")
+			fmt.Fprintf(os.Stderr, "invalid equity symbol: %v\n", err)
 			os.Exit(1)
 		}
 		class := byte('C')
@@ -405,7 +405,7 @@ options:
 		symbols[0] = osi.EncodeSpaceless(sym, *flagStrike, class, year, month, day)
 	}
 
-	// uncanonicalize options symbology
+	// remove awful spaces from options symbols
 	for i, sym := range symbols {
 		symbols[i] = osi.Uncanonicalize(sym)
 	}
@@ -413,6 +413,9 @@ options:
 	// subscribe to websocket messages
 	var orderUpdates <-chan *alpaca.OrderUpdate
 	if *flagWait {
+		if *flagV {
+			fmt.Printf("%s subscribing to order updates...\n", clocky.Now())
+		}
 		orderUpdates = alpaca.OrderUpdates()
 	}
 
@@ -421,7 +424,6 @@ options:
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// loop over stocks
-	var err error
 	exitCode := 0
 	orders := map[string]*alpaca.Order{}
 	for _, sym := range symbols {
@@ -434,6 +436,7 @@ options:
 			if gotQuote {
 				return
 			}
+			var err error
 			bidPrice, askPrice, err = getQuote(client, sym)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error getting quote for %s: %v\n", sym, err)
@@ -443,17 +446,23 @@ options:
 		}
 
 		// figure out qty
-		side := ds.SideBuy
 		qty := *flagQty
-		if *flagLiquidate {
+		side := ds.SideBuy
+		if *flagLiquidate || *flagLiquidateLong || *flagLiquidateShort {
 			needPositions()
 			found := false
 			for _, pos := range positions {
 				if pos.Symbol == sym {
 					if pos.Qty.IsPositive() {
+						if *flagLiquidateShort {
+							continue
+						}
 						side = ds.SideSell
 						qty = pos.Qty
 					} else {
+						if *flagLiquidateLong {
+							continue
+						}
 						side = ds.SideBuy
 						qty = pos.Qty.Neg()
 					}
@@ -516,7 +525,7 @@ options:
 				explain = fmt.Sprintf("%s spread->%s", explain, limitPrice)
 			}
 			tick := cboe.Tick01
-			if len(sym) > 8 && limitPrice.Cmp(decimal.Three) > 0 {
+			if isOptionsSymbol(sym) && limitPrice.Cmp(decimal.Three) > 0 {
 				tick = cboe.Tick05
 			}
 			if side == ds.SideBuy {
@@ -531,6 +540,9 @@ options:
 		}
 
 		// give the order
+		if *flagV {
+			fmt.Printf("%s placing order for %s...\n", clocky.Now(), sym)
+		}
 		clientOrderID := uuid.New().String()
 		order, err := client.CreateOrder(&alpaca.CreateOrderRequest{
 			ClientOrderID:        clientOrderID,
@@ -592,22 +604,54 @@ options:
 	os.Exit(exitCode)
 }
 
-func getQuote(client *alpaca.Client, sym string) (decimal.Decimal, decimal.Decimal, error) {
-	_, _, _, _, _, _, err := osi.Parse(sym)
-	if err != nil {
-		// assume this is an equity symbol
-		quote, err := client.GetQuote(sym)
+func getQuote(client *alpaca.Client, sym string) (bid, ask decimal.Decimal, err error) {
+	if isOptionsSymbol(sym) {
+		os, err := client.GetOptionSnapshot(sym)
 		if err != nil {
-			return decimal.Zero, decimal.Zero, err
+			return 0, 0, err
 		}
-		return quote.BidPrice, quote.AskPrice, nil
+		return os.LatestQuote.BidPrice, os.LatestQuote.AskPrice, nil
 	}
-	// this is an options symbol
-	snapshot, err := client.GetOptionSnapshot(sym)
+	feed := alpaca.FeedSIP
+	if cboe.IsOvernight(clocky.Now()) {
+		feed = alpaca.FeedBOATS
+	}
+	quote, err := client.GetQuote(sym, feed)
 	if err != nil {
-		return decimal.Zero, decimal.Zero, err
+		return 0, 0, err
 	}
-	return snapshot.LatestQuote.BidPrice, snapshot.LatestQuote.AskPrice, nil
+	return quote.BidPrice, quote.AskPrice, nil
+}
+
+func isOptionsSymbol(sym string) bool {
+	_, _, _, _, _, _, err := osi.Parse(sym)
+	return err == nil
+}
+
+func moreThanOne(flags ...bool) bool {
+	return count(flags...) > 1
+}
+
+func allOrNone(flags ...bool) bool {
+	return all(flags...) || none(flags...)
+}
+
+func all(flags ...bool) bool {
+	return count(flags...) == len(flags)
+}
+
+func none(flags ...bool) bool {
+	return count(flags...) == 0
+}
+
+func count(flags ...bool) int {
+	count := 0
+	for _, flag := range flags {
+		if flag {
+			count++
+		}
+	}
+	return count
 }
 
 func hasGlobSyntaxInSymbols(s []string) bool {
@@ -623,12 +667,23 @@ func hasGlobSyntax(s string) bool {
 	return false
 }
 
-func moreThanOneSpecified(flags ...bool) bool {
-	count := 0
-	for _, flag := range flags {
-		if flag {
-			count++
+func getDuplicates(symbols []string) []string {
+	seen := map[string]bool{}
+	dupe := map[string]bool{}
+	for _, sym := range symbols {
+		if seen[sym] {
+			dupe[sym] = true
+		} else {
+			seen[sym] = true
 		}
 	}
-	return count > 1
+	var duplicates []string
+	for sym := range dupe {
+		duplicates = append(duplicates, sym)
+	}
+	return duplicates
+}
+
+func hasDuplicates(symbols []string) bool {
+	return len(getDuplicates(symbols)) > 0
 }

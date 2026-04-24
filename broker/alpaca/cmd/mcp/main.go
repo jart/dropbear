@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"dropbear/broker/alpaca"
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
@@ -947,7 +948,11 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 			bidPrice = snap.LatestQuote.BidPrice
 			askPrice = snap.LatestQuote.AskPrice
 		} else {
-			quote, err := client.GetQuote(sym)
+			feed := alpaca.FeedNone
+			if cboe.IsOvernight(clocky.Now()) {
+				feed = alpaca.FeedBOATS
+			}
+			quote, err := client.GetQuote(sym, feed)
 			if err != nil {
 				results = append(results, fmt.Sprintf("%s: error getting quote: %v", sym, err))
 				continue
@@ -1225,7 +1230,11 @@ func getQuote(args map[string]any) ToolCallResult {
 	}
 
 	// Stock quote
-	quote, err := client.GetQuote(symbol)
+	feed := alpaca.FeedNone
+	if cboe.IsOvernight(clocky.Now()) {
+		feed = alpaca.FeedBOATS
+	}
+	quote, err := client.GetQuote(symbol, feed)
 	if err != nil {
 		return ToolCallResult{
 			Content: []Content{{Type: "text", Text: fmt.Sprintf("error: %v", err)}},
@@ -1505,14 +1514,14 @@ func getBars(args map[string]any) ToolCallResult {
 	}
 
 	// Parse feed
-	var feed alpaca.DataFeed
+	var feed alpaca.Feed
 	switch getStr(args, "feed") {
 	case "iex":
-		feed = alpaca.DataFeedIEX
+		feed = alpaca.FeedIEX
 	case "otc":
-		feed = alpaca.DataFeedOTC
+		feed = alpaca.FeedOTC
 	default:
-		feed = alpaca.DataFeedSIP
+		feed = alpaca.FeedSIP
 	}
 
 	// Parse adjustment
@@ -1722,14 +1731,14 @@ func getAuctions(args map[string]any) ToolCallResult {
 	}
 
 	// Parse feed
-	var feed alpaca.DataFeed
+	var feed alpaca.Feed
 	switch getStr(args, "feed") {
 	case "iex":
-		feed = alpaca.DataFeedIEX
+		feed = alpaca.FeedIEX
 	case "otc":
-		feed = alpaca.DataFeedOTC
+		feed = alpaca.FeedOTC
 	default:
-		feed = alpaca.DataFeedSIP
+		feed = alpaca.FeedSIP
 	}
 
 	client := alpaca.NewClient()

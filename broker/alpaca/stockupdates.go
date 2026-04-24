@@ -2,10 +2,13 @@ package alpaca
 
 import (
 	"dropbear/broker/alpaca/sip"
+	"dropbear/clocky"
 	"dropbear/netty"
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -169,12 +172,25 @@ func (d *stockUpdatesDaemon) impl() error {
 }
 
 func (d *stockUpdatesDaemon) readControlMessage() (*stockUpdatesResponse, error) {
-	_, bytes, err := d.conn.ReadMessage()
+	messageType, message, err := d.conn.ReadMessage()
 	if err != nil {
 		return nil, err
 	}
+	// log message with timestamp
+	flog := getLog()
+	if flog != nil {
+		var sb strings.Builder
+		sb.Grow(128 + len(message))
+		sb.WriteString(clocky.Now().String())
+		sb.WriteString(" got websocket control message type ")
+		sb.WriteString(strconv.Itoa(messageType))
+		sb.WriteString(": ")
+		sb.Write(message)
+		sb.WriteRune('\n')
+		flog.Write([]byte(sb.String()))
+	}
 	var response []*stockUpdatesResponse
-	if err := json.Unmarshal(bytes, &response); err != nil {
+	if err := json.Unmarshal(message, &response); err != nil {
 		return nil, err
 	}
 	if len(response) == 0 {

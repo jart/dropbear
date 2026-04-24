@@ -1,5 +1,7 @@
 package sip
 
+import "fmt"
+
 // Tape represents the consolidated tape designation.
 // Tape A is NYSE-listed, Tape B is NYSE Arca/regional, Tape C is NASDAQ-listed.
 type Tape byte
@@ -33,7 +35,7 @@ func (t Tape) GoString() string {
 	case TapeO:
 		return "sip.TapeO"
 	default:
-		panic("invalid tape")
+		return fmt.Sprintf("sip.Tape(%q)", byte(t))
 	}
 }
 
@@ -57,18 +59,16 @@ func (t Tape) MarshalJSON() ([]byte, error) {
 
 func (t *Tape) UnmarshalJSON(data []byte) error {
 	if len(data) == 3 && data[0] == '"' && data[2] == '"' {
-		x := Tape(data[1])
-		switch x {
-		case TapeA, TapeB, TapeC, TapeO:
-			*t = x
-			return nil
-		default:
-			return ErrInvalidTape
-		}
+		*t = Tape(data[1])
+		return nil
 	}
 	return ErrInvalidTape
 }
 
 func ParseTape(code string) Tape {
 	return Tape(code[0])
+}
+
+func isUpper(c byte) bool {
+	return c >= 'A' && c <= 'Z'
 }

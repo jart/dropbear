@@ -47,7 +47,7 @@ type OptionSnapshot struct {
 
 // OptionChainRequest specifies parameters for the option chain request.
 type OptionChainRequest struct {
-	Feed          DataFeed        // data feed (sip, indicative)
+	Feed          OptionFeed      // data feed (opra, indicative)
 	Type          string          // "put" or "call"
 	StrikeGTE     decimal.Decimal // minimum strike price
 	StrikeLTE     decimal.Decimal // maximum strike price

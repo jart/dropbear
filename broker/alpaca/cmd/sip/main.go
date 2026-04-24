@@ -11,6 +11,7 @@ import (
 
 var (
 	flagFeed     = flag.String("feed", "sip", "websocket url or name (sip, iex, boats, overnight, delayed, crypto)")
+	flagAll      = flag.Bool("all", false, "subscribe to all updates")
 	flagTrades   = flag.Bool("trades", false, "subscribe to trade updates")
 	flagQuotes   = flag.Bool("quotes", false, "subscribe to quote updates")
 	flagStatuses = flag.Bool("statuses", false, "subscribe to status updates")
@@ -34,8 +35,8 @@ func main() {
 	loggy.Init()
 	flag.Parse()
 	symbols := flag.Args()
-	if !*flagTrades && !*flagQuotes && !*flagStatuses && !*flagLULDs {
-		fmt.Println("At least one of -trades, -quotes, -statuses, or -lulds must be set")
+	if !*flagAll && !*flagTrades && !*flagQuotes && !*flagStatuses && !*flagLULDs {
+		fmt.Println("At least one of -all, -trades, -quotes, -statuses, or -lulds must be set")
 		return
 	}
 
@@ -52,6 +53,22 @@ func main() {
 
 	// connect to websocket server
 	req := &alpaca.StockUpdatesRequest{Action: "subscribe"}
+	if *flagAll {
+		switch url {
+		case alpaca.CryptoWSURL, alpaca.OvernightSWSURL:
+			req.Trades = symbols
+			req.Quotes = symbols
+		case alpaca.BOATSWSURL:
+			req.Trades = symbols
+			req.Quotes = symbols
+			req.Statuses = symbols
+		default:
+			req.Trades = symbols
+			req.Quotes = symbols
+			req.Statuses = symbols
+			req.LULDs = symbols
+		}
+	}
 	if *flagTrades {
 		req.Trades = symbols
 	}
