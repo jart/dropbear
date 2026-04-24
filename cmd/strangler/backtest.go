@@ -141,12 +141,18 @@ func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
 		var demand decimal.Decimal
 		if order.Quantity.IsPositive() {
 			demand = e.Ask
+			if !demand.IsPositive() {
+				return false // no valid ask quote yet
+			}
 			if !order.Price.IsZero() && order.Price.Cmp(demand) < 0 {
 				order.Making = true
 				return false // market hasn't reached our limit yet
 			}
 		} else {
 			demand = e.Bid
+			if !demand.IsPositive() {
+				return false // no valid bid quote yet
+			}
 			if !order.Price.IsZero() && order.Price.Cmp(demand) > 0 {
 				order.Making = true
 				return false // market hasn't reached our limit yet

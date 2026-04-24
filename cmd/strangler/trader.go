@@ -355,13 +355,16 @@ func (t *Trader) isIVFavorable(o *options.Option) bool {
 	if minIV.Cmp(maxIV) >= 0 {
 		panic("min IV should be less than max IV")
 	}
-	midIV := minIV.Add(maxIV).Half()
+	rangeIV := maxIV.Add(minIV).Half()
+	edgeIV := rangeIV.Mul(decimal.Tenth)
+	top := maxIV.Sub(edgeIV)
+	bot := minIV.Add(edgeIV)
 	if t.Config.Direction.IsNegative() {
 		// selling: want IV on the high side
-		return o.IV.Cmp(midIV) > 0
+		return o.IV.Cmp(top) > 0
 	}
 	// buying: want IV on the low side
-	return o.IV.Cmp(midIV) < 0
+	return o.IV.Cmp(bot) < 0
 }
 
 func (t *Trader) hasOrder() (hasBuy bool, hasSell bool) {
