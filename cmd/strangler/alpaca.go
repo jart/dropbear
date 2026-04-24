@@ -78,9 +78,9 @@ func (t *Trader) LiveAlpaca() {
 			ageEquity := now.Sub(tsEquity)
 			ageOption := now.Sub(tsOption)
 			if ageEquity > clocky.Second {
-				t.Hinter.Hint("not trading: warming up or blast from the past (last equity tick %s old)", ageEquity.Round(clocky.Millisecond))
+				t.Hinter.Hint("not trading: last equity tick %s old", ageEquity.Round(clocky.Millisecond))
 			} else if ageOption > clocky.Second {
-				t.Hinter.Hint("not trading: warming up or blast from the past (last option tick %s old)", ageOption.Round(clocky.Millisecond))
+				t.Hinter.Hint("not trading: last option tick %s old", ageOption.Round(clocky.Millisecond))
 			} else {
 				t.onThought(now)
 			}

@@ -62,7 +62,7 @@ func main() {
 	directionFlag := decimal.Flag("direction", "1", "direction of options trade (+1 is long; -1 is short)")
 	contractsFlag := decimal.Flag("contracts", "2", "max number of strangles to create")
 	riskFlag := decimal.Flag("risk", "5000", "maximum amount of options risk to tolerate")
-	chaseFlag := clocky.DurationFlag("chase", "2s", "how long to wait before chasing nbbo")
+	chaseFlag := clocky.DurationFlag("chase", "1m", "how long to wait before chasing nbbo")
 	patienceFlag := clocky.DurationFlag("patience", "60s", "how long to wait for order execution")
 	spreadFlag := decimal.Flag("spread", "-1", "spread crossing for contract (-1=make, 0=mid, 1=take)")
 	startOfDayFlag := flag.Int("sod", 9_35_00, "start of day in HHMMSS")
@@ -136,15 +136,16 @@ func main() {
 	loggy.AlsoLogToFile()
 	log.Printf("prepare to be strangled")
 
-	// t = NewTrader(newConfig())
-	// t.Config.Symbol = symbol.NVDA
-	// t.Config.Listen = "127.0.0.1:8486"
-	// traders = append(traders, t)
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.NVDA
+	t.Config.Listen = "127.0.0.1:8486"
+	t.Config.Tolerance = decimal.Zero
+	t.Config.Spread = decimal.Parse("-3")
+	traders = append(traders, t)
 
 	t = NewTrader(newConfig())
 	t.Config.Symbol = symbol.TSLA
 	t.Config.Listen = "127.0.0.1:8485"
-	t.Config.Tolerance = decimal.Parse("-75_000")
 	traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
@@ -157,10 +158,12 @@ func main() {
 	// t.Config.Listen = "127.0.0.1:8494"
 	// traders = append(traders, t)
 
-	// t = NewTrader(newConfig())
-	// t.Config.Symbol = symbol.MSFT
-	// t.Config.Listen = "127.0.0.1:8492"
-	// traders = append(traders, t)
+	t = NewTrader(newConfig())
+	t.Config.Symbol = symbol.MSFT
+	t.Config.Listen = "127.0.0.1:8492"
+	t.Config.Tolerance = decimal.Zero
+	t.Config.Spread = decimal.Parse("-3")
+	traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.AAPL
