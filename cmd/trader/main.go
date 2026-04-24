@@ -410,7 +410,7 @@ func evaluate(st *symbolState) {
 	if st.position.IsPositive() && st.sellOrderID == "" {
 		price := st.nbboAsk
 		if *flagWinner && !st.costBasis.IsZero() {
-			minPrice := st.costBasis.Div(st.position).Add(cboe.Tick01)
+			minPrice := st.costBasis.Div(st.position).Add(cboe.Tick01).QuantizeAway(cboe.Tick01)
 			price = price.Max(minPrice)
 		}
 		dest := bestDest(st.nbboAskEx)
@@ -421,7 +421,7 @@ func evaluate(st *symbolState) {
 		price := st.nbboBid
 		if *flagWinner && !st.costBasis.IsZero() {
 			// short: avg entry = costBasis / position = negative / negative = positive
-			maxPrice := st.costBasis.Div(st.position).Sub(cboe.Tick01)
+			maxPrice := st.costBasis.Div(st.position).Sub(cboe.Tick01).QuantizeTruncate(cboe.Tick01)
 			price = price.Min(maxPrice)
 		}
 		dest := bestDest(st.nbboBidEx)
