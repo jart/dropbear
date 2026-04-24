@@ -25,6 +25,11 @@ func (m *Max) IsReady() bool {
 	return m.m.IsReady()
 }
 
+// Age returns how much data exists in indicator.
+func (m *Max) Age() clocky.Duration {
+	return m.m.Age()
+}
+
 // Add adds a price at the given timestamp and updates the maximum.
 func (m *Max) Add(ts clocky.Time, price decimal.Decimal) {
 	m.m.Add(ts, price)

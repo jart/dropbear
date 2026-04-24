@@ -56,18 +56,18 @@ func main() {
 	symbolFlag := symbol.Flag("symbol", "", "symbol to trade (e.g. NVDA)")
 	webFlag := flag.Bool("web", false, "enable web dashboard feature")
 	schwabFlag := flag.Bool("schwab", false, "use schwab as broker instead of alpaca")
-	strikesFlag := flag.Int("strikes", 2, "how many strikes wide strangle should be")
+	strikesFlag := flag.Int("strikes", 0, "how many strikes wide strangle should be")
 	wingFlag := decimal.Flag("wing", "0.05", "how much to pay for each wing of short strangle insurance, where zero means naked")
-	toleranceFlag := decimal.Flag("tolerance", "-4", "delta imbalance tolerance (negative minimizes trading; positive does symmetrical market making)")
-	directionFlag := decimal.Flag("direction", "-1", "direction of options trade (+1 is long; -1 is short)")
-	straddlesFlag := decimal.Flag("straddles", "5", "max number of strangles to create")
+	toleranceFlag := decimal.Flag("tolerance", "-75_000", "delta imbalance tolerance in usd (negative minimizes trading; positive does symmetrical market making)")
+	directionFlag := decimal.Flag("direction", "1", "direction of options trade (+1 is long; -1 is short)")
+	contractsFlag := decimal.Flag("contracts", "2", "max number of strangles to create")
 	riskFlag := decimal.Flag("risk", "5000", "maximum amount of options risk to tolerate")
-	quantumFlag := decimal.Flag("quantum", "40", "share lot size for delta hedging")
 	chaseFlag := clocky.DurationFlag("chase", "2s", "how long to wait before chasing nbbo")
 	patienceFlag := clocky.DurationFlag("patience", "60s", "how long to wait for order execution")
-	spreadFlag := decimal.Flag("spread", "2", "spread crossing for straddle (-1=make, 0=mid, 1=take)")
+	spreadFlag := decimal.Flag("spread", "-1", "spread crossing for contract (-1=make, 0=mid, 1=take)")
 	startOfDayFlag := flag.Int("sod", 9_35_00, "start of day in HHMMSS")
-	lookbackFlag := clocky.DurationFlag("lookback", "2h", "how far indicators should look back")
+	ageFlag := clocky.DurationFlag("age", "5m", "how much volatility history is needed to trade")
+	lookbackFlag := clocky.DurationFlag("lookback", "30m", "how far indicators should look back")
 	samplesFlag := flag.Int("samples", 13, "number of samples for moving average indicators")
 	dmaFlag := alpaca.OrderDestinationFlag("dma", "", "directly route order to lit exchange (NYSE, NASDAQ, ARCA)")
 	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")
@@ -75,12 +75,11 @@ func main() {
 	newConfig := func() *Config {
 		return &Config{
 			StartOfDay: *startOfDayFlag,
-			Straddles:  *straddlesFlag,
+			Contracts:  *contractsFlag,
 			Direction:  *directionFlag,
 			Tolerance:  *toleranceFlag,
 			Patience:   *patienceFlag,
 			Lookback:   *lookbackFlag,
-			Quantum:    *quantumFlag,
 			Samples:    *samplesFlag,
 			Strikes:    *strikesFlag,
 			Symbol:     *symbolFlag,
@@ -90,6 +89,7 @@ func main() {
 			Risk:       *riskFlag,
 			Wing:       *wingFlag,
 			DMA:        *dmaFlag,
+			Age:        *ageFlag,
 		}
 	}
 
@@ -141,70 +141,56 @@ func main() {
 	// t.Config.Listen = "127.0.0.1:8486"
 	// traders = append(traders, t)
 
-	// t = NewTrader(newConfig())
-	// t.Config.Symbol = symbol.TSLA
-	// t.Config.Listen = "127.0.0.1:8485"
-	// t.Config.Strikes = 0
-	// t.Config.Tolerance = decimal.One
-	// t.Config.Direction = decimal.One
-	// t.Config.Spread = decimal.NegOne
-	// traders = append(traders, t)
-
 	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.GOOGL
-	t.Config.Listen = "127.0.0.1:8491"
+	t.Config.Symbol = symbol.TSLA
+	t.Config.Listen = "127.0.0.1:8485"
+	t.Config.Tolerance = decimal.Parse("-75_000")
 	traders = append(traders, t)
+
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.GOOGL
+	// t.Config.Listen = "127.0.0.1:8491"
+	// traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.AMZN
 	// t.Config.Listen = "127.0.0.1:8494"
-	// t.Config.Strikes = 2
 	// traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.MSFT
 	// t.Config.Listen = "127.0.0.1:8492"
-	// t.Config.Strikes = 1
-	// t.Config.Spread = decimal.NegOne
-	// t.Config.Direction = decimal.One
+	// traders = append(traders, t)
+
+	// t = NewTrader(newConfig())
+	// t.Config.Symbol = symbol.AAPL
+	// t.Config.Listen = "127.0.0.1:8493"
 	// traders = append(traders, t)
 
 	t = NewTrader(newConfig())
-	t.Config.Symbol = symbol.AAPL
-	t.Config.Listen = "127.0.0.1:8493"
-	t.Config.Strikes = 1
-	t.Config.Direction = decimal.One
-	t.Config.Spread = decimal.NegOne
+	t.Config.Symbol = symbol.AVGO
+	t.Config.Listen = "127.0.0.1:8490"
+	t.Config.Tolerance = decimal.Parse("-84_000")
 	traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.IBIT
 	// t.Config.Listen = "127.0.0.1:8495"
-	// t.Config.Strikes = 2
 	// traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.SLV
 	// t.Config.Listen = "127.0.0.1:8496"
-	// t.Config.Strikes = 3
-	// t.Config.Direction = decimal.One
-	// t.Config.Spread = decimal.NegOne
 	// traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.AKAM
 	// t.Config.Listen = "127.0.0.1:8497"
-	// t.Config.Strikes = 0
-	// t.Config.Spread = decimal.NegOne
-	// t.Config.Direction = decimal.One
 	// traders = append(traders, t)
 
 	// t = NewTrader(newConfig())
 	// t.Config.Symbol = symbol.ADBE
 	// t.Config.Listen = "127.0.0.1:8498"
-	// t.Config.Strikes = 0
-	// t.Config.Spread = decimal.NegOne
-	// t.Config.Direction = decimal.One
 	// traders = append(traders, t)
 
 	// figure out what brokers we need

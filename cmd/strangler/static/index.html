@@ -18,7 +18,7 @@
 <div class="grid">
   <section class="chart-section">
     <h2>risk profile</h2>
-    <canvas id="riskChart" width="800" height="400"></canvas>
+    <canvas id="riskChart" width="800" height="300"></canvas>
   </section>
 
   <section class="stats-section">
@@ -26,6 +26,7 @@
     <table id="statsTable">
       <tr><td>liquidation</td><td id="statLiq">--</td></tr>
       <tr><td>worst</td><td id="statWorst">--</td></tr>
+      <tr><td>eod</td><td id="statEOD">--</td></tr>
       <tr><td>realized</td><td id="statRealized">--</td></tr>
       <tr><td>cash</td><td id="statCash">--</td></tr>
       <tr><td>fees</td><td id="statFees">--</td></tr>
@@ -46,9 +47,19 @@
     <table id="positionsTable">
       <thead>
         <tr>
-          <th>qty</th><th>bid</th><th>ask</th><th>mid</th><th>delta</th>
+          <th>qty</th>
+          <th>bid</th>
+          <th>ask</th>
+          <th>mid</th>
+          <th>delta</th>
+          <th>iv</th>
           <th class="strike-col"></th>
-          <th>qty</th><th>bid</th><th>ask</th><th>mid</th><th>delta</th>
+          <th>qty</th>
+          <th>bid</th>
+          <th>ask</th>
+          <th>mid</th>
+          <th>delta</th>
+          <th>iv</th>
         </tr>
       </thead>
       <tbody id="positionsBody"></tbody>
@@ -59,7 +70,10 @@
     <h2>pending orders</h2>
     <table id="ordersTable">
       <thead>
-        <tr><th>#</th><th>security</th><th>qty</th><th>price</th><th>mid</th><th>status</th><th>age</th></tr>
+        <tr>
+          <th>#</th>
+          <th class="left">security</th><th>qty</th><th>price</th><th>mid</th><th>status</th><th>age</th>
+        </tr>
       </thead>
       <tbody id="ordersBody"></tbody>
     </table>
@@ -69,7 +83,7 @@
     <h2>transactions</h2>
     <table id="txTable">
       <thead>
-        <tr><th>time</th><th>security</th><th>qty</th><th>price</th><th>#</th></tr>
+        <tr><th class="left">time</th><th class="left">security</th><th>qty</th><th>limit</th><th>fill</th><th>improv</th><th>p/l</th><th>fee</th></tr>
       </thead>
       <tbody id="txBody"></tbody>
     </table>
@@ -78,9 +92,8 @@
   <section class="flags-section">
     <h2>flags</h2>
     <form id="flagsForm" onsubmit="return submitFlags(event)">
-      <label>straddles <input name="straddles" type="text" size="6"></label>
+      <label>contracts <input name="contracts" type="text" size="6"></label>
       <label>tolerance <input name="tolerance" type="text" size="6"></label>
-      <label>quantum <input name="quantum" type="text" size="6"></label>
       <label>spread <input name="spread" type="text" size="6"></label>
       <label>patience <input name="patience" type="text" size="6"></label>
       <label>risk <input name="risk" type="text" size="6"></label>

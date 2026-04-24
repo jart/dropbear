@@ -33,6 +33,9 @@ func (t *Trader) LiveSchwab() {
 	// we must wait for options chain to become available
 	readySteadyGo := clocky.NewTicker(clocky.Second)
 	defer readySteadyGo.Stop()
+	var tsEquity, tsOption clocky.Time
+	lastEquityTick := false
+	lastOptionTick := false
 	ready := false
 
 	for {
@@ -43,6 +46,13 @@ func (t *Trader) LiveSchwab() {
 			continue
 		case m := <-optionTicks:
 			t.onOptionTick(m)
+			lastOptionTick = m.Flags&databento.FlagSetLast != 0
+			tsOption = m.TSRecv
+			continue
+		case m := <-equityTicks:
+			t.onEquityTick(m)
+			lastEquityTick = m.Flags&databento.FlagSetLast != 0
+			tsEquity = m.TSRecv
 			continue
 		case update := <-t.OrderEventsSchwab:
 			t.onOrderEventSchwab(update)
@@ -65,8 +75,17 @@ func (t *Trader) LiveSchwab() {
 		// let's go
 		if !ready {
 			t.Hinter.Hint("not trading: waiting for market data")
-		} else {
-			t.onThought(clocky.Now())
+		} else if lastEquityTick && lastOptionTick {
+			now := clocky.Now()
+			ageEquity := now.Sub(tsEquity)
+			ageOption := now.Sub(tsOption)
+			if ageEquity > clocky.Second {
+				t.Hinter.Hint("not trading: warming up or blast from the past (last equity tick %s old)", ageEquity.Round(clocky.Millisecond))
+			} else if ageOption > clocky.Second {
+				t.Hinter.Hint("not trading: warming up or blast from the past (last option tick %s old)", ageOption.Round(clocky.Millisecond))
+			} else {
+				t.onThought(now)
+			}
 		}
 		// block until next event
 		select {
@@ -76,8 +95,12 @@ func (t *Trader) LiveSchwab() {
 			t.onOptionDef(o)
 		case m := <-equityTicks:
 			t.onEquityTick(m)
+			lastEquityTick = m.Flags&databento.FlagSetLast != 0
+			tsEquity = m.TSRecv
 		case m := <-optionTicks:
 			t.onOptionTick(m)
+			lastOptionTick = m.Flags&databento.FlagSetLast != 0
+			tsOption = m.TSRecv
 		case update := <-t.OrderEventsSchwab:
 			t.onOrderEventSchwab(update)
 		case orderUpdate := <-t.OrderUpdatesSchwab:
@@ -268,7 +291,7 @@ func (t *Trader) onFillEventSchwab(event *schwab.OrderEvent, fill *schwab.FillEv
 	t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
 	routeName := fill.ExecutionInfo.RouteName
 	fillPrice := fill.ExecutionInfo.ExecutionPrice
-	t.Holdings.Add(security, fillQuantity, fillPrice)
+	pnl := t.Holdings.Add(security, fillQuantity, fillPrice)
 	priceImprovement := fill.PriceImprovement.DivInt(100)
 
 	// find relevant order
@@ -278,7 +301,7 @@ func (t *Trader) onFillEventSchwab(event *schwab.OrderEvent, fill *schwab.FillEv
 		log.Printf("warning: order id %d not found for fill event (order placed in thinkorswim?)", orderID)
 		return
 	}
-	t.recordFill(clocky.Now(), order, fillQuantity, fillPrice)
+	t.recordFill(clocky.Now(), security, fillQuantity, order.Price, fillPrice, pnl, fee)
 
 	// update holdings
 	log.Printf("#%d filled for order id %d %s %s @ %s, route: %s, improvement: %s, fee: %s",

@@ -19,7 +19,7 @@ function connect() {
 function render(d) {
   document.title = d.symbol + ' strangler';
   document.getElementById('symbol').textContent = d.symbol;
-  document.getElementById('price').textContent = d.price;
+  document.getElementById('price').textContent = fmtNum(d.price);
   document.getElementById('time').textContent = d.time;
   document.getElementById('pauseBtn').disabled = d.paused;
   document.getElementById('resumeBtn').disabled = !d.paused;
@@ -46,6 +46,8 @@ function renderStats(d) {
   setText('statVega', d.greeks.vega);
   colorize('statLiq', d.stats.liquidation);
   colorize('statWorst', d.stats.worst);
+  setText('statEOD', d.stats.eod);
+  colorize('statEOD', d.stats.eod);
   colorize('statRealized', d.stats.realized);
   setText('statError', d.stats.error);
   var errEl = document.getElementById('statError');
@@ -53,13 +55,51 @@ function renderStats(d) {
   setText('statVolume', d.stats.volume);
 }
 
+function fmtNum(val) {
+  if (typeof val !== 'number') return val;
+  var s = val.toFixed(6);
+  var dot = s.indexOf('.');
+  var minLen = dot + 3;
+  var i = s.length;
+  while (i > minLen && s[i - 1] === '0') i--;
+  s = s.substring(0, i);
+  var parts = s.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts.join('.');
+}
+
 function setText(id, val) {
-  document.getElementById(id).textContent = val;
+  document.getElementById(id).textContent = fmtNum(val);
 }
 
 function colorize(id, val) {
   var el = document.getElementById(id);
   el.className = val > 0 ? 'pos' : val < 0 ? 'neg' : 'zero';
+}
+
+function td(text, cls) {
+  var el = document.createElement('td');
+  if (cls) el.className = cls;
+  el.textContent = text;
+  return el;
+}
+
+function qtyClass(qty) {
+  return qty > 0 ? 'pos' : qty < 0 ? 'neg' : 'zero';
+}
+
+function optionCells(tr, opt) {
+  if (opt) {
+    var cls = opt.itm ? ' itm' : '';
+    tr.appendChild(td(opt.qty, qtyClass(opt.qty) + cls));
+    tr.appendChild(td(fmtNum(opt.bid), cls));
+    tr.appendChild(td(fmtNum(opt.ask), cls));
+    tr.appendChild(td(fmtNum(opt.mid), cls));
+    tr.appendChild(td(fmtNum(opt.delta), cls));
+    tr.appendChild(td(fmtNum(opt.iv), cls));
+  } else {
+    for (var j = 0; j < 6; j++) tr.appendChild(td(''));
+  }
 }
 
 function renderPositions(positions) {
@@ -76,39 +116,15 @@ function renderPositions(positions) {
     strikes[k][p.class] = p;
   }
   strikeList.sort(function(a, b) { return a - b; });
-  var html = '';
-  var empty5 = '<td></td><td></td><td></td><td></td><td></td>';
+  while (body.firstChild) body.removeChild(body.firstChild);
   for (var i = 0; i < strikeList.length; i++) {
     var k = strikeList[i];
-    var c = strikes[k]['C'];
-    var p = strikes[k]['P'];
-    html += '<tr>';
-    if (c) {
-      var cq = c.qty;
-      var ci = c.itm ? ' itm' : '';
-      html += '<td class="' + (cq > 0 ? 'pos' : cq < 0 ? 'neg' : 'zero') + ci + '">' + c.qty + '</td>';
-      html += '<td class="' + ci + '">' + c.bid + '</td>';
-      html += '<td class="' + ci + '">' + c.ask + '</td>';
-      html += '<td class="' + ci + '">' + c.mid + '</td>';
-      html += '<td class="' + ci + '">' + c.delta + '</td>';
-    } else {
-      html += empty5;
-    }
-    html += '<td class="strike-col">' + k + '</td>';
-    if (p) {
-      var pq = p.qty;
-      var pi = p.itm ? ' itm' : '';
-      html += '<td class="' + (pq > 0 ? 'pos' : pq < 0 ? 'neg' : 'zero') + pi + '">' + p.qty + '</td>';
-      html += '<td class="' + pi + '">' + p.bid + '</td>';
-      html += '<td class="' + pi + '">' + p.ask + '</td>';
-      html += '<td class="' + pi + '">' + p.mid + '</td>';
-      html += '<td class="' + pi + '">' + p.delta + '</td>';
-    } else {
-      html += empty5;
-    }
-    html += '</tr>';
+    var tr = document.createElement('tr');
+    optionCells(tr, strikes[k]['C']);
+    tr.appendChild(td(fmtNum(k), 'strike-col'));
+    optionCells(tr, strikes[k]['P']);
+    body.appendChild(tr);
   }
-  body.innerHTML = html;
 }
 
 function renderRiskChart(d) {
@@ -230,50 +246,68 @@ function renderRiskChart(d) {
 
 function renderPendingOrders(orders) {
   var body = document.getElementById('ordersBody');
-  var html = '';
+  while (body.firstChild) body.removeChild(body.firstChild);
+  if (!orders.length) {
+    var tr = document.createElement('tr');
+    var cell = td('none');
+    cell.colSpan = 7;
+    cell.style.textAlign = 'center';
+    cell.style.color = '#666';
+    tr.appendChild(cell);
+    body.appendChild(tr);
+    return;
+  }
   for (var i = 0; i < orders.length; i++) {
     var o = orders[i];
-    var qc = o.qty > 0 ? 'pos' : 'neg';
-    html += '<tr>';
-    html += '<td>' + o.id + '</td>';
-    html += '<td>' + o.security + '</td>';
-    html += '<td class="' + qc + '">' + o.qty + '</td>';
-    html += '<td>' + o.price + '</td>';
-    html += '<td>' + o.mid + '</td>';
-    html += '<td>' + o.status + '</td>';
-    html += '<td>' + o.age + '</td>';
-    html += '</tr>';
+    var tr = document.createElement('tr');
+    tr.appendChild(td(o.id));
+    tr.appendChild(td(o.security, 'left'));
+    tr.appendChild(td(fmtNum(o.qty), qtyClass(o.qty)));
+    tr.appendChild(td(fmtNum(o.price)));
+    tr.appendChild(td(fmtNum(o.mid)));
+    tr.appendChild(td(o.status));
+    tr.appendChild(td(o.age));
+    body.appendChild(tr);
   }
-  if (!orders.length) html = '<tr><td colspan="7" style="text-align:center;color:#666">none</td></tr>';
-  body.innerHTML = html;
 }
 
 function renderTransactions(txs) {
   var body = document.getElementById('txBody');
-  var html = '';
+  while (body.firstChild) body.removeChild(body.firstChild);
+  if (!txs.length) {
+    var tr = document.createElement('tr');
+    var cell = td('none');
+    cell.colSpan = 8;
+    cell.style.textAlign = 'center';
+    cell.style.color = '#666';
+    tr.appendChild(cell);
+    body.appendChild(tr);
+    return;
+  }
   for (var i = 0; i < txs.length; i++) {
     var tx = txs[i];
-    var qc = tx.qty > 0 ? 'pos' : 'neg';
     var time = tx.time.length > 19 ? tx.time.substring(11, 19) : tx.time;
-    html += '<tr>';
-    html += '<td>' + time + '</td>';
-    html += '<td>' + tx.security + '</td>';
-    html += '<td class="' + qc + '">' + tx.qty + '</td>';
-    html += '<td>' + tx.price + '</td>';
-    html += '<td>' + tx.id + '</td>';
-    html += '</tr>';
+    var tr = document.createElement('tr');
+    tr.appendChild(td(time, 'left'));
+    tr.appendChild(td(tx.security, 'left'));
+    tr.appendChild(td(fmtNum(tx.qty)));
+    tr.appendChild(td(fmtNum(tx.limit)));
+    tr.appendChild(td(fmtNum(tx.fill)));
+    var impCls = tx.improvement > 0 ? 'pos' : tx.improvement < 0 ? 'neg' : '';
+    tr.appendChild(td(tx.improvement ? fmtNum(tx.improvement) : '', impCls));
+    var pnlCls = tx.pnl > 0 ? 'pos' : tx.pnl < 0 ? 'neg' : '';
+    tr.appendChild(td(tx.pnl ? fmtNum(tx.pnl) : '', pnlCls));
+    tr.appendChild(td(fmtNum(tx.fee)));
+    body.appendChild(tr);
   }
-  if (!txs.length) html = '<tr><td colspan="5" style="text-align:center;color:#666">none</td></tr>';
-  body.innerHTML = html;
 }
 
 function renderFlags(flags) {
   if (!flags) return;
   var form = document.getElementById('flagsForm');
-  setIfEmpty(form.straddles, flags.straddles);
+  setIfEmpty(form.contracts, flags.contracts);
   setIfEmpty(form.tolerance, flags.tolerance);
   setIfEmpty(form.patience, flags.patience);
-  setIfEmpty(form.quantum, flags.quantum);
   setIfEmpty(form.spread, flags.spread);
   setIfEmpty(form.risk, flags.risk);
 }
@@ -296,10 +330,9 @@ function submitFlags(e) {
   e.preventDefault();
   var form = document.getElementById('flagsForm');
   var data = {
-    straddles: form.straddles.value,
+    contracts: form.contracts.value,
     tolerance: form.tolerance.value,
     patience: form.patience.value,
-    quantum: form.quantum.value,
     spread: form.spread.value,
     risk: form.risk.value
   };

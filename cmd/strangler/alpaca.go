@@ -31,6 +31,9 @@ func (t *Trader) LiveAlpaca() {
 	// we must wait for options chain to become available
 	readySteadyGo := clocky.NewTicker(clocky.Second)
 	defer readySteadyGo.Stop()
+	var tsEquity, tsOption clocky.Time
+	lastEquityTick := false
+	lastOptionTick := false
 	ready := false
 
 	for {
@@ -41,6 +44,13 @@ func (t *Trader) LiveAlpaca() {
 			continue
 		case m := <-optionTicks:
 			t.onOptionTick(m)
+			lastOptionTick = m.Flags&databento.FlagSetLast != 0
+			tsOption = m.TSRecv
+			continue
+		case m := <-equityTicks:
+			t.onEquityTick(m)
+			lastEquityTick = m.Flags&databento.FlagSetLast != 0
+			tsEquity = m.TSRecv
 			continue
 		case update := <-t.OrderEventsAlpaca:
 			t.onOrderEventAlpaca(update)
@@ -56,14 +66,24 @@ func (t *Trader) LiveAlpaca() {
 			continue
 		case order := <-t.FailedOrders:
 			t.onOrderFail(order)
+			continue
 		default:
 			// all channels empty
 		}
 		// let's go
 		if !ready {
 			t.Hinter.Hint("not trading: waiting for market data")
-		} else {
-			t.onThought(clocky.Now())
+		} else if lastEquityTick && lastOptionTick {
+			now := clocky.Now()
+			ageEquity := now.Sub(tsEquity)
+			ageOption := now.Sub(tsOption)
+			if ageEquity > clocky.Second {
+				t.Hinter.Hint("not trading: warming up or blast from the past (last equity tick %s old)", ageEquity.Round(clocky.Millisecond))
+			} else if ageOption > clocky.Second {
+				t.Hinter.Hint("not trading: warming up or blast from the past (last option tick %s old)", ageOption.Round(clocky.Millisecond))
+			} else {
+				t.onThought(now)
+			}
 		}
 		// block until next event
 		select {
@@ -73,8 +93,12 @@ func (t *Trader) LiveAlpaca() {
 			t.onOptionDef(o)
 		case m := <-equityTicks:
 			t.onEquityTick(m)
+			lastEquityTick = m.Flags&databento.FlagSetLast != 0
+			tsEquity = m.TSRecv
 		case m := <-optionTicks:
 			t.onOptionTick(m)
+			lastOptionTick = m.Flags&databento.FlagSetLast != 0
+			tsOption = m.TSRecv
 		case update := <-t.OrderEventsAlpaca:
 			t.onOrderEventAlpaca(update)
 		case req := <-t.Web.WebRequests:
@@ -162,10 +186,6 @@ func (t *Trader) updateOrderAlpaca(order *Order) {
 		_, err := gAlpacaClient.ReplaceOrder(order.OrderIDAlpaca, &alpaca.ReplaceOrderRequest{
 			LimitPrice:    order.Price,
 			ClientOrderID: clientOrderID,
-			AdvancedInstructions: &alpaca.AdvancedInstructions{
-				Algorithm:   alpaca.OrderAlgorithmDMA,
-				Destination: t.Config.DMA,
-			},
 		})
 		if err != nil {
 			log.Printf("failed to update price #%d on alpaca: %v", order.ID, err)
@@ -190,8 +210,10 @@ func (t *Trader) onOrderEventAlpaca(orderUpdate *alpaca.OrderUpdate) {
 		absoluteFilledQuantity := orderUpdate.Order.FilledQty
 		order.Unfilled = absoluteOrderQuantity.Sub(absoluteFilledQuantity)
 		fillQty := orderUpdate.Qty.Mul(decimal.Decimal(orderUpdate.Order.Side))
-		t.Holdings.Add(order.Security, fillQty, orderUpdate.Price)
-		t.recordFill(clocky.Now(), order, fillQty, orderUpdate.Price)
+		pnl := t.Holdings.Add(order.Security, fillQty, orderUpdate.Price)
+		fee := order.EstimateFee(orderUpdate.Qty, order.Unfilled.Cmp(order.Quantity.Abs()) == 0, !order.Making)
+		t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
+		t.recordFill(clocky.Now(), order.Security, fillQty, order.Price, orderUpdate.Price, pnl, fee)
 		holding := t.Holdings.Positions[order.Security]
 		if holding != nil {
 			if holding.Quantity.Cmp(orderUpdate.PositionQty) != 0 {

@@ -25,6 +25,11 @@ func (m *Min) IsReady() bool {
 	return m.m.IsReady()
 }
 
+// Age returns how much data exists in indicator.
+func (m *Min) Age() clocky.Duration {
+	return m.m.Age()
+}
+
 // Add adds a price at the given timestamp and updates the minimum.
 func (m *Min) Add(ts clocky.Time, price decimal.Decimal) {
 	m.m.Add(ts, price)

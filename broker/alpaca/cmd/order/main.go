@@ -111,7 +111,7 @@ options:
 		fmt.Fprintf(os.Stderr, "-limit, -greed, -spread, -market, -taker, and -maker are mutually exclusive\n")
 		os.Exit(1)
 	}
-	if moreThanOne(!flagQty.IsZero(), !flagAmt.IsZero(), *flagLiquidate, *flagLiquidate, *flagLiquidateLong, *flagLiquidateShort) {
+	if moreThanOne(!flagQty.IsZero(), !flagAmt.IsZero(), *flagLiquidate, *flagLiquidateLong, *flagLiquidateShort) {
 		fmt.Fprintf(os.Stderr, "-qty, -amt, -liquidate, -liquidate-long, and -liquidate-short are mutually exclusive\n")
 		os.Exit(1)
 	}

@@ -3,7 +3,9 @@ package main
 import (
 	"dropbear/decimal"
 	"dropbear/options"
+	"dropbear/osi"
 	"fmt"
+	"log"
 	"maps"
 	"slices"
 	"strings"
@@ -40,7 +42,7 @@ func (h *Holdings) Sorted() []*Holding {
 // Add updates holdings to reflect fill.
 // delta is positive for buy orders and negative for sell orders.
 // price is always positive and reflects dollars per underlying share.
-func (h *Holdings) Add(security options.Security, delta, price decimal.Decimal) {
+func (h *Holdings) Add(security options.Security, delta, price decimal.Decimal) decimal.Decimal {
 	if delta.IsZero() {
 		panic("zero quantity change")
 	}
@@ -70,7 +72,7 @@ func (h *Holdings) Add(security options.Security, delta, price decimal.Decimal) 
 			Quantity:    delta,
 			AverageCost: price,
 		}
-		return
+		return decimal.Zero
 	}
 	oldQuantity := holding.Quantity
 	newQuantity := oldQuantity.Add(delta)
@@ -81,7 +83,7 @@ func (h *Holdings) Add(security options.Security, delta, price decimal.Decimal) 
 		newTotalCost := oldTotalCost.Add(price.Mul(delta.Abs()))
 		holding.AverageCost = newTotalCost.Div(newQuantity.Abs())
 		holding.Quantity = newQuantity
-		return
+		return decimal.Zero
 	}
 
 	// compute realized profit and loss on closed portion of position
@@ -105,6 +107,7 @@ func (h *Holdings) Add(security options.Security, delta, price decimal.Decimal) 
 			holding.AverageCost = price // delta overlapped zero
 		}
 	}
+	return profitForFill
 }
 
 // Restore adds a position from a broker portfolio snapshot without generating
@@ -114,6 +117,7 @@ func (h *Holdings) Restore(security options.Security, quantity, averageCost deci
 	if quantity.IsZero() {
 		return
 	}
+	log.Printf("found %s of %s avg cost %s", quantity, osi.Humanize(security.Name()), averageCost)
 	dollars := averageCost.Mul(quantity.Abs()).MulInt(security.Multiplier())
 	if quantity.IsPositive() {
 		h.Cash = h.Cash.Sub(dollars)

@@ -6,6 +6,7 @@ import (
 	"dropbear/db"
 	"dropbear/decimal"
 	"dropbear/options"
+	"dropbear/osi"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -78,19 +79,19 @@ func (w *Web) sseBroadcaster() {
 
 // StateSnapshot is the JSON payload sent to the dashboard.
 type StateSnapshot struct {
-	Time         string            `json:"time"`
-	Symbol       string            `json:"symbol"`
-	Price        decimal.Decimal   `json:"price"`
-	Sigma        decimal.Decimal   `json:"sigma"`
-	Cash         decimal.Decimal   `json:"cash"`
-	Paused       bool              `json:"paused"`
-	Positions    []PositionRow     `json:"positions"`
-	Risk         []RiskPoint       `json:"risk"`
-	Greeks       GreeksData        `json:"greeks"`
-	Stats        StatsData         `json:"stats"`
-	Flags        FlagsData         `json:"flags"`
+	Time          string            `json:"time"`
+	Symbol        string            `json:"symbol"`
+	Price         decimal.Decimal   `json:"price"`
+	Sigma         decimal.Decimal   `json:"sigma"`
+	Cash          decimal.Decimal   `json:"cash"`
+	Paused        bool              `json:"paused"`
+	Positions     []PositionRow     `json:"positions"`
+	Risk          []RiskPoint       `json:"risk"`
+	Greeks        GreeksData        `json:"greeks"`
+	Stats         StatsData         `json:"stats"`
+	Flags         FlagsData         `json:"flags"`
 	PendingOrders []PendingOrderRow `json:"pendingOrders"`
-	Transactions []TransactionRow  `json:"transactions"`
+	Transactions  []TransactionRow  `json:"transactions"`
 }
 
 type PositionRow struct {
@@ -101,6 +102,7 @@ type PositionRow struct {
 	Ask    decimal.Decimal `json:"ask"`
 	Mid    decimal.Decimal `json:"mid"`
 	Delta  decimal.Decimal `json:"delta"`
+	IV     decimal.Decimal `json:"iv"`
 	ITM    bool            `json:"itm"`
 }
 
@@ -125,6 +127,7 @@ type StatsData struct {
 	Shares      decimal.Decimal `json:"shares"`
 	ShareCost   decimal.Decimal `json:"shareCost"`
 	Worst       decimal.Decimal `json:"worst"`
+	EOD         decimal.Decimal `json:"eod"`
 	Orders      string          `json:"orders"`
 }
 
@@ -139,17 +142,19 @@ type PendingOrderRow struct {
 }
 
 type TransactionRow struct {
-	Time     string          `json:"time"`
-	Security string          `json:"security"`
-	Qty      decimal.Decimal `json:"qty"`
-	Price    decimal.Decimal `json:"price"`
-	OrderID  int             `json:"id"`
+	Time        string          `json:"time"`
+	Security    string          `json:"security"`
+	Qty         decimal.Decimal `json:"qty"`
+	Limit       decimal.Decimal `json:"limit"`
+	Fill        decimal.Decimal `json:"fill"`
+	Improvement decimal.Decimal `json:"improvement"`
+	PnL         decimal.Decimal `json:"pnl"`
+	Fee         decimal.Decimal `json:"fee"`
 }
 
 type FlagsData struct {
-	Straddles decimal.Decimal `json:"straddles"`
+	Contracts decimal.Decimal `json:"contracts"`
 	Tolerance decimal.Decimal `json:"tolerance"`
-	Quantum   decimal.Decimal `json:"quantum"`
 	Spread    decimal.Decimal `json:"spread"`
 	Risk      decimal.Decimal `json:"risk"`
 	Patience  string          `json:"patience"`
@@ -189,7 +194,11 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 		shareCost = holding.AverageCost
 	}
 
-	// worst case settlement
+	// end of day and worst case settlement
+	eod := decimal.Zero
+	if price.IsPositive() {
+		eod = t.computeSettlementAt(price).Truncate()
+	}
 	worst := decimal.Zero
 	worstSet := false
 	em := decimal.Zero
@@ -212,6 +221,7 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 		},
 		Stats: StatsData{
 			Liquidation: t.Holdings.LiquidationValue().Truncate(),
+			EOD:         eod,
 			Realized:    t.Holdings.RealizedPnL,
 			Fees:        t.Holdings.TotalFees,
 			Volume:      t.Holdings.Volume,
@@ -221,43 +231,89 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 			Orders:      fmt.Sprintf("%d", t.orderCount()),
 		},
 		Flags: FlagsData{
-			Straddles: t.Config.Straddles,
+			Contracts: t.Config.Contracts,
 			Tolerance: t.Config.Tolerance,
-			Quantum:   t.Config.Quantum,
 			Spread:    t.Config.Spread,
 			Risk:      t.Config.Risk,
 			Patience:  t.Config.Patience.String(),
 		},
 	}
 
-	// positions: iterate over option holdings
+	// find strike range of held option positions
+	heldQty := map[decimal.Decimal]map[byte]decimal.Decimal{}
+	var minStrike, maxStrike decimal.Decimal
+	hasPositions := false
 	for security, holding := range t.Holdings.Positions {
 		o, ok := security.(*options.Option)
 		if !ok {
 			continue
 		}
-		itm := false
-		if o.Class == 'C' {
-			itm = price.Cmp(o.Strike.Price) > 0
-		} else {
-			itm = price.Cmp(o.Strike.Price) < 0
+		sp := o.Strike.Price
+		if !hasPositions || sp.Cmp(minStrike) < 0 {
+			minStrike = sp
 		}
-		snap.Positions = append(snap.Positions, PositionRow{
-			Strike: o.Strike.Price,
-			Class:  string(o.Class),
-			Qty:    holding.Quantity,
-			Bid:    o.Bid,
-			Ask:    o.Ask,
-			Mid:    o.MidPrice(),
-			Delta:  o.Delta,
-			ITM:    itm,
-		})
+		if !hasPositions || sp.Cmp(maxStrike) > 0 {
+			maxStrike = sp
+		}
+		hasPositions = true
+		if heldQty[sp] == nil {
+			heldQty[sp] = map[byte]decimal.Decimal{}
+		}
+		heldQty[sp][byte(o.Class)] = holding.Quantity
+	}
+
+	// emit chain data for all strikes in the held range
+	if hasPositions && t.Chain.Strikes.Size() > 0 {
+		for it := t.Chain.Strikes.Iterator(); it.Next(); {
+			strike := it.Value()
+			if strike.Price.Cmp(minStrike) < 0 || strike.Price.Cmp(maxStrike) > 0 {
+				continue
+			}
+			if strike.Call != nil {
+				qty := decimal.Zero
+				if m := heldQty[strike.Price]; m != nil {
+					qty = m['C']
+				}
+				snap.Positions = append(snap.Positions, PositionRow{
+					Strike: strike.Price,
+					Class:  "C",
+					Qty:    qty,
+					Bid:    strike.Call.Bid,
+					Ask:    strike.Call.Ask,
+					Mid:    strike.Call.MidPrice(),
+					Delta:  strike.Call.Delta,
+					IV:     strike.Call.IV,
+					ITM:    price.Cmp(strike.Price) > 0,
+				})
+			}
+			if strike.Put != nil {
+				qty := decimal.Zero
+				if m := heldQty[strike.Price]; m != nil {
+					qty = m['P']
+				}
+				snap.Positions = append(snap.Positions, PositionRow{
+					Strike: strike.Price,
+					Class:  "P",
+					Qty:    qty,
+					Bid:    strike.Put.Bid,
+					Ask:    strike.Put.Ask,
+					Mid:    strike.Put.MidPrice(),
+					Delta:  strike.Put.Delta,
+					IV:     strike.Put.IV,
+					ITM:    price.Cmp(strike.Price) < 0,
+				})
+			}
+		}
 	}
 
 	// risk profile across strikes within ±4 sigmas
 	if price.IsPositive() && t.Chain.Strikes.Size() > 0 {
-		chartLo := price.Sub(em.MulInt(4).Max(price.DivInt(10)))
-		chartHi := price.Add(em.MulInt(4).Max(price.DivInt(10)))
+		span := em.MulInt(4)
+		if span.IsZero() {
+			span = price.DivInt(20)
+		}
+		chartLo := price.Sub(span)
+		chartHi := price.Add(span)
 		for it := t.Chain.Strikes.Iterator(); it.Next(); {
 			strike := it.Value()
 			if strike.Price.Cmp(chartLo) < 0 || strike.Price.Cmp(chartHi) > 0 {
@@ -286,7 +342,7 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 		}
 		snap.PendingOrders = append(snap.PendingOrders, PendingOrderRow{
 			ID:       order.ID,
-			Security: order.Security.Name(),
+			Security: osi.Humanize(order.Security.Name()),
 			Qty:      order.Quantity,
 			Price:    order.Price,
 			Mid:      order.Security.MidPrice(),
@@ -303,12 +359,26 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 	}
 	for i := len(txs) - 1; i >= start; i-- {
 		tx := txs[i]
+		// improvement: positive means we got a better price than our limit
+		// buying: limit - fill (paid less than willing)
+		// selling: fill - limit (received more than willing)
+		improvement := decimal.Zero
+		if !tx.Limit.IsZero() {
+			if tx.Quantity.IsPositive() {
+				improvement = tx.Limit.Sub(tx.Fill)
+			} else {
+				improvement = tx.Fill.Sub(tx.Limit)
+			}
+		}
 		snap.Transactions = append(snap.Transactions, TransactionRow{
-			Time:     tx.Time.String(),
-			Security: tx.Security.Name(),
-			Qty:      tx.Quantity,
-			Price:    tx.Price,
-			OrderID:  tx.OrderID,
+			Time:        tx.Time.String(),
+			Security:    osi.Humanize(tx.Security.Name()),
+			Qty:         tx.Quantity,
+			Limit:       tx.Limit,
+			Fill:        tx.Fill,
+			Improvement: improvement,
+			PnL:         tx.PnL,
+			Fee:         tx.Fee,
 		})
 	}
 
@@ -370,12 +440,14 @@ func (w *Web) processWebRequest(req WebRequest) {
 
 func (w *Web) applyFlags(f *FlagsData) {
 	t := w.Trader
+	t.Config.Contracts = f.Contracts
+	log.Printf("web: contracts = %s", f.Contracts)
 	t.Config.Tolerance = f.Tolerance
 	log.Printf("web: tolerance = %s", f.Tolerance)
-	t.Config.Quantum = f.Quantum
-	log.Printf("web: quantum = %s", f.Quantum)
 	t.Config.Spread = f.Spread
 	log.Printf("web: spread = %s", f.Spread)
+	t.Config.Risk = f.Risk
+	log.Printf("web: risk = %s", f.Risk)
 	d, err := clocky.ParseDuration(f.Patience)
 	if err == nil {
 		t.Config.Patience = d

@@ -18,8 +18,10 @@ type Transaction struct {
 	Time     clocky.Time
 	Security options.Security
 	Quantity decimal.Decimal
-	Price    decimal.Decimal
-	OrderID  int
+	Limit    decimal.Decimal
+	Fill     decimal.Decimal
+	PnL      decimal.Decimal
+	Fee      decimal.Decimal
 }
 
 type Metrics struct {
@@ -100,6 +102,11 @@ func (t *Trader) onThought(now clocky.Time) {
 		return
 	}
 	if t.Underlying == nil || !t.Underlying.GetBid().IsPositive() || !t.Underlying.GetAsk().IsPositive() {
+		return
+	}
+	age := clocky.Now().Sub(now)
+	if *liveFlag && age > clocky.Minute {
+		t.Hinter.Hint("not trading: warming up or blast from the past (%s old)", age.Round(clocky.Second))
 		return
 	}
 	t.manageStrangles(now)
@@ -239,7 +246,7 @@ func (t *Trader) manageStrangles(now clocky.Time) {
 		return
 	}
 	shortCalls, shortPuts, longCalls, longPuts := t.countOptionLegs()
-	limit := t.Config.Straddles.Int()
+	limit := t.Config.Contracts.Int()
 	if t.Config.Direction.IsNegative() {
 		t.manageSellStrangles(now, shortCalls, shortPuts, longCalls, longPuts, limit)
 	} else {
@@ -337,10 +344,16 @@ func (t *Trader) isIVFavorable(o *options.Option) bool {
 	if metrics == nil {
 		return false
 	}
+	if metrics.MinIV.Age() < t.Config.Age {
+		return false
+	}
+	if metrics.MaxIV.Age() < t.Config.Age {
+		return false
+	}
 	minIV := metrics.MinIV.Value
 	maxIV := metrics.MaxIV.Value
 	if minIV.Cmp(maxIV) >= 0 {
-		return false
+		panic("min IV should be less than max IV")
 	}
 	midIV := minIV.Add(maxIV).Half()
 	if t.Config.Direction.IsNegative() {
@@ -403,19 +416,20 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 	ask := t.Underlying.GetAsk()
 	mid := bid.Add(ask).Half()
 	hlf := ask.Sub(bid).Half()
+	lot := cboe.LotSize(mid)
 	hasBuy, hasSell := t.hasOrder()
-	tolerance := t.Config.Tolerance.Mul(t.Config.Quantum)
 	holding := t.Holdings.Positions[t.Underlying]
+	tolerance := t.Config.Tolerance.Div(mid).Truncate()
 	delta := t.computeDelta()
 	if !hasBuy && delta.Cmp(tolerance) < 0 {
 		if delta.IsNegative() {
 			// we genuinely need to buy in order to hedge
 			// therefore we must be willing to buy as much as possible
-			qty = delta.Neg().QuantizeAway(t.Config.Quantum)
+			qty = delta.Neg().QuantizeAway(lot)
 		} else {
 			// we're market making (because tolerance is positive)
 			// therefore let's not trade any more than a round lot
-			qty = t.Config.Quantum
+			qty = lot
 		}
 		qty = t.clampTradeQuantity(t.Underlying, qty)
 		if !qty.IsZero() {
@@ -435,11 +449,11 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 		if delta.IsPositive() {
 			// we genuinely need to sell in order to hedge
 			// therefore we must be willing to sell as much as possible
-			qty = delta.QuantizeAway(t.Config.Quantum).Neg()
+			qty = delta.QuantizeAway(lot).Neg()
 		} else {
 			// we're market making (because tolerance is positive)
 			// therefore let's not trade any more than a round lot
-			qty = t.Config.Quantum.Neg()
+			qty = lot.Neg()
 		}
 		qty = t.clampTradeQuantity(t.Underlying, qty)
 		if !qty.IsZero() {
@@ -458,13 +472,15 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 	}
 }
 
-func (t *Trader) recordFill(now clocky.Time, order *Order, quantity, price decimal.Decimal) {
+func (t *Trader) recordFill(now clocky.Time, security options.Security, quantity, limit, fill, pnl, fee decimal.Decimal) {
 	t.Transactions = append(t.Transactions, &Transaction{
 		Time:     now,
-		Security: order.Security,
+		Security: security,
 		Quantity: quantity,
-		Price:    price,
-		OrderID:  order.ID,
+		Limit:    limit,
+		Fill:     fill,
+		PnL:      pnl,
+		Fee:      fee,
 	})
 }
 

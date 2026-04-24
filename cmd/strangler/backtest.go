@@ -154,16 +154,15 @@ func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
 		}
 		log.Printf("order #%d transacted %s options at price %s (limit %s)\n",
 			order.ID, order.Quantity, demand, order.Price)
-		t.Holdings.Add(order.Security, order.Quantity, demand)
-		t.recordFill(now, order, order.Quantity, demand)
-		order.Filled = true
-		fee := order.EstimateFee(order.Quantity, true, !order.Making)
+		fee := order.EstimateFee(order.Quantity.Abs(), true, !order.Making)
+		pnl := t.Holdings.Add(order.Security, order.Quantity, demand)
 		t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
+		t.recordFill(now, order.Security, order.Quantity, order.Price, demand, pnl, fee)
+		order.Filled = true
 		return true
 	case *options.Equity:
 		got := decimal.Zero
 		need := order.Unfilled
-		first := need.Cmp(order.Quantity.Abs()) == 0
 		if order.Quantity.IsPositive() {
 			// let's buy stock
 			for {
@@ -180,9 +179,12 @@ func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
 				} else {
 					e.Book.Asks.Levels[len(e.Book.Asks.Levels)-1].Size = level.Size.Sub(take)
 				}
+				isFirst := got.IsZero()
 				got = got.Add(take)
-				t.Holdings.Add(order.Security, take, level.Price)
-				t.recordFill(now, order, take, level.Price)
+				pnl := t.Holdings.Add(order.Security, take, level.Price)
+				fee := order.EstimateFee(take, isFirst, !order.Making)
+				t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
+				t.recordFill(now, order.Security, take, order.Price, level.Price, pnl, fee)
 				log.Printf("order #%d bought %s at price %s (limit %s) after %s\n",
 					order.ID, got, level.Price, order.Price, now.Sub(order.Created))
 				if got.Cmp(need) == 0 {
@@ -205,18 +207,18 @@ func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
 				} else {
 					e.Book.Bids.Levels[len(e.Book.Bids.Levels)-1].Size = level.Size.Sub(take)
 				}
+				isFirst := got.IsZero()
 				got = got.Add(take)
-				t.Holdings.Add(order.Security, take.Neg(), level.Price)
-				t.recordFill(now, order, take.Neg(), level.Price)
+				pnl := t.Holdings.Add(order.Security, take.Neg(), level.Price)
+				fee := order.EstimateFee(take, isFirst, !order.Making)
+				t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
+				t.recordFill(now, order.Security, take.Neg(), order.Price, level.Price, pnl, fee)
 				log.Printf("order #%d sold %s at price %s (limit %s) after %s\n",
 					order.ID, got, level.Price, order.Price, now.Sub(order.Created))
 				if got.Cmp(need) == 0 {
 					break
 				}
 			}
-		}
-		if first && got.Cmp(need) != 0 {
-			order.Making = true
 		}
 		if got.IsZero() {
 			return false // market hasn't reached our limit yet
@@ -226,8 +228,6 @@ func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
 		if got.Cmp(need) == 0 {
 			order.Filled = true
 		}
-		fee := order.EstimateFee(got, first, !order.Making)
-		t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
 		return order.Filled
 	default:
 		panic("unsupported security type")

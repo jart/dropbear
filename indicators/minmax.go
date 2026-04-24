@@ -36,7 +36,11 @@ func newMinmax(duration clocky.Duration, cmp func(a, b decimal.Decimal) bool) *m
 }
 
 func (m *minmax) IsReady() bool {
-	return m.last.Sub(m.first) >= m.duration
+	return m.Age() >= m.duration
+}
+
+func (m *minmax) Age() clocky.Duration {
+	return m.last.Sub(m.first)
 }
 
 func (m *minmax) Add(ts clocky.Time, price decimal.Decimal) {

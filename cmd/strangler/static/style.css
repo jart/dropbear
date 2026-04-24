@@ -100,7 +100,7 @@ section {
 
 canvas {
   background: #0f0f23;
-  height: 400px;
+  height: 300px;
   width: 100%;
 }
 
@@ -127,6 +127,7 @@ th:first-child {
   text-align: left;
 }
 
+td.left, th.left { text-align: left; white-space: nowrap; }
 .pos { color: #66bb6a; }
 .neg { color: #ef5350; }
 .zero { color: #666; }
