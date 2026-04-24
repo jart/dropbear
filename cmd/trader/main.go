@@ -23,18 +23,21 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 var (
-	flagMaxSyms   = flag.Int("maxsyms", 500, "maximum number of symbols to trade simultaneously")
+	flagMaxSyms   = flag.Int("maxsyms", 300, "maximum number of symbols to trade simultaneously")
 	flagMaxPos    = flag.Int("maxpos", 4, "maximum position size per symbol (in shares)")
 	flagQty       = flag.Int("qty", 4, "shares per order")
 	flagMinEdge   = decimal.Flag("minedge", "0.02", "minimum spread in dollars to act")
 	flagMinPrice  = decimal.Flag("minprice", "1.0", "minimum stock price to consider")
 	flagMaxPrice  = decimal.Flag("maxprice", "500", "maximum stock price to consider")
 	flagThreshold = decimal.Flag("threshold", "0.3", "imbalance ratio threshold to trigger (0-1)")
+	flagExitOnly  = flag.Bool("exit", false, "exit-only mode: close existing positions, no new entries")
+	flagWinner    = flag.Bool("winner", false, "never close a position at a loss (based on avg entry price)")
 )
 
 // Fee/rebate constants for equity DMA orders (always making).
@@ -199,6 +202,10 @@ func main() {
 		}
 	}
 
+	// create timer
+	balanceTicker := time.NewTicker(5 * time.Second)
+	defer balanceTicker.Stop()
+
 	for {
 		select {
 		case msg := <-stockUpdates:
@@ -207,6 +214,8 @@ func main() {
 			}
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
+		case <-balanceTicker.C:
+			logBalance()
 		case <-sigChan:
 			shutdown()
 			return
@@ -397,14 +406,24 @@ func evaluate(st *symbolState) {
 	// PRIORITY 1: Exit existing positions at a profit.
 	// Post AT the bid/ask (don't improve) so we capture the spread.
 	// Entry improves by a penny to get priority; exit waits at the edge.
+	// With -winner, floor the exit price at avg entry + a tick to guarantee profit.
 	if st.position.IsPositive() && st.sellOrderID == "" {
 		price := st.nbboAsk
+		if *flagWinner && !st.costBasis.IsZero() {
+			minPrice := st.costBasis.Div(st.position).Add(cboe.Tick01)
+			price = price.Max(minPrice)
+		}
 		dest := bestDest(st.nbboAskEx)
 		placeOrder(st, ds.SideSell, qty.Min(st.position), price, dest)
 		return
 	}
 	if st.position.IsNegative() && st.buyOrderID == "" {
 		price := st.nbboBid
+		if *flagWinner && !st.costBasis.IsZero() {
+			// short: avg entry = costBasis / position = negative / negative = positive
+			maxPrice := st.costBasis.Div(st.position).Sub(cboe.Tick01)
+			price = price.Min(maxPrice)
+		}
 		dest := bestDest(st.nbboBidEx)
 		placeOrder(st, ds.SideBuy, qty.Min(st.position.Neg()), price, dest)
 		return
@@ -412,6 +431,9 @@ func evaluate(st *symbolState) {
 
 	// PRIORITY 2: Enter new positions based on imbalance signal.
 	// Only when flat (no position) and no pending orders.
+	if *flagExitOnly {
+		return
+	}
 	if !st.position.IsZero() || st.buyOrderID != "" || st.sellOrderID != "" {
 		return
 	}
@@ -502,6 +524,46 @@ func activeSymbolCount() int {
 func isOptionsSymbol(sym string) bool {
 	_, _, _, _, _, _, err := osi.Parse(sym)
 	return err == nil
+}
+
+func logBalance() {
+	longNotional := decimal.Zero
+	shortNotional := decimal.Zero
+	longCount := 0
+	shortCount := 0
+	pendingCount := 0
+	totalUnrealized := decimal.Zero
+	for _, st := range gSymbols {
+		if st.position.IsPositive() {
+			mid := st.nbboBid.Add(st.nbboAsk).Half()
+			if mid.IsZero() {
+				mid = st.costBasis.Div(st.position) // fallback to avg cost
+			}
+			notional := mid.Mul(st.position)
+			longNotional = longNotional.Add(notional)
+			longCount++
+			totalUnrealized = totalUnrealized.Add(notional.Sub(st.costBasis))
+		} else if st.position.IsNegative() {
+			mid := st.nbboBid.Add(st.nbboAsk).Half()
+			if mid.IsZero() {
+				mid = st.costBasis.Div(st.position)
+			}
+			notional := mid.Mul(st.position.Neg())
+			shortNotional = shortNotional.Add(notional)
+			shortCount++
+			totalUnrealized = totalUnrealized.Add(st.position.Mul(mid).Sub(st.costBasis))
+		}
+		if st.buyOrderID != "" || st.sellOrderID != "" {
+			pendingCount++
+		}
+	}
+	net := gTotalPnL.Sub(gTotalFees)
+	log.Printf("BALANCE long=$%s (%d) short=$%s (%d) net_exposure=$%s | realized=%s fees=%s net=%s unrealized=%s | fills=%d pending=%d quotes=%d",
+		longNotional.Format(0), longCount,
+		shortNotional.Format(0), shortCount,
+		longNotional.Sub(shortNotional).Format(0),
+		gTotalPnL, gTotalFees, net, totalUnrealized,
+		gTotalFills, pendingCount, gQuoteCount)
 }
 
 func shutdown() {
