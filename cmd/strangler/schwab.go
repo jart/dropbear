@@ -278,6 +278,7 @@ func (t *Trader) onFillEventSchwab(event *schwab.OrderEvent, fill *schwab.FillEv
 		log.Printf("warning: order id %d not found for fill event (order placed in thinkorswim?)", orderID)
 		return
 	}
+	t.recordFill(clocky.Now(), order, fillQuantity, fillPrice)
 
 	// update holdings
 	log.Printf("#%d filled for order id %d %s %s @ %s, route: %s, improvement: %s, fee: %s",

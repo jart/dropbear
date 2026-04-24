@@ -55,13 +55,35 @@
     </table>
   </section>
 
+  <section class="orders-section">
+    <h2>pending orders</h2>
+    <table id="ordersTable">
+      <thead>
+        <tr><th>#</th><th>security</th><th>qty</th><th>price</th><th>mid</th><th>status</th><th>age</th></tr>
+      </thead>
+      <tbody id="ordersBody"></tbody>
+    </table>
+  </section>
+
+  <section class="transactions-section">
+    <h2>transactions</h2>
+    <table id="txTable">
+      <thead>
+        <tr><th>time</th><th>security</th><th>qty</th><th>price</th><th>#</th></tr>
+      </thead>
+      <tbody id="txBody"></tbody>
+    </table>
+  </section>
+
   <section class="flags-section">
     <h2>flags</h2>
     <form id="flagsForm" onsubmit="return submitFlags(event)">
+      <label>straddles <input name="straddles" type="text" size="6"></label>
       <label>tolerance <input name="tolerance" type="text" size="6"></label>
       <label>quantum <input name="quantum" type="text" size="6"></label>
       <label>spread <input name="spread" type="text" size="6"></label>
       <label>patience <input name="patience" type="text" size="6"></label>
+      <label>risk <input name="risk" type="text" size="6"></label>
       <button type="submit">Apply</button>
     </form>
   </section>

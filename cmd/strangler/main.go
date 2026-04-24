@@ -51,37 +51,43 @@ func main() {
 	black76.DaysPerYear = 252
 	black76.HoursPerDay = 6.5
 
-	webFlag := flag.Bool("web", false, "enable web dashboard feature")
 	dbnFlag := flag.String("dbn", "", "path to backtest data")
-	symbolFlag := symbol.Flag("symbol", "", "symbol to trade (e.g. NVDA)")
-	strikesFlag := flag.Int("strikes", 2, "how many strikes wide strangle should be")
 	dateFlag := clocky.TimeFlag("date", "", "date of the trades")
+	symbolFlag := symbol.Flag("symbol", "", "symbol to trade (e.g. NVDA)")
+	webFlag := flag.Bool("web", false, "enable web dashboard feature")
 	schwabFlag := flag.Bool("schwab", false, "use schwab as broker instead of alpaca")
+	strikesFlag := flag.Int("strikes", 2, "how many strikes wide strangle should be")
 	wingFlag := decimal.Flag("wing", "0.05", "how much to pay for each wing of short strangle insurance, where zero means naked")
 	toleranceFlag := decimal.Flag("tolerance", "-4", "delta imbalance tolerance (negative minimizes trading; positive does symmetrical market making)")
 	directionFlag := decimal.Flag("direction", "-1", "direction of options trade (+1 is long; -1 is short)")
-	straddlesFlag := decimal.Flag("straddles", "5", "number of ATM straddles to buy at open")
+	straddlesFlag := decimal.Flag("straddles", "5", "max number of strangles to create")
+	riskFlag := decimal.Flag("risk", "5000", "maximum amount of options risk to tolerate")
 	quantumFlag := decimal.Flag("quantum", "40", "share lot size for delta hedging")
 	chaseFlag := clocky.DurationFlag("chase", "2s", "how long to wait before chasing nbbo")
 	patienceFlag := clocky.DurationFlag("patience", "60s", "how long to wait for order execution")
 	spreadFlag := decimal.Flag("spread", "2", "spread crossing for straddle (-1=make, 0=mid, 1=take)")
-	startOfDayFlag := flag.Int("sod", 9_45_00, "start of day in HHMMSS")
-	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")
+	startOfDayFlag := flag.Int("sod", 9_35_00, "start of day in HHMMSS")
+	lookbackFlag := clocky.DurationFlag("lookback", "2h", "how far indicators should look back")
+	samplesFlag := flag.Int("samples", 13, "number of samples for moving average indicators")
 	dmaFlag := alpaca.OrderDestinationFlag("dma", "", "directly route order to lit exchange (NYSE, NASDAQ, ARCA)")
+	flagCPUProfile := flag.String("cpuprofile", "", "write cpu profile to file")
 
 	newConfig := func() *Config {
 		return &Config{
-			Symbol:     *symbolFlag,
-			Direction:  *directionFlag,
-			Straddles:  *straddlesFlag,
-			Quantum:    *quantumFlag,
-			Spread:     *spreadFlag,
-			Patience:   *patienceFlag,
-			Chase:      *chaseFlag,
 			StartOfDay: *startOfDayFlag,
-			Strikes:    *strikesFlag,
-			Schwab:     *schwabFlag,
+			Straddles:  *straddlesFlag,
+			Direction:  *directionFlag,
 			Tolerance:  *toleranceFlag,
+			Patience:   *patienceFlag,
+			Lookback:   *lookbackFlag,
+			Quantum:    *quantumFlag,
+			Samples:    *samplesFlag,
+			Strikes:    *strikesFlag,
+			Symbol:     *symbolFlag,
+			Spread:     *spreadFlag,
+			Schwab:     *schwabFlag,
+			Chase:      *chaseFlag,
+			Risk:       *riskFlag,
 			Wing:       *wingFlag,
 			DMA:        *dmaFlag,
 		}

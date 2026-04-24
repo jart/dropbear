@@ -7,49 +7,32 @@ import (
 	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/indicators"
 	"dropbear/loggy"
 	"dropbear/options"
 	"fmt"
 	"log"
 )
 
-type State int
+type Transaction struct {
+	Time     clocky.Time
+	Security options.Security
+	Quantity decimal.Decimal
+	Price    decimal.Decimal
+	OrderID  int
+}
 
-const (
-	StateWingCall State = iota
-	StateWingCall2
-	StateWingPut
-	StateWingPut2
-	StateStrangleCall
-	StateStrangleCall2
-	StateStranglePut
-	StateStranglePut2
-	StateReady
-)
+type Metrics struct {
 
-func (s State) String() string {
-	switch s {
-	case StateWingCall:
-		return "buying wing call"
-	case StateWingCall2:
-		return "filling wing call"
-	case StateWingPut:
-		return "buying wing put"
-	case StateWingPut2:
-		return "filling wing put"
-	case StateStrangleCall:
-		return "opening call"
-	case StateStrangleCall2:
-		return "filling call"
-	case StateStranglePut:
-		return "opening put"
-	case StateStranglePut2:
-		return "filling put"
-	case StateReady:
-		return "hedging"
-	default:
-		return "unknown"
-	}
+	// these indicators might help know when to buy/sell options
+	// by default they have hours of lookback at tick granularity
+	MinIV *indicators.Min
+	MaxIV *indicators.Max
+
+	// these indicators might help us smooth out noise in quote prices
+	// by default they have thirteen samples of lookback
+	BidMA *indicators.WWMA
+	AskMA *indicators.WWMA
 }
 
 type Trader struct {
@@ -68,11 +51,12 @@ type Trader struct {
 	OrdersBySchwabID        map[schwab.OrderID]*Order
 	OrdersByClientOrderID   map[string]*Order
 	PendingOrders           map[*Order]bool
+	Metrics                 map[options.Security]*Metrics
 	PendingOrdersBySecurity map[options.Security][]*Order
 	MarketClose             clocky.Time
+	Transactions            []*Transaction
 	Hinter                  *loggy.Hinter
 	NextHedge               clocky.Time
-	State                   State
 	OrderCounter            int
 	Paused                  bool
 }
@@ -94,6 +78,7 @@ func NewTrader(config *Config) *Trader {
 		OptionsByID:             map[uint32]*options.Option{},
 		EquitiesByID:            map[uint32]*options.Equity{},
 		SecuritiesByName:        map[string]options.Security{},
+		Metrics:                 map[options.Security]*Metrics{},
 		Hinter:                  loggy.NewHinter(),
 	}
 	t.Web.Trader = t
@@ -117,57 +102,8 @@ func (t *Trader) onThought(now clocky.Time) {
 	if t.Underlying == nil || !t.Underlying.GetBid().IsPositive() || !t.Underlying.GetAsk().IsPositive() {
 		return
 	}
-	// either buy a strangle or sell an iron condor
-	// we open one leg at a time so we don't have to support multi-leg orders
-	// for short strangles we buy the wings first to reduce our margin requirements
-	switch t.State {
-	case StateWingCall:
-		if t.Config.Direction.IsPositive() {
-			// we don't need wings on a long strangle
-			t.State = StateStrangleCall
-			break
-		}
-		if t.Config.Wing.IsZero() {
-			// you better have plenty of margin
-			t.State = StateStrangleCall
-			break
-		}
-		if t.buyWingCall(now) {
-			t.State = StateWingCall2
-		}
-	case StateWingCall2:
-		if t.orderCount() == 0 {
-			t.State = StateWingPut
-		}
-	case StateWingPut:
-		if t.buyWingPut(now) {
-			t.State = StateWingPut2
-		}
-	case StateWingPut2:
-		if t.orderCount() == 0 {
-			t.State = StateStrangleCall
-		}
-	case StateStrangleCall:
-		if t.openStrangleCall(now) {
-			t.State = StateStrangleCall2
-		}
-	case StateStrangleCall2:
-		if t.orderCount() == 0 {
-			t.State = StateStranglePut
-		}
-	case StateStranglePut:
-		if t.openStranglePut(now) {
-			t.State = StateStranglePut2
-		}
-	case StateStranglePut2:
-		if t.orderCount() == 0 {
-			t.State = StateReady
-		}
-	case StateReady:
-		t.hedgeDelta(now)
-	default:
-		panic("invalid state")
-	}
+	t.manageStrangles(now)
+	t.hedgeDelta(now)
 }
 
 func (t *Trader) orderCount() int {
@@ -182,11 +118,11 @@ func (t *Trader) pendingOrders() []*Order {
 	return orders
 }
 
-func (t *Trader) marketOrder(now clocky.Time, security options.Security, quantity decimal.Decimal) {
-	t.limitOrder(now, security, quantity, decimal.Zero)
+func (t *Trader) order(now clocky.Time, security options.Security, quantity decimal.Decimal) *Order {
+	return t.limitOrder(now, security, quantity, t.getMidpointPrice(security, quantity))
 }
 
-func (t *Trader) limitOrder(now clocky.Time, security options.Security, quantity, price decimal.Decimal) {
+func (t *Trader) limitOrder(now clocky.Time, security options.Security, quantity, price decimal.Decimal) *Order {
 	t.OrderCounter++
 	order := &Order{
 		Trader:   t,
@@ -200,104 +136,223 @@ func (t *Trader) limitOrder(now clocky.Time, security options.Security, quantity
 	if err != nil {
 		log.Printf("failed to place order: %v\n", err)
 	}
+	return order
 }
 
-// buyWingCall buys the cheapest call to reduce margin requirement when -direction=-1
-// this effectively turns the short strangle into a short iron condor
-func (t *Trader) buyWingCall(now clocky.Time) bool {
+func (t *Trader) getMidpointPrice(security options.Security, quantity decimal.Decimal) decimal.Decimal {
+	mid := security.MidPrice()
+	tick, bigTick := security.Ticks()
+	if mid.Cmp(decimal.Three) > 0 {
+		tick = bigTick
+	}
+	if quantity.IsPositive() {
+		return mid.QuantizeTruncate(tick) // buy low
+	} else {
+		return mid.QuantizeAway(tick) // sell high
+	}
+}
+
+// finds a call very far out of the money to make margin go down when we sell calls
+func (t *Trader) findWingCall() *options.Option {
 	strike := t.Chain.AtTheMoney
 	for {
 		if strike == nil {
-			t.Hinter.Hint("ran out of strikes")
-			return false
+			return nil
 		}
 		if !strike.IsReady() {
-			t.Hinter.Hint("strike %s not ready", strike)
-			return false
+			return nil
 		}
-		if !strike.Call.HasGreeks() {
-			t.Hinter.Hint("greeks not ready yet for strike %s underlying is %s", strike, t.Underlying.MidPrice())
-			return false
+		if !strike.Call.Ask.IsPositive() {
+			return nil
 		}
-		if strike.Call.Ask.IsPositive() && strike.Call.Ask.Cmp(t.Config.Wing) <= 0 {
+		if strike.Call.Ask.Cmp(t.Config.Wing) <= 0 {
 			break
 		}
 		strike = strike.Next
 	}
-	quantity := t.Config.Straddles
-	log.Printf("we shall buy %s wing call at strike %s with ask price %s underlying is %s\n", quantity, strike, strike.Call.Ask, t.Underlying.MidPrice())
-	t.marketOrder(now, strike.Call, quantity)
-	return true
+	return strike.Call
 }
 
-// buyWingPut buys the cheapest put to reduce margin requirement when -direction=-1
-// this effectively turns the short strangle into a short iron condor
-func (t *Trader) buyWingPut(now clocky.Time) bool {
+// finds a put very far out of the money to make margin go down when we sell puts
+func (t *Trader) findWingPut() *options.Option {
 	strike := t.Chain.AtTheMoney
 	for {
 		if strike == nil {
-			t.Hinter.Hint("ran out of strikes")
-			return false
+			return nil
 		}
 		if !strike.IsReady() {
-			t.Hinter.Hint("strike %s not ready", strike)
-			return false
+			return nil
 		}
-		if !strike.Put.HasGreeks() {
-			t.Hinter.Hint("greeks not ready yet for strike %s underlying is %s", strike, t.Underlying.MidPrice())
-			return false
+		if !strike.Put.Ask.IsPositive() {
+			return nil
 		}
-		if strike.Put.Ask.IsPositive() && strike.Put.Ask.Cmp(t.Config.Wing) <= 0 {
+		if strike.Put.Ask.Cmp(t.Config.Wing) <= 0 {
 			break
 		}
 		strike = strike.Prev
 	}
-	quantity := t.Config.Straddles
-	log.Printf("we shall buy %s wing put at strike %s with ask price %s underlying is %s\n", quantity, strike, strike.Put.Ask, t.Underlying.MidPrice())
-	t.marketOrder(now, strike.Put, quantity)
-	return true
+	return strike.Put
 }
 
-func (t *Trader) openStrangleCall(now clocky.Time) bool {
+// finds a call slightly out of the money
+func (t *Trader) findCall() *options.Option {
 	strike := t.Chain.AtTheMoney
 	n := t.Config.Strikes / 2
 	for n > 0 {
 		if strike == nil || !strike.IsReady() {
-			return false
+			return nil
 		}
 		strike = strike.Next
 		n--
 	}
 	if !strike.Call.HasGreeks() {
-		return false
+		return nil
 	}
-	quantity := t.Config.Straddles.Mul(t.Config.Direction)
-	log.Printf("we shall trade %s strangle call at strike %s with ask price %s underlying is %s\n", quantity, strike, strike.Call.Ask, t.Underlying.MidPrice())
-	t.marketOrder(now, strike.Call, quantity)
-	return true
+	return strike.Call
 }
 
-func (t *Trader) openStranglePut(now clocky.Time) bool {
+// finds a put slightly out of the money
+func (t *Trader) findPut() *options.Option {
 	strike := t.Chain.AtTheMoney
 	n := (t.Config.Strikes + 1) / 2
 	for n > 0 {
 		if strike == nil || !strike.IsReady() {
-			return false
+			return nil
 		}
 		strike = strike.Prev
 		n--
 	}
 	if !strike.Put.HasGreeks() {
-		return false
+		return nil
 	}
-	quantity := t.Config.Straddles.Mul(t.Config.Direction)
-	log.Printf("we shall trade %s strangle put at strike %s with ask price %s underlying is %s\n", quantity, strike, strike.Put.Ask, t.Underlying.MidPrice())
-	t.marketOrder(now, strike.Put, quantity)
-	return true
+	return strike.Put
 }
 
-func (t *Trader) hasOrder(orders []*Order) (hasBuy bool, hasSell bool) {
-	for _, order := range orders {
+// manageStrangles builds strangle positions one leg at a time.
+// For selling (direction=-1): buys wings first, then sells when IV is high.
+// For buying (direction=+1): buys when IV is low.
+func (t *Trader) manageStrangles(now clocky.Time) {
+	if t.Config.Direction.IsZero() {
+		return
+	}
+	if t.hasPendingOptionOrder() {
+		return
+	}
+	shortCalls, shortPuts, longCalls, longPuts := t.countOptionLegs()
+	limit := t.Config.Straddles.Int()
+	if t.Config.Direction.IsNegative() {
+		t.manageSellStrangles(now, shortCalls, shortPuts, longCalls, longPuts, limit)
+	} else {
+		t.manageBuyStrangles(now, longCalls, longPuts, limit)
+	}
+}
+
+func (t *Trader) manageSellStrangles(now clocky.Time, shortCalls, shortPuts, longCalls, longPuts, limit int) {
+	if shortCalls < limit {
+		if !t.Config.Wing.IsZero() && longCalls <= shortCalls {
+			if wing := t.findWingCall(); wing != nil {
+				log.Printf("buying wing call %s (wings:%d short:%d)\n", wing.Name(), longCalls, shortCalls)
+				t.order(now, wing, decimal.One)
+			} else {
+				t.Hinter.Hint("can't find wing call")
+			}
+			return
+		}
+		if call := t.findCall(); call != nil && t.isIVFavorable(call) {
+			log.Printf("selling call %s (iv:%s short:%d/%d)\n", call.Name(), call.IV, shortCalls+1, limit)
+			t.order(now, call, decimal.NegOne)
+			return
+		}
+	}
+	if shortPuts < limit {
+		if !t.Config.Wing.IsZero() && longPuts <= shortPuts {
+			if wing := t.findWingPut(); wing != nil {
+				log.Printf("buying wing put %s (wings:%d short:%d)\n", wing.Name(), longPuts, shortPuts)
+				t.order(now, wing, decimal.One)
+			} else {
+				t.Hinter.Hint("can't find wing put")
+			}
+			return
+		}
+		if put := t.findPut(); put != nil && t.isIVFavorable(put) {
+			log.Printf("selling put %s (iv:%s short:%d/%d)\n", put.Name(), put.IV, shortPuts+1, limit)
+			t.order(now, put, decimal.NegOne)
+			return
+		}
+	}
+}
+
+func (t *Trader) manageBuyStrangles(now clocky.Time, longCalls, longPuts, limit int) {
+	if longCalls < limit {
+		if call := t.findCall(); call != nil && t.isIVFavorable(call) {
+			log.Printf("buying call %s (iv:%s long:%d/%d)\n", call.Name(), call.IV, longCalls+1, limit)
+			t.order(now, call, decimal.One)
+			return
+		}
+	}
+	if longPuts < limit {
+		if put := t.findPut(); put != nil && t.isIVFavorable(put) {
+			log.Printf("buying put %s (iv:%s long:%d/%d)\n", put.Name(), put.IV, longPuts+1, limit)
+			t.order(now, put, decimal.One)
+			return
+		}
+	}
+}
+
+func (t *Trader) hasPendingOptionOrder() bool {
+	for order := range t.PendingOrders {
+		if _, ok := order.Security.(*options.Option); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *Trader) countOptionLegs() (shortCalls, shortPuts, longCalls, longPuts int) {
+	for security, holding := range t.Holdings.Positions {
+		opt, ok := security.(*options.Option)
+		if !ok {
+			continue
+		}
+		qty := holding.Quantity.Int()
+		if opt.Class == 'C' {
+			if qty > 0 {
+				longCalls += qty
+			} else {
+				shortCalls += -qty
+			}
+		} else {
+			if qty > 0 {
+				longPuts += qty
+			} else {
+				shortPuts += -qty
+			}
+		}
+	}
+	return
+}
+
+func (t *Trader) isIVFavorable(o *options.Option) bool {
+	metrics := t.Metrics[o]
+	if metrics == nil {
+		return false
+	}
+	minIV := metrics.MinIV.Value
+	maxIV := metrics.MaxIV.Value
+	if minIV.Cmp(maxIV) >= 0 {
+		return false
+	}
+	midIV := minIV.Add(maxIV).Half()
+	if t.Config.Direction.IsNegative() {
+		// selling: want IV on the high side
+		return o.IV.Cmp(midIV) > 0
+	}
+	// buying: want IV on the low side
+	return o.IV.Cmp(midIV) < 0
+}
+
+func (t *Trader) hasOrder() (hasBuy bool, hasSell bool) {
+	for order := range t.PendingOrders {
 		if order.Quantity.IsPositive() {
 			hasBuy = true
 		} else {
@@ -308,8 +363,7 @@ func (t *Trader) hasOrder(orders []*Order) (hasBuy bool, hasSell bool) {
 }
 
 func (t *Trader) hedgeDelta(now clocky.Time) {
-	orders := t.pendingOrders()
-	for _, order := range orders {
+	for order := range t.PendingOrders {
 		if order.Canceling {
 			continue
 		}
@@ -320,8 +374,8 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 				log.Printf("failed to cancel order #%d: %v\n", order.ID, err)
 			}
 		} else if now.After(order.NextChase) {
-			bid := t.Underlying.GetBid()
-			ask := t.Underlying.GetAsk()
+			bid := order.Security.GetBid()
+			ask := order.Security.GetAsk()
 			if order.Quantity.IsPositive() {
 				// buying: chase upward if bid improved
 				if bid.Cmp(order.Price) > 0 {
@@ -349,7 +403,7 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 	ask := t.Underlying.GetAsk()
 	mid := bid.Add(ask).Half()
 	hlf := ask.Sub(bid).Half()
-	hasBuy, hasSell := t.hasOrder(orders)
+	hasBuy, hasSell := t.hasOrder()
 	tolerance := t.Config.Tolerance.Mul(t.Config.Quantum)
 	holding := t.Holdings.Positions[t.Underlying]
 	delta := t.computeDelta()
@@ -402,6 +456,16 @@ func (t *Trader) hedgeDelta(now clocky.Time) {
 			t.onHeartbeat()
 		}
 	}
+}
+
+func (t *Trader) recordFill(now clocky.Time, order *Order, quantity, price decimal.Decimal) {
+	t.Transactions = append(t.Transactions, &Transaction{
+		Time:     now,
+		Security: order.Security,
+		Quantity: quantity,
+		Price:    price,
+		OrderID:  order.ID,
+	})
 }
 
 func (t *Trader) onOrderFail(order *Order) {
@@ -555,12 +619,14 @@ func (t *Trader) onOptionTrade(o *options.Option, m *databento.CMBP1) {
 }
 
 func (t *Trader) onOptionQuote(o *options.Option, m *databento.CMBP1) {
+	metrics := t.getMetrics(o)
 	o.TS = m.Header.TSEvent
 	mustRecomputeGreeks := false
 	bid := m.Levels[0].BidPx
 	if bid != databento.UndefPrice {
 		price := decimal.Decimal(bid / 1000)
 		if price.Cmp(o.Bid) != 0 {
+			metrics.BidMA.Add(price)
 			mustRecomputeGreeks = true
 		}
 		o.Bid = price
@@ -575,6 +641,7 @@ func (t *Trader) onOptionQuote(o *options.Option, m *databento.CMBP1) {
 	if ask != databento.UndefPrice {
 		price := decimal.Decimal(ask / 1000)
 		if price.Cmp(o.Ask) != 0 {
+			metrics.AskMA.Add(price)
 			mustRecomputeGreeks = true
 		}
 		o.Ask = price
@@ -591,5 +658,23 @@ func (t *Trader) onOptionQuote(o *options.Option, m *databento.CMBP1) {
 	mustRecomputeGreeks = true
 	if mustRecomputeGreeks && t.Underlying != nil {
 		o.ComputeGreeks(t.Underlying.MidPrice(), kRiskFreeRate)
+		if o.HasGreeks() {
+			metrics.MinIV.Add(o.TS, o.IV)
+			metrics.MaxIV.Add(o.TS, o.IV)
+		}
 	}
+}
+
+func (t *Trader) getMetrics(security options.Security) *Metrics {
+	metrics := t.Metrics[security]
+	if metrics == nil {
+		metrics = &Metrics{
+			MinIV: indicators.NewMin(t.Config.Lookback),
+			MaxIV: indicators.NewMax(t.Config.Lookback),
+			BidMA: indicators.NewWWMA(t.Config.Samples),
+			AskMA: indicators.NewWWMA(t.Config.Samples),
+		}
+		t.Metrics[security] = metrics
+	}
+	return metrics
 }

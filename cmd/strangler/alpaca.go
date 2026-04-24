@@ -131,18 +131,22 @@ func (t *Trader) sendLiveOrderAlpaca(order *Order) {
 		if order.Price.IsZero() {
 			orderType = alpaca.OrderTypeMarket
 		}
-		_, err := gAlpacaClient.CreateOrder(&alpaca.CreateOrderRequest{
-			Symbol:        osi.Uncanonicalize(order.Security.Name()),
-			Side:          sid,
-			Qty:           qty,
-			Type:          orderType,
-			LimitPrice:    order.Price,
-			TimeInForce:   alpaca.TimeInForceDay,
-			ClientOrderID: clientOrderID,
-			AdvancedInstructions: &alpaca.AdvancedInstructions{
+		var advanced *alpaca.AdvancedInstructions
+		if t.Config.DMA != alpaca.OrderDestinationNone {
+			advanced = &alpaca.AdvancedInstructions{
 				Algorithm:   alpaca.OrderAlgorithmDMA,
 				Destination: t.Config.DMA,
-			},
+			}
+		}
+		_, err := gAlpacaClient.CreateOrder(&alpaca.CreateOrderRequest{
+			Symbol:               osi.Uncanonicalize(order.Security.Name()),
+			Side:                 sid,
+			Qty:                  qty,
+			Type:                 orderType,
+			LimitPrice:           order.Price,
+			TimeInForce:          alpaca.TimeInForceDay,
+			ClientOrderID:        clientOrderID,
+			AdvancedInstructions: advanced,
 		})
 		if err != nil {
 			log.Printf("failed to send order #%d to alpaca: %v", order.ID, err)
@@ -185,7 +189,9 @@ func (t *Trader) onOrderEventAlpaca(orderUpdate *alpaca.OrderUpdate) {
 		absoluteOrderQuantity := order.Quantity.Abs()
 		absoluteFilledQuantity := orderUpdate.Order.FilledQty
 		order.Unfilled = absoluteOrderQuantity.Sub(absoluteFilledQuantity)
-		t.Holdings.Add(order.Security, orderUpdate.Qty.Mul(decimal.Decimal(orderUpdate.Order.Side)), orderUpdate.Price)
+		fillQty := orderUpdate.Qty.Mul(decimal.Decimal(orderUpdate.Order.Side))
+		t.Holdings.Add(order.Security, fillQty, orderUpdate.Price)
+		t.recordFill(clocky.Now(), order, fillQty, orderUpdate.Price)
 		holding := t.Holdings.Positions[order.Security]
 		if holding != nil {
 			if holding.Quantity.Cmp(orderUpdate.PositionQty) != 0 {

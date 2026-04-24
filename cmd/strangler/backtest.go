@@ -155,6 +155,7 @@ func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
 		log.Printf("order #%d transacted %s options at price %s (limit %s)\n",
 			order.ID, order.Quantity, demand, order.Price)
 		t.Holdings.Add(order.Security, order.Quantity, demand)
+		t.recordFill(now, order, order.Quantity, demand)
 		order.Filled = true
 		fee := order.EstimateFee(order.Quantity, true, !order.Making)
 		t.Holdings.TotalFees = t.Holdings.TotalFees.Add(fee)
@@ -181,6 +182,7 @@ func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
 				}
 				got = got.Add(take)
 				t.Holdings.Add(order.Security, take, level.Price)
+				t.recordFill(now, order, take, level.Price)
 				log.Printf("order #%d bought %s at price %s (limit %s) after %s\n",
 					order.ID, got, level.Price, order.Price, now.Sub(order.Created))
 				if got.Cmp(need) == 0 {
@@ -205,6 +207,7 @@ func (t *Trader) simulateFillOrder(now clocky.Time, order *Order) bool {
 				}
 				got = got.Add(take)
 				t.Holdings.Add(order.Security, take.Neg(), level.Price)
+				t.recordFill(now, order, take.Neg(), level.Price)
 				log.Printf("order #%d sold %s at price %s (limit %s) after %s\n",
 					order.ID, got, level.Price, order.Price, now.Sub(order.Created))
 				if got.Cmp(need) == 0 {

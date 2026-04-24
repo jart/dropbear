@@ -10,13 +10,16 @@ import (
 type Config struct {
 	Symbol     symbol.Symbol
 	Direction  decimal.Decimal
-	Straddles  decimal.Decimal
 	Tolerance  decimal.Decimal
+	Straddles  decimal.Decimal
 	Quantum    decimal.Decimal
 	Spread     decimal.Decimal
 	Wing       decimal.Decimal
+	Risk       decimal.Decimal
+	Lookback   clocky.Duration
 	Patience   clocky.Duration
 	Chase      clocky.Duration
+	Samples    int
 	Strikes    int
 	StartOfDay int
 	Schwab     bool

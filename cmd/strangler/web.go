@@ -78,17 +78,19 @@ func (w *Web) sseBroadcaster() {
 
 // StateSnapshot is the JSON payload sent to the dashboard.
 type StateSnapshot struct {
-	Time      string          `json:"time"`
-	Symbol    string          `json:"symbol"`
-	Price     decimal.Decimal `json:"price"`
-	Sigma     decimal.Decimal `json:"sigma"`
-	Cash      decimal.Decimal `json:"cash"`
-	Paused    bool            `json:"paused"`
-	Positions []PositionRow   `json:"positions"`
-	Risk      []RiskPoint     `json:"risk"`
-	Greeks    GreeksData      `json:"greeks"`
-	Stats     StatsData       `json:"stats"`
-	Flags     FlagsData       `json:"flags"`
+	Time         string            `json:"time"`
+	Symbol       string            `json:"symbol"`
+	Price        decimal.Decimal   `json:"price"`
+	Sigma        decimal.Decimal   `json:"sigma"`
+	Cash         decimal.Decimal   `json:"cash"`
+	Paused       bool              `json:"paused"`
+	Positions    []PositionRow     `json:"positions"`
+	Risk         []RiskPoint       `json:"risk"`
+	Greeks       GreeksData        `json:"greeks"`
+	Stats        StatsData         `json:"stats"`
+	Flags        FlagsData         `json:"flags"`
+	PendingOrders []PendingOrderRow `json:"pendingOrders"`
+	Transactions []TransactionRow  `json:"transactions"`
 }
 
 type PositionRow struct {
@@ -126,10 +128,30 @@ type StatsData struct {
 	Orders      string          `json:"orders"`
 }
 
+type PendingOrderRow struct {
+	ID       int             `json:"id"`
+	Security string          `json:"security"`
+	Qty      decimal.Decimal `json:"qty"`
+	Price    decimal.Decimal `json:"price"`
+	Mid      decimal.Decimal `json:"mid"`
+	Status   string          `json:"status"`
+	Age      string          `json:"age"`
+}
+
+type TransactionRow struct {
+	Time     string          `json:"time"`
+	Security string          `json:"security"`
+	Qty      decimal.Decimal `json:"qty"`
+	Price    decimal.Decimal `json:"price"`
+	OrderID  int             `json:"id"`
+}
+
 type FlagsData struct {
+	Straddles decimal.Decimal `json:"straddles"`
 	Tolerance decimal.Decimal `json:"tolerance"`
 	Quantum   decimal.Decimal `json:"quantum"`
 	Spread    decimal.Decimal `json:"spread"`
+	Risk      decimal.Decimal `json:"risk"`
 	Patience  string          `json:"patience"`
 }
 
@@ -199,9 +221,11 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 			Orders:      fmt.Sprintf("%d", t.orderCount()),
 		},
 		Flags: FlagsData{
+			Straddles: t.Config.Straddles,
 			Tolerance: t.Config.Tolerance,
 			Quantum:   t.Config.Quantum,
 			Spread:    t.Config.Spread,
+			Risk:      t.Config.Risk,
 			Patience:  t.Config.Patience.String(),
 		},
 	}
@@ -251,6 +275,42 @@ func (w *Web) buildStateSnapshot() StateSnapshot {
 		}
 	}
 	snap.Stats.Worst = worst
+
+	// pending orders
+	for order := range t.PendingOrders {
+		status := "pending"
+		if order.Canceling {
+			status = "canceling"
+		} else if order.Making {
+			status = "making"
+		}
+		snap.PendingOrders = append(snap.PendingOrders, PendingOrderRow{
+			ID:       order.ID,
+			Security: order.Security.Name(),
+			Qty:      order.Quantity,
+			Price:    order.Price,
+			Mid:      order.Security.MidPrice(),
+			Status:   status,
+			Age:      now.Sub(order.Created).String(),
+		})
+	}
+
+	// transactions (most recent first, cap at 50)
+	txs := t.Transactions
+	start := 0
+	if len(txs) > 50 {
+		start = len(txs) - 50
+	}
+	for i := len(txs) - 1; i >= start; i-- {
+		tx := txs[i]
+		snap.Transactions = append(snap.Transactions, TransactionRow{
+			Time:     tx.Time.String(),
+			Security: tx.Security.Name(),
+			Qty:      tx.Quantity,
+			Price:    tx.Price,
+			OrderID:  tx.OrderID,
+		})
+	}
 
 	return snap
 }

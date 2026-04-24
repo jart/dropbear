@@ -78,6 +78,16 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.orders-section {
+  grid-column: 1 / -1;
+}
+
+.transactions-section {
+  grid-column: 1 / -1;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
 .flags-section {
   grid-column: 2;
 }

@@ -26,6 +26,8 @@ function render(d) {
   renderStats(d);
   renderPositions(d.positions || []);
   renderRiskChart(d);
+  renderPendingOrders(d.pendingOrders || []);
+  renderTransactions(d.transactions || []);
   renderFlags(d.flags);
 }
 
@@ -226,13 +228,54 @@ function renderRiskChart(d) {
   }
 }
 
+function renderPendingOrders(orders) {
+  var body = document.getElementById('ordersBody');
+  var html = '';
+  for (var i = 0; i < orders.length; i++) {
+    var o = orders[i];
+    var qc = o.qty > 0 ? 'pos' : 'neg';
+    html += '<tr>';
+    html += '<td>' + o.id + '</td>';
+    html += '<td>' + o.security + '</td>';
+    html += '<td class="' + qc + '">' + o.qty + '</td>';
+    html += '<td>' + o.price + '</td>';
+    html += '<td>' + o.mid + '</td>';
+    html += '<td>' + o.status + '</td>';
+    html += '<td>' + o.age + '</td>';
+    html += '</tr>';
+  }
+  if (!orders.length) html = '<tr><td colspan="7" style="text-align:center;color:#666">none</td></tr>';
+  body.innerHTML = html;
+}
+
+function renderTransactions(txs) {
+  var body = document.getElementById('txBody');
+  var html = '';
+  for (var i = 0; i < txs.length; i++) {
+    var tx = txs[i];
+    var qc = tx.qty > 0 ? 'pos' : 'neg';
+    var time = tx.time.length > 19 ? tx.time.substring(11, 19) : tx.time;
+    html += '<tr>';
+    html += '<td>' + time + '</td>';
+    html += '<td>' + tx.security + '</td>';
+    html += '<td class="' + qc + '">' + tx.qty + '</td>';
+    html += '<td>' + tx.price + '</td>';
+    html += '<td>' + tx.id + '</td>';
+    html += '</tr>';
+  }
+  if (!txs.length) html = '<tr><td colspan="5" style="text-align:center;color:#666">none</td></tr>';
+  body.innerHTML = html;
+}
+
 function renderFlags(flags) {
   if (!flags) return;
   var form = document.getElementById('flagsForm');
+  setIfEmpty(form.straddles, flags.straddles);
   setIfEmpty(form.tolerance, flags.tolerance);
+  setIfEmpty(form.patience, flags.patience);
   setIfEmpty(form.quantum, flags.quantum);
   setIfEmpty(form.spread, flags.spread);
-  setIfEmpty(form.patience, flags.patience);
+  setIfEmpty(form.risk, flags.risk);
 }
 
 function setIfEmpty(input, val) {
@@ -253,10 +296,12 @@ function submitFlags(e) {
   e.preventDefault();
   var form = document.getElementById('flagsForm');
   var data = {
+    straddles: form.straddles.value,
     tolerance: form.tolerance.value,
+    patience: form.patience.value,
     quantum: form.quantum.value,
     spread: form.spread.value,
-    patience: form.patience.value
+    risk: form.risk.value
   };
   fetch('/api/flags', {
     method: 'POST',
