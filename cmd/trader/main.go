@@ -36,6 +36,7 @@ var (
 	flagMinEdge   = decimal.Flag("minedge", "0.02", "minimum spread in usd to act")
 	flagMinPrice  = decimal.Flag("minprice", "0.5", "minimum price in usd to trade")
 	flagThreshold = decimal.Flag("threshold", "0.3", "imbalance ratio threshold to trigger (0-1)")
+	flagISOShares = decimal.Flag("iso", "200", "net ISO shares threshold to trigger entry")
 	flagExitOnly  = flag.Bool("exit", false, "exit-only mode: close existing positions, no new entries")
 )
 
@@ -150,6 +151,7 @@ func main() {
 	stockUpdates := alpaca.MustStockUpdates(alpaca.SIPWSURL, &alpaca.StockUpdatesRequest{
 		Action: "subscribe",
 		Quotes: []string{"*"},
+		Trades: []string{"*"},
 	})
 	log.Printf("subscribing to boats stock updates...")
 	boatsUpdates := alpaca.MustStockUpdates(alpaca.BOATSWSURL, &alpaca.StockUpdatesRequest{
@@ -171,19 +173,28 @@ func main() {
 		}
 	}
 
-	// create timer
+	// create timers
 	balanceTicker := time.NewTicker(5 * time.Second)
 	defer balanceTicker.Stop()
+	decayTicker := time.NewTicker(1 * time.Second)
+	defer decayTicker.Stop()
 
 	for {
 		select {
 		case msg := <-stockUpdates:
-			if msg.Type == sip.MessageTypeQuote {
+			switch msg.Type {
+			case sip.MessageTypeQuote:
 				onQuote(msg.Quote())
+			case sip.MessageTypeTrade:
+				onTrade(msg.Trade())
 			}
 		case msg := <-boatsUpdates:
 			if msg.Type == sip.MessageTypeQuote {
 				onQuote(msg.Quote())
+			}
+		case <-decayTicker.C:
+			for _, st := range gSymbols {
+				st.isoNetFlow = st.isoNetFlow.Half()
 			}
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
@@ -260,6 +271,31 @@ func onQuote(q *sip.Quote) {
 	}
 	st.quote = q
 	evaluate(st)
+}
+
+func onTrade(t *sip.Trade) {
+	if !t.Conditions.Has(sip.TradeCondISO) {
+		return
+	}
+	name := t.Symbol.String()
+	st := gSymbols[name]
+	if st == nil || st.quote == nil {
+		return
+	}
+	// classify direction using Lee-Ready:
+	// trade above midpoint = buyer-initiated
+	// trade below midpoint = seller-initiated
+	mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
+	if mid.IsZero() {
+		return
+	}
+	size := decimal.FromInt64(t.Size)
+	cmp := t.Price.Cmp(mid)
+	if cmp > 0 {
+		st.isoNetFlow = st.isoNetFlow.Add(size)
+	} else if cmp < 0 {
+		st.isoNetFlow = st.isoNetFlow.Sub(size)
+	}
 }
 
 func onOrderUpdate(update *alpaca.OrderUpdate) {
@@ -432,18 +468,24 @@ func evaluate(st *State) {
 	if !st.asset.Marginable.Load() {
 		return
 	}
-
-	// imbalance = (bid size - ask size) / (bid size + ask size)
 	bidSize := decimal.FromInt(int(st.quote.BidSize))
 	askSize := decimal.FromInt(int(st.quote.AskSize))
 	totalSize := bidSize.Add(askSize)
 	if totalSize.IsZero() {
 		return
 	}
+
+	// imbalance = (bid size - ask size) / (bid size + ask size)
 	imbalance := bidSize.Sub(askSize).Div(totalSize)
 
-	if imbalance.Cmp(*flagThreshold) > 0 {
-		// strong bid pressure — buy near bid
+	// entry signals: quote imbalance OR ISO sweep momentum
+	wantBuy := imbalance.Cmp(*flagThreshold) > 0 ||
+		st.isoNetFlow.Cmp(*flagISOShares) > 0
+	wantSell := (imbalance.Cmp(flagThreshold.Neg()) < 0 ||
+		st.isoNetFlow.Cmp(flagISOShares.Neg()) < 0) &&
+		st.asset.EasyToBorrow.Load()
+
+	if wantBuy {
 		price := st.quote.BidPrice.Add(Tick(st.quote.BidPrice))
 		price = price.Min(st.quote.AskPrice.Sub(Tick(st.quote.AskPrice)))
 		if price.Cmp(*flagMinPrice) >= 0 {
@@ -452,9 +494,9 @@ func evaluate(st *State) {
 			qty := TradeQuantity(mid, mar, totalSize)
 			dst := BestDestination(st.quote.BidExchange, overnight)
 			PlaceOrder(st, ds.SideBuy, qty, price, dst)
+			st.isoNetFlow = decimal.Zero
 		}
-	} else if imbalance.Cmp(flagThreshold.Neg()) < 0 && st.asset.EasyToBorrow.Load() {
-		// strong ask pressure — sell near ask
+	} else if wantSell {
 		price := st.quote.AskPrice.Sub(Tick(st.quote.AskPrice))
 		price = price.Max(st.quote.BidPrice.Add(Tick(st.quote.BidPrice)))
 		if price.Cmp(*flagMinPrice) >= 0 {
@@ -463,6 +505,7 @@ func evaluate(st *State) {
 			qty := TradeQuantity(mid, mar, totalSize)
 			dst := BestDestination(st.quote.AskExchange, overnight)
 			PlaceOrder(st, ds.SideSell, qty, price, dst)
+			st.isoNetFlow = decimal.Zero
 		}
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"dropbear/broker/alpaca"
 	"dropbear/broker/alpaca/sip"
+	"dropbear/clocky"
 	"dropbear/decimal"
 )
 
@@ -12,6 +13,10 @@ type State struct {
 	asset    *alpaca.Asset
 	quote    *sip.Quote
 	position decimal.Decimal // negative if short
+
+	// ISO flow tracking
+	isoNetFlow decimal.Decimal // net ISO shares: positive = buyer, negative = seller
+	isoDecay   clocky.Time     // timestamp of last decay
 
 	// our pending orders
 	buyClientOrderID  string

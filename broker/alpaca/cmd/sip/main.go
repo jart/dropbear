@@ -10,16 +10,16 @@ import (
 )
 
 var (
-	flagFeed     = flag.String("feed", "sip", "websocket url or name (sip, iex, boats, overnight, delayed, crypto)")
-	flagAll      = flag.Bool("all", false, "subscribe to all updates")
-	flagTrades   = flag.Bool("trades", false, "subscribe to trade updates")
-	flagQuotes   = flag.Bool("quotes", false, "subscribe to quote updates")
-	flagStatuses = flag.Bool("statuses", false, "subscribe to status updates")
+	flagFeed       = flag.String("feed", "sip", "websocket url or name (sip, iex, boats, overnight, delayed, crypto)")
+	flagAll        = flag.Bool("all", false, "subscribe to all updates")
+	flagTrades     = flag.Bool("trades", false, "subscribe to trade updates")
+	flagQuotes     = flag.Bool("quotes", false, "subscribe to quote updates")
+	flagStatuses   = flag.Bool("statuses", false, "subscribe to status updates")
 	flagLULDs      = flag.Bool("lulds", false, "subscribe to limit-up-limit-down updates (not available in boats)")
 	flagImbalances = flag.Bool("imbalances", false, "subscribe to order imbalance updates")
-	flagNASDAQ   = flag.Bool("nasdaq", false, "subscribe to NASDAQ updates")
-	flagNYSE     = flag.Bool("nyse", false, "subscribe to NYSE updates")
-	flagARCA     = flag.Bool("arca", false, "subscribe to ARCA updates")
+	flagNASDAQ     = flag.Bool("nasdaq", false, "subscribe to NASDAQ updates")
+	flagNYSE       = flag.Bool("nyse", false, "subscribe to NYSE updates")
+	flagARCA       = flag.Bool("arca", false, "subscribe to ARCA updates")
 )
 
 var kFeedURLs = map[string]string{

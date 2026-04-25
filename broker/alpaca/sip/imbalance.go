@@ -7,14 +7,16 @@ import (
 )
 
 // Imbalance represents an order imbalance message from the SIP feed.
-// These are sent during limit-up/limit-down and trading halts.
+// - Opening auction — starting ~10 minutes before the open, updated continuously as orders arrive
+// - Closing auction — starting ~10 minutes before close, same deal
+// - IPO/halt re-opening auctions — when a halted stock is about to re-open, there's an auction process and imbalance messages are published during it
 type Imbalance struct {
 	Type      MessageType     `json:"T"` // MessageTypeImbalance
 	Tape      Tape            `json:"z"` // tape designation (A, B, C)
 	_         [6]byte         //
 	Timestamp clocky.Time     `json:"t"` // RFC-3339 timestamp
 	Symbol    symbol.Symbol   `json:"S"` // stock symbol
-	Price     decimal.Decimal `json:"p"` // imbalance price
+	Price     decimal.Decimal `json:"p"` // imbalance price (optimal price for maximizing matched shares in auction)
 	_         [24]byte        // padding to match Message union size (56 bytes)
 }
 
