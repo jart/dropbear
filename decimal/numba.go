@@ -10,6 +10,7 @@ const (
 	Half   = Decimal(Scale / 2)
 	Ten    = Decimal(Scale * 10)
 	Tenth  = Decimal(Scale / 10)
-	Cent   = Decimal(Scale / 100) // 0.01
-	Lot    = Decimal(Scale * 100) // 100
+	Cent   = Decimal(Scale / 100)   // 0.01
+	Lot    = Decimal(Scale * 100)   // 100
+	Pip    = Decimal(Scale / 10000) // 0.0001
 )

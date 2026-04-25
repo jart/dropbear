@@ -1,17 +1,17 @@
-// Exchange imbalance trader.
+// quote imbalance trend follower
 //
-// Subscribes to the SIP firehose for all stocks, filters to healthy
-// assets, and looks for quote size imbalances. When one side of the
-// book is significantly heavier, takes a small position and tries to
-// exit when the imbalance reverses.
-//
-// Uses DMA routing to send orders directly to NASDAQ or ARCA.
+// this algorithm monitors alpaca's real-time stock data feeds (sip and boats)
+// for quotes where the bid size is substantially greater than the ask size or
+// vice versa, which can be a signal of short-term momentum. so if everyone is
+// trying to buy a stock, then we try to do it too, at the bid price. if we're
+// filled, then we immediately try to flip the shares at the asking price.
 package main
 
 import (
 	"dropbear/broker/alpaca"
 	"dropbear/broker/alpaca/sip"
 	"dropbear/cboe"
+	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/loggy"
@@ -29,93 +29,30 @@ import (
 )
 
 var (
-	flagMaxSyms   = flag.Int("maxsyms", 300, "maximum number of symbols to trade simultaneously")
-	flagMaxPos    = flag.Int("maxpos", 4, "maximum position size per symbol (in shares)")
-	flagMinEdge   = decimal.Flag("minedge", "0.02", "minimum spread in dollars to act")
-	flagMinPrice  = decimal.Flag("minprice", "1.0", "minimum stock price to consider")
-	flagMaxPrice  = decimal.Flag("maxprice", "500", "maximum stock price to consider")
+	flagSize      = decimal.Flag("size", "1000", "how much money to devote to each trade")
+	flagFloor     = decimal.Flag("floor", "2", "minimum trade quantity in shares (2+ ensures negative fees)")
+	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to trade simultaneously")
+	flagGreed     = decimal.FlagBPS("greed", "0", "amount of basis points to demand over cost basis")
+	flagMinEdge   = decimal.Flag("minedge", "0.02", "minimum spread in usd to act")
+	flagMinPrice  = decimal.Flag("minprice", "0.5", "minimum price in usd to trade")
 	flagThreshold = decimal.Flag("threshold", "0.3", "imbalance ratio threshold to trigger (0-1)")
 	flagExitOnly  = flag.Bool("exit", false, "exit-only mode: close existing positions, no new entries")
-	flagWinner    = flag.Bool("winner", false, "never close a position at a loss (based on avg entry price)")
 )
 
-// tradeQuantity returns the number of shares to trade for a given price.
-// Targets ~$400 notional, capped at the round lot size, minimum 2 shares.
-//
-//   - $1 stock: 400/1 = 400, lot=100 → 100 shares (capped at lot)
-//   - $5 stock: 400/5 = 80, lot=100 → 80 shares
-//   - $50 stock: 400/50 = 8, lot=100 → 8 shares
-//   - $200 stock: 400/200 = 2, lot=40 → 2 shares (min floor)
-//   - $400 stock: 400/400 = 1, lot=40 → 2 shares (min floor)
-func tradeQuantity(price decimal.Decimal) decimal.Decimal {
-	lot := cboe.LotSize(price)
-	qty := decimal.FromInt(400).Div(price)
-	if qty.Cmp(lot) >= 0 {
-		return lot
-	}
-	return qty.Truncate().Max(decimal.Two)
-}
-
-// Fee/rebate constants for equity DMA orders (always making).
 var (
-	kMakerRebatePerShare = decimal.Parse("0.0018")   // exchange rebate for providing liquidity
-	kTafFeePerShare      = decimal.Parse("0.000195") // TAF fee (sells only)
-	kCatFeePerTrade      = decimal.Parse("0.0003")   // CAT fee per trade
-	kBrokerFeePerTrade   = decimal.Parse("0.0025")   // alpaca elite smart router fee per trade
+	kStandardMarginRate = decimal.Parse("0.3")
 )
 
-// estimateFee returns the estimated fee for a fill. Negative means net rebate.
-// firstFill should be true only for the first fill of an order (CAT and broker
-// fees are per-order, not per-fill).
-func estimateFee(side ds.Side, qty decimal.Decimal, firstFill bool) decimal.Decimal {
-	fee := decimal.Zero
-	if firstFill {
-		fee = fee.Add(kCatFeePerTrade)
-		fee = fee.Add(kBrokerFeePerTrade)
-	}
-	if side == ds.SideSell {
-		fee = fee.Add(kTafFeePerShare.Mul(qty))
-	}
-	fee = fee.Sub(kMakerRebatePerShare.Mul(qty)) // rebate reduces fee
-	return fee
-}
-
-// symbolState tracks all state for a single symbol.
-type symbolState struct {
-	symbol   string
-	asset    *alpaca.Asset
-	position decimal.Decimal // current shares held (negative if short)
-
-	// latest NBBO quote
-	nbboBid     decimal.Decimal
-	nbboBidSize int32
-	nbboBidEx   sip.Exchange
-	nbboAsk     decimal.Decimal
-	nbboAskSize int32
-	nbboAskEx   sip.Exchange
-
-	// our pending orders
-	buyOrderID  string // alpaca order ID
-	sellOrderID string
-
-	// P&L tracking
-	costBasis    decimal.Decimal // total cost of current position (signed)
-	realizedPnL  decimal.Decimal // cumulative realized P&L
-	totalBought  decimal.Decimal // total shares bought
-	totalSold    decimal.Decimal // total shares sold
-	totalCostIn  decimal.Decimal // total dollars spent buying
-	totalCostOut decimal.Decimal // total dollars received selling
-	totalFees    decimal.Decimal // cumulative fees (negative = net rebate)
-}
-
 var (
-	gClient       *alpaca.Client
-	gSymbols      map[string]*symbolState
-	gOrderSymbols map[string]string // client order ID -> symbol
-	gTotalPnL     decimal.Decimal
-	gTotalFees    decimal.Decimal
-	gTotalFills   int
-	gQuoteCount   int64
+	gClient        *alpaca.Client
+	gSymbols       map[string]*State
+	gOrderSymbols  map[string]string // client order ID -> symbol
+	gActiveSymbols map[string]bool
+	gFailedOrders  chan string
+	gTotalPnL      decimal.Decimal
+	gTotalFees     decimal.Decimal
+	gTotalFills    int
+	gQuoteCount    int64
 )
 
 func main() {
@@ -125,13 +62,22 @@ func main() {
 
 	gClient = alpaca.NewClient()
 	gOrderSymbols = map[string]string{}
-	gSymbols = map[string]*symbolState{}
+	gSymbols = map[string]*State{}
+	gFailedOrders = make(chan string, 32)
 
-	// sync assets so GetAsset works
+	// keep assets synchronized
 	log.Printf("syncing assets from Alpaca...")
 	if err := gClient.SyncAssets(); err != nil {
-		log.Fatalf("error syncing assets: %v", err)
+		log.Printf("error syncing assets: %v", err)
 	}
+	go func() {
+		for {
+			time.Sleep(15 * time.Minute)
+			if err := gClient.SyncAssets(); err != nil {
+				log.Printf("error syncing assets: %v", err)
+			}
+		}
+	}()
 
 	// load existing positions
 	log.Printf("loading positions...")
@@ -154,6 +100,9 @@ func main() {
 		st := getOrCreateSymbol(pos.Symbol, asset)
 		st.position = pos.Qty
 		st.costBasis = pos.CostBasis
+		if st.Active() {
+			gActiveSymbols[pos.Symbol] = true
+		}
 		log.Printf("loaded position for %s: %s shares @ avg %s (cost basis %s)",
 			pos.Symbol, pos.Qty, pos.AvgEntryPrice, pos.CostBasis)
 	}
@@ -164,6 +113,13 @@ func main() {
 		log.Printf("warning: error canceling orders: %v", err)
 	}
 
+	// determine which feed to use based on session
+	now := clocky.Now()
+	quoteFeed := alpaca.FeedSIP
+	if cboe.IsOvernight(now) {
+		quoteFeed = alpaca.FeedBOATS
+	}
+
 	// fetch quotes for existing positions and place exit orders
 	posSymbols := make([]string, 0, len(gSymbols))
 	for name := range gSymbols {
@@ -171,7 +127,7 @@ func main() {
 	}
 	if len(posSymbols) > 0 {
 		log.Printf("fetching quotes for %d existing positions...", len(posSymbols))
-		quotes, err := gClient.GetQuotes(posSymbols, alpaca.FeedSIP)
+		quotes, err := gClient.GetQuotes(posSymbols, quoteFeed)
 		if err != nil {
 			log.Printf("warning: error fetching quotes: %v", err)
 		} else {
@@ -181,10 +137,10 @@ func main() {
 					continue
 				}
 				st.nbboBid = q.BidPrice
-				st.nbboBidSize = int32(q.BidSize.Int())
+				st.nbboBidSize = q.BidSize
 				st.nbboBidEx = q.BidExchange
 				st.nbboAsk = q.AskPrice
-				st.nbboAskSize = int32(q.AskSize.Int())
+				st.nbboAskSize = q.AskSize
 				st.nbboAskEx = q.AskExchange
 			}
 		}
@@ -194,22 +150,24 @@ func main() {
 	log.Printf("subscribing to order updates...")
 	orderUpdates := alpaca.OrderUpdates()
 
-	// subscribe to SIP firehose
-	log.Printf("subscribing to SIP firehose...")
-	stockUpdates, err := alpaca.StockUpdates(alpaca.SIPWSURL, &alpaca.StockUpdatesRequest{
+	// subscribe to quote firehose
+	log.Printf("subscribing to sip stock updates...")
+	stockUpdates := alpaca.MustStockUpdates(alpaca.SIPWSURL, &alpaca.StockUpdatesRequest{
 		Action: "subscribe",
 		Quotes: []string{"*"},
 	})
-	if err != nil {
-		log.Fatalf("error subscribing to stock updates: %v", err)
-	}
+	log.Printf("subscribing to boats stock updates...")
+	boatsUpdates := alpaca.MustStockUpdates(alpaca.BOATSWSURL, &alpaca.StockUpdatesRequest{
+		Action: "subscribe",
+		Quotes: []string{"*"},
+	})
 
 	// catch ctrl-c
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	log.Printf("trader started: maxpos=%d maxsyms=%d minedge=%s threshold=%s price=[%s,%s]",
-		*flagMaxPos, *flagMaxSyms, flagMinEdge, flagThreshold, flagMinPrice, flagMaxPrice)
+	log.Printf("trader started: maxsyms=%d minedge=%s threshold=%s",
+		*flagMaxSyms, flagMinEdge, flagThreshold)
 
 	// place exit orders for existing positions
 	for _, st := range gSymbols {
@@ -228,8 +186,15 @@ func main() {
 			if msg.Type == sip.MessageTypeQuote {
 				onQuote(msg.Quote())
 			}
+		case msg := <-boatsUpdates:
+			if msg.Type == sip.MessageTypeQuote {
+				onQuote(msg.Quote())
+			}
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
+		case clientOrderID := <-gFailedOrders:
+			st := gSymbols[gOrderSymbols[clientOrderID]]
+			removeOrder(st, clientOrderID)
 		case <-balanceTicker.C:
 			logBalance()
 		case <-sigChan:
@@ -239,10 +204,10 @@ func main() {
 	}
 }
 
-func getOrCreateSymbol(name string, asset *alpaca.Asset) *symbolState {
+func getOrCreateSymbol(name string, asset *alpaca.Asset) *State {
 	st, ok := gSymbols[name]
 	if !ok {
-		st = &symbolState{symbol: name, asset: asset}
+		st = &State{symbol: name, asset: asset}
 		gSymbols[name] = st
 	}
 	return st
@@ -256,8 +221,6 @@ func isEligible(sym symbol.Symbol) *alpaca.Asset {
 	if a.Exchange == alpaca.ExchangeOTC ||
 		a.Class != alpaca.AssetClassUSEquity ||
 		a.Status != alpaca.AssetStatusActive ||
-		!a.Tradable.Load() ||
-		!a.EasyToBorrow.Load() ||
 		a.PTPNoException.Load() ||
 		a.PTPWithException.Load() {
 		return nil
@@ -265,16 +228,23 @@ func isEligible(sym symbol.Symbol) *alpaca.Asset {
 	return a
 }
 
+func removeOrder(st *State, clientOrderID string) {
+	delete(gOrderSymbols, clientOrderID)
+	if st.buyClientOrderID == clientOrderID {
+		st.buyClientOrderID = ""
+	}
+	if st.sellClientOrderID == clientOrderID {
+		st.sellClientOrderID = ""
+	}
+	if !st.Active() {
+		delete(gActiveSymbols, st.symbol)
+	}
+}
+
 func onQuote(q *sip.Quote) {
 	gQuoteCount++
 
-	if q.BidPrice.IsZero() || q.AskPrice.IsZero() {
-		return
-	}
-	if q.BidPrice.Cmp(*flagMinPrice) < 0 || q.AskPrice.Cmp(*flagMaxPrice) > 0 {
-		return
-	}
-	if q.IsNonFirm() {
+	if !q.BidPrice.IsPositive() || !q.AskPrice.IsPositive() {
 		return
 	}
 
@@ -285,18 +255,17 @@ func onQuote(q *sip.Quote) {
 		if asset == nil {
 			return
 		}
-		if activeSymbolCount() >= *flagMaxSyms {
-			return
-		}
 		st = getOrCreateSymbol(name, asset)
 	}
 
 	st.nbboBid = q.BidPrice
-	st.nbboBidSize = q.BidSize
-	st.nbboBidEx = q.BidExchange
 	st.nbboAsk = q.AskPrice
-	st.nbboAskSize = q.AskSize
+	st.nbboBidSize = decimal.FromInt(int(q.BidSize))
+	st.nbboAskSize = decimal.FromInt(int(q.AskSize))
+	st.nbboBidEx = q.BidExchange
 	st.nbboAskEx = q.AskExchange
+	st.unfirm = q.IsNonFirm()
+	st.slow = q.IsSlow()
 
 	evaluate(st)
 }
@@ -381,7 +350,7 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 
 		// estimate fees/rebates (CAT + broker are per-order, not per-fill)
 		firstFill := update.Order.FilledQty.Cmp(absQty) == 0
-		fee := estimateFee(update.Order.Side, absQty, firstFill)
+		fee := EstimateFee(update.Order.Side, absQty, firstFill)
 		st.totalFees = st.totalFees.Add(fee)
 		gTotalFees = gTotalFees.Add(fee)
 
@@ -395,54 +364,65 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 
 	// clean up completed orders
 	if update.Order.Status.IsFinal() {
-		delete(gOrderSymbols, update.Order.ClientOrderID)
-		if st.buyOrderID == update.Order.ID {
-			st.buyOrderID = ""
-		}
-		if st.sellOrderID == update.Order.ID {
-			st.sellOrderID = ""
-		}
+		removeOrder(st, update.Order.ClientOrderID)
 		evaluate(st)
 	}
 }
 
-func evaluate(st *symbolState) {
-	if st.nbboBid.IsZero() || st.nbboAsk.IsZero() {
+func evaluate(st *State) {
+	if st.nbboBid.IsZero() {
+		return
+	}
+	if st.nbboAsk.IsZero() {
+		return
+	}
+	if !st.asset.Tradable.Load() {
+		return
+	}
+	if st.unfirm {
 		return
 	}
 
-	spread := st.nbboAsk.Sub(st.nbboBid)
-	if spread.Cmp(*flagMinEdge) < 0 {
-		return
+	// check if market is open
+	overnight := false
+	now := clocky.Now()
+	if !cboe.IsMarketOpenExtended(now) {
+		if !cboe.IsOvernight(now) {
+			return
+		}
+		if !st.asset.OvernightTradable.Load() || st.asset.OvernightHalted.Load() {
+			return
+		}
+		overnight = true
 	}
-
-	maxPos := decimal.FromInt(*flagMaxPos)
-	mid := st.nbboBid.Add(st.nbboAsk).Half()
-	qty := tradeQuantity(mid)
 
 	// PRIORITY 1: Exit existing positions at a profit.
 	// Post AT the bid/ask (don't improve) so we capture the spread.
 	// Entry improves by a penny to get priority; exit waits at the edge.
 	// With -winner, floor the exit price at avg entry + a tick to guarantee profit.
-	if st.position.IsPositive() && st.sellOrderID == "" {
+	if st.position.IsPositive() && st.sellClientOrderID == "" && st.asset.Tradable.Load() {
 		price := st.nbboAsk
-		if *flagWinner && !st.costBasis.IsZero() {
-			minPrice := st.costBasis.Div(st.position).Add(cboe.Tick01).QuantizeAway(cboe.Tick01)
+		if !flagGreed.IsZero() && !st.costBasis.IsZero() {
+			minPrice := st.costBasis.Div(st.position).Mul(decimal.One.Add(*flagGreed))
 			price = price.Max(minPrice)
+			price = quantizeSell(price)
 		}
-		dest := bestDest(st.nbboAskEx)
-		placeOrder(st, ds.SideSell, qty.Min(st.position), price, dest)
+		dest := BestDestination(st.nbboAskEx, overnight)
+		qty := cboe.LotSize(price).Min(st.position)
+		PlaceOrder(st, ds.SideSell, qty, price, dest)
 		return
 	}
-	if st.position.IsNegative() && st.buyOrderID == "" {
+	if st.position.IsNegative() && st.buyClientOrderID == "" && st.asset.Tradable.Load() {
 		price := st.nbboBid
-		if *flagWinner && !st.costBasis.IsZero() {
+		if !flagGreed.IsZero() && !st.costBasis.IsZero() {
 			// short: avg entry = costBasis / position = negative / negative = positive
-			maxPrice := st.costBasis.Div(st.position).Sub(cboe.Tick01).QuantizeTruncate(cboe.Tick01)
+			maxPrice := st.costBasis.Div(st.position).Mul(decimal.One.Sub(*flagGreed))
 			price = price.Min(maxPrice)
+			price = quantizeBuy(price)
 		}
-		dest := bestDest(st.nbboBidEx)
-		placeOrder(st, ds.SideBuy, qty.Min(st.position.Neg()), price, dest)
+		dest := BestDestination(st.nbboBidEx, overnight)
+		qty := cboe.LotSize(price).Min(st.position.Neg())
+		PlaceOrder(st, ds.SideBuy, qty, price, dest)
 		return
 	}
 
@@ -451,96 +431,122 @@ func evaluate(st *symbolState) {
 	if *flagExitOnly {
 		return
 	}
-	if !st.position.IsZero() || st.buyOrderID != "" || st.sellOrderID != "" {
+	if len(gActiveSymbols) >= *flagMaxSyms {
+		return
+	}
+	if st.Active() {
+		return
+	}
+	spread := st.nbboAsk.Sub(st.nbboBid)
+	if spread.Cmp(*flagMinEdge) < 0 {
+		return
+	}
+	if !st.asset.Marginable.Load() {
 		return
 	}
 
-	bidSize := decimal.FromInt(int(st.nbboBidSize))
-	askSize := decimal.FromInt(int(st.nbboAskSize))
-	totalSize := bidSize.Add(askSize)
+	// imbalance = (bid size - ask size) / (bid size + ask size)
+	totalSize := st.nbboBidSize.Add(st.nbboAskSize)
 	if totalSize.IsZero() {
 		return
 	}
-	imbalance := bidSize.Sub(askSize).Div(totalSize)
+	imbalance := st.nbboBidSize.Sub(st.nbboAskSize).Div(totalSize)
 
-	if imbalance.Cmp(*flagThreshold) > 0 && st.position.Cmp(maxPos) < 0 {
-		// strong bid pressure — buy near the bid
-		price := st.nbboBid.Add(cboe.Tick01)
-		if price.Cmp(st.nbboAsk) >= 0 {
-			price = st.nbboBid
+	if imbalance.Cmp(*flagThreshold) > 0 {
+		// strong bid pressure — buy near bid
+		price := st.nbboBid.Add(getTick(st.nbboBid))
+		price = price.Min(st.nbboAsk.Sub(getTick(st.nbboAsk)))
+		if price.Cmp(*flagMinPrice) >= 0 {
+			mid := st.nbboBid.Add(st.nbboAsk).Half()
+			mar := st.asset.MarginRequirementLong.Load()
+			qty := GetTradeQuantity(mid, mar, totalSize)
+			dst := BestDestination(st.nbboBidEx, overnight)
+			PlaceOrder(st, ds.SideBuy, qty, price, dst)
 		}
-		dest := bestDest(st.nbboBidEx)
-		placeOrder(st, ds.SideBuy, qty, price, dest)
-	} else if imbalance.Cmp(flagThreshold.Neg()) < 0 && st.position.Cmp(maxPos.Neg()) > 0 {
-		// strong ask pressure — sell near the ask
-		price := st.nbboAsk.Sub(cboe.Tick01)
-		if price.Cmp(st.nbboBid) <= 0 {
-			price = st.nbboAsk
+	} else if imbalance.Cmp(flagThreshold.Neg()) < 0 && st.asset.EasyToBorrow.Load() {
+		// strong ask pressure — sell near ask
+		price := st.nbboAsk.Sub(getTick(st.nbboAsk))
+		price = price.Max(st.nbboBid.Add(getTick(st.nbboBid)))
+		if price.Cmp(*flagMinPrice) >= 0 {
+			mid := st.nbboBid.Add(st.nbboAsk).Half()
+			mar := st.asset.MarginRequirementShort.Load()
+			qty := GetTradeQuantity(mid, mar, totalSize)
+			dst := BestDestination(st.nbboAskEx, overnight)
+			PlaceOrder(st, ds.SideSell, qty, price, dst)
 		}
-		dest := bestDest(st.nbboAskEx)
-		placeOrder(st, ds.SideSell, qty, price, dest)
 	}
 }
 
-func bestDest(ex sip.Exchange) alpaca.OrderDestination {
-	switch ex {
+func BestDestination(exchange sip.Exchange, overnight bool) alpaca.OrderDestination {
+	if overnight {
+		return alpaca.OrderDestinationNone // let alpaca route to boats
+	}
+	switch exchange {
 	case sip.ExchangeNASDAQ:
 		return alpaca.OrderDestinationNASDAQ
 	case sip.ExchangeARCA:
 		return alpaca.OrderDestinationARCA
+	case sip.ExchangeNYSE:
+		return alpaca.OrderDestinationNYSE
 	default:
 		return alpaca.OrderDestinationNASDAQ
 	}
 }
 
-func placeOrder(st *symbolState, side ds.Side, qty decimal.Decimal, price decimal.Decimal, dest alpaca.OrderDestination) {
+func PlaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Decimal, dest alpaca.OrderDestination) {
+	if qty.IsZero() {
+		return
+	}
+
 	clientOrderID := uuid.New().String()
 	gOrderSymbols[clientOrderID] = st.symbol
+	gActiveSymbols[st.symbol] = true
+	if side == ds.SideBuy {
+		st.buyClientOrderID = clientOrderID
+	} else {
+		st.sellClientOrderID = clientOrderID
+	}
 
 	log.Printf("%s placing %s %s @ %s -> %s (pos=%s spread=%s)",
 		st.symbol, side, qty, price, dest,
 		st.position, st.nbboAsk.Sub(st.nbboBid))
 
-	order, err := gClient.CreateOrder(&alpaca.CreateOrderRequest{
-		Symbol:        st.symbol,
-		Side:          side,
-		Qty:           qty,
-		Type:          alpaca.OrderTypeLimit,
-		TimeInForce:   alpaca.TimeInForceDay,
-		ExtendedHours: true,
-		LimitPrice:    price,
-		ClientOrderID: clientOrderID,
-		AdvancedInstructions: &alpaca.AdvancedInstructions{
-			Algorithm:   alpaca.OrderAlgorithmDMA,
-			Destination: dest,
-		},
-	})
-	if err != nil {
-		log.Printf("%s error placing order: %v", st.symbol, err)
-		delete(gOrderSymbols, clientOrderID)
-		return
-	}
+	// don't slow down quote processing
+	go func() {
 
-	if side == ds.SideBuy {
-		st.buyOrderID = order.ID
-	} else {
-		st.sellOrderID = order.ID
-	}
-}
-
-func activeSymbolCount() int {
-	n := 0
-	for _, st := range gSymbols {
-		if !st.position.IsZero() || st.buyOrderID != "" || st.sellOrderID != "" {
-			n++
+		// check if extended hours
+		now := clocky.Now()
+		extendedHours := !cboe.IsMarketOpen(now)
+		if extendedHours && dest == alpaca.OrderDestinationNYSE {
+			dest = alpaca.OrderDestinationNone // nyse is for day trading only
 		}
-	}
-	return n
-}
 
-func isOptionsSymbol(sym string) bool {
-	_, _, _, _, _, _, err := osi.Parse(sym)
-	return err == nil
+		// configure alpaca smart router
+		var advancedInstructions *alpaca.AdvancedInstructions
+		if dest != alpaca.OrderDestinationNone {
+			advancedInstructions = &alpaca.AdvancedInstructions{
+				Algorithm:   alpaca.OrderAlgorithmDMA,
+				Destination: dest,
+			}
+		}
+
+		_, err := gClient.CreateOrder(&alpaca.CreateOrderRequest{
+			Symbol:               st.symbol,
+			Side:                 side,
+			Qty:                  qty,
+			Type:                 alpaca.OrderTypeLimit,
+			TimeInForce:          alpaca.TimeInForceDay,
+			ExtendedHours:        extendedHours,
+			LimitPrice:           price,
+			ClientOrderID:        clientOrderID,
+			AdvancedInstructions: advancedInstructions,
+		})
+		if err != nil {
+			log.Printf("%s error placing order: %v", st.symbol, err)
+			gFailedOrders <- clientOrderID
+			return
+		}
+	}()
 }
 
 func logBalance() {
@@ -570,7 +576,7 @@ func logBalance() {
 			shortCount++
 			totalUnrealized = totalUnrealized.Add(st.position.Mul(mid).Sub(st.costBasis))
 		}
-		if st.buyOrderID != "" || st.sellOrderID != "" {
+		if st.buyClientOrderID != "" || st.sellClientOrderID != "" {
 			pendingCount++
 		}
 	}
@@ -610,4 +616,45 @@ func shutdown() {
 		gTotalFills, gQuoteCount, len(gSymbols))
 	fmt.Printf("total P&L: %s  fees: %s  net: %s  fills: %d\n", gTotalPnL, gTotalFees, net, gTotalFills)
 	os.Exit(0)
+}
+
+func GetTradeQuantity(price, margin, maximum decimal.Decimal) decimal.Decimal {
+	// alpaca's overnight margin requirement is normally 0.3 but we've seen it go as
+	// high as 2.0 for risky stocks. penny stocks (anything under $5) usually have a
+	// margin requirement of 1.0. leveraged etfs will usually be 0.6 to 0.9. so what
+	// happens here is as margin grows above 0.3 we scale down how much size it uses
+	rat := kStandardMarginRate.Div(margin)
+	qty := flagSize.Mul(rat).Div(price)
+	// we like to trade one round lot at a time
+	qty = qty.Min(cboe.LotSize(price))
+	// we don't want to take too much liquidity
+	qty = qty.Min(maximum)
+	// we don't trade fractional shares
+	qty = qty.Truncate()
+	// each order needs at minimum two shares for commissions+fees to go negative
+	if qty.Cmp(*flagFloor) < 0 {
+		return decimal.Zero // stock is probably very expensive like meta
+	}
+	return qty
+}
+
+func quantizeBuy(price decimal.Decimal) decimal.Decimal {
+	return price.QuantizeTruncate(getTick(price)) // buy low
+}
+
+func quantizeSell(price decimal.Decimal) decimal.Decimal {
+	return price.QuantizeAway(getTick(price)) // sell high
+}
+
+func getTick(price decimal.Decimal) decimal.Decimal {
+	if price.Cmp(decimal.One) < 0 {
+		return decimal.Pip
+	} else {
+		return decimal.Cent
+	}
+}
+
+func isOptionsSymbol(sym string) bool {
+	_, _, _, _, _, _, err := osi.Parse(sym)
+	return err == nil
 }

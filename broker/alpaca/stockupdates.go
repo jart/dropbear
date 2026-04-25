@@ -24,10 +24,19 @@ const (
 type StockUpdatesRequest struct {
 	Action     string   `json:"action"` // set to "subscribe"
 	Trades     []string `json:"trades,omitempty"`
-	Quotes     []string `json:"quotes,omitempty"`     // e.g. ["AAPL", "TSLA"]
-	Statuses   []string `json:"statuses,omitempty"`   // e.g. ["*"]
+	Quotes     []string `json:"quotes,omitempty"`   // e.g. ["AAPL", "TSLA"]
+	Statuses   []string `json:"statuses,omitempty"` // e.g. ["*"]
 	LULDs      []string `json:"lulds,omitempty"`
 	Imbalances []string `json:"imbalances,omitempty"` // e.g. ["INAQU"]
+}
+
+// MustStockUpdates connects to Alpaca's real-time stock market data websocket or dies.
+func MustStockUpdates(wsurl string, req *StockUpdatesRequest) <-chan *sip.Message {
+	c, err := StockUpdates(wsurl, req)
+	if err != nil {
+		panic(fmt.Sprintf("error subscribing to stock updates: %v", err))
+	}
+	return c
 }
 
 // StockUpdates connects to Alpaca's real-time stock market data websocket.
