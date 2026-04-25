@@ -74,13 +74,6 @@ func BenchmarkTradeCond_IsRegularSale(b *testing.B) {
 	}
 }
 
-func BenchmarkQuoteCond_IsSlow(b *testing.B) {
-	c := QuoteCondB | QuoteCondA
-	for b.Loop() {
-		_ = c.IsSlow()
-	}
-}
-
 func BenchmarkQuoteCond_MarshalJSON_Single(b *testing.B) {
 	c := QuoteCondR
 	for b.Loop() {
@@ -92,7 +85,7 @@ func BenchmarkQuoteCond_MarshalJSON_Single(b *testing.B) {
 }
 
 func BenchmarkQuoteCond_MarshalJSON_Multi(b *testing.B) {
-	c := QuoteCondR | QuoteCondNonFirm
+	c := QuoteCondR | QuoteCondN
 	for b.Loop() {
 		_, err := c.MarshalJSON()
 		if err != nil {
@@ -156,18 +149,6 @@ func TestTradeCond_IsExtendedHours(t *testing.T) {
 	}
 	if TradeCondRegularSaleCTA.IsExtendedHours() {
 		t.Error("TradeCondRegularSaleCTA should not be extended hours")
-	}
-}
-
-func TestQuoteCond_IsSlow(t *testing.T) {
-	if !QuoteCondB.IsSlow() {
-		t.Error("QuoteCondB should be slow")
-	}
-	if !QuoteCondA.IsSlow() {
-		t.Error("QuoteCondA should be slow")
-	}
-	if QuoteCondNonFirm.IsSlow() {
-		t.Error("QuoteCondNonFirm should not be slow")
 	}
 }
 

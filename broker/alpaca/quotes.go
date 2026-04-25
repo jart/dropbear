@@ -2,35 +2,22 @@ package alpaca
 
 import (
 	"dropbear/broker/alpaca/sip"
-	"dropbear/decimal"
 	"dropbear/netty"
 	"fmt"
 	"strings"
 )
 
-// Quote represents an NBBO quote.
-type Quote struct {
-	BidPrice       decimal.Decimal `json:"bp"` // bid price (0 means the security has no active bid)
-	BidSize        decimal.Decimal `json:"bs"` // bid size in shares (round lots prior to November 3, 2025)
-	BidExchange    sip.Exchange    `json:"bx"` // bid exchange (see v2/stocks/meta/exchanges for more details)
-	AskPrice       decimal.Decimal `json:"ap"` // ask price (0 means the security has no active ask)
-	AskSize        decimal.Decimal `json:"as"` // ask size in shares (round lots prior to November 3, 2025)
-	AskExchange    sip.Exchange    `json:"ax"` // ask exchange (see v2/stocks/meta/exchanges for more details)
-	ConditionFlags []string        `json:"c"`  // condition flags (see v2/stocks/meta/conditions/quote for more details. If the array contains one flag, it applies to both the bid and ask. If the array contains two flags, the first one applies to the bid and the second one to the ask)
-	Tape           sip.Tape        `json:"z"`  // tape designation (A, B, C)
-}
-
 // GetQuote fetches the latest NBBO quote for a stock symbol.
 // See cboe.IsOvernight() to determine if you should use FeedBOATS.
 // https://docs.alpaca.markets/reference/stocklatestquotesingle-1
-func (c *Client) GetQuote(sym string, feed Feed) (*Quote, error) {
+func (c *Client) GetQuote(sym string, feed Feed) (*sip.Quote, error) {
 	url := fmt.Sprintf("https://%s/v2/stocks/%s/quotes/latest", DataHost, sym)
 	if feed != 0 {
 		url += "?feed=" + feed.String()
 	}
 	var result struct {
-		Quote  *Quote `json:"quote"`
-		Symbol string `json:"symbol"`
+		Quote  *sip.Quote `json:"quote"`
+		Symbol string     `json:"symbol"`
 	}
 	c.DataTokenBucket.Get()
 	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, false, nil, &result)
@@ -42,7 +29,7 @@ func (c *Client) GetQuote(sym string, feed Feed) (*Quote, error) {
 
 // GetQuotes fetches the latest NBBO quotes for multiple stock symbols.
 // https://docs.alpaca.markets/reference/stocklatestquotes-1
-func (c *Client) GetQuotes(symbols []string, feed Feed) (map[string]*Quote, error) {
+func (c *Client) GetQuotes(symbols []string, feed Feed) (map[string]*sip.Quote, error) {
 	if len(symbols) == 0 {
 		return nil, nil
 	}
@@ -58,8 +45,8 @@ func (c *Client) GetQuotes(symbols []string, feed Feed) (map[string]*Quote, erro
 		url.WriteString("&feed=" + feed.String())
 	}
 	var result struct {
-		Quotes map[string]*Quote `json:"quotes"`
-		Symbol string            `json:"symbol"`
+		Quotes map[string]*sip.Quote `json:"quotes"`
+		Symbol string                `json:"symbol"`
 	}
 	c.DataTokenBucket.Get()
 	err := c.RequestJSON(netty.BulkHttpClient, "GET", url.String(), false, nil, &result)
@@ -71,10 +58,10 @@ func (c *Client) GetQuotes(symbols []string, feed Feed) (map[string]*Quote, erro
 
 // GetCryptoQuote fetches the latest quote for a crypto symbol.
 // https://docs.alpaca.markets/reference/cryptolatestquotes-1
-func (c *Client) GetCryptoQuote(sym string) (*Quote, error) {
+func (c *Client) GetCryptoQuote(sym string) (*sip.Quote, error) {
 	url := fmt.Sprintf("https://%s/v1beta3/crypto/us/latest/quotes?symbols=%s", DataHost, sym)
 	var result struct {
-		Quotes map[string]*Quote `json:"quotes"`
+		Quotes map[string]*sip.Quote `json:"quotes"`
 	}
 	c.DataTokenBucket.Get()
 	err := c.RequestJSON(netty.FastHTTPClient, "GET", url, false, nil, &result)

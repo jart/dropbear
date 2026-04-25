@@ -12,52 +12,46 @@ type QuoteCond uint64
 
 // Individual quote condition bits. Each corresponds to a single-character code.
 const (
-	QuoteCondOnDemandAuction QuoteCond = 1 << iota // code '4' - On Demand Intra Day Auction
-	QuoteCondA                                     // code 'A' - Slow Offer (CTA) / Manual Ask Auto Bid (UTP)
-	QuoteCondB                                     // code 'B' - Slow Bid (CTA) / Manual Bid Auto Ask (UTP)
-	QuoteCondClosing                               // code 'C' - Closing Quote (CTA)
-	QuoteCondSlowLRPBid                            // code 'E' - Slow LRP Bid (CTA)
-	QuoteCondF                                     // code 'F' - Slow LRP Offer (CTA) / Fast Trading (UTP)
-	QuoteCondH                                     // code 'H' - Slow Bid And Offer (CTA) / Manual Bid Ask (UTP)
-	QuoteCondOrderImbalance                        // code 'I' - Order Imbalance (UTP)
-	QuoteCondClosed                                // code 'L' - MM Closed (CTA) / Closed Quote (UTP)
-	QuoteCondNonFirm                               // code 'N' - Non Firm Quote
-	QuoteCondOpening                               // code 'O' - Opening Quote
-	QuoteCondR                                     // code 'R' - MM Open (CTA) / Two Sided Open (UTP)
-	QuoteCondU                                     // code 'U' - Slow LRP Bid And Offer (CTA) / Manual Non Firm (UTP)
-	QuoteCondSlowSetSlowList                       // code 'W' - Slow Set Slow List (CTA)
-	QuoteCondOrderInflux                           // code 'X' - Order Influx (UTP)
-	QuoteCondOneSidedOpen                          // code 'Y' - One Sided Open (UTP)
-	QuoteCondNoOpenNoResume                        // code 'Z' - No Open No Resume (UTP)
-)
-
-// Composite condition masks for common checks
-const (
-	QuoteCondNonFirmMask = QuoteCondNonFirm | QuoteCondU
-	QuoteCondSlowMask    = QuoteCondA | QuoteCondB | QuoteCondSlowLRPBid | QuoteCondF | QuoteCondH | QuoteCondU | QuoteCondSlowSetSlowList
+	QuoteCond4 QuoteCond = 1 << iota // code '4' - On Demand Intra Day Auction
+	QuoteCondA                       // code 'A' - Slow Offer (CTA) / Manual Ask Auto Bid (UTP)
+	QuoteCondB                       // code 'B' - Slow Bid (CTA) / Manual Bid Auto Ask (UTP)
+	QuoteCondC                       // code 'C' - Closing Quote (CTA)
+	QuoteCondE                       // code 'E' - Slow LRP Bid (CTA)
+	QuoteCondF                       // code 'F' - Slow LRP Offer (CTA) / Fast Trading (UTP)
+	QuoteCondH                       // code 'H' - Slow Bid And Offer (CTA) / Manual Bid Ask (UTP)
+	QuoteCondI                       // code 'I' - Order Imbalance (UTP)
+	QuoteCondL                       // code 'L' - MM Closed (CTA) / Closed Quote (UTP)
+	QuoteCondN                       // code 'N' - Non Firm Quote
+	QuoteCondO                       // code 'O' - Opening Quote
+	QuoteCondR                       // code 'R' - MM Open (CTA) / Two Sided Open (UTP)
+	QuoteCondU                       // code 'U' - Slow LRP Bid And Offer (CTA) / Manual Non Firm (UTP)
+	QuoteCondW                       // code 'W' - Slow Set Slow List (CTA)
+	QuoteCondX                       // code 'X' - Order Influx (UTP)
+	QuoteCondY                       // code 'Y' - One Sided Open (UTP)
+	QuoteCondZ                       // code 'Z' - No Open No Resume (UTP)
 )
 
 // LUT for converting character code to bit
 var quoteCondFromChar [256]QuoteCond
 
 func init() {
-	quoteCondFromChar['4'] = QuoteCondOnDemandAuction
+	quoteCondFromChar['4'] = QuoteCond4
 	quoteCondFromChar['A'] = QuoteCondA
 	quoteCondFromChar['B'] = QuoteCondB
-	quoteCondFromChar['C'] = QuoteCondClosing
-	quoteCondFromChar['E'] = QuoteCondSlowLRPBid
+	quoteCondFromChar['C'] = QuoteCondC
+	quoteCondFromChar['E'] = QuoteCondE
 	quoteCondFromChar['F'] = QuoteCondF
 	quoteCondFromChar['H'] = QuoteCondH
-	quoteCondFromChar['I'] = QuoteCondOrderImbalance
-	quoteCondFromChar['L'] = QuoteCondClosed
-	quoteCondFromChar['N'] = QuoteCondNonFirm
-	quoteCondFromChar['O'] = QuoteCondOpening
+	quoteCondFromChar['I'] = QuoteCondI
+	quoteCondFromChar['L'] = QuoteCondL
+	quoteCondFromChar['N'] = QuoteCondN
+	quoteCondFromChar['O'] = QuoteCondO
 	quoteCondFromChar['R'] = QuoteCondR
 	quoteCondFromChar['U'] = QuoteCondU
-	quoteCondFromChar['W'] = QuoteCondSlowSetSlowList
-	quoteCondFromChar['X'] = QuoteCondOrderInflux
-	quoteCondFromChar['Y'] = QuoteCondOneSidedOpen
-	quoteCondFromChar['Z'] = QuoteCondNoOpenNoResume
+	quoteCondFromChar['W'] = QuoteCondW
+	quoteCondFromChar['X'] = QuoteCondX
+	quoteCondFromChar['Y'] = QuoteCondY
+	quoteCondFromChar['Z'] = QuoteCondZ
 }
 
 // LUT for converting bit back to character code
@@ -69,16 +63,6 @@ var quoteCondToChar = [64]byte{
 // Has returns true if this condition set contains the given condition(s).
 func (c QuoteCond) Has(cond QuoteCond) bool {
 	return c&cond != 0
-}
-
-// IsNonFirm returns true if this contains a non-firm quote condition.
-func (c QuoteCond) IsNonFirm() bool {
-	return c&QuoteCondNonFirmMask != 0
-}
-
-// IsSlow returns true if this contains a slow quote condition.
-func (c QuoteCond) IsSlow() bool {
-	return c&QuoteCondSlowMask != 0
 }
 
 func (c QuoteCond) String() string {
@@ -103,23 +87,23 @@ func (c QuoteCond) GoString() string {
 		mask QuoteCond
 		name string
 	}{
-		{QuoteCondOnDemandAuction, "sip.QuoteCondOnDemandAuction"},
+		{QuoteCond4, "sip.QuoteCond4"},
 		{QuoteCondA, "sip.QuoteCondA"},
 		{QuoteCondB, "sip.QuoteCondB"},
-		{QuoteCondClosing, "sip.QuoteCondClosing"},
-		{QuoteCondSlowLRPBid, "sip.QuoteCondSlowLRPBid"},
+		{QuoteCondC, "sip.QuoteCondC"},
+		{QuoteCondE, "sip.QuoteCondE"},
 		{QuoteCondF, "sip.QuoteCondF"},
 		{QuoteCondH, "sip.QuoteCondH"},
-		{QuoteCondOrderImbalance, "sip.QuoteCondOrderImbalance"},
-		{QuoteCondClosed, "sip.QuoteCondClosed"},
-		{QuoteCondNonFirm, "sip.QuoteCondNonFirm"},
-		{QuoteCondOpening, "sip.QuoteCondOpening"},
+		{QuoteCondI, "sip.QuoteCondI"},
+		{QuoteCondL, "sip.QuoteCondL"},
+		{QuoteCondN, "sip.QuoteCondN"},
+		{QuoteCondO, "sip.QuoteCondO"},
 		{QuoteCondR, "sip.QuoteCondR"},
 		{QuoteCondU, "sip.QuoteCondU"},
-		{QuoteCondSlowSetSlowList, "sip.QuoteCondSlowSetSlowList"},
-		{QuoteCondOrderInflux, "sip.QuoteCondOrderInflux"},
-		{QuoteCondOneSidedOpen, "sip.QuoteCondOneSidedOpen"},
-		{QuoteCondNoOpenNoResume, "sip.QuoteCondNoOpenNoResume"},
+		{QuoteCondW, "sip.QuoteCondW"},
+		{QuoteCondX, "sip.QuoteCondX"},
+		{QuoteCondY, "sip.QuoteCondY"},
+		{QuoteCondZ, "sip.QuoteCondZ"},
 	} {
 		if c&cond.mask != 0 {
 			parts = append(parts, cond.name)

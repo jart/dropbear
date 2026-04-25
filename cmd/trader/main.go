@@ -61,8 +61,8 @@ func main() {
 	loggy.AlsoLogToFile()
 
 	gClient = alpaca.NewClient()
-	gOrderSymbols = map[string]string{}
 	gSymbols = map[string]*State{}
+	gOrderSymbols = map[string]string{}
 	gFailedOrders = make(chan string, 32)
 
 	// keep assets synchronized
@@ -136,12 +136,7 @@ func main() {
 				if st == nil || q.BidPrice.IsZero() || q.AskPrice.IsZero() {
 					continue
 				}
-				st.nbboBid = q.BidPrice
-				st.nbboBidSize = q.BidSize
-				st.nbboBidEx = q.BidExchange
-				st.nbboAsk = q.AskPrice
-				st.nbboAskSize = q.AskSize
-				st.nbboAskEx = q.AskExchange
+				st.quote = q
 			}
 		}
 	}
@@ -171,7 +166,7 @@ func main() {
 
 	// place exit orders for existing positions
 	for _, st := range gSymbols {
-		if !st.position.IsZero() && !st.nbboBid.IsZero() {
+		if !st.position.IsZero() && !st.quote.BidPrice.IsZero() {
 			evaluate(st)
 		}
 	}
@@ -213,21 +208,6 @@ func getOrCreateSymbol(name string, asset *alpaca.Asset) *State {
 	return st
 }
 
-func isEligible(sym symbol.Symbol) *alpaca.Asset {
-	a := alpaca.GetAsset(sym)
-	if a == nil {
-		return nil
-	}
-	if a.Exchange == alpaca.ExchangeOTC ||
-		a.Class != alpaca.AssetClassUSEquity ||
-		a.Status != alpaca.AssetStatusActive ||
-		a.PTPNoException.Load() ||
-		a.PTPWithException.Load() {
-		return nil
-	}
-	return a
-}
-
 func removeOrder(st *State, clientOrderID string) {
 	delete(gOrderSymbols, clientOrderID)
 	if st.buyClientOrderID == clientOrderID {
@@ -241,32 +221,45 @@ func removeOrder(st *State, clientOrderID string) {
 	}
 }
 
+func TradeQuantity(price, margin, maximum decimal.Decimal) decimal.Decimal {
+	// alpaca's overnight margin requirement is normally 0.3 but we've seen it go as
+	// high as 2.0 for risky stocks. penny stocks (anything under $5) usually have a
+	// margin requirement of 1.0. leveraged etfs will usually be 0.6 to 0.9. so what
+	// happens here is as margin grows above 0.3 we scale down how much size it uses
+	rat := kStandardMarginRate.Div(margin)
+	qty := flagSize.Mul(rat).Div(price)
+	// we like to trade one round lot at a time
+	qty = qty.Min(cboe.LotSize(price))
+	// we don't want to take too much liquidity
+	qty = qty.Min(maximum)
+	// we don't trade fractional shares
+	qty = qty.Truncate()
+	// each order needs at minimum two shares for commissions+fees to go negative
+	if qty.Cmp(*flagFloor) < 0 {
+		return decimal.Zero // stock is probably very expensive like meta
+	}
+	return qty
+}
+
 func onQuote(q *sip.Quote) {
 	gQuoteCount++
-
-	if !q.BidPrice.IsPositive() || !q.AskPrice.IsPositive() {
-		return
-	}
-
 	name := q.Symbol.String()
 	st, ok := gSymbols[name]
 	if !ok {
-		asset := isEligible(q.Symbol)
+		asset := alpaca.GetAsset(q.Symbol)
 		if asset == nil {
+			return
+		}
+		if asset.Exchange == alpaca.ExchangeOTC ||
+			asset.Class != alpaca.AssetClassUSEquity ||
+			asset.Status != alpaca.AssetStatusActive ||
+			asset.PTPNoException.Load() ||
+			asset.PTPWithException.Load() {
 			return
 		}
 		st = getOrCreateSymbol(name, asset)
 	}
-
-	st.nbboBid = q.BidPrice
-	st.nbboAsk = q.AskPrice
-	st.nbboBidSize = decimal.FromInt(int(q.BidSize))
-	st.nbboAskSize = decimal.FromInt(int(q.AskSize))
-	st.nbboBidEx = q.BidExchange
-	st.nbboAskEx = q.AskExchange
-	st.unfirm = q.IsNonFirm()
-	st.slow = q.IsSlow()
-
+	st.quote = q
 	evaluate(st)
 }
 
@@ -370,16 +363,10 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 }
 
 func evaluate(st *State) {
-	if st.nbboBid.IsZero() {
-		return
-	}
-	if st.nbboAsk.IsZero() {
+	if st.quote.Indicative() {
 		return
 	}
 	if !st.asset.Tradable.Load() {
-		return
-	}
-	if st.unfirm {
 		return
 	}
 
@@ -400,27 +387,27 @@ func evaluate(st *State) {
 	// Post AT the bid/ask (don't improve) so we capture the spread.
 	// Entry improves by a penny to get priority; exit waits at the edge.
 	// With -winner, floor the exit price at avg entry + a tick to guarantee profit.
-	if st.position.IsPositive() && st.sellClientOrderID == "" && st.asset.Tradable.Load() {
-		price := st.nbboAsk
+	if st.position.IsPositive() && st.sellClientOrderID == "" && st.asset.Tradable.Load() && !st.quote.DangerousAsk() {
+		price := st.quote.AskPrice
 		if !flagGreed.IsZero() && !st.costBasis.IsZero() {
 			minPrice := st.costBasis.Div(st.position).Mul(decimal.One.Add(*flagGreed))
 			price = price.Max(minPrice)
-			price = quantizeSell(price)
+			price = QuantizeSell(price)
 		}
-		dest := BestDestination(st.nbboAskEx, overnight)
+		dest := BestDestination(st.quote.AskExchange, overnight)
 		qty := cboe.LotSize(price).Min(st.position)
 		PlaceOrder(st, ds.SideSell, qty, price, dest)
 		return
 	}
-	if st.position.IsNegative() && st.buyClientOrderID == "" && st.asset.Tradable.Load() {
-		price := st.nbboBid
+	if st.position.IsNegative() && st.buyClientOrderID == "" && st.asset.Tradable.Load() && !st.quote.DangerousBid() {
+		price := st.quote.BidPrice
 		if !flagGreed.IsZero() && !st.costBasis.IsZero() {
 			// short: avg entry = costBasis / position = negative / negative = positive
 			maxPrice := st.costBasis.Div(st.position).Mul(decimal.One.Sub(*flagGreed))
 			price = price.Min(maxPrice)
-			price = quantizeBuy(price)
+			price = QuantizeBuy(price)
 		}
-		dest := BestDestination(st.nbboBidEx, overnight)
+		dest := BestDestination(st.quote.BidExchange, overnight)
 		qty := cboe.LotSize(price).Min(st.position.Neg())
 		PlaceOrder(st, ds.SideBuy, qty, price, dest)
 		return
@@ -437,7 +424,10 @@ func evaluate(st *State) {
 	if st.Active() {
 		return
 	}
-	spread := st.nbboAsk.Sub(st.nbboBid)
+	if st.quote.DangerousAsk() || st.quote.DangerousBid() {
+		return
+	}
+	spread := st.quote.AskPrice.Sub(st.quote.BidPrice)
 	if spread.Cmp(*flagMinEdge) < 0 {
 		return
 	}
@@ -446,32 +436,34 @@ func evaluate(st *State) {
 	}
 
 	// imbalance = (bid size - ask size) / (bid size + ask size)
-	totalSize := st.nbboBidSize.Add(st.nbboAskSize)
+	bidSize := decimal.FromInt(int(st.quote.BidSize))
+	askSize := decimal.FromInt(int(st.quote.AskSize))
+	totalSize := bidSize.Add(askSize)
 	if totalSize.IsZero() {
 		return
 	}
-	imbalance := st.nbboBidSize.Sub(st.nbboAskSize).Div(totalSize)
+	imbalance := bidSize.Sub(askSize).Div(totalSize)
 
 	if imbalance.Cmp(*flagThreshold) > 0 {
 		// strong bid pressure — buy near bid
-		price := st.nbboBid.Add(getTick(st.nbboBid))
-		price = price.Min(st.nbboAsk.Sub(getTick(st.nbboAsk)))
+		price := st.quote.BidPrice.Add(Tick(st.quote.BidPrice))
+		price = price.Min(st.quote.AskPrice.Sub(Tick(st.quote.AskPrice)))
 		if price.Cmp(*flagMinPrice) >= 0 {
-			mid := st.nbboBid.Add(st.nbboAsk).Half()
+			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			mar := st.asset.MarginRequirementLong.Load()
-			qty := GetTradeQuantity(mid, mar, totalSize)
-			dst := BestDestination(st.nbboBidEx, overnight)
+			qty := TradeQuantity(mid, mar, totalSize)
+			dst := BestDestination(st.quote.BidExchange, overnight)
 			PlaceOrder(st, ds.SideBuy, qty, price, dst)
 		}
 	} else if imbalance.Cmp(flagThreshold.Neg()) < 0 && st.asset.EasyToBorrow.Load() {
 		// strong ask pressure — sell near ask
-		price := st.nbboAsk.Sub(getTick(st.nbboAsk))
-		price = price.Max(st.nbboBid.Add(getTick(st.nbboBid)))
+		price := st.quote.AskPrice.Sub(Tick(st.quote.AskPrice))
+		price = price.Max(st.quote.BidPrice.Add(Tick(st.quote.BidPrice)))
 		if price.Cmp(*flagMinPrice) >= 0 {
-			mid := st.nbboBid.Add(st.nbboAsk).Half()
+			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			mar := st.asset.MarginRequirementShort.Load()
-			qty := GetTradeQuantity(mid, mar, totalSize)
-			dst := BestDestination(st.nbboAskEx, overnight)
+			qty := TradeQuantity(mid, mar, totalSize)
+			dst := BestDestination(st.quote.AskExchange, overnight)
 			PlaceOrder(st, ds.SideSell, qty, price, dst)
 		}
 	}
@@ -509,7 +501,7 @@ func PlaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 
 	log.Printf("%s placing %s %s @ %s -> %s (pos=%s spread=%s)",
 		st.symbol, side, qty, price, dest,
-		st.position, st.nbboAsk.Sub(st.nbboBid))
+		st.position, st.quote.AskPrice.Sub(st.quote.BidPrice))
 
 	// don't slow down quote processing
 	go func() {
@@ -558,7 +550,7 @@ func logBalance() {
 	totalUnrealized := decimal.Zero
 	for _, st := range gSymbols {
 		if st.position.IsPositive() {
-			mid := st.nbboBid.Add(st.nbboAsk).Half()
+			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			if mid.IsZero() {
 				mid = st.costBasis.Div(st.position) // fallback to avg cost
 			}
@@ -567,7 +559,7 @@ func logBalance() {
 			longCount++
 			totalUnrealized = totalUnrealized.Add(notional.Sub(st.costBasis))
 		} else if st.position.IsNegative() {
-			mid := st.nbboBid.Add(st.nbboAsk).Half()
+			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			if mid.IsZero() {
 				mid = st.costBasis.Div(st.position)
 			}
@@ -603,7 +595,7 @@ func shutdown() {
 		}
 		unrealizedPnL := decimal.Zero
 		if !st.position.IsZero() && !st.costBasis.IsZero() {
-			mid := st.nbboBid.Add(st.nbboAsk).Half()
+			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			unrealizedPnL = mid.Mul(st.position).Sub(st.costBasis)
 		}
 		log.Printf("  %s: pos=%s realized=%s unrealized=%s fees=%s bought=%s sold=%s",
@@ -618,35 +610,15 @@ func shutdown() {
 	os.Exit(0)
 }
 
-func GetTradeQuantity(price, margin, maximum decimal.Decimal) decimal.Decimal {
-	// alpaca's overnight margin requirement is normally 0.3 but we've seen it go as
-	// high as 2.0 for risky stocks. penny stocks (anything under $5) usually have a
-	// margin requirement of 1.0. leveraged etfs will usually be 0.6 to 0.9. so what
-	// happens here is as margin grows above 0.3 we scale down how much size it uses
-	rat := kStandardMarginRate.Div(margin)
-	qty := flagSize.Mul(rat).Div(price)
-	// we like to trade one round lot at a time
-	qty = qty.Min(cboe.LotSize(price))
-	// we don't want to take too much liquidity
-	qty = qty.Min(maximum)
-	// we don't trade fractional shares
-	qty = qty.Truncate()
-	// each order needs at minimum two shares for commissions+fees to go negative
-	if qty.Cmp(*flagFloor) < 0 {
-		return decimal.Zero // stock is probably very expensive like meta
-	}
-	return qty
+func QuantizeBuy(price decimal.Decimal) decimal.Decimal {
+	return price.QuantizeTruncate(Tick(price)) // buy low
 }
 
-func quantizeBuy(price decimal.Decimal) decimal.Decimal {
-	return price.QuantizeTruncate(getTick(price)) // buy low
+func QuantizeSell(price decimal.Decimal) decimal.Decimal {
+	return price.QuantizeAway(Tick(price)) // sell high
 }
 
-func quantizeSell(price decimal.Decimal) decimal.Decimal {
-	return price.QuantizeAway(getTick(price)) // sell high
-}
-
-func getTick(price decimal.Decimal) decimal.Decimal {
+func Tick(price decimal.Decimal) decimal.Decimal {
 	if price.Cmp(decimal.One) < 0 {
 		return decimal.Pip
 	} else {

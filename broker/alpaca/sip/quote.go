@@ -21,6 +21,63 @@ type Quote struct {
 	Conditions  QuoteCond       `json:"c"`  // quote conditions (bitmask)
 }
 
+// Indicative returns true if quote is from an auction process
+// (opening, closing, or intra-day) and does not represent
+// executable continuous market prices.
+func (q *Quote) Indicative() bool {
+	c := QuoteCondC | // closing quote
+		QuoteCondO | // opening quote
+		QuoteCond4 // on demand intra-day auction
+	return q.Conditions.Has(c)
+}
+
+// DangerousBid returns true if bid is likely unreliable.
+func (q *Quote) DangerousBid() bool {
+	c := QuoteCondN // non-firm (market maker is not obligated to honor price/size)
+	switch q.Tape {
+	case TapeA, TapeB: // CTA
+		c |= QuoteCondB | // slow bid
+			QuoteCondE | // slow LRP bid (LULD)
+			QuoteCondH | // slow bid and offer
+			QuoteCondU | // slow LRP bid and offer
+			QuoteCondL | // MM closed
+			QuoteCondW // slow list
+	case TapeC, TapeO: // UTP
+		c |= QuoteCondB | // manual bid
+			QuoteCondH | // manual bid and ask
+			QuoteCondU | // manual bid and ask non-firm
+			QuoteCondL | // closed quote
+			QuoteCondX | // order influx (quote may lag)
+			QuoteCondY | // one sided open
+			QuoteCondZ // halted
+	}
+	return q.Conditions.Has(c) && !q.BidPrice.IsZero()
+}
+
+// DangerousAsk returns true if ask is likely unreliable.
+func (q *Quote) DangerousAsk() bool {
+	c := QuoteCondN // non-firm (market maker is not obligated to honor price/size)
+	switch q.Tape {
+	case TapeA, TapeB: // CTA
+		c |= QuoteCondA | // slow offer
+			QuoteCondF | // slow LRP offer (LULD)
+			QuoteCondH | // slow bid and offer
+			QuoteCondU | // slow LRP bid and offer
+			QuoteCondL | // MM closed
+			QuoteCondW // slow list
+	case TapeC, TapeO: // UTP
+		c |= QuoteCondA | // manual ask
+			QuoteCondH | // manual bid and ask
+			QuoteCondU | // manual bid and ask non-firm
+			QuoteCondL | // closed quote
+			QuoteCondX | // order influx (quote may lag)
+			QuoteCondY | // one sided open
+			QuoteCondZ // halted
+		// F = fast trading on UTP — benign, not included
+	}
+	return q.Conditions.Has(c) && !q.AskPrice.IsZero()
+}
+
 // Midpoint returns the midpoint between bid and ask prices.
 func (q *Quote) Midpoint() decimal.Decimal {
 	return q.BidPrice.Add(q.AskPrice).Half()
@@ -29,16 +86,6 @@ func (q *Quote) Midpoint() decimal.Decimal {
 // Spread returns the bid-ask spread.
 func (q *Quote) Spread() decimal.Decimal {
 	return q.AskPrice.Sub(q.BidPrice)
-}
-
-// IsNonFirm returns true if any condition indicates a non-firm quote.
-func (q *Quote) IsNonFirm() bool {
-	return q.Conditions.IsNonFirm()
-}
-
-// IsSlow returns true if any condition indicates a slow quote.
-func (q *Quote) IsSlow() bool {
-	return q.Conditions.IsSlow()
 }
 
 // Parse parses a SIP quote message.

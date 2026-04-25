@@ -13,7 +13,7 @@ import (
 // and previous daily bar.
 type Snapshot struct {
 	LatestTrade  *sip.Trade `json:"latestTrade"`
-	LatestQuote  *Quote     `json:"latestQuote"`
+	LatestQuote  *sip.Quote `json:"latestQuote"`
 	MinuteBar    *ds.Bar    `json:"minuteBar"`
 	DailyBar     *ds.Bar    `json:"dailyBar"`
 	PrevDailyBar *ds.Bar    `json:"prevDailyBar"`

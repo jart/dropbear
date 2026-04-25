@@ -10,17 +10,8 @@ import (
 type State struct {
 	symbol   string
 	asset    *alpaca.Asset
-	position decimal.Decimal // current shares held (negative if short)
-
-	// latest NBBO quote
-	nbboBid     decimal.Decimal
-	nbboAsk     decimal.Decimal
-	nbboBidSize decimal.Decimal
-	nbboAskSize decimal.Decimal
-	nbboBidEx   sip.Exchange
-	nbboAskEx   sip.Exchange
-	unfirm      bool
-	slow        bool
+	quote    *sip.Quote
+	position decimal.Decimal // negative if short
 
 	// our pending orders
 	buyClientOrderID  string
