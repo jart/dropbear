@@ -45,8 +45,8 @@ var (
 
 var (
 	gClient        *alpaca.Client
+	gOrders        map[string]*State
 	gSymbols       map[string]*State
-	gOrderSymbols  map[string]string // client order ID -> symbol
 	gActiveSymbols map[string]bool
 	gFailedOrders  chan string
 	gTotalPnL      decimal.Decimal
@@ -61,8 +61,8 @@ func main() {
 	loggy.AlsoLogToFile()
 
 	gClient = alpaca.NewClient()
+	gOrders = map[string]*State{}
 	gSymbols = map[string]*State{}
-	gOrderSymbols = map[string]string{}
 	gFailedOrders = make(chan string, 32)
 
 	// keep assets synchronized
@@ -188,8 +188,7 @@ func main() {
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
 		case clientOrderID := <-gFailedOrders:
-			st := gSymbols[gOrderSymbols[clientOrderID]]
-			removeOrder(st, clientOrderID)
+			removeOrder(gOrders[clientOrderID], clientOrderID)
 		case <-balanceTicker.C:
 			logBalance()
 		case <-sigChan:
@@ -209,7 +208,7 @@ func getOrCreateSymbol(name string, asset *alpaca.Asset) *State {
 }
 
 func removeOrder(st *State, clientOrderID string) {
-	delete(gOrderSymbols, clientOrderID)
+	delete(gOrders, clientOrderID)
 	if st.buyClientOrderID == clientOrderID {
 		st.buyClientOrderID = ""
 	}
@@ -264,14 +263,13 @@ func onQuote(q *sip.Quote) {
 }
 
 func onOrderUpdate(update *alpaca.OrderUpdate) {
-	sym, ok := gOrderSymbols[update.Order.ClientOrderID]
+	st, ok := gOrders[update.Order.ClientOrderID]
 	if !ok {
 		return
 	}
-	st := gSymbols[sym]
 
 	log.Printf("%s order %s: %s price=%s qty=%s pos=%s filled=%s/%s",
-		sym, update.Event, update.Order.Status,
+		st.symbol, update.Event, update.Order.Status,
 		update.Price, update.Qty, update.PositionQty,
 		update.Order.FilledQty, update.Order.Qty)
 
@@ -351,7 +349,7 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		gTotalFills++
 
 		log.Printf("%s filled %s @ %s | pos=%s | fill_pnl=%s | fee=%s | realized=%s | total_pnl=%s | total_fees=%s | fills=%d",
-			sym, signedQty, fillPrice, st.position,
+			st.symbol, signedQty, fillPrice, st.position,
 			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills)
 	}
 
@@ -491,7 +489,7 @@ func PlaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 	}
 
 	clientOrderID := uuid.New().String()
-	gOrderSymbols[clientOrderID] = st.symbol
+	gOrders[clientOrderID] = st
 	gActiveSymbols[st.symbol] = true
 	if side == ds.SideBuy {
 		st.buyClientOrderID = clientOrderID
