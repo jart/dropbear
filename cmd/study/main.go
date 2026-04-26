@@ -26,7 +26,7 @@ func init() {
 var (
 	flagThreshold = decimal.Flag("threshold", "0.3", "imbalance ratio threshold (0-1)")
 	flagISO       = decimal.Flag("iso", "200", "net ISO shares threshold")
-	flagGreed     = decimal.FlagBPS("greed", "1", "basis points profit target over cost")
+	flagGreed     = decimal.FlagBPS("greed", "0", "basis points profit target over cost")
 	flagSize      = decimal.Flag("size", "1000", "capital per trade in usd")
 	flagFloor     = decimal.Flag("floor", "2", "minimum trade quantity in shares (2+ ensures negative fees)")
 	flagPatience  = clocky.DurationFlag("patience", "5m", "cancel unfilled orders after this")

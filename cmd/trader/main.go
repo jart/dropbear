@@ -34,7 +34,7 @@ var (
 	flagFloor     = decimal.Flag("floor", "2", "minimum trade quantity in shares (2+ ensures negative fees)")
 	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to actively trade simultaneously")
 	flagGreed     = decimal.FlagBPS("greed", "0", "amount of basis points to demand over cost basis")
-	flagMinEdge   = decimal.Flag("minedge", "2", "minimum spread in ticks")
+	flagMinEdge   = decimal.Flag("minedge", "3", "minimum spread in ticks")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum price of stock in usd to trade")
 	flagMaxPrice  = decimal.Flag("maxprice", "100", "maximum price of stock in usd to trade")
 	flagThreshold = decimal.Flag("threshold", "0.3", "imbalance ratio threshold to trigger (0-1)")
