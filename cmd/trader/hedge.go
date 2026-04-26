@@ -73,12 +73,9 @@ func reduceLongExposure(st *State, longExposure decimal.Decimal) {
 	default:
 		return // market is closed
 	}
-	qty := longExposure.Div(price)
-	// avoid overtrading
-	lot := cboe.LotSize(price)
-	qty = qty.QuantizeTruncate(lot)
-	// flatten before reversing polarity
-	if qty.Cmp(st.position) > 0 {
+	qty := longExposure.Div(price).Truncate()
+	// can't cross zero in one order; flatten first, short on next heartbeat
+	if st.position.IsPositive() && qty.Cmp(st.position) > 0 {
 		qty = st.position
 	}
 	if qty.IsPositive() {
@@ -104,12 +101,9 @@ func reduceShortExposure(st *State, shortExposure decimal.Decimal) {
 	default:
 		return // market is closed
 	}
-	qty := shortExposure.Div(price)
-	// avoid overtrading
-	lot := cboe.LotSize(price)
-	qty = qty.QuantizeTruncate(lot)
-	// flatten before reversing polarity
-	if qty.Cmp(st.position.Neg()) > 0 {
+	qty := shortExposure.Div(price).Truncate()
+	// can't cross zero in one order; flatten first, buy on next heartbeat
+	if st.position.IsNegative() && qty.Cmp(st.position.Neg()) > 0 {
 		qty = st.position.Neg()
 	}
 	if qty.IsPositive() {

@@ -15,6 +15,7 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/loggy"
+	"dropbear/netty"
 	"dropbear/symbol"
 	"flag"
 	"fmt"
@@ -30,7 +31,7 @@ import (
 var (
 	flagSize      = decimal.Flag("size", "1_000", "how much capital to devote to each trade")
 	flagRisk      = decimal.Flag("risk", "5_000", "maximum portfolio exposure in usd before index hedging")
-	flagHedge     = symbol.Flag("hedge", "IWM", "symbol to use for index hedging when risk threshold is breached")
+	flagHedge     = symbol.Flag("hedge", "SPY", "symbol to use for index hedging when risk threshold is breached")
 	flagFloor     = decimal.Flag("floor", "2", "minimum trade quantity in shares (2+ ensures negative fees)")
 	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to actively trade simultaneously")
 	flagGreed     = decimal.FlagBPS("greed", "1", "amount of basis points to demand over cost basis")
@@ -42,8 +43,11 @@ var (
 	flagUnload    = clocky.DurationFlag("unload", "60m", "time before day session close to switch to exit-only (0 to disable)")
 	flagFlatten   = clocky.DurationFlag("flatten", "11m", "time before day session close to flatten positions with moc orders (0 to disable)")
 	flagPatience  = clocky.DurationFlag("patience", "5m", "time to wait before canceling unfilled orders (0 to disable)")
+	flagFreshness = clocky.DurationFlag("freshness", "1s", "required freshness of quote to be eligible for trading")
 	flagBucket    = flag.String("bucket", "dropbear-sip", "google cloud storage bucket for recording market data")
 	flagExitOnly  = flag.Bool("exit", false, "exit-only mode: close existing positions, no new entries")
+	flagLive      = flag.Bool("live", false, "enables live trading and network access")
+	flagData      = flag.String("data", "", "path of sip data file for backtest")
 )
 
 var (
@@ -53,7 +57,7 @@ var (
 )
 
 var (
-	gClient        *alpaca.Client
+	gBroker        Broker
 	gOrders        map[string]*State
 	gSymbols       map[symbol.Symbol]*State
 	gActiveSymbols map[symbol.Symbol]bool
@@ -63,18 +67,25 @@ var (
 	gTotalPnL      decimal.Decimal
 	gTotalFees     decimal.Decimal
 	gTotalFills    int
-	gQuoteCount    int64
 	gOrderCount    int64
 	gOrderFails    int64
 	gPhase         Phase
 	gTapeMsg       chan *sip.Message
 	gTapeDone      chan struct{}
+	gBacktest      *Backtest
 )
 
 func main() {
 	loggy.Init()
 	flag.Parse()
-	loggy.AlsoLogToFile()
+	if *flagLive {
+		loggy.AlsoLogToFile()
+	} else {
+		netty.SetOffline()
+		clocky.Now = clocky.FakeNow
+		clocky.Sleep = clocky.FakeSleep
+		clocky.NewTicker = clocky.FakeNewTicker
+	}
 
 	if !flagSize.IsPositive() {
 		fmt.Fprintf(os.Stderr, "-size must be positive\n")
@@ -116,6 +127,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "-hedge asset not found: %s\n", *flagHedge)
 		os.Exit(1)
 	}
+	if !*flagLive && *flagData == "" {
+		fmt.Fprintf(os.Stderr, "-data must be specified for backtest mode\n")
+		os.Exit(1)
+	}
 
 	// log configuration
 	log.Printf("prepare to trade")
@@ -135,100 +150,125 @@ func main() {
 	log.Printf("  exitonly=%t", *flagExitOnly)
 
 	// initialize globals
-	gClient = alpaca.NewClient()
 	gOrders = map[string]*State{}
 	gSymbols = map[symbol.Symbol]*State{}
 	gActiveSymbols = map[symbol.Symbol]bool{}
 	gIgnoreSymbols = map[symbol.Symbol]bool{}
 	gFailedOrders = make(chan string, 32)
 	gNextBalance = clocky.Now().Add(kBalanceInterval)
+	if *flagLive {
+		gBroker = alpaca.NewClient()
+	}
 
 	// periodically fetch information about supported equities from alpaca
-	go synchronizeAssetsForever()
+	if *flagLive {
+		go synchronizeAssetsForever()
+	}
 
 	// cancel lingering orders
-	log.Printf("canceling lingering orders...")
-	if err := gClient.CancelAllOrders(); err != nil {
-		log.Printf("warning: error canceling orders: %v", err)
+	if *flagLive {
+		log.Printf("canceling lingering orders...")
+		if err := gBroker.CancelAllOrders(); err != nil {
+			log.Printf("warning: error canceling orders: %v", err)
+		}
 	}
 
 	// load existing positions
-	var symbols []string
-	log.Printf("loading positions...")
-	positions, err := gClient.GetPositions()
-	if err != nil {
-		log.Fatalf("error getting positions: %v", err)
-	}
-	for _, pos := range positions {
-		sym, err := symbol.Parse(pos.Symbol)
+	if *flagLive {
+		var symbols []string
+		log.Printf("loading positions...")
+		positions, err := gBroker.GetPositions()
 		if err != nil {
-			continue
+			log.Fatalf("error getting positions: %v", err)
 		}
-		symbols = append(symbols, pos.Symbol)
-		st := getOrCreateSymbol(sym)
-		st.position = pos.Qty
-		st.costBasis = pos.CostBasis
-		if st.Active() {
-			gActiveSymbols[sym] = true
+		for _, pos := range positions {
+			sym, err := symbol.Parse(pos.Symbol)
+			if err != nil {
+				continue
+			}
+			symbols = append(symbols, pos.Symbol)
+			st := getOrCreateSymbol(sym)
+			st.position = pos.Qty
+			st.costBasis = pos.CostBasis
+			if st.Active() {
+				gActiveSymbols[sym] = true
+			}
+			log.Printf("loaded position for %s: %s shares @ avg %s (cost basis %s)",
+				pos.Symbol, pos.Qty, pos.AvgEntryPrice, pos.CostBasis)
 		}
-		log.Printf("loaded position for %s: %s shares @ avg %s (cost basis %s)",
-			pos.Symbol, pos.Qty, pos.AvgEntryPrice, pos.CostBasis)
-	}
-
-	// fetch quotes for existing positions and place exit orders
-	if len(symbols) > 0 {
-		feed := alpaca.FeedSIP
-		if cboe.GetSession(clocky.Now()) == cboe.SessionOvernight {
-			feed = alpaca.FeedBOATS
-		}
-		log.Printf("fetching %s quotes for %d positions...", feed, len(symbols))
-		quotes, err := gClient.GetQuotes(symbols, feed)
-		if err != nil {
-			log.Printf("warning: error fetching quotes: %v", err)
-		} else {
-			for name, q := range quotes {
-				st := gSymbols[symbol.MustParse(name)]
-				if st == nil || q.BidPrice.IsZero() || q.AskPrice.IsZero() {
-					continue
+		// fetch quotes for existing positions and place exit orders
+		if len(symbols) > 0 {
+			feed := alpaca.FeedSIP
+			if cboe.GetSession(clocky.Now()) == cboe.SessionOvernight {
+				feed = alpaca.FeedBOATS
+			}
+			log.Printf("fetching %s quotes for %d positions...", feed, len(symbols))
+			quotes, err := gBroker.GetQuotes(symbols, feed)
+			if err != nil {
+				log.Printf("warning: error fetching quotes: %v", err)
+			} else {
+				for name, q := range quotes {
+					st := gSymbols[symbol.MustParse(name)]
+					if st == nil || q.BidPrice.IsZero() || q.AskPrice.IsZero() {
+						continue
+					}
+					st.quote = q
 				}
-				st.quote = q
 			}
 		}
 	}
-
-	log.Printf("subscribing to order updates...")
-	orderUpdates := alpaca.OrderUpdates()
-
-	log.Printf("subscribing to sip stock updates...")
-	stockUpdates := alpaca.MustStockUpdates(alpaca.SIPWSURL, &alpaca.StockUpdatesRequest{
-		Action:     "subscribe",
-		Quotes:     []string{"*"},
-		Trades:     []string{"*"},
-		Statuses:   []string{"*"},
-		Imbalances: []string{"*"},
-		LULDs:      []string{"*"},
-	})
-
-	log.Printf("subscribing to boats stock updates...")
-	boatsUpdates := alpaca.MustStockUpdates(alpaca.BOATSWSURL, &alpaca.StockUpdatesRequest{
-		Action:   "subscribe",
-		Quotes:   []string{"*"},
-		Trades:   []string{"*"},
-		Statuses: []string{"*"},
-	})
-
-	// start tape recorder to gcs
-	gTapeMsg = make(chan *sip.Message, 65536)
-	gTapeDone = make(chan struct{})
-	go recordTape(gTapeMsg, gTapeDone)
 
 	// catch ctrl-c
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// create timers
-	heartbeat := clocky.NewTicker(kHeartbeatInterval)
-	defer heartbeat.Stop()
+	// the trading algorithm with a heart
+	var heartbeatChan <-chan time.Time
+	if *flagLive {
+		heartbeat := clocky.NewTicker(kHeartbeatInterval)
+		defer heartbeat.Stop()
+		heartbeatChan = heartbeat.C
+	}
+
+	var stockUpdates <-chan *sip.Message
+	var boatsUpdates <-chan *sip.Message
+	var orderUpdates <-chan *alpaca.OrderUpdate
+	if !*flagLive {
+		var err error
+		gBacktest, err = NewBacktest(*flagData, sigChan)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error starting backtest: %v\n", err)
+			os.Exit(1)
+		}
+		orderUpdates = gBacktest.OrderUpdates
+		stockUpdates = gBacktest.StockUpdates
+		boatsUpdates = make(chan *sip.Message)
+		heartbeatChan = gBacktest.Heartbeat
+		gBroker = gBacktest
+	} else {
+		log.Printf("subscribing to order updates...")
+		orderUpdates = alpaca.OrderUpdates()
+		log.Printf("subscribing to sip stock updates...")
+		stockUpdates = alpaca.MustStockUpdates(alpaca.SIPWSURL, &alpaca.StockUpdatesRequest{
+			Action:     "subscribe",
+			Quotes:     []string{"*"},
+			Trades:     []string{"*"},
+			Statuses:   []string{"*"},
+			Imbalances: []string{"*"},
+			LULDs:      []string{"*"},
+		})
+		log.Printf("subscribing to boats stock updates...")
+		boatsUpdates = alpaca.MustStockUpdates(alpaca.BOATSWSURL, &alpaca.StockUpdatesRequest{
+			Action:   "subscribe",
+			Quotes:   []string{"*"},
+			Trades:   []string{"*"},
+			Statuses: []string{"*"},
+		})
+		// start tape recorder to gcs
+		gTapeMsg = make(chan *sip.Message, 65536)
+		gTapeDone = make(chan struct{})
+		go recordTape(gTapeMsg, gTapeDone)
+	}
 
 	// consume events
 	for {
@@ -242,7 +282,7 @@ func main() {
 		case clientOrderID := <-gFailedOrders:
 			removeOrder(gOrders[clientOrderID], clientOrderID)
 			gOrderFails++
-		case <-heartbeat.C:
+		case <-heartbeatChan:
 			onHeartbeat()
 		case <-sigChan:
 			shutdown()
@@ -286,12 +326,11 @@ func onHeartbeat() {
 		closeTime := cboe.GetCloseTime(year, month, day)
 		if *flagFlatten != 0 && closeTime.Sub(now) <= *flagFlatten {
 			if len(gOrders) == 0 {
-				log.Printf("we shall flatten our positions")
 				flatten()
 			} else {
 				gPhase = PhaseCanceling
 				log.Printf("we shall cancel all orders so we can flatten")
-				if err := gClient.CancelAllOrders(); err != nil {
+				if err := gBroker.CancelAllOrders(); err != nil {
 					log.Printf("warning: error canceling orders: %v", err)
 				}
 			}
@@ -323,7 +362,7 @@ func flatten() {
 func synchronizeAssetsForever() {
 	for {
 		log.Printf("synchronizing alpaca assets...")
-		if err := gClient.SyncAssets(); err != nil {
+		if err := gBroker.SyncAssets(); err != nil {
 			log.Printf("error synchronizing assets: %v", err)
 		}
 		time.Sleep(15 * time.Minute)
@@ -394,7 +433,9 @@ func TradeQuantity(price, margin, maximum decimal.Decimal) decimal.Decimal {
 }
 
 func onMessage(msg *sip.Message) {
-	gTapeMsg <- msg
+	if gTapeMsg != nil {
+		gTapeMsg <- msg
+	}
 	switch msg.Type {
 	case sip.MessageTypeQuote:
 		onQuote(msg.Quote())
@@ -410,7 +451,6 @@ func onQuote(q *sip.Quote) {
 	if st == nil {
 		return
 	}
-	gQuoteCount++
 	st.quote = q
 	Evaluate(st)
 }
@@ -542,7 +582,10 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 
 		// estimate fees/rebates (CAT + broker are per-order, not per-fill)
 		firstFill := update.Order.FilledQty.Cmp(absQty) == 0
-		fee := EstimateFee(update.Order.Side, absQty, fillPrice, firstFill)
+		marketable := update.Order.Type == alpaca.OrderTypeMarket ||
+			(update.Order.Side == ds.SideBuy && st.quote != nil && fillPrice.Cmp(st.quote.AskPrice) >= 0) ||
+			(update.Order.Side == ds.SideSell && st.quote != nil && fillPrice.Cmp(st.quote.BidPrice) <= 0)
+		fee := EstimateFee(update.Order.Side, absQty, fillPrice, firstFill, marketable)
 		st.totalFees = st.totalFees.Add(fee)
 		gTotalFees = gTotalFees.Add(fee)
 
@@ -582,8 +625,13 @@ func Evaluate(st *State) {
 		return // let manageHedge trade this
 	}
 
-	// check if market is open
+	// don't trade old quotes
 	now := clocky.Now()
+	if st.quote.Timestamp.Add(*flagFreshness).Before(now) {
+		return
+	}
+
+	// check if market is open
 	session := cboe.GetSession(now)
 	switch session {
 	case cboe.SessionClosed:
@@ -751,7 +799,7 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 	}
 
 	logMsg := fmt.Sprintf(
-		"%s placing %s %s @ %s -> %s (pos=%s spread=%s bid=%sx%d ask=%sx%d)",
+		"%s placed %s %s @ %s -> %s (pos=%s spread=%s bid=%sx%d ask=%sx%d)",
 		st.symbol, side, qty, price, dest,
 		st.position, st.quote.AskPrice.Sub(st.quote.BidPrice),
 		st.quote.BidPrice, st.quote.BidSize,
@@ -776,7 +824,7 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 			}
 		}
 
-		_, err := gClient.CreateOrder(&alpaca.CreateOrderRequest{
+		_, err := gBroker.CreateOrder(&alpaca.CreateOrderRequest{
 			Symbol:               st.symbol.String(),
 			Side:                 side,
 			Qty:                  qty,
@@ -814,7 +862,7 @@ func MarketOnCloseOrder(st *State, side ds.Side, qty decimal.Decimal) {
 	}
 	log.Printf("placing moc order to %s %s shares of %s", side, qty, st.symbol)
 	go func() {
-		_, err := gClient.CreateOrder(&alpaca.CreateOrderRequest{
+		_, err := gBroker.CreateOrder(&alpaca.CreateOrderRequest{
 			Symbol:        st.symbol.String(),
 			Side:          side,
 			Qty:           qty,
@@ -841,6 +889,8 @@ func logBalance() {
 	shortCount := 0
 	pendingCount := 0
 	totalUnrealized := decimal.Zero
+	liquidationPnL := decimal.Zero
+	hedgeNotional := decimal.Zero
 	for _, st := range gSymbols {
 		if st.position.IsPositive() {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
@@ -851,6 +901,7 @@ func logBalance() {
 			longNotional = longNotional.Add(notional)
 			longCount++
 			totalUnrealized = totalUnrealized.Add(notional.Sub(st.costBasis))
+			liquidationPnL = liquidationPnL.Add(st.quote.BidPrice.Mul(st.position).Sub(st.costBasis))
 		} else if st.position.IsNegative() {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			if mid.IsZero() {
@@ -860,29 +911,38 @@ func logBalance() {
 			shortNotional = shortNotional.Add(notional)
 			shortCount++
 			totalUnrealized = totalUnrealized.Add(st.position.Mul(mid).Sub(st.costBasis))
+			liquidationPnL = liquidationPnL.Add(st.position.Mul(st.quote.AskPrice).Sub(st.costBasis))
 		}
 		if st.buyClientOrderID != "" || st.sellClientOrderID != "" {
 			pendingCount++
 		}
+		if st.symbol == *flagHedge && !st.position.IsZero() {
+			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
+			hedgeNotional = mid.Mul(st.position)
+		}
 	}
 	net := gTotalPnL.Sub(gTotalFees)
-	log.Printf("BALANCE long=$%s (%d) short=$%s (%d) expose=$%s | realize=%s fee=%s net=%s unrealized=%s | fills=%d pending=%d quotes=%d | ofails=%d/%d",
+	equity := net.Add(totalUnrealized)
+	liquidate := net.Add(liquidationPnL)
+	log.Printf("BALANCE long=$%s (%d) short=$%s (%d) expose=$%s | realize=%s fee=%s net=%s unrealized=%s equity=%s liquidate=%s | hedge=%s | fills=%d pending=%d active=%d | ofails=%d/%d",
 		longNotional.Format(0), longCount,
 		shortNotional.Format(0), shortCount,
 		longNotional.Sub(shortNotional).Format(0),
-		gTotalPnL, gTotalFees, net, totalUnrealized,
-		gTotalFills, pendingCount, gQuoteCount,
+		gTotalPnL, gTotalFees, net, totalUnrealized, equity, liquidate,
+		hedgeNotional, gTotalFills, pendingCount, len(gActiveSymbols),
 		gOrderFails, gOrderCount)
 }
 
 func shutdown() {
 	log.Printf("shutting down... canceling all orders")
-	if err := gClient.CancelAllOrders(); err != nil {
+	if err := gBroker.CancelAllOrders(); err != nil {
 		log.Printf("error canceling orders: %v", err)
 	}
-	log.Printf("flushing tape...")
-	close(gTapeMsg)
-	<-gTapeDone
+	if gTapeMsg != nil {
+		log.Printf("flushing tape...")
+		close(gTapeMsg)
+		<-gTapeDone
+	}
 	log.Printf("=== P&L SUMMARY ===")
 	for _, st := range gSymbols {
 		if st.totalBought.IsZero() && st.totalSold.IsZero() {
@@ -899,8 +959,7 @@ func shutdown() {
 	}
 	net := gTotalPnL.Sub(gTotalFees)
 	log.Printf("  TOTAL realized P&L: %s  fees: %s  net: %s", gTotalPnL, gTotalFees, net)
-	log.Printf("  total fills: %d  quotes processed: %d  symbols tracked: %d",
-		gTotalFills, gQuoteCount, len(gSymbols))
+	log.Printf("  total fills: %d  symbols tracked: %d", gTotalFills, len(gSymbols))
 	fmt.Printf("total P&L: %s  fees: %s  net: %s  fills: %d\n", gTotalPnL, gTotalFees, net, gTotalFills)
 	os.Exit(0)
 }
@@ -927,7 +986,7 @@ func cleanupOrders() {
 }
 
 func cancelOrder(orderID string) {
-	if err := gClient.CancelOrder(orderID); err != nil {
+	if err := gBroker.CancelOrder(orderID); err != nil {
 		log.Printf("error canceling order: %v", err)
 	}
 }

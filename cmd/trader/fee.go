@@ -18,7 +18,7 @@ var (
 // EstimateFee returns the estimated fee for a fill. Negative means net rebate.
 // firstFill should be true only for the first fill of an order (CAT and broker
 // fees are per-order, not per-fill).
-func EstimateFee(side ds.Side, qty, price decimal.Decimal, firstFill bool) decimal.Decimal {
+func EstimateFee(side ds.Side, qty, price decimal.Decimal, firstFill, marketable bool) decimal.Decimal {
 	fee := decimal.Zero
 	if firstFill {
 		fee = fee.Add(kCATFeePerTrade)
@@ -28,6 +28,10 @@ func EstimateFee(side ds.Side, qty, price decimal.Decimal, firstFill bool) decim
 		fee = fee.Add(kTAFFeePerShare.Mul(qty))
 		fee = fee.Add(price.Mul(qty).Mul(kSECFeePerMillion).DivInt(1_000_000))
 	}
-	fee = fee.Add(kMakerFeePerShare.Mul(qty))
+	if marketable {
+		fee = fee.Add(kTakerFeePerShare.Mul(qty))
+	} else {
+		fee = fee.Add(kMakerFeePerShare.Mul(qty))
+	}
 	return fee
 }

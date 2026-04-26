@@ -5,6 +5,7 @@ package netty
 func SetOffline() {
 	BulkHttpClient = nil
 	FastHTTPClient = nil
+	GCSHTTPClient = nil
 	fastWSDialer = nil
 }
 
