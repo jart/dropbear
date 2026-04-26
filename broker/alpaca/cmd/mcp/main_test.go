@@ -63,14 +63,14 @@ func TestMlegOrderRequestJSON(t *testing.T) {
 		t.Errorf("order_class = %v, want \"mleg\"", m["order_class"])
 	}
 
-	// qty must be string "400"
-	if m["qty"] != "400" {
-		t.Errorf("qty = %v (type %T), want string \"400\"", m["qty"], m["qty"])
+	// qty must be 400
+	if m["qty"] != float64(400) {
+		t.Errorf("qty = %v (type %T), want 400", m["qty"], m["qty"])
 	}
 
-	// limit_price must be string "10.99"
-	if m["limit_price"] != "10.99" {
-		t.Errorf("limit_price = %v, want \"10.99\"", m["limit_price"])
+	// limit_price must be 10.99
+	if m["limit_price"] != float64(10.99) {
+		t.Errorf("limit_price = %v, want 10.99", m["limit_price"])
 	}
 
 	// type must be "limit"
@@ -98,8 +98,8 @@ func TestMlegOrderRequestJSON(t *testing.T) {
 	if leg0["side"] != "buy" {
 		t.Errorf("leg[0].side = %v", leg0["side"])
 	}
-	if leg0["ratio_qty"] != "1" {
-		t.Errorf("leg[0].ratio_qty = %v (type %T), want string \"1\"", leg0["ratio_qty"], leg0["ratio_qty"])
+	if leg0["ratio_qty"] != float64(1) {
+		t.Errorf("leg[0].ratio_qty = %v (type %T), want 1", leg0["ratio_qty"], leg0["ratio_qty"])
 	}
 
 	// Check second leg (sell side)

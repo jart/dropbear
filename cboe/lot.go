@@ -17,7 +17,7 @@ func LotSize(price decimal.Decimal) decimal.Decimal {
 	if price.Cmp(k10000) >= 0 {
 		return k1
 	} else if price.Cmp(k1000) >= 0 {
-		return 10
+		return k10
 	} else if price.Cmp(k250) >= 0 {
 		return k40
 	} else {

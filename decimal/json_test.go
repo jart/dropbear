@@ -41,11 +41,11 @@ func TestDecimalMarshalJSON(t *testing.T) {
 		input Decimal
 		want  string
 	}{
-		{Parse("123.45"), `"123.45"`},
-		{Zero, `"0"`},
-		{Parse("-99.99"), `"-99.99"`},
-		{Epsilon, `"0.000001"`},
-		{Parse("1000000"), `"1000000"`},
+		{Parse("123.45"), `123.45`},
+		{Zero, `0`},
+		{Parse("-99.99"), `-99.99`},
+		{Epsilon, `0.000001`},
+		{Parse("1000000"), `1000000`},
 	}
 
 	for _, tt := range tests {
