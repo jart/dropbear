@@ -613,7 +613,9 @@ func Evaluate(st *State) {
 		dest := BestDestination(st.quote.AskExchange, st.asset, session)
 		qty := cboe.LotSize(price).Min(st.position)
 		LimitOrder(st, ds.SideSell, qty, price, dest, session)
-		st.greed = st.greed.Half()
+		if session == cboe.SessionDay {
+			st.greed = st.greed.Half()
+		}
 		return
 	}
 	if st.position.IsNegative() && st.buyClientOrderID == "" && st.asset.Tradable.Load() && !st.quote.DangerousBid() {
@@ -627,7 +629,9 @@ func Evaluate(st *State) {
 		dest := BestDestination(st.quote.BidExchange, st.asset, session)
 		qty := cboe.LotSize(price).Min(st.position.Neg())
 		LimitOrder(st, ds.SideBuy, qty, price, dest, session)
-		st.greed = st.greed.Half()
+		if session == cboe.SessionDay {
+			st.greed = st.greed.Half()
+		}
 		return
 	}
 
