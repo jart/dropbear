@@ -35,12 +35,13 @@ var (
 	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to actively trade simultaneously")
 	flagGreed     = decimal.FlagBPS("greed", "1", "amount of basis points to demand over cost basis")
 	flagMinEdge   = decimal.Flag("minedge", "1", "minimum spread in ticks")
-	flagMinPrice  = decimal.Flag("minprice", "0.5", "minimum price in usd to trade")
+	flagMinPrice  = decimal.Flag("minprice", "0.5", "minimum price of stock in usd to trade")
 	flagThreshold = decimal.Flag("threshold", "0.3", "imbalance ratio threshold to trigger (0-1)")
 	flagISOShares = decimal.Flag("iso", "200", "net ISO shares threshold to trigger entry")
 	flagUnload    = clocky.DurationFlag("unload", "60m", "time before day session close to switch to exit-only (0 to disable)")
 	flagFlatten   = clocky.DurationFlag("flatten", "11m", "time before day session close to flatten positions with moc orders (0 to disable)")
 	flagPatience  = clocky.DurationFlag("patience", "5m", "time to wait before canceling unfilled orders (0 to disable)")
+	flagBucket    = flag.String("bucket", "dropbear-sip", "google cloud storage bucket for recording market data")
 	flagExitOnly  = flag.Bool("exit", false, "exit-only mode: close existing positions, no new entries")
 )
 
@@ -62,6 +63,8 @@ var (
 	gTotalFills    int
 	gQuoteCount    int64
 	gPhase         Phase
+	gTapeCh        chan sip.Message
+	gTapeDone      chan struct{}
 )
 
 func main() {
@@ -200,6 +203,11 @@ func main() {
 		Action: "subscribe",
 		Quotes: []string{"*"},
 	})
+
+	// start tape recorder to gcs
+	gTapeCh = make(chan sip.Message, 65536)
+	gTapeDone = make(chan struct{})
+	go recordTape(gTapeCh, gTapeDone)
 
 	// catch ctrl-c
 	sigChan := make(chan os.Signal, 1)
@@ -366,6 +374,7 @@ func TradeQuantity(price, margin, maximum decimal.Decimal) decimal.Decimal {
 }
 
 func onMessage(msg *sip.Message) {
+	gTapeCh <- *msg
 	switch msg.Type {
 	case sip.MessageTypeQuote:
 		onQuote(msg.Quote())
@@ -823,8 +832,9 @@ func shutdown() {
 	if err := gClient.CancelAllOrders(); err != nil {
 		log.Printf("error canceling orders: %v", err)
 	}
-
-	// print per-symbol P&L summary
+	log.Printf("flushing tape...")
+	close(gTapeCh)
+	<-gTapeDone
 	log.Printf("=== P&L SUMMARY ===")
 	for _, st := range gSymbols {
 		if st.totalBought.IsZero() && st.totalSold.IsZero() {
