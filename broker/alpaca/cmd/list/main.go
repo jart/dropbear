@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"dropbear/broker/alpaca"
+	"dropbear/broker/alpaca/sip"
 	"dropbear/decimal"
 	"flag"
 	"fmt"
@@ -45,8 +46,17 @@ var (
 	classFlag  = flag.String("class", "", "filter by class: equity, option, crypto, crypto-perp")
 	status     = flag.String("status", "", "filter by status: active, inactive")
 	sortVolume = flag.Bool("volume", false, "sort by previous day volume (descending), prints symbol and volume")
+	sortPrice  = flag.Bool("price", false, "sort by previous day price (descending), prints symbol and price")
 	notional   = flag.Bool("notional", false, "with -volume, use notional volume (shares × price) instead of share count")
+	quoteFlag  = flag.Bool("quote", false, "show quote along with each symbol")
 
+	otc                 *tristate
+	nyse                *tristate
+	amex                *tristate
+	bats                *tristate
+	arca                *tristate
+	nasdaq              *tristate
+	crypto              *tristate
 	tradable            *tristate
 	marginable          *tristate
 	shortable           *tristate
@@ -63,6 +73,13 @@ var (
 )
 
 func init() {
+	otc = boolFlag("otc", "is over-the-counter")
+	nyse = boolFlag("nyse", "listed on NYSE")
+	amex = boolFlag("amex", "listed on AMEX")
+	bats = boolFlag("bats", "listed on BATS")
+	arca = boolFlag("arca", "listed on ARCA")
+	nasdaq = boolFlag("nasdaq", "listed on NASDAQ")
+	crypto = boolFlag("crypto", "is a crypto asset")
 	tradable = boolFlag("tradable", "can be traded on Alpaca")
 	marginable = boolFlag("marginable", "can be purchased with margin")
 	shortable = boolFlag("shortable", "can be sold short")
@@ -88,9 +105,18 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  -class string\n\tequity, option, crypto, crypto-perp\n")
 		fmt.Fprintf(os.Stderr, "  -status string\n\tactive, inactive\n\n")
 		fmt.Fprintf(os.Stderr, "Output:\n")
+		fmt.Fprintf(os.Stderr, "  -price\n\tsort by previous day price (descending), prints symbol and price\n")
 		fmt.Fprintf(os.Stderr, "  -volume\n\tsort by previous day volume (descending), prints two columns\n")
-		fmt.Fprintf(os.Stderr, "  -notional\n\twith -volume, use notional volume (shares × price)\n\n")
+		fmt.Fprintf(os.Stderr, "  -notional\n\twith -volume, use notional volume (shares × price)\n")
+		fmt.Fprintf(os.Stderr, "  -quote\n\tshow quote along with each symbol\n\n")
 		fmt.Fprintf(os.Stderr, "Boolean filters (use -name or -no-name):\n")
+		fmt.Fprintf(os.Stderr, "  -otc / -no-otc\n")
+		fmt.Fprintf(os.Stderr, "  -nyse / -no-nyse\n")
+		fmt.Fprintf(os.Stderr, "  -amex / -no-amex\n")
+		fmt.Fprintf(os.Stderr, "  -bats / -no-bats\n")
+		fmt.Fprintf(os.Stderr, "  -arca / -no-arca\n")
+		fmt.Fprintf(os.Stderr, "  -nasdaq / -no-nasdaq\n")
+		fmt.Fprintf(os.Stderr, "  -crypto / -no-crypto\n")
 		fmt.Fprintf(os.Stderr, "  -tradable / -no-tradable\n")
 		fmt.Fprintf(os.Stderr, "  -marginable / -no-marginable\n")
 		fmt.Fprintf(os.Stderr, "  -shortable / -no-shortable\n")
@@ -106,9 +132,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  -standard-margin-short / -no-standard-margin-short\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  list -healthy\n")
-		fmt.Fprintf(os.Stderr, "      equivalent to: -class equity -status active -tradable -marginable\n")
-		fmt.Fprintf(os.Stderr, "      -has-options -easy-to-borrow -no-ptp-no-exception -no-ptp-with-exception\n")
-		fmt.Fprintf(os.Stderr, "      -standard-margin-long -standard-margin-short\n")
+		fmt.Fprintf(os.Stderr, "      equivalent to: -no-otc -class=equity -status=active -tradable -marginable\n")
+		fmt.Fprintf(os.Stderr, "      -easy-to-borrow -no-ptp-no-exception -no-ptp-with-exception -no-crypto\n")
 		fmt.Fprintf(os.Stderr, "  list -tradable -has-options # tradable assets with options\n")
 		fmt.Fprintf(os.Stderr, "  list -class crypto         # all crypto assets\n")
 		fmt.Fprintf(os.Stderr, "  list -no-marginable        # non-marginable assets\n")
@@ -126,17 +151,22 @@ func main() {
 	if *healthy {
 		*classFlag = "equity"
 		*status = "active"
+		*otc = -1
+		*crypto = -1
 		*tradable = 1
 		*marginable = 1
-		*hasOptions = 1
 		*easyToBorrow = 1
 		*ptpNoException = -1
 		*ptpWithException = -1
-		*standardMarginLong = 1
-		*standardMarginShort = 1
 	}
 
 	standardMargin := decimal.Parse("0.3")
+
+	if *quoteFlag || *sortVolume || *sortPrice {
+		*status = "active" // only active assets have quotes and volume
+		*marginable = 1
+		*crypto = -1
+	}
 
 	var results []string
 	for _, a := range alpaca.Assets {
@@ -144,6 +174,27 @@ func main() {
 			continue
 		}
 		if !matchStatus(a, *status) {
+			continue
+		}
+		if !otc.require(a.Exchange == alpaca.ExchangeOTC) {
+			continue
+		}
+		if !nyse.require(a.Exchange == alpaca.ExchangeNYSE) {
+			continue
+		}
+		if !amex.require(a.Exchange == alpaca.ExchangeAMEX) {
+			continue
+		}
+		if !bats.require(a.Exchange == alpaca.ExchangeBATS) {
+			continue
+		}
+		if !arca.require(a.Exchange == alpaca.ExchangeARCA) {
+			continue
+		}
+		if !nasdaq.require(a.Exchange == alpaca.ExchangeNASDAQ) {
+			continue
+		}
+		if !crypto.require(a.Exchange == alpaca.ExchangeCrypto) {
 			continue
 		}
 		if !tradable.require(a.Tradable.Load()) {
@@ -188,8 +239,8 @@ func main() {
 		results = append(results, a.Symbol.String())
 	}
 
-	if *sortVolume {
-		printByVolume(results, *notional)
+	if *quoteFlag || *sortVolume || *sortPrice {
+		printWithQuotes(results, *sortPrice, *sortVolume, *notional)
 	} else {
 		slices.Sort(results)
 		for _, s := range results {
@@ -198,7 +249,7 @@ func main() {
 	}
 }
 
-func printByVolume(symbols []string, useNotional bool) {
+func printWithQuotes(symbols []string, sortByPrice bool, sortByVolume bool, useNotional bool) {
 	client := alpaca.NewClient()
 	snapshots, err := client.GetSnapshots(symbols)
 	if err != nil {
@@ -209,6 +260,8 @@ func printByVolume(symbols []string, useNotional bool) {
 	type symbolVolume struct {
 		symbol string
 		volume decimal.Decimal
+		trade  *sip.Trade
+		quote  *sip.Quote
 	}
 
 	var results []symbolVolume
@@ -217,21 +270,46 @@ func printByVolume(symbols []string, useNotional bool) {
 		if snap != nil && snap.PrevDailyBar != nil {
 			vol = snap.PrevDailyBar.Volume
 			if useNotional {
+				vol = vol.DivInt(1000)
 				vol = vol.Mul(snap.PrevDailyBar.Close)
 			}
 		}
-		results = append(results, symbolVolume{sym, vol})
+		results = append(results, symbolVolume{
+			symbol: sym,
+			volume: vol,
+			trade:  snap.LatestTrade,
+			quote:  snap.LatestQuote,
+		})
 	}
 
 	slices.SortFunc(results, func(a, b symbolVolume) int {
-		if c := cmp.Compare(b.volume.Int64(), a.volume.Int64()); c != 0 {
-			return c // descending
+		if sortByVolume {
+			if c := b.volume.Cmp(a.volume); c != 0 {
+				return c // descending
+			}
+		} else if sortByPrice {
+			if c := b.trade.Price.Cmp(a.trade.Price); c != 0 {
+				return c // descending
+			}
 		}
 		return cmp.Compare(a.symbol, b.symbol) // alphabetical tiebreaker
 	})
 
 	for _, r := range results {
-		fmt.Printf("%s\t%d\n", r.symbol, r.volume.Int64())
+		var volumeStr string
+		if useNotional {
+			volumeStr = "$" + r.volume.FormatThousand(6) + "k"
+		} else {
+			volumeStr = r.volume.FormatThousand(0)
+		}
+		var extra string
+		if *otc == 1 {
+			extra += " " + r.quote.Timestamp.String()
+		}
+		fmt.Printf("%-8s %8s bid %8s x %6d ask %8s x %6d vol %20s%s\n",
+			r.symbol, r.trade.Price, r.quote.BidPrice, r.quote.BidSize,
+			r.quote.AskPrice, r.quote.AskSize,
+			volumeStr, extra)
 	}
 }
 
