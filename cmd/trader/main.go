@@ -33,11 +33,11 @@ var (
 	flagHedge     = symbol.Flag("hedge", "IWM", "symbol to use for index hedging when risk threshold is breached")
 	flagFloor     = decimal.Flag("floor", "2", "minimum trade quantity in shares (2+ ensures negative fees)")
 	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to actively trade simultaneously")
-	flagGreed     = decimal.FlagBPS("greed", "0", "amount of basis points to demand over cost basis")
+	flagGreed     = decimal.FlagBPS("greed", "1", "amount of basis points to demand over cost basis")
 	flagMinEdge   = decimal.Flag("minedge", "3", "minimum spread in ticks")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum price of stock in usd to trade")
 	flagMaxPrice  = decimal.Flag("maxprice", "100", "maximum price of stock in usd to trade")
-	flagThreshold = decimal.Flag("threshold", "0.3", "imbalance ratio threshold to trigger (0-1)")
+	flagThreshold = decimal.Flag("threshold", "0.9", "imbalance ratio threshold to trigger (0-1)")
 	flagISOShares = decimal.Flag("iso", "200", "net ISO shares threshold to trigger entry")
 	flagUnload    = clocky.DurationFlag("unload", "60m", "time before day session close to switch to exit-only (0 to disable)")
 	flagFlatten   = clocky.DurationFlag("flatten", "11m", "time before day session close to flatten positions with moc orders (0 to disable)")
@@ -63,6 +63,8 @@ var (
 	gTotalFees     decimal.Decimal
 	gTotalFills    int
 	gQuoteCount    int64
+	gOrderCount    int64
+	gOrderFails    int64
 	gPhase         Phase
 	gTapeMsg       chan *sip.Message
 	gTapeDone      chan struct{}
@@ -237,6 +239,7 @@ func main() {
 			onOrderUpdate(update)
 		case clientOrderID := <-gFailedOrders:
 			removeOrder(gOrders[clientOrderID], clientOrderID)
+			gOrderFails++
 		case <-heartbeat.C:
 			onHeartbeat()
 		case <-sigChan:
@@ -590,7 +593,7 @@ func Evaluate(st *State) {
 	}
 
 	// determine if we should be greedy
-	wantGreed := !flagGreed.IsZero() && !st.costBasis.IsZero()
+	wantGreed := !st.greed.IsZero() && !st.costBasis.IsZero()
 	noGreed := gPhase == PhaseExitOnly
 	greedy := wantGreed && !noGreed
 
@@ -601,26 +604,28 @@ func Evaluate(st *State) {
 	if st.position.IsPositive() && st.sellClientOrderID == "" && st.asset.Tradable.Load() && !st.quote.DangerousAsk() {
 		price := st.quote.AskPrice
 		if greedy {
-			minPrice := st.costBasis.Div(st.position).Mul(decimal.One.Add(*flagGreed))
+			minPrice := st.costBasis.Div(st.position).Mul(decimal.One.Add(st.greed))
 			price = price.Max(minPrice)
 			price = QuantizeSellPrice(price)
 		}
 		dest := BestDestination(st.quote.AskExchange, st.asset, session)
 		qty := cboe.LotSize(price).Min(st.position)
 		LimitOrder(st, ds.SideSell, qty, price, dest, session)
+		st.greed = st.greed.Half()
 		return
 	}
 	if st.position.IsNegative() && st.buyClientOrderID == "" && st.asset.Tradable.Load() && !st.quote.DangerousBid() {
 		price := st.quote.BidPrice
 		if greedy {
 			// short: avg entry = costBasis / position = negative / negative = positive
-			maxPrice := st.costBasis.Div(st.position).Mul(decimal.One.Sub(*flagGreed))
+			maxPrice := st.costBasis.Div(st.position).Mul(decimal.One.Sub(st.greed))
 			price = price.Min(maxPrice)
 			price = QuantizeBuyPrice(price)
 		}
 		dest := BestDestination(st.quote.BidExchange, st.asset, session)
 		qty := cboe.LotSize(price).Min(st.position.Neg())
 		LimitOrder(st, ds.SideBuy, qty, price, dest, session)
+		st.greed = st.greed.Half()
 		return
 	}
 
@@ -672,6 +677,7 @@ func Evaluate(st *State) {
 			dst := BestDestination(st.quote.BidExchange, st.asset, session)
 			LimitOrder(st, ds.SideBuy, qty, price, dst, session)
 			st.isoNetFlow = decimal.Zero
+			st.greed = *flagGreed
 		}
 	} else if wantSell {
 		price := st.quote.AskPrice.Sub(Tick(st.quote.AskPrice))           // try to outbid
@@ -683,6 +689,7 @@ func Evaluate(st *State) {
 			dst := BestDestination(st.quote.AskExchange, st.asset, session)
 			LimitOrder(st, ds.SideSell, qty, price, dst, session)
 			st.isoNetFlow = decimal.Zero
+			st.greed = *flagGreed
 		}
 	}
 }
@@ -726,6 +733,7 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 		return
 	}
 
+	gOrderCount++
 	clientOrderID := generateClientOrderID()
 	st.orderCreatedTime = -1
 	gOrders[clientOrderID] = st
@@ -771,6 +779,7 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 			LimitPrice:           price,
 			ClientOrderID:        clientOrderID,
 			AdvancedInstructions: advancedInstructions,
+			NonBlocking:          true,
 		})
 		if err != nil {
 			log.Printf("%s error placing order: %v", st.symbol, err)
@@ -847,12 +856,13 @@ func logBalance() {
 		}
 	}
 	net := gTotalPnL.Sub(gTotalFees)
-	log.Printf("BALANCE long=$%s (%d) short=$%s (%d) net_exposure=$%s | realized=%s fees=%s net=%s unrealized=%s | fills=%d pending=%d quotes=%d",
+	log.Printf("BALANCE long=$%s (%d) short=$%s (%d) expose=$%s | realize=%s fee=%s net=%s unrealized=%s | fills=%d pending=%d quotes=%d | ofails=%d/%d",
 		longNotional.Format(0), longCount,
 		shortNotional.Format(0), shortCount,
 		longNotional.Sub(shortNotional).Format(0),
 		gTotalPnL, gTotalFees, net, totalUnrealized,
-		gTotalFills, pendingCount, gQuoteCount)
+		gTotalFills, pendingCount, gQuoteCount,
+		gOrderFails, gOrderCount)
 }
 
 func shutdown() {

@@ -64,6 +64,7 @@ type CreateOrderRequest struct {
 	TakeProfit           *TakeProfit           `json:"take_profit,omitempty"`
 	StopLoss             *StopLoss             `json:"stop_loss,omitempty"`
 	Legs                 []OrderLeg            `json:"legs,omitempty"`
+	NonBlocking          bool                  `json:"-"`
 }
 
 // https://docs.alpaca.markets/docs/alpaca-elite-smart-router?ref=alpaca.markets
@@ -90,7 +91,13 @@ type StopLoss struct {
 // CreateOrder places a new order.
 func (c *Client) CreateOrder(body *CreateOrderRequest) (*Order, error) {
 	var result Order
-	c.APITokenBucket.Get()
+	if body.NonBlocking {
+		if !c.APITokenBucket.Try() {
+			return nil, ds.ErrBusy
+		}
+	} else {
+		c.APITokenBucket.Get()
+	}
 	err := c.RequestJSON(netty.FastHTTPClient, "POST", "/v2/orders", true, body, &result)
 	if err != nil {
 		return nil, err
@@ -106,6 +113,7 @@ type ReplaceOrderRequest struct {
 	Trail                decimal.Decimal       `json:"trail,omitempty"`      // new value of trail price or trail percent
 	ClientOrderID        string                `json:"client_order_id,omitempty"`
 	AdvancedInstructions *AdvancedInstructions `json:"advanced_instructions,omitempty"`
+	NonBlocking          bool                  `json:"-"`
 }
 
 // ReplaceOrder modifies a single order with updated parameters. Each parameter
@@ -142,7 +150,13 @@ type ReplaceOrderRequest struct {
 // Note: Fractional share orders cannot have their quantity modified.
 func (c *Client) ReplaceOrder(orderID string, body *ReplaceOrderRequest) (*Order, error) {
 	var result Order
-	c.APITokenBucket.Get()
+	if body.NonBlocking {
+		if !c.APITokenBucket.Try() {
+			return nil, ds.ErrBusy
+		}
+	} else {
+		c.APITokenBucket.Get()
+	}
 	err := c.RequestJSON(netty.FastHTTPClient, "PATCH", "/v2/orders/"+orderID, true, body, &result)
 	if err != nil {
 		return nil, err

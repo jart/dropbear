@@ -14,6 +14,7 @@ type State struct {
 	asset    *alpaca.Asset
 	quote    *sip.Quote
 	halt     bool
+	greed    decimal.Decimal
 	position decimal.Decimal // negative if short
 
 	// iso flow tracking
