@@ -33,8 +33,8 @@ var (
 	flagHedge     = flag.String("hedge", "IWM", "symbol to use for index hedging when risk threshold is breached")
 	flagFloor     = decimal.Flag("floor", "2", "minimum trade quantity in shares (2+ ensures negative fees)")
 	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to actively trade simultaneously")
-	flagGreed     = decimal.FlagBPS("greed", "0", "amount of basis points to demand over cost basis")
-	flagMinEdge   = decimal.Flag("minedge", "0.02", "minimum spread in usd to act")
+	flagGreed     = decimal.FlagBPS("greed", "1", "amount of basis points to demand over cost basis")
+	flagMinEdge   = decimal.Flag("minedge", "1", "minimum spread in ticks")
 	flagMinPrice  = decimal.Flag("minprice", "0.5", "minimum price in usd to trade")
 	flagThreshold = decimal.Flag("threshold", "0.3", "imbalance ratio threshold to trigger (0-1)")
 	flagISOShares = decimal.Flag("iso", "200", "net ISO shares threshold to trigger entry")
@@ -105,6 +105,23 @@ func main() {
 		fmt.Fprintf(os.Stderr, "-hedge asset not found: %s\n", *flagHedge)
 		os.Exit(1)
 	}
+
+	// log configuration
+	log.Printf("prepare to trade")
+	log.Printf("  size=%s", *flagSize)
+	log.Printf("  risk=%s", *flagRisk)
+	log.Printf("  hedge=%s", *flagHedge)
+	log.Printf("  floor=%s", *flagFloor)
+	log.Printf("  maxsyms=%d", *flagMaxSyms)
+	log.Printf("  greed=%s", *flagGreed)
+	log.Printf("  minedge=%s", *flagMinEdge)
+	log.Printf("  minprice=%s", *flagMinPrice)
+	log.Printf("  threshold=%s", *flagThreshold)
+	log.Printf("  iso=%s", *flagISOShares)
+	log.Printf("  unload=%s", *flagUnload)
+	log.Printf("  flatten=%s", *flagFlatten)
+	log.Printf("  patience=%s", *flagPatience)
+	log.Printf("  exitonly=%t", *flagExitOnly)
 
 	// initialize globals
 	gClient = alpaca.NewClient()
@@ -187,9 +204,6 @@ func main() {
 	// catch ctrl-c
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	log.Printf("trader started: maxsyms=%d minedge=%s threshold=%s",
-		*flagMaxSyms, flagMinEdge, flagThreshold)
 
 	// create timers
 	heartbeat := clocky.NewTicker(kHeartbeatInterval)
@@ -335,12 +349,15 @@ func TradeQuantity(price, margin, maximum decimal.Decimal) decimal.Decimal {
 	// happens here is as margin grows above 0.3 we scale down how much size it uses
 	rat := kStandardMarginRate.Div(margin)
 	qty := flagSize.Mul(rat).Div(price)
-	// we like to trade one round lot at a time
-	qty = qty.Min(cboe.LotSize(price))
-	// we don't want to take too much liquidity
-	qty = qty.Min(maximum)
 	// we don't trade fractional shares
 	qty = qty.Truncate()
+	// trade in round lots if we have at least that
+	lot := cboe.LotSize(price)
+	if qty.Cmp(lot) >= 0 {
+		qty = qty.QuantizeTruncate(lot)
+	}
+	// we don't want to take too much liquidity
+	qty = qty.Min(maximum)
 	// each order needs at minimum two shares for commissions+fees to go negative
 	if qty.Cmp(*flagFloor) < 0 {
 		return decimal.Zero // stock is probably very expensive like meta
@@ -486,7 +503,7 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 
 		// estimate fees/rebates (CAT + broker are per-order, not per-fill)
 		firstFill := update.Order.FilledQty.Cmp(absQty) == 0
-		fee := EstimateFee(update.Order.Side, absQty, firstFill)
+		fee := EstimateFee(update.Order.Side, absQty, fillPrice, firstFill)
 		st.totalFees = st.totalFees.Add(fee)
 		gTotalFees = gTotalFees.Add(fee)
 
@@ -535,16 +552,21 @@ func Evaluate(st *State) {
 		}
 	}
 
+	// determine if we should be greedy
+	wantGreed := !flagGreed.IsZero() && !st.costBasis.IsZero()
+	noGreed := gPhase == PhaseExitOnly
+	greedy := wantGreed && !noGreed
+
 	// PRIORITY 1: Exit existing positions at a profit.
 	// Post AT the bid/ask (don't improve) so we capture the spread.
 	// Entry improves by a penny to get priority; exit waits at the edge.
 	// With -winner, floor the exit price at avg entry + a tick to guarantee profit.
 	if st.position.IsPositive() && st.sellClientOrderID == "" && st.asset.Tradable.Load() && !st.quote.DangerousAsk() {
 		price := st.quote.AskPrice
-		if !flagGreed.IsZero() && !st.costBasis.IsZero() {
+		if greedy {
 			minPrice := st.costBasis.Div(st.position).Mul(decimal.One.Add(*flagGreed))
 			price = price.Max(minPrice)
-			price = QuantizeSell(price)
+			price = QuantizeSellPrice(price)
 		}
 		dest := BestDestination(st.quote.AskExchange, st.asset, session)
 		qty := cboe.LotSize(price).Min(st.position)
@@ -553,11 +575,11 @@ func Evaluate(st *State) {
 	}
 	if st.position.IsNegative() && st.buyClientOrderID == "" && st.asset.Tradable.Load() && !st.quote.DangerousBid() {
 		price := st.quote.BidPrice
-		if !flagGreed.IsZero() && !st.costBasis.IsZero() {
+		if greedy {
 			// short: avg entry = costBasis / position = negative / negative = positive
 			maxPrice := st.costBasis.Div(st.position).Mul(decimal.One.Sub(*flagGreed))
 			price = price.Min(maxPrice)
-			price = QuantizeBuy(price)
+			price = QuantizeBuyPrice(price)
 		}
 		dest := BestDestination(st.quote.BidExchange, st.asset, session)
 		qty := cboe.LotSize(price).Min(st.position.Neg())
@@ -580,7 +602,7 @@ func Evaluate(st *State) {
 		return
 	}
 	spread := st.quote.AskPrice.Sub(st.quote.BidPrice)
-	if spread.Cmp(*flagMinEdge) < 0 {
+	if spread.Cmp(flagMinEdge.Mul(Tick(st.quote.BidPrice))) < 0 {
 		return
 	}
 	if !st.asset.Marginable.Load() {
@@ -604,8 +626,8 @@ func Evaluate(st *State) {
 		st.asset.EasyToBorrow.Load()
 
 	if wantBuy {
-		price := st.quote.BidPrice.Add(Tick(st.quote.BidPrice))
-		price = price.Min(st.quote.AskPrice.Sub(Tick(st.quote.AskPrice)))
+		price := st.quote.BidPrice.Add(Tick(st.quote.BidPrice))           // try to outbid
+		price = price.Min(st.quote.AskPrice.Sub(Tick(st.quote.AskPrice))) // but don't take
 		if price.Cmp(*flagMinPrice) >= 0 {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			mar := st.asset.MarginRequirementLong.Load()
@@ -615,8 +637,8 @@ func Evaluate(st *State) {
 			st.isoNetFlow = decimal.Zero
 		}
 	} else if wantSell {
-		price := st.quote.AskPrice.Sub(Tick(st.quote.AskPrice))
-		price = price.Max(st.quote.BidPrice.Add(Tick(st.quote.BidPrice)))
+		price := st.quote.AskPrice.Sub(Tick(st.quote.AskPrice))           // try to outbid
+		price = price.Max(st.quote.BidPrice.Add(Tick(st.quote.BidPrice))) // but don't take
 		if price.Cmp(*flagMinPrice) >= 0 {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			mar := st.asset.MarginRequirementShort.Load()
@@ -677,9 +699,11 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 		st.sellClientOrderID = clientOrderID
 	}
 
-	log.Printf("%s placing %s %s @ %s -> %s (pos=%s spread=%s)",
+	log.Printf("%s placing %s %s @ %s -> %s (pos=%s spread=%s bid=%sx%d ask=%sx%d)",
 		st.symbol, side, qty, price, dest,
-		st.position, st.quote.AskPrice.Sub(st.quote.BidPrice))
+		st.position, st.quote.AskPrice.Sub(st.quote.BidPrice),
+		st.quote.BidPrice, st.quote.BidSize,
+		st.quote.AskPrice, st.quote.AskSize)
 
 	// don't slow down quote processing
 	go func() {
@@ -691,7 +715,6 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 			lot := cboe.LotSize(price)
 			if qty.Cmp(lot) > 0 {
 				// don't reveal our full intent
-				// only really applies to hedging orders
 				displayQty = lot
 			}
 			advancedInstructions = &alpaca.AdvancedInstructions{
@@ -851,11 +874,11 @@ func cancelOrder(orderID string) {
 	}
 }
 
-func QuantizeBuy(price decimal.Decimal) decimal.Decimal {
+func QuantizeBuyPrice(price decimal.Decimal) decimal.Decimal {
 	return price.QuantizeTruncate(Tick(price)) // buy low
 }
 
-func QuantizeSell(price decimal.Decimal) decimal.Decimal {
+func QuantizeSellPrice(price decimal.Decimal) decimal.Decimal {
 	return price.QuantizeAway(Tick(price)) // sell high
 }
 

@@ -14,9 +14,8 @@ type State struct {
 	quote    *sip.Quote
 	position decimal.Decimal // negative if short
 
-	// ISO flow tracking
+	// iso flow tracking
 	isoNetFlow decimal.Decimal // net ISO shares: positive = buyer, negative = seller
-	isoDecay   clocky.Time     // timestamp of last decay
 
 	// our pending orders
 	buyOrderID        string

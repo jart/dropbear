@@ -10,6 +10,10 @@ var (
 	AAPL      = symbol.MustParse("AAPL")
 	tradeJSON = []byte(`{"T":"t","S":"AAPL","i":12345,"x":"Q","p":"150.25","s":100,"c":["@","F"],"t":"2024-01-15T14:30:00.123456789Z","z":"C"}`)
 	quoteJSON = []byte(`{"T":"q","S":"AAPL","ax":"Q","ap":"150.26","as":200,"bx":"P","bp":"150.24","bs":300,"c":["R"],"t":"2024-01-15T14:30:00.123456789Z","z":"C"}`)
+
+	// Real messages from sipdata-2026-01-07.jsonl (same data used for msgpack benchmark)
+	realTradeJSON = []byte(`{"T":"t","S":"CPRT","i":7832,"x":"D","p":38.22,"s":9,"c":["@","I"],"z":"C","t":"2026-01-07T16:22:17.677968258Z"}`)
+	realQuoteJSON = []byte(`{"T":"q","S":"OKLL","bx":"Q","bp":30.68,"bs":400,"ax":"Q","ap":30.79,"as":700,"c":["R"],"z":"C","t":"2026-01-07T16:22:17.67572372Z"}`)
 )
 
 func BenchmarkGetMessageType(b *testing.B) {
@@ -341,6 +345,28 @@ func BenchmarkParseStatus(b *testing.B) {
 	var s Status
 	for b.Loop() {
 		if _, err := s.Parse(statusJSON); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkParseRealTrade uses the same CPRT trade from sipdata-2026-01-07.jsonl
+// that was used for the msgpack benchmark in the vendor library.
+func BenchmarkParseRealTrade(b *testing.B) {
+	var t Trade
+	for b.Loop() {
+		if _, err := t.Parse(realTradeJSON); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkParseRealQuote uses the same OKLL quote from sipdata-2026-01-07.jsonl
+// that was used for the msgpack benchmark in the vendor library.
+func BenchmarkParseRealQuote(b *testing.B) {
+	var q Quote
+	for b.Loop() {
+		if _, err := q.Parse(realQuoteJSON); err != nil {
 			b.Fatal(err)
 		}
 	}
