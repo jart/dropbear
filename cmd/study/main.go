@@ -72,6 +72,10 @@ var priceBuckets = []decimal.Decimal{
 // spread buckets for analysis (upper bound in ticks)
 var spreadBuckets = []int{1, 2, 3, 5, 10, 20, 50, 100, 9999}
 
+// per-tick spread values for entry offset analysis
+// individual ticks 2-10 then catch-all for 11+
+var entrySpreadBuckets = []int{2, 3, 4, 5, 6, 7, 8, 9, 10, 9999}
+
 type symState struct {
 	quote    sip.Quote
 	hasQuote bool
@@ -93,10 +97,15 @@ type pendingSignal struct {
 	time       clocky.Time
 	direction  int8
 	midpoint   decimal.Decimal
+	bidPrice   decimal.Decimal
+	askPrice   decimal.Decimal
 	priceBkt   int
 	spreadBkt  int
+	entryBkt   int // index into entrySpreadBuckets
 	spreadTick int // spread in ticks at signal time
 	resolved   uint8
+	minAsk     decimal.Decimal // lowest ask seen (buy signals)
+	maxBid     decimal.Decimal // highest bid seen (sell signals)
 }
 
 type horizonStats struct {
@@ -109,6 +118,11 @@ type horizonStats struct {
 type bucketStats struct {
 	signals int64
 	hstats  [6]horizonStats
+}
+
+type entryStats struct {
+	signals int64
+	fills   [3]int64 // fills for entry at bid+1, bid+2, bid+3 ticks
 }
 
 type symInventory struct {
@@ -136,6 +150,7 @@ var (
 	// per-bucket analysis
 	gPriceBuckets  []bucketStats
 	gSpreadBuckets []bucketStats
+	gEntryStats    []entryStats
 
 	// round-trip simulation
 	gSimRoundTrips int64
@@ -175,6 +190,7 @@ func study(path string) {
 	gHStats = [6]horizonStats{}
 	gPriceBuckets = make([]bucketStats, len(priceBuckets))
 	gSpreadBuckets = make([]bucketStats, len(spreadBuckets))
+	gEntryStats = make([]entryStats, len(entrySpreadBuckets))
 	gSimRoundTrips = 0
 	gSimWins = 0
 	gSimPnL = decimal.Zero
@@ -241,6 +257,15 @@ func spreadBucket(ticks int) int {
 	return len(spreadBuckets) - 1
 }
 
+func entrySpreadBucket(ticks int) int {
+	for i, bound := range entrySpreadBuckets {
+		if ticks <= bound {
+			return i
+		}
+	}
+	return len(entrySpreadBuckets) - 1
+}
+
 func processQuote(sym symbol.Symbol, q *sip.Quote) {
 	if q.BidPrice.IsZero() || q.AskPrice.IsZero() {
 		return
@@ -275,6 +300,18 @@ func processQuote(sym symbol.Symbol, q *sip.Quote) {
 	for j := len(st.pending) - 1; j >= 0; j-- {
 		sig := &st.pending[j]
 		elapsed := now.Sub(sig.time)
+
+		// track best fill price seen so far
+		if sig.direction == 1 {
+			if sig.minAsk.IsZero() || q.AskPrice.Cmp(sig.minAsk) < 0 {
+				sig.minAsk = q.AskPrice
+			}
+		} else {
+			if sig.maxBid.IsZero() || q.BidPrice.Cmp(sig.maxBid) > 0 {
+				sig.maxBid = q.BidPrice
+			}
+		}
+
 		allDone := true
 		for h, hz := range horizons {
 			bit := uint8(1 << h)
@@ -306,6 +343,11 @@ func processQuote(sym symbol.Symbol, q *sip.Quote) {
 				record(&gHStats[h])
 				record(&gPriceBuckets[sig.priceBkt].hstats[h])
 				record(&gSpreadBuckets[sig.spreadBkt].hstats[h])
+
+				// at last horizon, record entry fill analysis
+				if h == len(horizons)-1 {
+					recordEntryFills(sig)
+				}
 			} else {
 				allDone = false
 			}
@@ -433,8 +475,11 @@ func evaluateEntry(st *symState, q *sip.Quote) {
 			time:       q.Timestamp,
 			direction:  dir,
 			midpoint:   mid,
+			bidPrice:   q.BidPrice,
+			askPrice:   q.AskPrice,
 			priceBkt:   pbkt,
 			spreadBkt:  sbkt,
+			entryBkt:   entrySpreadBucket(spreadTicks),
 			spreadTick: spreadTicks,
 		})
 	}
@@ -672,6 +717,44 @@ func printResults(path string, count int) {
 	printBucketSummary(gSpreadBuckets, spreadBucketLabel)
 
 	// fee economics
+	// entry offset analysis
+	fmt.Printf("\n── ENTRY STRATEGY (fill rate within 60s) ───────────────────────────────────\n")
+	fmt.Printf("  how often does the market come to us at each entry offset?\n")
+	fmt.Printf("  gross = ticks captured if filled and exit at signal-time ask\n\n")
+	fmt.Printf("  %-12s %9s   %-16s %-16s %-16s\n",
+		"SPREAD", "SIGNALS", "bid+1 tick", "bid+2 ticks", "bid+3 ticks")
+	fmt.Printf("  %-12s %9s   %-16s %-16s %-16s\n",
+		"", "", "fill   gross", "fill   gross", "fill   gross")
+	for i, ea := range gEntryStats {
+		if ea.signals == 0 {
+			continue
+		}
+		label := entrySpreadLabel(i)
+		// typical spread for this bucket (exact for individual ticks, min for ranges)
+		var typicalSpread int
+		if i < len(entrySpreadBuckets)-1 {
+			typicalSpread = entrySpreadBuckets[i]
+		} else {
+			typicalSpread = 11 // minimum in catch-all
+		}
+		fmt.Printf("  %-12s %9d  ", label, ea.signals)
+		for k := 0; k < 3; k++ {
+			offset := k + 1
+			if offset >= typicalSpread {
+				fmt.Printf(" %-16s", "(cross)")
+			} else {
+				fillRate := float64(ea.fills[k]) / float64(ea.signals) * 100
+				gross := typicalSpread - offset
+				if i == len(entrySpreadBuckets)-1 {
+					fmt.Printf(" %5.1f%% ≥%-6dt  ", fillRate, gross)
+				} else {
+					fmt.Printf(" %5.1f%% %dt       ", fillRate, gross)
+				}
+			}
+		}
+		fmt.Printf("\n")
+	}
+
 	fmt.Printf("\n── FEE ECONOMICS (per 100 shares @ $50) ────────────────────────────────────\n")
 	refQty := decimal.Parse("100")
 	refPrice := decimal.Parse("50")
@@ -789,6 +872,36 @@ func spreadBucketLabel(i int) string {
 		return fmt.Sprintf(">= %d ticks", spreadBuckets[i-1])
 	}
 	return fmt.Sprintf("%d-%d ticks", spreadBuckets[i-1]+1, spreadBuckets[i])
+}
+
+func recordEntryFills(sig *pendingSignal) {
+	ea := &gEntryStats[sig.entryBkt]
+	ea.signals++
+	tick := Tick(sig.bidPrice)
+	for k := 0; k < 3; k++ {
+		offset := k + 1
+		if offset >= sig.spreadTick {
+			break // would cross the spread
+		}
+		if sig.direction == 1 {
+			entryPrice := sig.bidPrice.Add(tick.MulInt(offset))
+			if !sig.minAsk.IsZero() && sig.minAsk.Cmp(entryPrice) <= 0 {
+				ea.fills[k]++
+			}
+		} else {
+			entryPrice := sig.askPrice.Sub(tick.MulInt(offset))
+			if !sig.maxBid.IsZero() && sig.maxBid.Cmp(entryPrice) >= 0 {
+				ea.fills[k]++
+			}
+		}
+	}
+}
+
+func entrySpreadLabel(i int) string {
+	if i == len(entrySpreadBuckets)-1 {
+		return fmt.Sprintf("≥ %d ticks", entrySpreadBuckets[i-1]+1)
+	}
+	return fmt.Sprintf("%d ticks", entrySpreadBuckets[i])
 }
 
 func fmtDollar(d float64) string {

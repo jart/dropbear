@@ -7,7 +7,7 @@ import (
 
 // Fee/rebate constants for equity DMA orders (always making).
 var (
-	keTakerFeePerShare = decimal.Parse("0.0020")   // exchange fee for taking liquidity
+	kTakerFeePerShare  = decimal.Parse("0.0020")   // exchange fee for taking liquidity
 	kMakerFeePerShare  = decimal.Parse("-0.0018")  // exchange rebate for providing liquidity
 	kSECFeePerMillion  = decimal.Parse("20.60")    // SEC fee per $1M proceeds (sells only)
 	kTAFFeePerShare    = decimal.Parse("0.000195") // TAF fee (sells only)
