@@ -57,6 +57,7 @@ var (
 	gOrders        map[string]*State
 	gSymbols       map[symbol.Symbol]*State
 	gActiveSymbols map[symbol.Symbol]bool
+	gIgnoreSymbols map[symbol.Symbol]bool
 	gFailedOrders  chan string
 	gNextBalance   clocky.Time
 	gTotalPnL      decimal.Decimal
@@ -138,6 +139,7 @@ func main() {
 	gOrders = map[string]*State{}
 	gSymbols = map[symbol.Symbol]*State{}
 	gActiveSymbols = map[symbol.Symbol]bool{}
+	gIgnoreSymbols = map[symbol.Symbol]bool{}
 	gFailedOrders = make(chan string, 32)
 	gNextBalance = clocky.Now().Add(kBalanceInterval)
 
@@ -744,7 +746,8 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 		st.sellClientOrderID = clientOrderID
 	}
 
-	log.Printf("%s placing %s %s @ %s -> %s (pos=%s spread=%s bid=%sx%d ask=%sx%d)",
+	logMsg := fmt.Sprintf(
+		"%s placing %s %s @ %s -> %s (pos=%s spread=%s bid=%sx%d ask=%sx%d)",
 		st.symbol, side, qty, price, dest,
 		st.position, st.quote.AskPrice.Sub(st.quote.BidPrice),
 		st.quote.BidPrice, st.quote.BidSize,
@@ -782,10 +785,13 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 			NonBlocking:          true,
 		})
 		if err != nil {
-			log.Printf("%s error placing order: %v", st.symbol, err)
+			if err != ds.ErrBusy {
+				log.Printf("%s error placing order: %v", st.symbol, err)
+			}
 			gFailedOrders <- clientOrderID
 			return
 		}
+		log.Printf("%s", logMsg)
 	}()
 }
 
@@ -943,8 +949,12 @@ func StockExists(sym symbol.Symbol) bool {
 }
 
 func GetAsset(sym symbol.Symbol) *alpaca.Asset {
+	if gIgnoreSymbols[sym] {
+		return nil
+	}
 	asset := alpaca.GetAsset(sym)
 	if asset == nil {
+		gIgnoreSymbols[sym] = true
 		return nil
 	}
 	if asset.Exchange == alpaca.ExchangeOTC ||
@@ -952,6 +962,7 @@ func GetAsset(sym symbol.Symbol) *alpaca.Asset {
 		asset.Status.Load() != alpaca.AssetStatusActive ||
 		asset.PTPNoException.Load() ||
 		asset.PTPWithException.Load() {
+		gIgnoreSymbols[sym] = true
 		return nil
 	}
 	return asset
