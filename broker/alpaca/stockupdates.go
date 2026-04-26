@@ -22,12 +22,15 @@ const (
 )
 
 type StockUpdatesRequest struct {
-	Action     string   `json:"action"` // set to "subscribe"
-	Trades     []string `json:"trades,omitempty"`
-	Quotes     []string `json:"quotes,omitempty"`   // e.g. ["AAPL", "TSLA"]
-	Statuses   []string `json:"statuses,omitempty"` // e.g. ["*"]
-	LULDs      []string `json:"lulds,omitempty"`
-	Imbalances []string `json:"imbalances,omitempty"` // e.g. ["INAQU"]
+	Action      string   `json:"action"` // set to "subscribe"
+	Trades      []string `json:"trades,omitempty"`
+	Quotes      []string `json:"quotes,omitempty"`   // e.g. ["AAPL", "TSLA"]
+	Statuses    []string `json:"statuses,omitempty"` // e.g. ["*"]
+	LULDs       []string `json:"lulds,omitempty"`
+	Imbalances  []string `json:"imbalances,omitempty"` // e.g. ["INAQU"]
+	Bars        []string `json:"bars,omitempty"`       // minute bars
+	DailyBars   []string `json:"dailyBars,omitempty"`
+	UpdatedBars []string `json:"updatedBars,omitempty"`
 }
 
 // MustStockUpdates connects to Alpaca's real-time stock market data websocket or dies.

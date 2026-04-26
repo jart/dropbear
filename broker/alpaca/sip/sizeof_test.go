@@ -25,4 +25,13 @@ func TestMessageSize(t *testing.T) {
 	if got := unsafe.Sizeof(Imbalance{}); got != 56 {
 		t.Errorf("sizeof(Imbalance) = %d, want 56", got)
 	}
+	if got := unsafe.Sizeof(Correction{}); got != 56 {
+		t.Errorf("sizeof(Correction) = %d, want 56", got)
+	}
+	if got := unsafe.Sizeof(CancelError{}); got != 56 {
+		t.Errorf("sizeof(CancelError) = %d, want 56", got)
+	}
+	if got := unsafe.Sizeof(Bar{}); got != 56 {
+		t.Errorf("sizeof(Bar) = %d, want 56", got)
+	}
 }

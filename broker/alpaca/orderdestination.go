@@ -16,7 +16,7 @@ const (
 
 func ParseOrderDestination(s string) (OrderDestination, error) {
 	switch s {
-	case "":
+	case "", "smart":
 		return OrderDestinationNone, nil
 	case "NYSE", "nyse":
 		return OrderDestinationNYSE, nil
@@ -32,7 +32,7 @@ func ParseOrderDestination(s string) (OrderDestination, error) {
 func (od OrderDestination) String() string {
 	switch od {
 	case OrderDestinationNone:
-		return ""
+		return "smart"
 	case OrderDestinationNYSE:
 		return "NYSE"
 	case OrderDestinationNASDAQ:

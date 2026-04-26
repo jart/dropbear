@@ -3,7 +3,6 @@ package sip
 import (
 	"dropbear/clocky"
 	"dropbear/symbol"
-	"log"
 	"unsafe"
 )
 
@@ -55,16 +54,31 @@ func (m *Message) Imbalance() *Imbalance {
 	return (*Imbalance)(unsafe.Pointer(m))
 }
 
+// Bar returns a pointer to this message interpreted as a Bar.
+// The caller must ensure Type == MessageTypeBar, MessageTypeDailyBar, or MessageTypeUpdatedBar before calling.
+func (m *Message) Bar() *Bar {
+	return (*Bar)(unsafe.Pointer(m))
+}
+
+func (m *Message) Correction() *Correction {
+	return (*Correction)(unsafe.Pointer(m))
+}
+
+func (m *Message) CancelError() *CancelError {
+	return (*CancelError)(unsafe.Pointer(m))
+}
+
 // Parse decodes an Alpaca SIP message from JSON in a strict way.
 // Returns index past closing '}' on success.
 func (m *Message) Parse(data []byte) (int, error) {
 	// Alpaca always sends them like: {"T":"q",...}
 	// The sub-parsers will verify the rest of the structure.
 	if len(data) < 7 {
-		log.Printf("boop %s", string(data))
 		return 0, ErrParsingError
 	}
 	switch data[6] {
+	case 'b', 'd', 'u':
+		return m.Bar().Parse(data)
 	case 't':
 		return m.Trade().Parse(data)
 	case 'q':
@@ -75,6 +89,10 @@ func (m *Message) Parse(data []byte) (int, error) {
 		return m.LULD().Parse(data)
 	case 'i':
 		return m.Imbalance().Parse(data)
+	case 'c':
+		return m.Correction().Parse(data)
+	case 'x':
+		return m.CancelError().Parse(data)
 	default:
 		return 0, ErrInvalidMessageType
 	}

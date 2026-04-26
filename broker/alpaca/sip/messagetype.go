@@ -6,14 +6,16 @@ import "fmt"
 type MessageType byte
 
 const (
-	MessageTypeTrade      MessageType = 't' // trade execution
-	MessageTypeQuote      MessageType = 'q' // quote update
-	MessageTypeStatus     MessageType = 's' // trading status
-	MessageTypeLULD       MessageType = 'l' // limit up-limit down
-	MessageTypeBar        MessageType = 'b' // minute bar (not supported)
-	MessageTypeDailyBar   MessageType = 'd' // daily bar (not supported)
-	MessageTypeUpdatedBar MessageType = 'u' // updated bar (correction; not supported)
-	MessageTypeImbalance  MessageType = 'i' // order imbalance (during LULD/halts)
+	MessageTypeTrade       MessageType = 't' // trade execution
+	MessageTypeQuote       MessageType = 'q' // quote update
+	MessageTypeStatus      MessageType = 's' // trading status
+	MessageTypeLULD        MessageType = 'l' // limit up-limit down
+	MessageTypeBar         MessageType = 'b' // minute bar
+	MessageTypeDailyBar    MessageType = 'd' // daily bar
+	MessageTypeUpdatedBar  MessageType = 'u' // updated bar
+	MessageTypeImbalance   MessageType = 'i' // order imbalance (during LULD/halts)
+	MessageTypeCorrection  MessageType = 'c' // trade corrections
+	MessageTypeCancelError MessageType = 'x' // trade cancel errors
 )
 
 // Pre-computed JSON representations (no allocation on marshal)
@@ -43,6 +45,10 @@ func (t MessageType) GoString() string {
 		return "sip.MessageTypeLULD"
 	case MessageTypeImbalance:
 		return "sip.MessageTypeImbalance"
+	case MessageTypeCorrection:
+		return "sip.MessageTypeCorrection"
+	case MessageTypeCancelError:
+		return "sip.MessageTypeCancelError"
 	default:
 		return fmt.Sprintf("sip.MessageType(%c)", byte(t))
 	}
