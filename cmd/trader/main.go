@@ -15,7 +15,6 @@ import (
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/loggy"
-	"dropbear/osi"
 	"dropbear/symbol"
 	"flag"
 	"fmt"
@@ -29,19 +28,26 @@ import (
 )
 
 var (
-	flagSize      = decimal.Flag("size", "1000", "how much money to devote to each trade")
+	flagSize      = decimal.Flag("size", "1_000", "how much capital to devote to each trade")
+	flagRisk      = decimal.Flag("risk", "5_000", "maximum portfolio exposure in usd before index hedging")
+	flagHedge     = flag.String("hedge", "IWM", "symbol to use for index hedging when risk threshold is breached")
 	flagFloor     = decimal.Flag("floor", "2", "minimum trade quantity in shares (2+ ensures negative fees)")
-	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to trade simultaneously")
+	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to actively trade simultaneously")
 	flagGreed     = decimal.FlagBPS("greed", "0", "amount of basis points to demand over cost basis")
 	flagMinEdge   = decimal.Flag("minedge", "0.02", "minimum spread in usd to act")
 	flagMinPrice  = decimal.Flag("minprice", "0.5", "minimum price in usd to trade")
 	flagThreshold = decimal.Flag("threshold", "0.3", "imbalance ratio threshold to trigger (0-1)")
 	flagISOShares = decimal.Flag("iso", "200", "net ISO shares threshold to trigger entry")
+	flagUnload    = clocky.DurationFlag("unload", "60m", "time before day session close to switch to exit-only (0 to disable)")
+	flagFlatten   = clocky.DurationFlag("flatten", "11m", "time before day session close to flatten positions with moc orders (0 to disable)")
+	flagPatience  = clocky.DurationFlag("patience", "5m", "time to wait before canceling unfilled orders (0 to disable)")
 	flagExitOnly  = flag.Bool("exit", false, "exit-only mode: close existing positions, no new entries")
 )
 
 var (
 	kStandardMarginRate = decimal.Parse("0.3")
+	kHeartbeatInterval  = 1 * clocky.Second
+	kBalanceInterval    = 5 * clocky.Second
 )
 
 var (
@@ -50,10 +56,12 @@ var (
 	gSymbols       map[string]*State
 	gActiveSymbols map[string]bool
 	gFailedOrders  chan string
+	gNextBalance   clocky.Time
 	gTotalPnL      decimal.Decimal
 	gTotalFees     decimal.Decimal
 	gTotalFills    int
 	gQuoteCount    int64
+	gPhase         Phase
 )
 
 func main() {
@@ -61,43 +69,73 @@ func main() {
 	flag.Parse()
 	loggy.AlsoLogToFile()
 
+	if !flagSize.IsPositive() {
+		fmt.Fprintf(os.Stderr, "-size must be positive\n")
+		os.Exit(1)
+	}
+	if flagRisk.IsNegative() {
+		fmt.Fprintf(os.Stderr, "-risk can't be negative\n")
+		os.Exit(1)
+	}
+	if !flagFloor.IsPositive() {
+		fmt.Fprintf(os.Stderr, "-floor must be positive\n")
+		os.Exit(1)
+	}
+	if !flagMinPrice.IsPositive() {
+		fmt.Fprintf(os.Stderr, "-minprice must be positive\n")
+		os.Exit(1)
+	}
+	if !flagISOShares.IsPositive() {
+		fmt.Fprintf(os.Stderr, "-iso must be positive\n")
+		os.Exit(1)
+	}
+	if *flagMaxSyms <= 0 {
+		fmt.Fprintf(os.Stderr, "-maxsyms must be positive\n")
+		os.Exit(1)
+	}
+	if !flagThreshold.IsPositive() || flagThreshold.Cmp(decimal.One) > 0 {
+		fmt.Fprintf(os.Stderr, "-threshold must be between 0 and 1\n")
+		os.Exit(1)
+	}
+	if *flagFlatten != 0 && *flagFlatten <= 10*clocky.Minute {
+		fmt.Fprintf(os.Stderr, "-flatten must be greater than 10 minutes if specified\n")
+		os.Exit(1)
+	}
+	if *flagHedge != "" && !StockExists(*flagHedge) {
+		fmt.Fprintf(os.Stderr, "-hedge asset not found: %s\n", *flagHedge)
+		os.Exit(1)
+	}
+
+	// initialize globals
 	gClient = alpaca.NewClient()
 	gOrders = map[string]*State{}
 	gSymbols = map[string]*State{}
+	gActiveSymbols = map[string]bool{}
 	gFailedOrders = make(chan string, 32)
+	gNextBalance = clocky.Now().Add(kBalanceInterval)
 
-	// keep assets synchronized
-	log.Printf("syncing assets from Alpaca...")
-	if err := gClient.SyncAssets(); err != nil {
-		log.Printf("error syncing assets: %v", err)
+	// periodically fetch information about supported equities from alpaca
+	go synchronizeAssetsForever()
+
+	// cancel lingering orders
+	log.Printf("canceling lingering orders...")
+	if err := gClient.CancelAllOrders(); err != nil {
+		log.Printf("warning: error canceling orders: %v", err)
 	}
-	go func() {
-		for {
-			time.Sleep(15 * time.Minute)
-			if err := gClient.SyncAssets(); err != nil {
-				log.Printf("error syncing assets: %v", err)
-			}
-		}
-	}()
 
 	// load existing positions
+	var symbols []string
 	log.Printf("loading positions...")
 	positions, err := gClient.GetPositions()
 	if err != nil {
 		log.Fatalf("error getting positions: %v", err)
 	}
 	for _, pos := range positions {
-		if isOptionsSymbol(pos.Symbol) {
-			continue
-		}
-		sym, err := symbol.Parse(pos.Symbol)
-		if err != nil {
-			continue
-		}
-		asset := alpaca.GetAsset(sym)
+		asset := GetAsset(pos.Symbol)
 		if asset == nil {
 			continue
 		}
+		symbols = append(symbols, pos.Symbol)
 		st := getOrCreateSymbol(pos.Symbol, asset)
 		st.position = pos.Qty
 		st.costBasis = pos.CostBasis
@@ -108,27 +146,14 @@ func main() {
 			pos.Symbol, pos.Qty, pos.AvgEntryPrice, pos.CostBasis)
 	}
 
-	// cancel stale open orders
-	log.Printf("canceling stale orders...")
-	if err := gClient.CancelAllOrders(); err != nil {
-		log.Printf("warning: error canceling orders: %v", err)
-	}
-
-	// determine which feed to use based on session
-	now := clocky.Now()
-	quoteFeed := alpaca.FeedSIP
-	if cboe.IsOvernight(now) {
-		quoteFeed = alpaca.FeedBOATS
-	}
-
 	// fetch quotes for existing positions and place exit orders
-	posSymbols := make([]string, 0, len(gSymbols))
-	for name := range gSymbols {
-		posSymbols = append(posSymbols, name)
-	}
-	if len(posSymbols) > 0 {
-		log.Printf("fetching quotes for %d existing positions...", len(posSymbols))
-		quotes, err := gClient.GetQuotes(posSymbols, quoteFeed)
+	if len(symbols) > 0 {
+		feed := alpaca.FeedSIP
+		if cboe.GetSession(clocky.Now()) == cboe.SessionOvernight {
+			feed = alpaca.FeedBOATS
+		}
+		log.Printf("fetching %s quotes for %d positions...", feed, len(symbols))
+		quotes, err := gClient.GetQuotes(symbols, feed)
 		if err != nil {
 			log.Printf("warning: error fetching quotes: %v", err)
 		} else {
@@ -166,46 +191,106 @@ func main() {
 	log.Printf("trader started: maxsyms=%d minedge=%s threshold=%s",
 		*flagMaxSyms, flagMinEdge, flagThreshold)
 
-	// place exit orders for existing positions
-	for _, st := range gSymbols {
-		if !st.position.IsZero() && !st.quote.BidPrice.IsZero() {
-			evaluate(st)
-		}
-	}
-
 	// create timers
-	balanceTicker := time.NewTicker(5 * time.Second)
-	defer balanceTicker.Stop()
-	decayTicker := time.NewTicker(1 * time.Second)
-	defer decayTicker.Stop()
+	heartbeat := clocky.NewTicker(kHeartbeatInterval)
+	defer heartbeat.Stop()
 
+	// consume events
 	for {
 		select {
 		case msg := <-stockUpdates:
-			switch msg.Type {
-			case sip.MessageTypeQuote:
-				onQuote(msg.Quote())
-			case sip.MessageTypeTrade:
-				onTrade(msg.Trade())
-			}
+			onMessage(msg)
 		case msg := <-boatsUpdates:
-			if msg.Type == sip.MessageTypeQuote {
-				onQuote(msg.Quote())
-			}
-		case <-decayTicker.C:
-			for _, st := range gSymbols {
-				st.isoNetFlow = st.isoNetFlow.Half()
-			}
+			onMessage(msg)
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
 		case clientOrderID := <-gFailedOrders:
 			removeOrder(gOrders[clientOrderID], clientOrderID)
-		case <-balanceTicker.C:
-			logBalance()
+		case <-heartbeat.C:
+			onHeartbeat()
 		case <-sigChan:
 			shutdown()
 			return
 		}
+	}
+}
+
+func onHeartbeat() {
+
+	// practice patience
+	cleanupOrders()
+
+	// manage our risk
+	manageHedge()
+
+	// show balance periodically
+	now := clocky.Now()
+	if now.After(gNextBalance) {
+		logBalance()
+		gNextBalance = now.Add(kBalanceInterval)
+	}
+
+	// decay iso net flow by half every second
+	// so that old trades lose influence over time
+	for _, st := range gSymbols {
+		st.isoNetFlow = st.isoNetFlow.Half()
+	}
+
+	// handle end of day phase transitions
+	switch gPhase {
+	case PhaseNormal, PhaseExitOnly:
+		if cboe.GetSession(now) != cboe.SessionDay {
+			if gPhase == PhaseExitOnly {
+				gPhase = PhaseNormal
+				log.Printf("day session ended, resuming normal trading")
+			}
+			return
+		}
+		year, month, day := now.Date()
+		closeTime := cboe.GetCloseTime(year, month, day)
+		if *flagFlatten != 0 && closeTime.Sub(now) <= *flagFlatten {
+			if len(gOrders) == 0 {
+				log.Printf("we shall flatten our positions")
+				flatten()
+			} else {
+				gPhase = PhaseCanceling
+				log.Printf("we shall cancel all orders so we can flatten")
+				if err := gClient.CancelAllOrders(); err != nil {
+					log.Printf("warning: error canceling orders: %v", err)
+				}
+			}
+		} else if gPhase != PhaseExitOnly && *flagUnload != 0 && closeTime.Sub(now) <= *flagUnload {
+			log.Printf("switching to exit-only mode")
+			gPhase = PhaseExitOnly
+		}
+	}
+}
+
+// flatten closes all positions with market-on-close orders.
+// this ensures we get maximum day trading buying power the next day.
+func flatten() {
+	for _, st := range gSymbols {
+		if st.position.IsZero() {
+			continue
+		}
+		qty := st.position
+		side := ds.SideSell
+		if qty.IsNegative() {
+			side = ds.SideBuy
+			qty = qty.Neg()
+		}
+		MarketOnCloseOrder(st, side, qty)
+		gPhase = PhaseFlattening
+	}
+}
+
+func synchronizeAssetsForever() {
+	for {
+		log.Printf("synchronizing alpaca assets...")
+		if err := gClient.SyncAssets(); err != nil {
+			log.Printf("error synchronizing assets: %v", err)
+		}
+		time.Sleep(15 * time.Minute)
 	}
 }
 
@@ -222,12 +307,24 @@ func removeOrder(st *State, clientOrderID string) {
 	delete(gOrders, clientOrderID)
 	if st.buyClientOrderID == clientOrderID {
 		st.buyClientOrderID = ""
+		st.buyOrderID = ""
 	}
 	if st.sellClientOrderID == clientOrderID {
 		st.sellClientOrderID = ""
+		st.sellOrderID = ""
 	}
 	if !st.Active() {
 		delete(gActiveSymbols, st.symbol)
+	}
+	if len(gOrders) == 0 {
+		switch gPhase {
+		case PhaseCanceling:
+			log.Printf("canceling complete so we may proceed with the flattening")
+			flatten()
+		case PhaseFlattening:
+			log.Printf("flattening complete")
+			gPhase = PhaseNormal
+		}
 	}
 }
 
@@ -251,26 +348,28 @@ func TradeQuantity(price, margin, maximum decimal.Decimal) decimal.Decimal {
 	return qty
 }
 
+func onMessage(msg *sip.Message) {
+	switch msg.Type {
+	case sip.MessageTypeQuote:
+		onQuote(msg.Quote())
+	case sip.MessageTypeTrade:
+		onTrade(msg.Trade())
+	}
+}
+
 func onQuote(q *sip.Quote) {
 	gQuoteCount++
 	name := q.Symbol.String()
 	st, ok := gSymbols[name]
 	if !ok {
-		asset := alpaca.GetAsset(q.Symbol)
+		asset := GetAsset(q.Symbol.String())
 		if asset == nil {
-			return
-		}
-		if asset.Exchange == alpaca.ExchangeOTC ||
-			asset.Class != alpaca.AssetClassUSEquity ||
-			asset.Status != alpaca.AssetStatusActive ||
-			asset.PTPNoException.Load() ||
-			asset.PTPWithException.Load() {
 			return
 		}
 		st = getOrCreateSymbol(name, asset)
 	}
 	st.quote = q
-	evaluate(st)
+	Evaluate(st)
 }
 
 func onTrade(t *sip.Trade) {
@@ -279,7 +378,7 @@ func onTrade(t *sip.Trade) {
 	}
 	name := t.Symbol.String()
 	st := gSymbols[name]
-	if st == nil || st.quote == nil {
+	if st == nil {
 		return
 	}
 	// classify direction using Lee-Ready:
@@ -308,6 +407,16 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		st.symbol, update.Event, update.Order.Status,
 		update.Price, update.Qty, update.PositionQty,
 		update.Order.FilledQty, update.Order.Qty)
+
+	// update order metadata
+	if st.orderCreatedTime == -1 {
+		st.orderCreatedTime = clocky.Now()
+	}
+	if update.Order.Side == ds.SideBuy {
+		st.buyOrderID = update.Order.ID
+	} else {
+		st.sellOrderID = update.Order.ID
+	}
 
 	// track fills and P&L
 	//
@@ -392,29 +501,38 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 	// clean up completed orders
 	if update.Order.Status.IsFinal() {
 		removeOrder(st, update.Order.ClientOrderID)
-		evaluate(st)
+		Evaluate(st)
 	}
 }
 
-func evaluate(st *State) {
+func Evaluate(st *State) {
+	switch gPhase {
+	case PhaseCanceling, PhaseFlattening:
+		return
+	}
+	if st.quote == nil {
+		return
+	}
 	if st.quote.Indicative() {
 		return
 	}
 	if !st.asset.Tradable.Load() {
 		return
 	}
+	if st.symbol == *flagHedge {
+		return // let manageHedge trade this
+	}
 
 	// check if market is open
-	overnight := false
 	now := clocky.Now()
-	if !cboe.IsMarketOpenExtended(now) {
-		if !cboe.IsOvernight(now) {
-			return
-		}
+	session := cboe.GetSession(now)
+	switch session {
+	case cboe.SessionClosed:
+		return
+	case cboe.SessionOvernight:
 		if !st.asset.OvernightTradable.Load() || st.asset.OvernightHalted.Load() {
 			return
 		}
-		overnight = true
 	}
 
 	// PRIORITY 1: Exit existing positions at a profit.
@@ -428,9 +546,9 @@ func evaluate(st *State) {
 			price = price.Max(minPrice)
 			price = QuantizeSell(price)
 		}
-		dest := BestDestination(st.quote.AskExchange, overnight)
+		dest := BestDestination(st.quote.AskExchange, st.asset, session)
 		qty := cboe.LotSize(price).Min(st.position)
-		PlaceOrder(st, ds.SideSell, qty, price, dest)
+		LimitOrder(st, ds.SideSell, qty, price, dest, session)
 		return
 	}
 	if st.position.IsNegative() && st.buyClientOrderID == "" && st.asset.Tradable.Load() && !st.quote.DangerousBid() {
@@ -441,15 +559,15 @@ func evaluate(st *State) {
 			price = price.Min(maxPrice)
 			price = QuantizeBuy(price)
 		}
-		dest := BestDestination(st.quote.BidExchange, overnight)
+		dest := BestDestination(st.quote.BidExchange, st.asset, session)
 		qty := cboe.LotSize(price).Min(st.position.Neg())
-		PlaceOrder(st, ds.SideBuy, qty, price, dest)
+		LimitOrder(st, ds.SideBuy, qty, price, dest, session)
 		return
 	}
 
 	// PRIORITY 2: Enter new positions based on imbalance signal.
 	// Only when flat (no position) and no pending orders.
-	if *flagExitOnly {
+	if *flagExitOnly || gPhase == PhaseExitOnly {
 		return
 	}
 	if len(gActiveSymbols) >= *flagMaxSyms {
@@ -492,8 +610,8 @@ func evaluate(st *State) {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			mar := st.asset.MarginRequirementLong.Load()
 			qty := TradeQuantity(mid, mar, totalSize)
-			dst := BestDestination(st.quote.BidExchange, overnight)
-			PlaceOrder(st, ds.SideBuy, qty, price, dst)
+			dst := BestDestination(st.quote.BidExchange, st.asset, session)
+			LimitOrder(st, ds.SideBuy, qty, price, dst, session)
 			st.isoNetFlow = decimal.Zero
 		}
 	} else if wantSell {
@@ -503,17 +621,21 @@ func evaluate(st *State) {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			mar := st.asset.MarginRequirementShort.Load()
 			qty := TradeQuantity(mid, mar, totalSize)
-			dst := BestDestination(st.quote.AskExchange, overnight)
-			PlaceOrder(st, ds.SideSell, qty, price, dst)
+			dst := BestDestination(st.quote.AskExchange, st.asset, session)
+			LimitOrder(st, ds.SideSell, qty, price, dst, session)
 			st.isoNetFlow = decimal.Zero
 		}
 	}
 }
 
-func BestDestination(exchange sip.Exchange, overnight bool) alpaca.OrderDestination {
-	if overnight {
-		return alpaca.OrderDestinationNone // let alpaca route to boats
+func BestDestination(exchange sip.Exchange, asset *alpaca.Asset, session cboe.Session) alpaca.OrderDestination {
+	// overnight trading happens on boats which we can't dma
+	// just let alpaca smart router figure things out for us
+	if session == cboe.SessionOvernight {
+		return alpaca.OrderDestinationNone
 	}
+	// dma to whichever exchange quote came from
+	// assuming we have the ability to directly route there
 	switch exchange {
 	case sip.ExchangeNASDAQ:
 		return alpaca.OrderDestinationNASDAQ
@@ -521,17 +643,32 @@ func BestDestination(exchange sip.Exchange, overnight bool) alpaca.OrderDestinat
 		return alpaca.OrderDestinationARCA
 	case sip.ExchangeNYSE:
 		return alpaca.OrderDestinationNYSE
-	default:
-		return alpaca.OrderDestinationNASDAQ
 	}
+	// otherwise dma to exchange on which stock is listed
+	// for tech stocks this will almost certainly be nasdaq
+	// for etfs it's usually arca which is where action happens
+	switch asset.Exchange {
+	case alpaca.ExchangeNASDAQ:
+		return alpaca.OrderDestinationNASDAQ
+	case alpaca.ExchangeARCA:
+		return alpaca.OrderDestinationARCA
+	case alpaca.ExchangeNYSE:
+		// nyse is only open during day
+		if session == cboe.SessionDay {
+			return alpaca.OrderDestinationNYSE
+		}
+	}
+	// fallback to best exchange that exists
+	return alpaca.OrderDestinationNASDAQ
 }
 
-func PlaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Decimal, dest alpaca.OrderDestination) {
+func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Decimal, dest alpaca.OrderDestination, session cboe.Session) {
 	if qty.IsZero() {
 		return
 	}
 
-	clientOrderID := uuid.New().String()
+	clientOrderID := generateClientOrderID()
+	st.orderCreatedTime = -1
 	gOrders[clientOrderID] = st
 	gActiveSymbols[st.symbol] = true
 	if side == ds.SideBuy {
@@ -547,19 +684,20 @@ func PlaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 	// don't slow down quote processing
 	go func() {
 
-		// check if extended hours
-		now := clocky.Now()
-		extendedHours := !cboe.IsMarketOpen(now)
-		if extendedHours && dest == alpaca.OrderDestinationNYSE {
-			dest = alpaca.OrderDestinationNone // nyse is for day trading only
-		}
-
 		// configure alpaca smart router
 		var advancedInstructions *alpaca.AdvancedInstructions
 		if dest != alpaca.OrderDestinationNone {
+			displayQty := decimal.Zero
+			lot := cboe.LotSize(price)
+			if qty.Cmp(lot) > 0 {
+				// don't reveal our full intent
+				// only really applies to hedging orders
+				displayQty = lot
+			}
 			advancedInstructions = &alpaca.AdvancedInstructions{
 				Algorithm:   alpaca.OrderAlgorithmDMA,
 				Destination: dest,
+				DisplayQty:  displayQty,
 			}
 		}
 
@@ -569,7 +707,7 @@ func PlaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 			Qty:                  qty,
 			Type:                 alpaca.OrderTypeLimit,
 			TimeInForce:          alpaca.TimeInForceDay,
-			ExtendedHours:        extendedHours,
+			ExtendedHours:        session == cboe.SessionExtended || session == cboe.SessionOvernight,
 			LimitPrice:           price,
 			ClientOrderID:        clientOrderID,
 			AdvancedInstructions: advancedInstructions,
@@ -580,6 +718,41 @@ func PlaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 			return
 		}
 	}()
+}
+
+func MarketOnCloseOrder(st *State, side ds.Side, qty decimal.Decimal) {
+	if qty.IsZero() {
+		return
+	}
+	clientOrderID := generateClientOrderID()
+	gOrders[clientOrderID] = st
+	gActiveSymbols[st.symbol] = true
+	st.orderCreatedTime = 0
+	if side == ds.SideBuy {
+		st.buyClientOrderID = clientOrderID
+	} else {
+		st.sellClientOrderID = clientOrderID
+	}
+	log.Printf("placing moc order to %s %s shares of %s", side, qty, st.symbol)
+	go func() {
+		_, err := gClient.CreateOrder(&alpaca.CreateOrderRequest{
+			Symbol:        st.symbol,
+			Side:          side,
+			Qty:           qty,
+			Type:          alpaca.OrderTypeMarket,
+			TimeInForce:   alpaca.TimeInForceCLS,
+			ClientOrderID: clientOrderID,
+		})
+		if err != nil {
+			log.Printf("%s error placing order: %v", st.symbol, err)
+			gFailedOrders <- clientOrderID
+			return
+		}
+	}()
+}
+
+func generateClientOrderID() string {
+	return uuid.New().String()
 }
 
 func logBalance() {
@@ -651,6 +824,33 @@ func shutdown() {
 	os.Exit(0)
 }
 
+func cleanupOrders() {
+	now := clocky.Now()
+	for _, st := range gOrders {
+		if st.orderCreatedTime <= 0 {
+			continue
+		}
+		elapsed := now.Sub(st.orderCreatedTime)
+		if elapsed > *flagPatience {
+			log.Printf("%s canceling stale order (created %s ago)", st.symbol, elapsed)
+			if st.buyOrderID != "" {
+				cancelOrder(st.buyOrderID)
+				st.orderCreatedTime = 0
+			}
+			if st.sellOrderID != "" {
+				cancelOrder(st.sellOrderID)
+				st.orderCreatedTime = 0
+			}
+		}
+	}
+}
+
+func cancelOrder(orderID string) {
+	if err := gClient.CancelOrder(orderID); err != nil {
+		log.Printf("error canceling order: %v", err)
+	}
+}
+
 func QuantizeBuy(price decimal.Decimal) decimal.Decimal {
 	return price.QuantizeTruncate(Tick(price)) // buy low
 }
@@ -667,7 +867,25 @@ func Tick(price decimal.Decimal) decimal.Decimal {
 	}
 }
 
-func isOptionsSymbol(sym string) bool {
-	_, _, _, _, _, _, err := osi.Parse(sym)
-	return err == nil
+func StockExists(name string) bool {
+	return GetAsset(name) != nil
+}
+
+func GetAsset(name string) *alpaca.Asset {
+	sym, err := symbol.Parse(name)
+	if err != nil {
+		return nil
+	}
+	asset := alpaca.GetAsset(sym)
+	if asset == nil {
+		return nil
+	}
+	if asset.Exchange == alpaca.ExchangeOTC ||
+		asset.Class != alpaca.AssetClassUSEquity ||
+		asset.Status.Load() != alpaca.AssetStatusActive ||
+		asset.PTPNoException.Load() ||
+		asset.PTPWithException.Load() {
+		return nil
+	}
+	return asset
 }

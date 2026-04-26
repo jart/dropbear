@@ -6,6 +6,32 @@ import (
 	"testing"
 )
 
+// IsMarketOpen returns true if the market is open for day trading.
+func IsMarketOpen(dt clocky.Time) bool {
+	return GetSession(dt) == SessionDay
+}
+
+// IsMarketOpenExtended returns true if the market is open for day trading or extended hours.
+func IsMarketOpenExtended(dt clocky.Time) bool {
+	s := GetSession(dt)
+	return s == SessionDay || s == SessionExtended
+}
+
+// IsMarketOpenExtendedOvernight returns true if markets are open for day/extended/overnight trading.
+func IsMarketOpenExtendedOvernight(dt clocky.Time) bool {
+	return GetSession(dt) != SessionClosed
+}
+
+// IsExtended returns true if the market is open for extended hours only.
+func IsExtended(dt clocky.Time) bool {
+	return GetSession(dt) == SessionExtended
+}
+
+// IsOvernight returns true if the market is open for overnight trading only.
+func IsOvernight(dt clocky.Time) bool {
+	return GetSession(dt) == SessionOvernight
+}
+
 func TestGetCloseTime(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -268,6 +294,97 @@ func TestIsMarketOpenExtendedOvernight(t *testing.T) {
 		if got := IsMarketOpenExtendedOvernight(tt.dt); got != tt.want {
 			t.Errorf("%s: IsMarketOpenExtendedOvernight() = %v, want %v", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestGetSession(t *testing.T) {
+	tests := []struct {
+		name string
+		dt   clocky.Time
+		want Session
+	}{
+		// normal Thursday
+		{"Thu 3:00 AM", clocky.Date(2026, clocky.April, 23, 3, 0, 0, 0, clocky.NYC), SessionOvernight},
+		{"Thu 3:59 AM", clocky.Date(2026, clocky.April, 23, 3, 59, 0, 0, clocky.NYC), SessionOvernight},
+		{"Thu 4:00 AM", clocky.Date(2026, clocky.April, 23, 4, 0, 0, 0, clocky.NYC), SessionExtended},
+		{"Thu 9:29 AM", clocky.Date(2026, clocky.April, 23, 9, 29, 0, 0, clocky.NYC), SessionExtended},
+		{"Thu 9:30 AM", clocky.Date(2026, clocky.April, 23, 9, 30, 0, 0, clocky.NYC), SessionDay},
+		{"Thu 3:59 PM", clocky.Date(2026, clocky.April, 23, 15, 59, 0, 0, clocky.NYC), SessionDay},
+		{"Thu 4:00 PM", clocky.Date(2026, clocky.April, 23, 16, 0, 0, 0, clocky.NYC), SessionExtended},
+		{"Thu 7:59 PM", clocky.Date(2026, clocky.April, 23, 19, 59, 0, 0, clocky.NYC), SessionExtended},
+		{"Thu 8:00 PM", clocky.Date(2026, clocky.April, 23, 20, 0, 0, 0, clocky.NYC), SessionOvernight},
+		{"Thu 11:59 PM", clocky.Date(2026, clocky.April, 23, 23, 59, 0, 0, clocky.NYC), SessionOvernight},
+		// Friday into weekend
+		{"Fri 3:59 PM", clocky.Date(2026, clocky.April, 24, 15, 59, 0, 0, clocky.NYC), SessionDay},
+		{"Fri 4:00 PM", clocky.Date(2026, clocky.April, 24, 16, 0, 0, 0, clocky.NYC), SessionExtended},
+		{"Fri 7:59 PM", clocky.Date(2026, clocky.April, 24, 19, 59, 0, 0, clocky.NYC), SessionExtended},
+		{"Fri 8:00 PM", clocky.Date(2026, clocky.April, 24, 20, 0, 0, 0, clocky.NYC), SessionClosed},
+		{"Sat 12:00 PM", clocky.Date(2026, clocky.April, 25, 12, 0, 0, 0, clocky.NYC), SessionClosed},
+		{"Sun 7:59 PM", clocky.Date(2026, clocky.April, 26, 19, 59, 0, 0, clocky.NYC), SessionClosed},
+		{"Sun 8:00 PM", clocky.Date(2026, clocky.April, 26, 20, 0, 0, 0, clocky.NYC), SessionOvernight},
+		// early close: 2025 July 3 (Thu), July 4 (Fri) is holiday
+		{"Jul3 2025 9:30 AM", clocky.Date(2025, clocky.July, 3, 9, 30, 0, 0, clocky.NYC), SessionDay},
+		{"Jul3 2025 12:59 PM", clocky.Date(2025, clocky.July, 3, 12, 59, 0, 0, clocky.NYC), SessionDay},
+		{"Jul3 2025 1:00 PM", clocky.Date(2025, clocky.July, 3, 13, 0, 0, 0, clocky.NYC), SessionExtended},
+		{"Jul3 2025 4:59 PM", clocky.Date(2025, clocky.July, 3, 16, 59, 0, 0, clocky.NYC), SessionExtended},
+		{"Jul3 2025 5:00 PM", clocky.Date(2025, clocky.July, 3, 17, 0, 0, 0, clocky.NYC), SessionClosed},
+		{"Jul3 2025 8:00 PM", clocky.Date(2025, clocky.July, 3, 20, 0, 0, 0, clocky.NYC), SessionClosed},
+		{"Jul4 2025 3:00 AM", clocky.Date(2025, clocky.July, 4, 3, 0, 0, 0, clocky.NYC), SessionClosed},
+		{"Jul4 2025 12:00 PM", clocky.Date(2025, clocky.July, 4, 12, 0, 0, 0, clocky.NYC), SessionClosed},
+		// early close: 2026 July 2 (Thu), July 3 (Fri) is observed holiday
+		{"Jul2 2026 12:59 PM", clocky.Date(2026, clocky.July, 2, 12, 59, 0, 0, clocky.NYC), SessionDay},
+		{"Jul2 2026 1:00 PM", clocky.Date(2026, clocky.July, 2, 13, 0, 0, 0, clocky.NYC), SessionExtended},
+		{"Jul2 2026 5:00 PM", clocky.Date(2026, clocky.July, 2, 17, 0, 0, 0, clocky.NYC), SessionClosed},
+		{"Jul2 2026 8:00 PM", clocky.Date(2026, clocky.July, 2, 20, 0, 0, 0, clocky.NYC), SessionClosed},
+		{"Jul3 2026 12:00 PM", clocky.Date(2026, clocky.July, 3, 12, 0, 0, 0, clocky.NYC), SessionClosed},
+	}
+	for _, tt := range tests {
+		if got := GetSession(tt.dt); got != tt.want {
+			t.Errorf("%s: GetSession() = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestGetSessionCrossValidate checks GetSession against the individual Is* functions
+// for every minute across several interesting weeks.
+func TestGetSessionCrossValidate(t *testing.T) {
+	// check every minute from Sunday April 19 2026 through Saturday April 25 2026
+	// plus the July 4 holiday weeks for 2025 and 2026
+	starts := []clocky.Time{
+		clocky.Date(2026, clocky.April, 19, 0, 0, 0, 0, clocky.NYC),
+		clocky.Date(2025, clocky.July, 1, 0, 0, 0, 0, clocky.NYC),
+		clocky.Date(2026, clocky.July, 1, 0, 0, 0, 0, clocky.NYC),
+	}
+	for _, start := range starts {
+		for i := range 7 * 24 * 60 {
+			dt := start.Add(clocky.Duration(i) * clocky.Minute)
+			got := GetSession(dt)
+			isDay := IsMarketOpen(dt)
+			isExt := IsExtended(dt)
+			isOvn := IsOvernight(dt)
+			var want Session
+			switch {
+			case isDay:
+				want = SessionDay
+			case isExt:
+				want = SessionExtended
+			case isOvn:
+				want = SessionOvernight
+			default:
+				want = SessionClosed
+			}
+			if got != want {
+				t.Errorf("%s: GetSession()=%v, want %v (day=%v ext=%v ovn=%v)",
+					dt, got, want, isDay, isExt, isOvn)
+			}
+		}
+	}
+}
+
+func BenchmarkGetSession(b *testing.B) {
+	dt := clocky.Date(2026, clocky.April, 23, 12, 0, 0, 0, clocky.NYC)
+	for b.Loop() {
+		GetSession(dt)
 	}
 }
 

@@ -949,7 +949,7 @@ Trading tips: We prefer patience and good execution over urgency. Consider:
 			askPrice = snap.LatestQuote.AskPrice
 		} else {
 			feed := alpaca.FeedNone
-			if cboe.IsOvernight(clocky.Now()) {
+			if cboe.GetSession(clocky.Now()) == cboe.SessionOvernight {
 				feed = alpaca.FeedBOATS
 			}
 			quote, err := client.GetQuote(sym, feed)
@@ -1231,7 +1231,7 @@ func getQuote(args map[string]any) ToolCallResult {
 
 	// Stock quote
 	feed := alpaca.FeedNone
-	if cboe.IsOvernight(clocky.Now()) {
+	if cboe.GetSession(clocky.Now()) == cboe.SessionOvernight {
 		feed = alpaca.FeedBOATS
 	}
 	quote, err := client.GetQuote(symbol, feed)
@@ -1652,7 +1652,7 @@ func getSnapshot(args map[string]any) ToolCallResult {
 		midpoint := q.BidPrice.Add(q.AskPrice).Half()
 		spread := q.AskPrice.Sub(q.BidPrice)
 		lines = append(lines, "\nLatest Quote:")
-		lines = append(lines, fmt.Sprintf("  Bid: %s (size: %s)  Ask: %s (size: %s)",
+		lines = append(lines, fmt.Sprintf("  Bid: %s x %d  Ask: %s x %d",
 			q.BidPrice, q.BidSize, q.AskPrice, q.AskSize))
 		lines = append(lines, fmt.Sprintf("  Midpoint: %s  Spread: %s", midpoint, spread))
 	}

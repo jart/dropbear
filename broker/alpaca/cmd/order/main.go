@@ -28,7 +28,7 @@ var (
 	flagIOC            = flag.Bool("ioc", false, "use immediate or cancel time in force")
 	flagTWAP           = flag.Bool("twap", false, "use time weighted average price algorithm")
 	flagVWAP           = flag.Bool("vwap", false, "use volume weighted average price algorithm")
-	flagTaker          = flag.Bool("taker", false, "take liquidity (equivalent to -spread=1)")
+	flagTaker          = flag.Bool("taker", false, "take liquidity (equivalent to -spread=+1)")
 	flagMaker          = flag.Bool("maker", false, "make liquidity (equivalent to -spread=-1)")
 	flagWait           = flag.Bool("wait", false, "wait for order to fill")
 	flagDMA            = alpaca.OrderDestinationFlag("dma", "", "directly route order to lit exchange (NYSE, NASDAQ, ARCA)")
@@ -258,10 +258,6 @@ options:
 			Algorithm:   alpaca.OrderAlgorithmDMA,
 			Destination: *flagDMA,
 			DisplayQty:  *flagDisplay,
-		}
-		if advanced.DisplayQty.QuantizeTruncate(decimal.Lot).Cmp(advanced.MaxPercentage) != 0 {
-			fmt.Fprintf(os.Stderr, "-display must be in round lots\n")
-			os.Exit(1)
 		}
 		if *flagBracket || *flagOTO || *flagOCO || *flagTWAP || *flagVWAP {
 			fmt.Fprintf(os.Stderr, "-dma only supports -market and -limit orders\n")
@@ -525,7 +521,7 @@ options:
 				explain = fmt.Sprintf("%s spread->%s", explain, limitPrice)
 			}
 			tick := cboe.Tick01
-			if isOptionsSymbol(sym) && limitPrice.Cmp(decimal.Three) > 0 {
+			if osi.IsOptionsSymbol(sym) && limitPrice.Cmp(decimal.Three) > 0 {
 				tick = cboe.Tick05
 			}
 			if side == ds.SideBuy {
@@ -605,7 +601,7 @@ options:
 }
 
 func getQuote(client *alpaca.Client, sym string) (bid, ask decimal.Decimal, err error) {
-	if isOptionsSymbol(sym) {
+	if osi.IsOptionsSymbol(sym) {
 		os, err := client.GetOptionSnapshot(sym)
 		if err != nil {
 			return 0, 0, err
@@ -613,7 +609,7 @@ func getQuote(client *alpaca.Client, sym string) (bid, ask decimal.Decimal, err 
 		return os.LatestQuote.BidPrice, os.LatestQuote.AskPrice, nil
 	}
 	feed := alpaca.FeedSIP
-	if cboe.IsOvernight(clocky.Now()) {
+	if cboe.GetSession(clocky.Now()) == cboe.SessionOvernight {
 		feed = alpaca.FeedBOATS
 	}
 	quote, err := client.GetQuote(sym, feed)
@@ -621,11 +617,6 @@ func getQuote(client *alpaca.Client, sym string) (bid, ask decimal.Decimal, err 
 		return 0, 0, err
 	}
 	return quote.BidPrice, quote.AskPrice, nil
-}
-
-func isOptionsSymbol(sym string) bool {
-	_, _, _, _, _, _, err := osi.Parse(sym)
-	return err == nil
 }
 
 func moreThanOne(flags ...bool) bool {

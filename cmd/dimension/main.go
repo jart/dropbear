@@ -1,4 +1,4 @@
-// Command dimension resizes EC2 instances by core count.
+// Command dimension resizes GCE instances by core count.
 //
 // Usage:
 //
@@ -12,8 +12,13 @@ import (
 	"strings"
 )
 
-var instances = map[string]string{
-	"penny": "i-04790977c160f6adb",
+var instances = map[string]instance{
+	"penny": {"the-good-news", "us-east4-a"},
+}
+
+type instance struct {
+	project string
+	zone    string
 }
 
 type size struct {
@@ -21,20 +26,20 @@ type size struct {
 	ram string
 }
 
-var z1dSizes = map[string]size{
-	"0":  {"t3a.micro", "1 GB"},      // $7/month
-	"1":  {"z1d.large", "16 GB"},     // $70/month
-	"2":  {"z1d.xlarge", "32 GB"},    // $140/month
-	"4":  {"z1d.2xlarge", "64 GB"},   // $402/month
-	"6":  {"z1d.3xlarge", "96 GB"},   // $804/month
-	"12": {"z1d.6xlarge", "192 GB"},  // $1607/month
-	"24": {"z1d.12xlarge", "384 GB"}, // $3214/month
+var kSizes = map[string]size{
+	"0":  {"e2-micro", "1 GB"},         // ~$6/month
+	"2":  {"c3-highcpu-4", "8 GB"},     // ~$131/month
+	"4":  {"c3-highcpu-8", "16 GB"},    // ~$263/month
+	"11": {"c3-highcpu-22", "44 GB"},   // ~$723/month
+	"22": {"c3-highcpu-44", "88 GB"},   // ~$1446/month
+	"44": {"c3-highcpu-88", "176 GB"},  // ~$2891/month
+	"88": {"c3-highcpu-176", "352 GB"}, // ~$5782/month
 }
 
 func main() {
 	if len(os.Args) != 3 {
 		fmt.Fprintf(os.Stderr, "usage: dimension <name> <cores>\n")
-		fmt.Fprintf(os.Stderr, "       cores: 0, 1, 2, 4, 6, 12, 24\n")
+		fmt.Fprintf(os.Stderr, "       cores: 0, 2, 4, 11, 22, 44, 88\n")
 		names := make([]string, 0, len(instances))
 		for k := range instances {
 			names = append(names, k)
@@ -44,22 +49,22 @@ func main() {
 	}
 	name := os.Args[1]
 	cores := os.Args[2]
-	instanceID, ok := instances[name]
+	inst, ok := instances[name]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "error: unknown instance %q\n", name)
 		os.Exit(1)
 	}
-	s, ok := z1dSizes[cores]
+	s, ok := kSizes[cores]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "error: invalid core count %q\n", cores)
-		fmt.Fprintf(os.Stderr, "       valid: 1, 2, 4, 6, 12, 24\n")
+		fmt.Fprintf(os.Stderr, "       valid: 0, 2, 4, 11, 22, 44, 88\n")
 		os.Exit(1)
 	}
 
-	current := aws("ec2", "describe-instances",
-		"--instance-ids", instanceID,
-		"--query", "Reservations[0].Instances[0].InstanceType",
-		"--output", "text")
+	current := gcloud("compute", "instances", "describe", name,
+		"--zone", inst.zone,
+		"--project", inst.project,
+		"--format", "value(machineType.basename())")
 	if current == s.typ {
 		fmt.Printf("%s: already %s (%s cores, %s)\n", name, s.typ, cores, s.ram)
 		return
@@ -67,31 +72,34 @@ func main() {
 	fmt.Printf("%s: %s → %s (%s cores, %s)\n", name, current, s.typ, cores, s.ram)
 
 	fmt.Printf("stopping %s...\n", name)
-	aws("ec2", "stop-instances", "--instance-ids", instanceID, "--output", "text")
-	aws("ec2", "wait", "instance-stopped", "--instance-ids", instanceID)
+	gcloud("compute", "instances", "stop", name,
+		"--zone", inst.zone,
+		"--project", inst.project)
 	fmt.Println("stopped")
 
-	aws("ec2", "modify-instance-attribute",
-		"--instance-id", instanceID,
-		"--instance-type", s.typ)
+	gcloud("compute", "instances", "set-machine-type", name,
+		"--zone", inst.zone,
+		"--project", inst.project,
+		"--machine-type", s.typ)
 
 	fmt.Printf("starting %s...\n", name)
-	aws("ec2", "start-instances", "--instance-ids", instanceID, "--output", "text")
-	aws("ec2", "wait", "instance-running", "--instance-ids", instanceID)
+	gcloud("compute", "instances", "start", name,
+		"--zone", inst.zone,
+		"--project", inst.project)
 
-	ip := aws("ec2", "describe-instances",
-		"--instance-ids", instanceID,
-		"--query", "Reservations[0].Instances[0].PublicIpAddress",
-		"--output", "text")
+	ip := gcloud("compute", "instances", "describe", name,
+		"--zone", inst.zone,
+		"--project", inst.project,
+		"--format", "value(networkInterfaces[0].accessConfigs[0].natIP)")
 	fmt.Printf("%s is up at %s\n", name, ip)
 }
 
-func aws(args ...string) string {
-	cmd := exec.Command("aws", args...)
+func gcloud(args ...string) string {
+	cmd := exec.Command("gcloud", args...)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "aws %s failed: %v\n", args[0]+" "+args[1], err)
+		fmt.Fprintf(os.Stderr, "gcloud %s failed: %v\n", strings.Join(args[:3], " "), err)
 		os.Exit(1)
 	}
 	return strings.TrimSpace(string(out))

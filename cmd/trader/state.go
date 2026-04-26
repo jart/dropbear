@@ -19,8 +19,11 @@ type State struct {
 	isoDecay   clocky.Time     // timestamp of last decay
 
 	// our pending orders
+	buyOrderID        string
+	sellOrderID       string
 	buyClientOrderID  string
 	sellClientOrderID string
+	orderCreatedTime  clocky.Time // only cancelable if positive
 
 	// P&L tracking
 	costBasis    decimal.Decimal // total cost of current position (signed)

@@ -7,30 +7,31 @@ import "fmt"
 type Exchange byte
 
 const (
-	ExchangeAMEX   Exchange = 'A' // New York Curb Exchange (NYSE American)
-	ExchangeBSE    Exchange = 'B' // Boston Stock Exchange (NASDAQ OMX BX)
-	ExchangeNSE    Exchange = 'C' // National Stock Exchange
-	ExchangeADF    Exchange = 'D' // FINRA ADF
-	ExchangeIndy   Exchange = 'E' // Market Independent
-	ExchangeGMX    Exchange = 'F' // Nasdaq Global/Select Market (?)
-	ExchangePearl  Exchange = 'G' // MIAX Pearl (?)
-	ExchangeMIAX   Exchange = 'H' // MIAX
-	ExchangeISE    Exchange = 'I' // International Securities Exchange
-	ExchangeEDGA   Exchange = 'J' // Cboe EDGA
-	ExchangeEDGX   Exchange = 'K' // Cboe EDGX
-	ExchangeLTSE   Exchange = 'L' // Long Term Stock Exchange
-	ExchangeCSE    Exchange = 'M' // Chicago Stock Exchange
-	ExchangeNYSE   Exchange = 'N' // New York Stock Exchange
-	ExchangeARCA   Exchange = 'P' // NYSE Arca
-	ExchangeNASDAQ Exchange = 'Q' // NASDAQ OMX
-	ExchangePOG    Exchange = 'S' // NASDAQ Small Cap
-	ExchangeINT    Exchange = 'T' // NASDAQ International
-	ExchangeMEMX   Exchange = 'U' // Members Exchange
-	ExchangeIEX    Exchange = 'V' // IEX
-	ExchangeCBOE   Exchange = 'W' // CBOE
-	ExchangePSX    Exchange = 'X' // NASDAQ OMX PSX
-	ExchangeBYX    Exchange = 'Y' // Cboe BYX
-	ExchangeBZX    Exchange = 'Z' // Cboe BZX
+	ExchangeUnknown Exchange = 0
+	ExchangeAMEX    Exchange = 'A' // New York Curb Exchange (NYSE American)
+	ExchangeBSE     Exchange = 'B' // Boston Stock Exchange (NASDAQ OMX BX)
+	ExchangeNSE     Exchange = 'C' // National Stock Exchange
+	ExchangeADF     Exchange = 'D' // FINRA ADF
+	ExchangeIndy    Exchange = 'E' // Market Independent
+	ExchangeGMX     Exchange = 'F' // Nasdaq Global/Select Market (?)
+	ExchangePearl   Exchange = 'G' // MIAX Pearl (?)
+	ExchangeMIAX    Exchange = 'H' // MIAX
+	ExchangeISE     Exchange = 'I' // International Securities Exchange
+	ExchangeEDGA    Exchange = 'J' // Cboe EDGA
+	ExchangeEDGX    Exchange = 'K' // Cboe EDGX
+	ExchangeLTSE    Exchange = 'L' // Long Term Stock Exchange
+	ExchangeCSE     Exchange = 'M' // Chicago Stock Exchange
+	ExchangeNYSE    Exchange = 'N' // New York Stock Exchange
+	ExchangeARCA    Exchange = 'P' // NYSE Arca
+	ExchangeNASDAQ  Exchange = 'Q' // NASDAQ OMX
+	ExchangePOG     Exchange = 'S' // NASDAQ Small Cap
+	ExchangeINT     Exchange = 'T' // NASDAQ International
+	ExchangeMEMX    Exchange = 'U' // Members Exchange
+	ExchangeIEX     Exchange = 'V' // IEX
+	ExchangeCBOE    Exchange = 'W' // CBOE
+	ExchangePSX     Exchange = 'X' // NASDAQ OMX PSX
+	ExchangeBYX     Exchange = 'Y' // Cboe BYX
+	ExchangeBZX     Exchange = 'Z' // Cboe BZX
 )
 
 // Pre-computed JSON representations (no allocation on marshal)
@@ -44,6 +45,8 @@ func init() {
 
 func (e Exchange) String() string {
 	switch e {
+	case ExchangeUnknown:
+		return "Unknown"
 	case ExchangeAMEX:
 		return "AMEX"
 	case ExchangeBSE:
@@ -99,6 +102,8 @@ func (e Exchange) String() string {
 
 func (e Exchange) GoString() string {
 	switch e {
+	case ExchangeUnknown:
+		return "sip.ExchangeUnknown"
 	case ExchangeAMEX:
 		return "sip.ExchangeAMEX"
 	case ExchangeBSE:
