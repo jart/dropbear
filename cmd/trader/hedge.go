@@ -40,7 +40,7 @@ import (
 // filled, then our order is canceled and reposted every -patience=1h which will
 // hopefully avoid the adverserial and illiquid nature of the market at night.
 func manageHedge() {
-	if *flagHedge == "" || flagRisk.IsZero() {
+	if *flagHedge == 0 || flagRisk.IsZero() {
 		return // hedging disabled
 	}
 	st := gSymbols[*flagHedge]

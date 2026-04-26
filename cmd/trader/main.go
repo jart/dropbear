@@ -30,7 +30,7 @@ import (
 var (
 	flagSize      = decimal.Flag("size", "1_000", "how much capital to devote to each trade")
 	flagRisk      = decimal.Flag("risk", "5_000", "maximum portfolio exposure in usd before index hedging")
-	flagHedge     = flag.String("hedge", "IWM", "symbol to use for index hedging when risk threshold is breached")
+	flagHedge     = symbol.Flag("hedge", "IWM", "symbol to use for index hedging when risk threshold is breached")
 	flagFloor     = decimal.Flag("floor", "2", "minimum trade quantity in shares (2+ ensures negative fees)")
 	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to actively trade simultaneously")
 	flagGreed     = decimal.FlagBPS("greed", "0", "amount of basis points to demand over cost basis")
@@ -55,8 +55,8 @@ var (
 var (
 	gClient        *alpaca.Client
 	gOrders        map[string]*State
-	gSymbols       map[string]*State
-	gActiveSymbols map[string]bool
+	gSymbols       map[symbol.Symbol]*State
+	gActiveSymbols map[symbol.Symbol]bool
 	gFailedOrders  chan string
 	gNextBalance   clocky.Time
 	gTotalPnL      decimal.Decimal
@@ -64,7 +64,7 @@ var (
 	gTotalFills    int
 	gQuoteCount    int64
 	gPhase         Phase
-	gTapeCh        chan sip.Message
+	gTapeMsg       chan *sip.Message
 	gTapeDone      chan struct{}
 )
 
@@ -109,7 +109,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "-flatten must be greater than 10 minutes if specified\n")
 		os.Exit(1)
 	}
-	if *flagHedge != "" && !StockExists(*flagHedge) {
+	if *flagHedge != 0 && !StockExists(*flagHedge) {
 		fmt.Fprintf(os.Stderr, "-hedge asset not found: %s\n", *flagHedge)
 		os.Exit(1)
 	}
@@ -134,8 +134,8 @@ func main() {
 	// initialize globals
 	gClient = alpaca.NewClient()
 	gOrders = map[string]*State{}
-	gSymbols = map[string]*State{}
-	gActiveSymbols = map[string]bool{}
+	gSymbols = map[symbol.Symbol]*State{}
+	gActiveSymbols = map[symbol.Symbol]bool{}
 	gFailedOrders = make(chan string, 32)
 	gNextBalance = clocky.Now().Add(kBalanceInterval)
 
@@ -156,16 +156,16 @@ func main() {
 		log.Fatalf("error getting positions: %v", err)
 	}
 	for _, pos := range positions {
-		asset := GetAsset(pos.Symbol)
-		if asset == nil {
+		sym, err := symbol.Parse(pos.Symbol)
+		if err != nil {
 			continue
 		}
 		symbols = append(symbols, pos.Symbol)
-		st := getOrCreateSymbol(pos.Symbol, asset)
+		st := getOrCreateSymbol(sym)
 		st.position = pos.Qty
 		st.costBasis = pos.CostBasis
 		if st.Active() {
-			gActiveSymbols[pos.Symbol] = true
+			gActiveSymbols[sym] = true
 		}
 		log.Printf("loaded position for %s: %s shares @ avg %s (cost basis %s)",
 			pos.Symbol, pos.Qty, pos.AvgEntryPrice, pos.CostBasis)
@@ -183,7 +183,7 @@ func main() {
 			log.Printf("warning: error fetching quotes: %v", err)
 		} else {
 			for name, q := range quotes {
-				st := gSymbols[name]
+				st := gSymbols[symbol.MustParse(name)]
 				if st == nil || q.BidPrice.IsZero() || q.AskPrice.IsZero() {
 					continue
 				}
@@ -192,27 +192,31 @@ func main() {
 		}
 	}
 
-	// subscribe to order updates
 	log.Printf("subscribing to order updates...")
 	orderUpdates := alpaca.OrderUpdates()
 
-	// subscribe to quote firehose
 	log.Printf("subscribing to sip stock updates...")
 	stockUpdates := alpaca.MustStockUpdates(alpaca.SIPWSURL, &alpaca.StockUpdatesRequest{
-		Action: "subscribe",
-		Quotes: []string{"*"},
-		Trades: []string{"*"},
+		Action:     "subscribe",
+		Quotes:     []string{"*"},
+		Trades:     []string{"*"},
+		Statuses:   []string{"*"},
+		Imbalances: []string{"*"},
+		LULDs:      []string{"*"},
 	})
+
 	log.Printf("subscribing to boats stock updates...")
 	boatsUpdates := alpaca.MustStockUpdates(alpaca.BOATSWSURL, &alpaca.StockUpdatesRequest{
-		Action: "subscribe",
-		Quotes: []string{"*"},
+		Action:   "subscribe",
+		Quotes:   []string{"*"},
+		Trades:   []string{"*"},
+		Statuses: []string{"*"},
 	})
 
 	// start tape recorder to gcs
-	gTapeCh = make(chan sip.Message, 65536)
+	gTapeMsg = make(chan *sip.Message, 65536)
 	gTapeDone = make(chan struct{})
-	go recordTape(gTapeCh, gTapeDone)
+	go recordTape(gTapeMsg, gTapeDone)
 
 	// catch ctrl-c
 	sigChan := make(chan os.Signal, 1)
@@ -321,11 +325,17 @@ func synchronizeAssetsForever() {
 	}
 }
 
-func getOrCreateSymbol(name string, asset *alpaca.Asset) *State {
-	st, ok := gSymbols[name]
-	if !ok {
-		st = &State{symbol: name, asset: asset}
-		gSymbols[name] = st
+func getOrCreateSymbol(sym symbol.Symbol) *State {
+	st := gSymbols[sym]
+	if st == nil {
+		asset := GetAsset(sym)
+		if asset != nil {
+			st = &State{
+				symbol: sym,
+				asset:  asset,
+			}
+			gSymbols[sym] = st
+		}
 	}
 	return st
 }
@@ -379,26 +389,23 @@ func TradeQuantity(price, margin, maximum decimal.Decimal) decimal.Decimal {
 }
 
 func onMessage(msg *sip.Message) {
-	gTapeCh <- *msg
+	gTapeMsg <- msg
 	switch msg.Type {
 	case sip.MessageTypeQuote:
 		onQuote(msg.Quote())
 	case sip.MessageTypeTrade:
 		onTrade(msg.Trade())
+	case sip.MessageTypeStatus:
+		onStatus(msg.Status())
 	}
 }
 
 func onQuote(q *sip.Quote) {
-	gQuoteCount++
-	name := q.Symbol.String()
-	st, ok := gSymbols[name]
-	if !ok {
-		asset := GetAsset(q.Symbol.String())
-		if asset == nil {
-			return
-		}
-		st = getOrCreateSymbol(name, asset)
+	st := getOrCreateSymbol(q.Symbol)
+	if st == nil {
+		return
 	}
+	gQuoteCount++
 	st.quote = q
 	Evaluate(st)
 }
@@ -407,8 +414,7 @@ func onTrade(t *sip.Trade) {
 	if !t.Conditions.Has(sip.TradeCondISO) {
 		return
 	}
-	name := t.Symbol.String()
-	st := gSymbols[name]
+	st := gSymbols[t.Symbol]
 	if st == nil {
 		return
 	}
@@ -425,6 +431,20 @@ func onTrade(t *sip.Trade) {
 		st.isoNetFlow = st.isoNetFlow.Add(size)
 	} else if cmp < 0 {
 		st.isoNetFlow = st.isoNetFlow.Sub(size)
+	}
+}
+
+func onStatus(s *sip.Status) {
+	st := gSymbols[s.Symbol]
+	if st == nil {
+		return
+	}
+	if s.Halt() {
+		st.halt = true
+		log.Printf("trading of %s has halted: %s", st.symbol, s)
+	} else if s.Resume() {
+		st.halt = false
+		log.Printf("trading of %s has resumed: %s", st.symbol, s)
 	}
 }
 
@@ -539,6 +559,9 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 func Evaluate(st *State) {
 	switch gPhase {
 	case PhaseCanceling, PhaseFlattening:
+		return
+	}
+	if st.halt {
 		return
 	}
 	if st.quote == nil {
@@ -739,7 +762,7 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 		}
 
 		_, err := gClient.CreateOrder(&alpaca.CreateOrderRequest{
-			Symbol:               st.symbol,
+			Symbol:               st.symbol.String(),
 			Side:                 side,
 			Qty:                  qty,
 			Type:                 alpaca.OrderTypeLimit,
@@ -773,7 +796,7 @@ func MarketOnCloseOrder(st *State, side ds.Side, qty decimal.Decimal) {
 	log.Printf("placing moc order to %s %s shares of %s", side, qty, st.symbol)
 	go func() {
 		_, err := gClient.CreateOrder(&alpaca.CreateOrderRequest{
-			Symbol:        st.symbol,
+			Symbol:        st.symbol.String(),
 			Side:          side,
 			Qty:           qty,
 			Type:          alpaca.OrderTypeMarket,
@@ -838,7 +861,7 @@ func shutdown() {
 		log.Printf("error canceling orders: %v", err)
 	}
 	log.Printf("flushing tape...")
-	close(gTapeCh)
+	close(gTapeMsg)
 	<-gTapeDone
 	log.Printf("=== P&L SUMMARY ===")
 	for _, st := range gSymbols {
@@ -905,15 +928,11 @@ func Tick(price decimal.Decimal) decimal.Decimal {
 	}
 }
 
-func StockExists(name string) bool {
-	return GetAsset(name) != nil
+func StockExists(sym symbol.Symbol) bool {
+	return GetAsset(sym) != nil
 }
 
-func GetAsset(name string) *alpaca.Asset {
-	sym, err := symbol.Parse(name)
-	if err != nil {
-		return nil
-	}
+func GetAsset(sym symbol.Symbol) *alpaca.Asset {
 	asset := alpaca.GetAsset(sym)
 	if asset == nil {
 		return nil

@@ -65,10 +65,9 @@ func (d *tfoTLSDialer) DialTLSContext(ctx context.Context, network, addr string)
 // lazyTFOConn is a net.Conn that doesn't connect until the first Write.
 // The first Write's data is used as the TFO payload (sent in the SYN).
 type lazyTFOConn struct {
-	ctx     context.Context
-	network string
-	addr    string
-
+	ctx      context.Context
+	network  string
+	addr     string
 	mu       sync.Mutex
 	conn     *net.TCPConn // nil until first write
 	writeErr error        // sticky error from connect

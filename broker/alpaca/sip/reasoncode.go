@@ -73,47 +73,6 @@ func ParseReasonCode(b []byte) (ReasonCode, error) {
 	return rc, nil
 }
 
-// IsKnown returns true if this is a known reason code.
-func (rc ReasonCode) IsKnown() bool {
-	switch rc {
-	case 0, ReasonCodeNewsReleased, ReasonCodeOrderImb, ReasonCodeLULD,
-		ReasonCodeNewsPending, ReasonCodeOperational, ReasonCodeSubPenny,
-		ReasonCodeCircuitLvl1, ReasonCodeCircuitLvl2, ReasonCodeCircuitLvl3,
-		ReasonCodeHaltNewsPending, ReasonCodeHaltNewsDissem, ReasonCodeHaltSECOrderSIP,
-		ReasonCodeHaltInfoRequested, ReasonCodeHaltNonCompliance, ReasonCodeHaltFilingsNotCurr,
-		ReasonCodeHaltSECOrderNotSIP, ReasonCodeHaltRegConcern, ReasonCodeIPONotYetTrading,
-		ReasonCodeCorporateAction, ReasonCodeQuotationNotAvail, ReasonCodeLULDPause,
-		ReasonCodeHaltOtherRegAuth, ReasonCodeMWCQ, ReasonCodeT3, ReasonCodeT7, ReasonCodeR4,
-		ReasonCodeR9, ReasonCodeC3, ReasonCodeC4, ReasonCodeC9:
-		return true
-	}
-	return false
-}
-
-// IsHalt returns true if this reason code indicates a trading halt.
-func (rc ReasonCode) IsHalt() bool {
-	switch rc {
-	case ReasonCodeHaltNewsPending, ReasonCodeHaltNewsDissem, ReasonCodeHaltSECOrderSIP,
-		ReasonCodeHaltInfoRequested, ReasonCodeHaltNonCompliance, ReasonCodeHaltFilingsNotCurr,
-		ReasonCodeHaltSECOrderNotSIP, ReasonCodeHaltRegConcern, ReasonCodeIPONotYetTrading,
-		ReasonCodeLULDPause, ReasonCodeCircuitLvl1, ReasonCodeCircuitLvl2, ReasonCodeCircuitLvl3,
-		ReasonCodeT6, ReasonCodeT7, ReasonCodeT8, ReasonCodeMWC0, ReasonCodeMWC1, ReasonCodeMWC2,
-		ReasonCodeMWC3, ReasonCodeO1:
-		return true
-	}
-	return false
-}
-
-// IsResume returns true if this reason code indicates a resumption of trading.
-func (rc ReasonCode) IsResume() bool {
-	switch rc {
-	case ReasonCodeNewsReleased, ReasonCodeHaltOtherRegAuth, ReasonCodeT3, ReasonCodeT7,
-		ReasonCodeR4, ReasonCodeR9, ReasonCodeC3, ReasonCodeC4, ReasonCodeC9, ReasonCodeMWCQ:
-		return true
-	}
-	return false
-}
-
 func (rc ReasonCode) String() string {
 	var buf [4]byte
 	n := 0

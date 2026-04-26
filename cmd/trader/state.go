@@ -5,13 +5,15 @@ import (
 	"dropbear/broker/alpaca/sip"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/symbol"
 )
 
 // State tracks all state for a single symbol.
 type State struct {
-	symbol   string
+	symbol   symbol.Symbol
 	asset    *alpaca.Asset
 	quote    *sip.Quote
+	halt     bool
 	position decimal.Decimal // negative if short
 
 	// iso flow tracking

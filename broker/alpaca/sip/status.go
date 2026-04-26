@@ -3,6 +3,7 @@ package sip
 import (
 	"dropbear/clocky"
 	"dropbear/symbol"
+	"fmt"
 )
 
 // Status represents a trading status message.
@@ -15,6 +16,55 @@ type Status struct {
 	Symbol    symbol.Symbol `json:"S"`  // stock symbol
 	Message   StatusMessage `json:"sm"` // status message (truncated to 16 bytes)
 	ReasonMsg ReasonMessage `json:"rm"` // reason message (truncated to 16 bytes)
+}
+
+// Halt returns true if this status message indicates a trading halt.
+func (s *Status) Halt() bool {
+	switch s.Tape {
+	case TapeA, TapeB:
+		switch s.Code {
+		case StatusCodeTradingHaltCTA:
+			return true
+		default:
+			return false
+		}
+	case TapeC, TapeO:
+		switch s.Code {
+		case StatusCodeTradingHaltUTP:
+			return true
+		default:
+			return false
+		}
+	default:
+		return false
+	}
+}
+
+// Resume returns true if this status message indicates a trading resume.
+func (s *Status) Resume() bool {
+	switch s.Tape {
+	case TapeA, TapeB:
+		switch s.Code {
+		case StatusCodeResumeCTA:
+			return true
+		default:
+			return false
+		}
+	case TapeC, TapeO:
+		switch s.Code {
+		case StatusCodeTradingResumptionUTP:
+			return true
+		default:
+			return false
+		}
+	default:
+		return false
+	}
+}
+
+func (s *Status) String() string {
+	return fmt.Sprintf("Status{Tape:%q Code:%q Reason:%q Timestamp:%s Symbol:%s Message:%q ReasonMsg:%q}",
+		s.Tape, s.Code, s.Reason, s.Timestamp, s.Symbol, s.Message, s.ReasonMsg)
 }
 
 // Parse parses a SIP status message.

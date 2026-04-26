@@ -31,9 +31,9 @@ var BulkHttpClient = &http.Client{
 	Transport: &http.Transport{
 		DialContext:           Dialer.DialContext,
 		DialTLSContext:        bulkTLSDialer.DialTLSContext,
-		MaxConnsPerHost:       1000,
-		MaxIdleConns:          1000,
-		MaxIdleConnsPerHost:   1000,
+		MaxConnsPerHost:       100,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
 		IdleConnTimeout:       45 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
@@ -50,16 +50,36 @@ var BulkHttpClient = &http.Client{
 var FastHTTPClient = &http.Client{
 	Transport: &http.Transport{
 		DialContext:           Dialer.DialContext,
-		DialTLSContext:        bulkTLSDialer.DialTLSContext, // Reuse same TLS config (HTTP/2)
-		MaxConnsPerHost:       4,
-		MaxIdleConns:          4,
-		MaxIdleConnsPerHost:   4,
+		DialTLSContext:        bulkTLSDialer.DialTLSContext, // reuse same tls config (http/2)
+		MaxConnsPerHost:       10,
+		MaxIdleConns:          10,
+		MaxIdleConnsPerHost:   10,
 		IdleConnTimeout:       45 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ResponseHeaderTimeout: 5 * time.Second,
 		ExpectContinueTimeout: 0,
 		ForceAttemptHTTP2:     true,
-		DisableCompression:    false, // Schwab sends gzip even when not asked
+		DisableCompression:    false, // schwab sends gzip even when not asked
+	},
+}
+
+// GCSHTTPClient is optimized for Google Cloud Storage interactions.
+// Uses HTTP/2 for connection reuse (avoids cold start latency spikes).
+// Separate from BulkHttpClient to avoid head-of-line blocking from bulk traffic.
+// Uses TCP Fast Open to send TLS ClientHello in the SYN packet, saving one RTT.
+var GCSHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext:           Dialer.DialContext,
+		DialTLSContext:        bulkTLSDialer.DialTLSContext,
+		MaxConnsPerHost:       100,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		IdleConnTimeout:       45 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 0,
+		ForceAttemptHTTP2:     true,
+		DisableCompression:    true, // we should be doing our own zstd compression
 	},
 }
 

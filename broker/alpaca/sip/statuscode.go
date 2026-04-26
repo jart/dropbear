@@ -38,22 +38,6 @@ func init() {
 	}
 }
 
-// IsTradingHalt returns true if this is a trading halt status.
-func (c StatusCode) IsTradingHalt() bool {
-	return c == StatusCodeTradingHaltCTA || c == StatusCodeTradingHaltUTP
-}
-
-// IsResume returns true if this is a trading resume/resumption status.
-func (c StatusCode) IsResume() bool {
-	return c == StatusCodeResumeCTA || c == StatusCodeTradingResumptionUTP || c == StatusCodeQuotationResumption
-}
-
-// IsImbalance returns true if this indicates a market imbalance.
-func (c StatusCode) IsImbalance() bool {
-	return c == StatusCodeMarketImbalanceBuy || c == StatusCodeMarketImbalanceSell ||
-		c == StatusCodeMOCImbalanceBuy || c == StatusCodeMOCImbalanceSell
-}
-
 func (c StatusCode) GoString() string {
 	switch c {
 	case StatusCodeTradingHaltCTA:

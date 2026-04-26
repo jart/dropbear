@@ -7,17 +7,17 @@ import (
 	"unsafe"
 )
 
-// Message is a union type that can hold any SIP message (Trade, Quote, Status, LULD).
+// Message is a union type for Trade, Quote, Status, LULD, and Imbalance.
 // All message types share common header fields at fixed offsets:
 //   - Type at offset 0
 //   - Tape at offset 1
 //   - Timestamp at offset 8
 //   - Symbol at offset 16
 //
-// Use the accessor methods Trade(), Quote(), Status(), LULD() to interpret
-// the message as a specific type after checking Type.
+// Use the accessor methods Trade(), Quote(), Status(), LULD(), Imbalance()
+// to interpret the message as a specific type after checking Type.
 type Message struct {
-	Type      MessageType   // message type (t, q, s, l)
+	Type      MessageType   // message type (t, q, s, l, i)
 	Tape      Tape          // tape designation (A, B, C)
 	_         [6]byte       // padding to align Timestamp
 	Timestamp clocky.Time   // RFC-3339 timestamp

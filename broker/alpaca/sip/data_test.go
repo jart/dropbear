@@ -258,45 +258,6 @@ func TestParseQuote2(t *testing.T) {
 	}
 }
 
-func TestStatusCode_IsTradingHalt(t *testing.T) {
-	if !StatusCodeTradingHaltCTA.IsTradingHalt() {
-		t.Error("StatusCodeTradingHaltCTA should be trading halt")
-	}
-	if !StatusCodeTradingHaltUTP.IsTradingHalt() {
-		t.Error("StatusCodeTradingHaltUTP should be trading halt")
-	}
-	if StatusCodeResumeCTA.IsTradingHalt() {
-		t.Error("StatusCodeResumeCTA should not be trading halt")
-	}
-}
-
-func TestStatusCode_IsResume(t *testing.T) {
-	if !StatusCodeResumeCTA.IsResume() {
-		t.Error("StatusCodeResumeCTA should be resume")
-	}
-	if !StatusCodeTradingResumptionUTP.IsResume() {
-		t.Error("StatusCodeTradingResumptionUTP should be resume")
-	}
-	if StatusCodeTradingHaltCTA.IsResume() {
-		t.Error("StatusCodeTradingHaltCTA should not be resume")
-	}
-}
-
-func TestReasonCode_IsCircuitBreaker(t *testing.T) {
-	if !ReasonCodeCircuitLvl1.IsHalt() {
-		t.Error("ReasonCodeCircuitLvl1 should be circuit breaker")
-	}
-	if !ReasonCodeCircuitLvl2.IsHalt() {
-		t.Error("ReasonCodeCircuitLvl2 should be circuit breaker")
-	}
-	if !ReasonCodeCircuitLvl3.IsHalt() {
-		t.Error("ReasonCodeCircuitLvl3 should be circuit breaker")
-	}
-	if ReasonCodeNewsPending.IsHalt() {
-		t.Error("ReasonCodeNewsPending should not be circuit breaker")
-	}
-}
-
 func TestReasonCode_ParseReasonCode_Unknown(t *testing.T) {
 	// Known code should succeed
 	rc, err := ParseReasonCode([]byte("T1"))
@@ -334,9 +295,6 @@ func TestParseStatus(t *testing.T) {
 	}
 	if status.Reason != ReasonCodeHaltNewsPending {
 		t.Errorf("Reason = %v, want %v", status.Reason, ReasonCodeHaltNewsPending)
-	}
-	if !status.Code.IsTradingHalt() {
-		t.Error("should be trading halt")
 	}
 }
 
