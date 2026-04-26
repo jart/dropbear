@@ -33,9 +33,10 @@ var (
 	flagHedge     = flag.String("hedge", "IWM", "symbol to use for index hedging when risk threshold is breached")
 	flagFloor     = decimal.Flag("floor", "2", "minimum trade quantity in shares (2+ ensures negative fees)")
 	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to actively trade simultaneously")
-	flagGreed     = decimal.FlagBPS("greed", "1", "amount of basis points to demand over cost basis")
-	flagMinEdge   = decimal.Flag("minedge", "1", "minimum spread in ticks")
-	flagMinPrice  = decimal.Flag("minprice", "0.5", "minimum price of stock in usd to trade")
+	flagGreed     = decimal.FlagBPS("greed", "0", "amount of basis points to demand over cost basis")
+	flagMinEdge   = decimal.Flag("minedge", "2", "minimum spread in ticks")
+	flagMinPrice  = decimal.Flag("minprice", "10", "minimum price of stock in usd to trade")
+	flagMaxPrice  = decimal.Flag("maxprice", "100", "maximum price of stock in usd to trade")
 	flagThreshold = decimal.Flag("threshold", "0.3", "imbalance ratio threshold to trigger (0-1)")
 	flagISOShares = decimal.Flag("iso", "200", "net ISO shares threshold to trigger entry")
 	flagUnload    = clocky.DurationFlag("unload", "60m", "time before day session close to switch to exit-only (0 to disable)")
@@ -86,6 +87,10 @@ func main() {
 	}
 	if !flagMinPrice.IsPositive() {
 		fmt.Fprintf(os.Stderr, "-minprice must be positive\n")
+		os.Exit(1)
+	}
+	if !flagMaxPrice.IsPositive() {
+		fmt.Fprintf(os.Stderr, "-maxprice must be positive\n")
 		os.Exit(1)
 	}
 	if !flagISOShares.IsPositive() {
@@ -637,7 +642,7 @@ func Evaluate(st *State) {
 	if wantBuy {
 		price := st.quote.BidPrice.Add(Tick(st.quote.BidPrice))           // try to outbid
 		price = price.Min(st.quote.AskPrice.Sub(Tick(st.quote.AskPrice))) // but don't take
-		if price.Cmp(*flagMinPrice) >= 0 {
+		if price.Cmp(*flagMinPrice) >= 0 && price.Cmp(*flagMaxPrice) < 0 {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			mar := st.asset.MarginRequirementLong.Load()
 			qty := TradeQuantity(mid, mar, totalSize)
@@ -648,7 +653,7 @@ func Evaluate(st *State) {
 	} else if wantSell {
 		price := st.quote.AskPrice.Sub(Tick(st.quote.AskPrice))           // try to outbid
 		price = price.Max(st.quote.BidPrice.Add(Tick(st.quote.BidPrice))) // but don't take
-		if price.Cmp(*flagMinPrice) >= 0 {
+		if price.Cmp(*flagMinPrice) >= 0 && price.Cmp(*flagMaxPrice) < 0 {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			mar := st.asset.MarginRequirementShort.Load()
 			qty := TradeQuantity(mid, mar, totalSize)
