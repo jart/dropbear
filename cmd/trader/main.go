@@ -34,15 +34,15 @@ var (
 	flagHedge     = symbol.Flag("hedge", "SPY", "symbol to use for index hedging when risk threshold is breached")
 	flagFloor     = decimal.Flag("floor", "2", "minimum trade quantity in shares (2+ ensures negative fees)")
 	flagMaxSyms   = flag.Int("maxsyms", 150, "maximum number of symbols to actively trade simultaneously")
-	flagGreed     = decimal.FlagBPS("greed", "1", "amount of basis points to demand over cost basis")
+	flagGreed     = decimal.FlagBPS("greed", "30", "amount of basis points to demand over cost basis")
 	flagMinEdge   = decimal.Flag("minedge", "3", "minimum spread in ticks")
 	flagMinPrice  = decimal.Flag("minprice", "10", "minimum price of stock in usd to trade")
 	flagMaxPrice  = decimal.Flag("maxprice", "100", "maximum price of stock in usd to trade")
 	flagThreshold = decimal.Flag("threshold", "0.9", "imbalance ratio threshold to trigger (0-1)")
-	flagISOShares = decimal.Flag("iso", "200", "net ISO shares threshold to trigger entry")
+	flagISOShares = decimal.Flag("iso", "1000", "net ISO shares threshold to trigger entry")
 	flagUnload    = clocky.DurationFlag("unload", "60m", "time before day session close to switch to exit-only (0 to disable)")
 	flagFlatten   = clocky.DurationFlag("flatten", "11m", "time before day session close to flatten positions with moc orders (0 to disable)")
-	flagPatience  = clocky.DurationFlag("patience", "5m", "time to wait before canceling unfilled orders (0 to disable)")
+	flagPatience  = clocky.DurationFlag("patience", "30m", "time to wait before canceling unfilled orders (0 to disable)")
 	flagFreshness = clocky.DurationFlag("freshness", "1s", "required freshness of quote to be eligible for trading")
 	flagCooldown  = clocky.DurationFlag("cooldown", "30m", "cooldown period after order rejection")
 	flagBucket    = flag.String("bucket", "dropbear-sip", "google cloud storage bucket for recording market data")
@@ -675,9 +675,6 @@ func Evaluate(st *State) {
 		dest := BestDestination(st.quote.AskExchange, st.asset, session)
 		qty := cboe.LotSize(price).Min(st.position)
 		LimitOrder(st, ds.SideSell, qty, price, dest, session)
-		if session == cboe.SessionDay {
-			st.greed = st.greed.Half()
-		}
 		return
 	}
 	if st.position.IsNegative() && st.buyClientOrderID == "" && st.asset.Tradable.Load() && !st.quote.DangerousBid() {
@@ -691,9 +688,6 @@ func Evaluate(st *State) {
 		dest := BestDestination(st.quote.BidExchange, st.asset, session)
 		qty := cboe.LotSize(price).Min(st.position.Neg())
 		LimitOrder(st, ds.SideBuy, qty, price, dest, session)
-		if session == cboe.SessionDay {
-			st.greed = st.greed.Half()
-		}
 		return
 	}
 
