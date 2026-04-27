@@ -21,7 +21,7 @@ type OptionGreeks struct {
 type OptionTrade struct {
 	Timestamp clocky.Time     `json:"t"` // RFC-3339 timestamp
 	Price     decimal.Decimal `json:"p"` // execution price
-	Size      int64           `json:"s"` // quantity traded
+	Size      int32           `json:"s"` // quantity traded
 	Exchange  string          `json:"x"` // exchange code
 	Condition string          `json:"c"` // trade condition
 }
@@ -30,10 +30,10 @@ type OptionTrade struct {
 type OptionQuote struct {
 	Timestamp   clocky.Time     `json:"t"`  // RFC-3339 timestamp
 	BidPrice    decimal.Decimal `json:"bp"` // bid price
-	BidSize     int64           `json:"bs"` // bid size
+	BidSize     int32           `json:"bs"` // bid size
 	BidExchange string          `json:"bx"` // bid exchange
 	AskPrice    decimal.Decimal `json:"ap"` // ask price
-	AskSize     int64           `json:"as"` // ask size
+	AskSize     int32           `json:"as"` // ask size
 	AskExchange string          `json:"ax"` // ask exchange
 }
 

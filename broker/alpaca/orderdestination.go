@@ -12,6 +12,7 @@ const (
 	OrderDestinationNYSE                           // route to New York Stock Exchange (does not support extended hours trading)
 	OrderDestinationNASDAQ                         // route to NASDAQ exchange
 	OrderDestinationARCA                           // route to NYSE Arca (electronic exchange, big for ETFs)
+	OrderDestinationAuto                           // our own smart routing
 )
 
 func ParseOrderDestination(s string) (OrderDestination, error) {
@@ -24,6 +25,8 @@ func ParseOrderDestination(s string) (OrderDestination, error) {
 		return OrderDestinationNASDAQ, nil
 	case "ARCA", "arca":
 		return OrderDestinationARCA, nil
+	case "auto":
+		return OrderDestinationAuto, nil
 	default:
 		return 0, fmt.Errorf("unknown order destination: %s", s)
 	}
@@ -39,6 +42,8 @@ func (od OrderDestination) String() string {
 		return "NASDAQ"
 	case OrderDestinationARCA:
 		return "ARCA"
+	case OrderDestinationAuto:
+		return "auto"
 	default:
 		panic("unknown order destination")
 	}
@@ -54,6 +59,8 @@ func (od OrderDestination) GoString() string {
 		return "OrderDestinationNASDAQ"
 	case OrderDestinationARCA:
 		return "OrderDestinationARCA"
+	case OrderDestinationAuto:
+		return "OrderDestinationAuto"
 	default:
 		panic("unknown order destination")
 	}

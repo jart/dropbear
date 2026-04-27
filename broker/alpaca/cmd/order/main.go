@@ -2,6 +2,7 @@ package main
 
 import (
 	"dropbear/broker/alpaca"
+	"dropbear/broker/alpaca/sip"
 	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
@@ -31,6 +32,7 @@ var (
 	flagTaker          = flag.Bool("taker", false, "take liquidity (equivalent to -spread=+1)")
 	flagMaker          = flag.Bool("maker", false, "make liquidity (equivalent to -spread=-1)")
 	flagWait           = flag.Bool("wait", false, "wait for order to fill")
+	flagEquity         = flag.Bool("equity", false, "only glob equities")
 	flagDMA            = alpaca.OrderDestinationFlag("dma", "", "directly route order to lit exchange (NYSE, NASDAQ, ARCA)")
 	flagExt            = flag.Bool("ext", false, "participate in extended hours trading (must be limit order with default (day) time in force)")
 	flagLimit          = decimal.Flag("limit", "0", "sets an explicit limit price (the default is to use the midpoint plus/minus greed depending on the side) must be positve")
@@ -252,12 +254,16 @@ options:
 	}
 
 	// figure out algorithm
+	autoDMA := false
 	var advanced *alpaca.AdvancedInstructions
 	if *flagDMA != alpaca.OrderDestinationNone {
 		advanced = &alpaca.AdvancedInstructions{
 			Algorithm:   alpaca.OrderAlgorithmDMA,
 			Destination: *flagDMA,
 			DisplayQty:  *flagDisplay,
+		}
+		if *flagDMA == alpaca.OrderDestinationAuto {
+			autoDMA = true
 		}
 		if *flagBracket || *flagOTO || *flagOCO || *flagTWAP || *flagVWAP {
 			fmt.Fprintf(os.Stderr, "-dma only supports -market and -limit orders\n")
@@ -267,8 +273,8 @@ options:
 			fmt.Fprintf(os.Stderr, "-dma only supports day time in force\n")
 			os.Exit(1)
 		}
-		if *flagExt && advanced.Destination != alpaca.OrderDestinationNASDAQ && advanced.Destination != alpaca.OrderDestinationARCA {
-			fmt.Fprintf(os.Stderr, "extended hours only supported with NASDAQ and ARCA destinations\n")
+		if *flagExt && advanced.Destination != alpaca.OrderDestinationNASDAQ && advanced.Destination != alpaca.OrderDestinationARCA && advanced.Destination != alpaca.OrderDestinationAuto {
+			fmt.Fprintf(os.Stderr, "extended hours only supported with NASDAQ, ARCA, and auto destinations\n")
 			os.Exit(1)
 		}
 	} else if *flagTWAP || *flagVWAP {
@@ -364,6 +370,9 @@ options:
 				needPositions()
 				gotMatch := false
 				for _, pos := range positions {
+					if *flagEquity && osi.IsOptionsSymbol(pos.Symbol) {
+						continue
+					}
 					if matched, _ := path.Match(sym, pos.Symbol); matched {
 						symbols2 = append(symbols2, pos.Symbol)
 						gotMatch = true
@@ -415,6 +424,12 @@ options:
 		orderUpdates = alpaca.OrderUpdates()
 	}
 
+	// check if user forgot -ext flag
+	session := cboe.GetSession(clocky.Now())
+	if !*flagExt && session == cboe.SessionExtended {
+		fmt.Fprintf(os.Stderr, "warning: your orders won't fill until next morning without -ext flag\n")
+	}
+
 	// catch ctrl-c
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -427,13 +442,17 @@ options:
 		// lazy fetch quote once
 		gotQuote := false
 		bidPrice := decimal.Zero
+		bidSize := int32(0)
+		bidExchange := sip.ExchangeNASDAQ
 		askPrice := decimal.Zero
+		askSize := int32(0)
+		askExchange := sip.ExchangeNASDAQ
 		needQuote := func() {
 			if gotQuote {
 				return
 			}
 			var err error
-			bidPrice, askPrice, err = getQuote(client, sym)
+			bidPrice, bidSize, bidExchange, askPrice, askSize, askExchange, err = getQuote(client, sym)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error getting quote for %s: %v\n", sym, err)
 				os.Exit(1)
@@ -506,7 +525,8 @@ options:
 		if orderType == alpaca.OrderTypeLimit && limitPrice.IsZero() {
 			needQuote()
 			limitPrice = bidPrice.Add(askPrice).Half()
-			explain = fmt.Sprintf("%s|%s->%s", bidPrice, askPrice, limitPrice)
+			explain = fmt.Sprintf("%sx%d|%sx%d mid->%s",
+				bidPrice, bidSize, askPrice, askSize, limitPrice)
 			if !flagGreed.IsZero() {
 				if side == ds.SideBuy {
 					limitPrice = limitPrice.Mul(decimal.One.Sub(*flagGreed))
@@ -515,10 +535,13 @@ options:
 				}
 				explain = fmt.Sprintf("%s greed->%s", explain, limitPrice)
 			} else if !flagSpread.IsZero() {
-				spread := askPrice.Sub(bidPrice).Half()
-				adjustment := spread.Mul(*flagSpread)
+				halfSpread := askPrice.Sub(bidPrice).Half()
+				adjustment := halfSpread.Mul(*flagSpread)
+				if side == ds.SideSell {
+					adjustment = adjustment.Neg()
+				}
 				limitPrice = limitPrice.Add(adjustment)
-				explain = fmt.Sprintf("%s spread->%s", explain, limitPrice)
+				explain = fmt.Sprintf("%s spread(%s)->%s", explain, adjustment, limitPrice)
 			}
 			tick := cboe.Tick01
 			if osi.IsOptionsSymbol(sym) && limitPrice.Cmp(decimal.Three) > 0 {
@@ -533,6 +556,65 @@ options:
 		}
 		if explain != "" {
 			explain = fmt.Sprintf(" (calculated %s)", explain)
+		}
+
+		// smart routing
+		advanced2 := advanced
+		if osi.IsOptionsSymbol(sym) {
+			advanced2 = nil
+		} else if session == cboe.SessionOvernight {
+			advanced2 = nil
+		} else if autoDMA {
+			needQuote()
+			var exchange sip.Exchange
+			if side == ds.SideBuy {
+				exchange = askExchange // go where sellers are most generous
+			} else {
+				exchange = bidExchange // go where buyers are most eager
+			}
+			switch exchange {
+			case sip.ExchangeNYSE:
+				explain += " nyse"
+				advanced2 = &alpaca.AdvancedInstructions{
+					Algorithm:   alpaca.OrderAlgorithmDMA,
+					Destination: alpaca.OrderDestinationNYSE,
+					DisplayQty:  *flagDisplay,
+				}
+			case sip.ExchangeNASDAQ:
+				explain += " nasdaq"
+				advanced2 = &alpaca.AdvancedInstructions{
+					Algorithm:   alpaca.OrderAlgorithmDMA,
+					Destination: alpaca.OrderDestinationNASDAQ,
+					DisplayQty:  *flagDisplay,
+				}
+			case sip.ExchangeARCA:
+				explain += " arca"
+				advanced2 = &alpaca.AdvancedInstructions{
+					Algorithm:   alpaca.OrderAlgorithmDMA,
+					Destination: alpaca.OrderDestinationARCA,
+					DisplayQty:  *flagDisplay,
+				}
+			default:
+				explain += fmt.Sprintf(" %s->smart", exchange)
+				advanced2 = nil
+			}
+		}
+
+		// check for interrupt
+		select {
+		case <-sigChan:
+			for _, order := range orders {
+				if order.Status.IsFinal() {
+					continue
+				}
+				err := client.CancelOrder(order.ID)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "error canceling order for %s: %v\n", order.Symbol, err)
+				}
+			}
+			exitCode = 128 + 2 // 128 + SIGINT
+			goto finish
+		default:
 		}
 
 		// give the order
@@ -555,7 +637,7 @@ options:
 			TrailPercent:         trailPercent,
 			StopLoss:             stopLoss,
 			TakeProfit:           takeProfit,
-			AdvancedInstructions: advanced,
+			AdvancedInstructions: advanced2,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error opening %s: %v\n", sym, err)
@@ -570,13 +652,14 @@ options:
 		fmt.Printf("%s order placed to %s %s shares of %s at %s with status %s%s\n", order.CreatedAt, side, qty, sym, limitPrice, order.Status, explain)
 	}
 
+finish:
 	// print order updates until all orders are done
 	for *flagWait && len(orders) > 0 {
 		select {
 		case orderUpdate := <-orderUpdates:
-			fmt.Printf("%s order update for %s: %s price=%s status=%s qty=%s pos=%s filled=%s/%s avg_price=%s\n",
-				orderUpdate.Order.UpdatedAt, orderUpdate.Order.Symbol,
-				orderUpdate.Event, orderUpdate.Price, orderUpdate.Order.Status, orderUpdate.Qty, orderUpdate.PositionQty,
+			fmt.Printf("%s order update for %s: %s %s price=%s status=%s qty=%s pos=%s filled=%s/%s avg_price=%s\n",
+				orderUpdate.Order.UpdatedAt, orderUpdate.Order.Symbol, orderUpdate.Event,
+				orderUpdate.Order.Side, orderUpdate.Price, orderUpdate.Order.Status, orderUpdate.Qty, orderUpdate.PositionQty,
 				orderUpdate.Order.FilledQty, orderUpdate.Order.Qty, orderUpdate.Order.FilledAvgPrice)
 			orders[orderUpdate.Order.ClientOrderID] = orderUpdate.Order
 			if orderUpdate.Order.Status.IsFinal() {
@@ -600,13 +683,13 @@ options:
 	os.Exit(exitCode)
 }
 
-func getQuote(client *alpaca.Client, sym string) (bid, ask decimal.Decimal, err error) {
+func getQuote(client *alpaca.Client, sym string) (bid decimal.Decimal, bsz int32, bex sip.Exchange, ask decimal.Decimal, asz int32, aex sip.Exchange, err error) {
 	if osi.IsOptionsSymbol(sym) {
 		os, err := client.GetOptionSnapshot(sym)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, 0, 0, 0, 0, err
 		}
-		return os.LatestQuote.BidPrice, os.LatestQuote.AskPrice, nil
+		return os.LatestQuote.BidPrice, os.LatestQuote.BidSize, sip.ExchangeNASDAQ, os.LatestQuote.AskPrice, os.LatestQuote.AskSize, sip.ExchangeNASDAQ, nil
 	}
 	feed := alpaca.FeedSIP
 	if cboe.GetSession(clocky.Now()) == cboe.SessionOvernight {
@@ -614,9 +697,9 @@ func getQuote(client *alpaca.Client, sym string) (bid, ask decimal.Decimal, err 
 	}
 	quote, err := client.GetQuote(sym, feed)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, 0, 0, 0, err
 	}
-	return quote.BidPrice, quote.AskPrice, nil
+	return quote.BidPrice, quote.BidSize, quote.BidExchange, quote.AskPrice, quote.AskSize, quote.AskExchange, nil
 }
 
 func moreThanOne(flags ...bool) bool {
