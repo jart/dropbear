@@ -5,6 +5,7 @@ import (
 	"dropbear/broker/alpaca/sip"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/indicators"
 	"dropbear/symbol"
 )
 
@@ -16,6 +17,11 @@ type State struct {
 	halt     bool
 	greed    decimal.Decimal
 	position decimal.Decimal // negative if short
+
+	// volume tracking
+	volma      *indicators.WWMA // smoothed minute bar volume
+	volsum     decimal.Decimal  // smoothed minute bar volume
+	highVolume bool             // in top percentile by volume
 
 	// iso flow tracking
 	isoNetFlow decimal.Decimal // net ISO shares: positive = buyer, negative = seller
