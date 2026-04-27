@@ -32,8 +32,8 @@ type Client struct {
 // NewClient creates a new Alpaca API Client.
 func NewClient() *Client {
 	return &Client{
-		APITokenBucket:  netty.NewTokenBucketPerMinute(200),
-		DataTokenBucket: netty.NewTokenBucketPerMinute(200),
+		APITokenBucket:  netty.NewTokenBucketPerMinute(1000),
+		DataTokenBucket: netty.NewTokenBucketPerMinute(1000),
 	}
 }
 
