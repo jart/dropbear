@@ -15,7 +15,7 @@ import (
 
 type Broker interface {
 	GetPositions() ([]alpaca.Position, error)
-	GetQuotes(symbols []string, feed alpaca.Feed) (map[string]*sip.Quote, error)
+	GetQuotes([]string, alpaca.Feed) (map[string]*sip.Quote, error)
 	CreateOrder(*alpaca.CreateOrderRequest) (*alpaca.Order, error)
 	CancelOrder(string) error
 	CancelAllOrders() error

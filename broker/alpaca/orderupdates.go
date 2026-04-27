@@ -19,7 +19,8 @@ type OrderUpdate struct {
 	Price       decimal.Decimal `json:"price,omitempty"`
 	Qty         decimal.Decimal `json:"qty,omitempty"` // always positive, even for sales
 	Timestamp   clocky.Time     `json:"timestamp"`
-	At          clocky.Time     `json:"at"` // this usually comes slightly after timestamp
+	At          clocky.Time     `json:"at"`               // this usually comes slightly after timestamp
+	Reason      string          `json:"reason,omitempty"` // rejection reason
 	Order       *Order          `json:"order"`
 }
 

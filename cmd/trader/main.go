@@ -44,6 +44,7 @@ var (
 	flagFlatten   = clocky.DurationFlag("flatten", "11m", "time before day session close to flatten positions with moc orders (0 to disable)")
 	flagPatience  = clocky.DurationFlag("patience", "5m", "time to wait before canceling unfilled orders (0 to disable)")
 	flagFreshness = clocky.DurationFlag("freshness", "1s", "required freshness of quote to be eligible for trading")
+	flagCooldown  = clocky.DurationFlag("cooldown", "30m", "cooldown period after order rejection")
 	flagBucket    = flag.String("bucket", "dropbear-sip", "google cloud storage bucket for recording market data")
 	flagExitOnly  = flag.Bool("exit", false, "exit-only mode: close existing positions, no new entries")
 	flagLive      = flag.Bool("live", false, "enables live trading and network access")
@@ -190,6 +191,7 @@ func main() {
 			st := getOrCreateSymbol(sym)
 			st.position = pos.Qty
 			st.costBasis = pos.CostBasis
+			st.greed = *flagGreed
 			if st.Active() {
 				gActiveSymbols[sym] = true
 			}
@@ -463,6 +465,9 @@ func onTrade(t *sip.Trade) {
 	if st == nil {
 		return
 	}
+	if st.quote == nil {
+		return
+	}
 	// classify direction using Lee-Ready:
 	// trade above midpoint = buyer-initiated
 	// trade below midpoint = seller-initiated
@@ -597,6 +602,12 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills)
 	}
 
+	// cooldown on rejection
+	if update.Event == alpaca.OrderEventRejected {
+		st.cooldownUntil = clocky.Now().Add(*flagCooldown)
+		log.Printf("%s rejected: %s (setting %s cooldown)", st.symbol, update.Reason, *flagCooldown)
+	}
+
 	// clean up completed orders
 	if update.Order.Status.IsFinal() {
 		removeOrder(st, update.Order.ClientOrderID)
@@ -623,6 +634,9 @@ func Evaluate(st *State) {
 	}
 	if st.symbol == *flagHedge {
 		return // let manageHedge trade this
+	}
+	if st.cooldownUntil != 0 && clocky.Now().Before(st.cooldownUntil) {
+		return // got rejected recently, wait before trying again
 	}
 
 	// don't trade old quotes
@@ -728,6 +742,9 @@ func Evaluate(st *State) {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			mar := st.asset.MarginRequirementLong.Load()
 			qty := TradeQuantity(mid, mar, totalSize)
+			if session == cboe.SessionOvernight {
+				qty = qty.Min(cboe.LotSize(price))
+			}
 			dst := BestDestination(st.quote.BidExchange, st.asset, session)
 			LimitOrder(st, ds.SideBuy, qty, price, dst, session)
 			st.isoNetFlow = decimal.Zero
@@ -740,6 +757,9 @@ func Evaluate(st *State) {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			mar := st.asset.MarginRequirementShort.Load()
 			qty := TradeQuantity(mid, mar, totalSize)
+			if session == cboe.SessionOvernight {
+				qty = qty.Min(cboe.LotSize(price))
+			}
 			dst := BestDestination(st.quote.AskExchange, st.asset, session)
 			LimitOrder(st, ds.SideSell, qty, price, dst, session)
 			st.isoNetFlow = decimal.Zero
@@ -783,7 +803,7 @@ func BestDestination(exchange sip.Exchange, asset *alpaca.Asset, session cboe.Se
 }
 
 func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Decimal, dest alpaca.OrderDestination, session cboe.Session) {
-	if qty.IsZero() {
+	if qty.IsZero() || !price.IsPositive() {
 		return
 	}
 
@@ -892,6 +912,9 @@ func logBalance() {
 	liquidationPnL := decimal.Zero
 	hedgeNotional := decimal.Zero
 	for _, st := range gSymbols {
+		if st.quote == nil {
+			continue
+		}
 		if st.position.IsPositive() {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			if mid.IsZero() {
@@ -945,7 +968,7 @@ func shutdown() {
 	}
 	log.Printf("=== P&L SUMMARY ===")
 	for _, st := range gSymbols {
-		if st.totalBought.IsZero() && st.totalSold.IsZero() {
+		if st.totalBought.IsZero() && st.totalSold.IsZero() || st.quote == nil {
 			continue
 		}
 		unrealizedPnL := decimal.Zero

@@ -26,6 +26,7 @@ type State struct {
 	buyClientOrderID  string
 	sellClientOrderID string
 	orderCreatedTime  clocky.Time // only cancelable if positive
+	cooldownUntil     clocky.Time // don't trade until this time
 
 	// P&L tracking
 	costBasis    decimal.Decimal // total cost of current position (signed)
