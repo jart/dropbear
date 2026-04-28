@@ -27,6 +27,7 @@ type Result struct {
 	Net    decimal.Decimal
 	Fills  int
 	Shares decimal.Decimal
+	Log    string
 }
 
 // State tracks all state for a single symbol.

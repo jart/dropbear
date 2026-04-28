@@ -2,6 +2,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"dropbear/broker/alpaca"
 	"dropbear/broker/alpaca/sip"
 	"dropbear/cboe"
@@ -178,6 +180,13 @@ func main() {
 }
 
 func Run(symbols []SymbolEntry) Result {
+	// capture log output (also write to stderr so tests can see it)
+	var logBuf bytes.Buffer
+	if !*flagLive {
+		log.SetOutput(io.MultiWriter(&logBuf, os.Stderr))
+		defer log.SetOutput(os.Stderr)
+	}
+
 	// initialize globals
 	gOrders = map[string]*State{}
 	gSymbols = map[symbol.Symbol]*State{}
@@ -336,7 +345,9 @@ func Run(symbols []SymbolEntry) Result {
 		case <-heartbeatChan:
 			onHeartbeat()
 		case <-sigChan:
-			return shutdown()
+			result := shutdown()
+			result.Log = logBuf.String()
+			return result
 		}
 	}
 }
