@@ -46,10 +46,16 @@ func Match(actual, template string) error {
 	}
 
 	for ti < len(template) {
-		// absorb newlines before ... (they're redundant since ... skips anything)
-		if template[ti] == '\n' && ti+1 < len(template) && strings.HasPrefix(template[ti+1:], "...") {
-			ti++
-			continue
+		// absorb newlines and indentation before ... (redundant since ... skips anything)
+		if template[ti] == '\n' || template[ti] == ' ' || template[ti] == '\t' {
+			j := ti
+			for j < len(template) && (template[j] == '\n' || template[j] == ' ' || template[j] == '\t') {
+				j++
+			}
+			if j < len(template) && strings.HasPrefix(template[j:], "...") {
+				ti = j
+				continue
+			}
 		}
 
 		// check for skip
@@ -137,11 +143,17 @@ func Suggest(actual, template string) string {
 	}
 
 	for ti < len(template) {
-		// absorb newlines before ...
-		if template[ti] == '\n' && ti+1 < len(template) && strings.HasPrefix(template[ti+1:], "...") {
-			out.WriteByte('\n')
-			ti++
-			continue
+		// absorb newlines and indentation before ...
+		if template[ti] == '\n' || template[ti] == ' ' || template[ti] == '\t' {
+			j := ti
+			for j < len(template) && (template[j] == '\n' || template[j] == ' ' || template[j] == '\t') {
+				j++
+			}
+			if j < len(template) && strings.HasPrefix(template[j:], "...") {
+				out.WriteString(template[ti:j])
+				ti = j
+				continue
+			}
 		}
 
 		// skip

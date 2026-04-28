@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+var (
+	flagCapital = decimal.Flag("capital", "124_000", "amount of buying power for backtest simulation")
+)
+
 type Broker interface {
 	GetPositions() ([]alpaca.Position, error)
 	GetQuotes([]string, alpaca.Feed) (map[string]*sip.Quote, error)
@@ -96,6 +100,20 @@ func (b *Backtest) CreateOrder(body *alpaca.CreateOrderRequest) (*alpaca.Order, 
 	return nil, nil
 }
 
+// estimatePrice returns the best available price for a symbol.
+func (b *Backtest) estimatePrice(sym symbol.Symbol) decimal.Decimal {
+	if q := b.lastQuote[sym]; q != nil {
+		mid := q.BidPrice.Add(q.AskPrice).Half()
+		if mid.IsPositive() {
+			return mid
+		}
+	}
+	if p := b.lastTrade[sym]; p.IsPositive() {
+		return p
+	}
+	return decimal.Zero
+}
+
 func (b *Backtest) ReplaceOrder(orderID string, body *alpaca.ReplaceOrderRequest) (*alpaca.Order, error) {
 	b.replace <- &backtestReplace{
 		orderID:       orderID,
@@ -151,10 +169,10 @@ type backtestReplace struct {
 
 // stagedAction is a submit/replace/cancel buffered until latency elapses.
 type stagedAction struct {
-	readyAt clocky.Time
-	order   *backtestOrder   // non-nil for submit
-	replace *backtestReplace // non-nil for replace
-	cancel  string           // non-empty for cancel ("" with nil order/replace means cancel all)
+	readyAt  clocky.Time
+	order    *backtestOrder   // non-nil for submit
+	replace  *backtestReplace // non-nil for replace
+	cancel   string           // non-empty for cancel ("" with nil order/replace means cancel all)
 	isCancel bool
 }
 
@@ -241,6 +259,42 @@ func (b *Backtest) processReady() {
 }
 
 func (b *Backtest) processOrder(order *backtestOrder) {
+	// check buying power: reject if total notional would exceed capital
+	if !flagCapital.IsZero() && !order.moc {
+		newPos := b.positions[order.symbol]
+		if order.side == ds.SideBuy {
+			newPos = newPos.Add(order.qty)
+		} else {
+			newPos = newPos.Sub(order.qty)
+		}
+		gross := decimal.Zero
+		for s, pos := range b.positions {
+			if s == order.symbol {
+				continue
+			}
+			gross = gross.Add(pos.Abs().Mul(b.estimatePrice(s)))
+		}
+		gross = gross.Add(newPos.Abs().Mul(order.price))
+		if gross.Cmp(*flagCapital) > 0 {
+			// send as canceled (not rejected) to avoid triggering cooldown
+			b.OrderUpdates <- &alpaca.OrderUpdate{
+				Event:     alpaca.OrderEventCanceled,
+				Timestamp: clocky.Now(),
+				At:        clocky.Now(),
+				Order: &alpaca.Order{
+					ID:            order.clientOrderID,
+					ClientOrderID: order.clientOrderID,
+					Symbol:        order.symbol.String(),
+					Side:          order.side,
+					Qty:           order.qty,
+					LimitPrice:    order.price,
+					Status:        alpaca.OrderStatusCanceled,
+					Type:          alpaca.OrderTypeLimit,
+				},
+			}
+			return
+		}
+	}
 	if order.moc {
 		b.moc = append(b.moc, order)
 	} else if b.isMarketable(order) {
@@ -431,6 +485,7 @@ func (b *Backtest) fillMOC() {
 			pos = pos.Sub(order.qty)
 		}
 		b.positions[order.symbol] = pos
+
 		b.OrderUpdates <- &alpaca.OrderUpdate{
 			Event:       alpaca.OrderEventFill,
 			PositionQty: pos,

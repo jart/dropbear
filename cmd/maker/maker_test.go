@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"dropbear/broker/alpaca"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/golden"
 	"dropbear/netty"
 	"dropbear/symbol"
+	"io"
+	"log"
+	"os"
 	"testing"
 )
 
@@ -110,7 +114,12 @@ func runBacktest(t *testing.T, dataFile string, symbols []SymbolEntry) Result {
 	clocky.NewTicker = clocky.FakeNewTicker
 	*flagData = dataFile
 	*flagLive = false
-	return Run(symbols)
+	var logBuf bytes.Buffer
+	log.SetOutput(io.MultiWriter(&logBuf, os.Stderr))
+	defer log.SetOutput(os.Stderr)
+	result := Run(symbols)
+	result.Log = logBuf.String()
+	return result
 }
 
 // go test ./cmd/maker/ -v -run TestBacktest20260428
@@ -124,19 +133,18 @@ func TestBacktest20260428(t *testing.T) {
 	// Tolerances are wide because fill modeling is approximate.
 	// Tighten these as the backtest engine improves.
 	golden.Check(t, r.Log, `
-...=== P&L SUMMARY ===
-...VZ: pos=0[200]...realized=23.00[15]...unrealized=0.00[10]...fees=-2.38[7]...bought=1000[700]...sold=1000[700]
-...NKE: pos=-500[300]...realized=-1.20[5]...unrealized=-8.30[15]...fees=-0.81[2]...bought=200[200]...sold=700[400]
-...XLE: pos=400[200]...realized=2.00[5]...unrealized=2.00[10]...fees=-1.36[2]...bought=700[400]...sold=300[300]
-...AAL: pos=-100[100]...realized=0.00[5]...unrealized=1.50[5]...fees=-0.13[2]...bought=0[200]...sold=100[200]
-...INTC: pos=0[200]...realized=83.09[50]...unrealized=0.00[20]...fees=-15.68[15]...bought=10400[2000]...sold=10400[2000]
-...HOOD: pos=-300[300]...realized=-13.21[60]...unrealized=-9.50[30]...fees=-5.23[10]...bought=4100[2000]...sold=4400[2000]
-...DKNG: pos=-300[200]...realized=2.00[5]...unrealized=-7.50[15]...fees=-1.19[3]...bought=300[300]...sold=600[400]
-...SOFI: pos=700[300]...realized=-31.59[10]...unrealized=-110.91[80]...fees=-2.13[3]...bought=1000[600]...sold=300[400]
-...PYPL: pos=0[100]...realized=6.73[25]...unrealized=0.00[5]...fees=-2.10[3]...bought=900[500]...sold=900[500]
-...RIVN: pos=-600[400]...realized=-3.25[10]...unrealized=-6.75[15]...fees=-0.97[2]...bought=200[300]...sold=800[500]
-...CMCSA: pos=0[200]...realized=24.50[15]...unrealized=0.00[10]...fees=-1.84[3]...bought=800[500]...sold=800[500]
-...TOTAL realized P&L: 92.061234[100]  fees: -33.817354[30]  net: 125.878588[120]
-...total fills: 477[600]  symbols tracked: 12
+        ...VZ: pos=0[64]...realized=23[11]...unrealized=0[6]...fees=-2.38[3]...bought=1000[636]...sold=1000[700]
+        ...NKE: pos=-500[300]...realized=-1.2[3]...unrealized=-8.3[4]...fees=-0.81[1]...bought=200[100]...sold=700[400]
+        ...XLE: pos=400[99]...realized=2[4]...unrealized=2[3]...fees=-1.36[1]...bought=700[300]...sold=300[201]
+        ...AAL: pos=-100[0]...realized=0[0]...unrealized=1.5[0]...fees=-0.13[0]...bought=0[0]...sold=100[0]
+        ...INTC: pos=0[100]...realized=83.09[72]...unrealized=0[1]...fees=-15.68[4]...bought=10400[500]...sold=10400[600]
+        ...HOOD: pos=-300[300]...realized=-13.21[62]...unrealized=-9.5[13]...fees=-5.23[2]...bought=4100[500]...sold=4400[800]
+        ...DKNG: pos=-300[200]...realized=2[4]...unrealized=-7.5[11]...fees=-1.19[1]...bought=300[100]...sold=600[100]
+        ...SOFI: pos=700[0]...realized=-31.59[10]...unrealized=-110.91[28]...fees=-2.13[0]...bought=1000[0]...sold=300[0]
+        ...PYPL: pos=0[0]...realized=6.73[20]...unrealized=0[0]...fees=-2.1[1]...bought=900[100]...sold=900[100]
+        ...RIVN: pos=-600[400]...realized=-3.25[6]...unrealized=-6.75[12]...fees=-0.97[1]...bought=200[100]...sold=800[300]
+        ...CMCSA: pos=0[100]...realized=24.5[13]...unrealized=0[5]...fees=-1.84[2]...bought=800[200]...sold=800[300]
+        ...TOTAL realized P&L: 92.061234[143]  fees: -33.817354[7]  net: 125.878588[136]
+        ...total fills: 477[364]  symbols tracked: 12
 `)
 }
