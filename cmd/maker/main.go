@@ -24,12 +24,6 @@ import (
 )
 
 var (
-	flagSymbol    = symbol.Flag("symbol", "XE", "stock to trade")
-	flagExchange  = alpaca.OrderDestinationFlag("exchange", "NASDAQ", "destination exchange for orders")
-	flagTarget    = decimal.Flag("target", "600", "target inventory in shares (defines bias; double this sets upper limit)")
-	flagQty       = decimal.Flag("qty", "200", "quantity of shares per trade")
-	flagSpread    = decimal.Flag("spread", "0.04", "base half spread to use when market making")
-	flagDrift     = decimal.Flag("drift", "0.10", "distance from nbbo before replace order is sent")
 	flagCooldown  = clocky.DurationFlag("cooldown", "30m", "cooldown period after order rejection")
 	flagBucket    = flag.String("bucket", "dropbear-sip", "google cloud storage bucket for recording market data")
 	flagLive      = flag.Bool("live", false, "enables live trading and network access")
@@ -43,6 +37,8 @@ const (
 	kBalanceInterval   = 5 * clocky.Second
 )
 
+var kGreedFloor = decimal.Parse("0.005")
+
 var (
 	gBroker         Broker
 	gOrders         map[string]*State
@@ -55,7 +51,6 @@ var (
 	gTotalPnL       decimal.Decimal
 	gTotalFees      decimal.Decimal
 	gTotalShares    decimal.Decimal
-	gExchange       sip.Exchange
 	gTotalFills     int
 	gOrderCount     int64
 	gOrderFails     int64
@@ -77,35 +72,10 @@ func main() {
 		clocky.NewTicker = clocky.FakeNewTicker
 	}
 
-	if flagTarget.IsZero() {
-		fmt.Fprintf(os.Stderr, "-target must be non-zero\n")
-		os.Exit(1)
-	}
 	if !*flagLive && *flagData == "" {
 		fmt.Fprintf(os.Stderr, "-data must be specified for backtest mode\n")
 		os.Exit(1)
 	}
-
-	// figure out sip exchange
-	switch *flagExchange {
-	case alpaca.OrderDestinationNone:
-		gExchange = sip.ExchangeNone
-	case alpaca.OrderDestinationARCA:
-		gExchange = sip.ExchangeARCA
-	case alpaca.OrderDestinationNASDAQ:
-		gExchange = sip.ExchangeNASDAQ
-	case alpaca.OrderDestinationNYSE:
-		gExchange = sip.ExchangeNYSE
-	default:
-		fmt.Fprintf(os.Stderr, "unsupported exchange: %s\n", *flagExchange)
-		os.Exit(1)
-	}
-
-	// log configuration
-	log.Printf("prepare to make markets")
-	log.Printf("  symbol=%s", *flagSymbol)
-	log.Printf("  exchange=%s", *flagExchange)
-	log.Printf("  target=%s", *flagTarget)
 
 	// initialize globals
 	gOrders = map[string]*State{}
@@ -116,6 +86,117 @@ func main() {
 	if *flagLive {
 		gAlpacaClient = alpaca.NewClient()
 		gBroker = gAlpacaClient
+	}
+
+	// NASDAQ longs (~$99k max notional)
+	// INTC: 600 × $84 = $50,400 (depth: 700/400, vol: 179M)
+	addSymbol(symbol.INTC, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("300"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+	// PYPL: 400 × $50 = $20,000 (depth: 400/900, vol: 8M)
+	addSymbol(symbol.PYPL, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("200"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+	// CMCSA: 600 × $28 = $16,800 (depth: 6200/7300, vol: 32M)
+	addSymbol(symbol.CMCSA, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("300"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+	// KDP: 400 × $29 = $11,600 (depth: 5500/2600, vol: 21M)
+	addSymbol(symbol.KDP, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("200"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+
+	// NASDAQ shorts (~$97k max notional)
+	// CSCO: 400 × $86 = $34,400 (depth: 200/800, vol: 14M)
+	addSymbol(symbol.CSCO, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("-200"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+	// MDLZ: 400 × $58 = $23,200 (depth: 500/1200, vol: 6.6M)
+	addSymbol(symbol.MDLZ, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("-200"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+	// CTSH: 400 × $55 = $22,000 (depth: 500/600, vol: 6M)
+	addSymbol(symbol.CTSH, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("-200"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+	// KHC: 800 × $22 = $17,600 (depth: 6100/2200, vol: 9M)
+	addSymbol(symbol.KHC, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("-400"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+
+	// NYSE longs (~$53k max notional, thin books + pro-rata)
+	// VZ: 800 × $47 = $37,600 (depth: 1700/1500, vol: 38M)
+	addSymbol(symbol.VZ, Config{
+		venue:  alpaca.OrderDestinationNYSE,
+		target: decimal.Parse("400"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+	// KO: 200 × $78 = $15,600 (depth: 600/400, vol: 16M)
+	addSymbol(symbol.KO, Config{
+		venue:  alpaca.OrderDestinationNYSE,
+		target: decimal.Parse("100"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+
+	// NYSE shorts (~$53k max notional)
+	// DOW: 600 × $38 = $22,800 (depth: 200/800, vol: 11M)
+	addSymbol(symbol.DOW, Config{
+		venue:  alpaca.OrderDestinationNYSE,
+		target: decimal.Parse("-300"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+	// BMY: 400 × $58 = $23,200 (depth: 900/700, vol: 11M)
+	addSymbol(symbol.BMY, Config{
+		venue:  alpaca.OrderDestinationNYSE,
+		target: decimal.Parse("-200"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+
+	// log configuration
+	log.Printf("prepare to make markets")
+	for _, st := range gSymbols {
+		log.Printf("  %s: target=%s qty=%s spread=%s drift=%s venue=%s",
+			st.symbol, st.config.target, st.config.qty, st.config.spread, st.config.drift, st.config.venue)
 	}
 
 	// periodically fetch information about supported equities from alpaca
@@ -203,21 +284,22 @@ func main() {
 	} else {
 		log.Printf("subscribing to order updates...")
 		orderUpdates = alpaca.OrderUpdates()
-		log.Printf("subscribing to sip stock updates...")
+		names := symbolNames()
+		log.Printf("subscribing to sip stock updates for %d symbols...", len(names))
 		stockUpdates = alpaca.MustStockUpdates(alpaca.SIPWSURL, &alpaca.StockUpdatesRequest{
 			Action:     "subscribe",
-			Quotes:     []string{flagSymbol.String()},
-			Trades:     []string{flagSymbol.String()},
-			Statuses:   []string{flagSymbol.String()},
-			Imbalances: []string{flagSymbol.String()},
-			LULDs:      []string{flagSymbol.String()},
+			Quotes:     names,
+			Trades:     names,
+			Statuses:   names,
+			Imbalances: names,
+			LULDs:      names,
 		})
-		log.Printf("subscribing to boats stock updates...")
+		log.Printf("subscribing to boats stock updates for %d symbols...", len(names))
 		boatsUpdates = alpaca.MustStockUpdates(alpaca.BOATSWSURL, &alpaca.StockUpdatesRequest{
 			Action:   "subscribe",
-			Quotes:   []string{flagSymbol.String()},
-			Trades:   []string{flagSymbol.String()},
-			Statuses: []string{flagSymbol.String()},
+			Quotes:   names,
+			Trades:   names,
+			Statuses: names,
 		})
 		// start tape recorder to gcs
 		gTapeMsg = make(chan *sip.Message, 65536)
@@ -250,9 +332,51 @@ func main() {
 
 func onHeartbeat() {
 	now := clocky.Now()
+	// decay greed by half every heartbeat (1 second)
+	for _, st := range gSymbols {
+		if !st.buyGreed.IsZero() {
+			st.buyGreed = st.buyGreed.Half()
+			if st.buyGreed.Cmp(kGreedFloor) < 0 {
+				st.buyGreed = decimal.Zero
+			}
+		}
+		if !st.sellGreed.IsZero() {
+			st.sellGreed = st.sellGreed.Half()
+			if st.sellGreed.Cmp(kGreedFloor) < 0 {
+				st.sellGreed = decimal.Zero
+			}
+		}
+	}
 	if now.After(gNextBalance) {
 		logBalance()
+		logSpread()
 		gNextBalance = now.Add(kBalanceInterval)
+	}
+}
+
+func logSpread() {
+	for _, st := range gSymbols {
+		if st.config.target.IsZero() || st.quote == nil {
+			continue
+		}
+		q := st.quote
+		if q.BidPrice.IsZero() || q.AskPrice.IsZero() {
+			continue
+		}
+		unrealized := decimal.Zero
+		if !st.position.IsZero() && !st.costBasis.IsZero() {
+			mid := q.BidPrice.Add(q.AskPrice).Half()
+			unrealized = mid.Mul(st.position).Sub(st.costBasis)
+		}
+		net := st.realizedPnL.Sub(st.totalFees)
+		log.Printf("SPREAD %s %s  [%s]  %sx%d | %sx%d  [%s]  pos=%s  realized=%s fees=%s net=%s unrealized=%s",
+			st.symbol, st.config.venue,
+			st.buyPrice,
+			q.BidPrice, q.BidSize,
+			q.AskPrice, q.AskSize,
+			st.sellPrice,
+			st.position,
+			st.realizedPnL, st.totalFees, net, unrealized)
 	}
 }
 
@@ -262,26 +386,16 @@ func synchronizeAssetsForever() {
 		if err := gBroker.SyncAssets(); err != nil {
 			log.Printf("error synchronizing assets: %v", err)
 		}
-		time.Sleep(15 * time.Minute)
+		clocky.Sleep(15 * clocky.Minute)
 	}
 }
 
-func getMarketValue() decimal.Decimal {
-	value := decimal.Zero
-	for _, st := range gSymbols {
-		if st.quote == nil {
-			continue // can't compute exposure without quote
-		}
-		mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
-		if st.position.IsPositive() {
-			notional := mid.Mul(st.position)
-			value = value.Add(notional)
-		} else if st.position.IsNegative() {
-			notional := mid.Mul(st.position.Neg())
-			value = value.Add(notional)
-		}
+func addSymbol(sym symbol.Symbol, cfg Config) *State {
+	st := getOrCreateSymbol(sym)
+	if st != nil {
+		st.config = cfg
 	}
-	return value
+	return st
 }
 
 func getOrCreateSymbol(sym symbol.Symbol) *State {
@@ -299,17 +413,27 @@ func getOrCreateSymbol(sym symbol.Symbol) *State {
 	return st
 }
 
+func symbolNames() []string {
+	names := make([]string, 0, len(gSymbols))
+	for sym := range gSymbols {
+		names = append(names, sym.String())
+	}
+	return names
+}
+
 func removeOrder(st *State, clientOrderID string) {
 	delete(gOrders, clientOrderID)
 	if st.buyClientOrderID == clientOrderID {
 		st.buyClientOrderID = ""
 		st.buyClientOrderID2 = ""
 		st.buyOrderID = ""
+		st.buyPrice = decimal.Zero
 	}
 	if st.sellClientOrderID == clientOrderID {
 		st.sellClientOrderID = ""
 		st.sellClientOrderID2 = ""
 		st.sellOrderID = ""
+		st.sellPrice = decimal.Zero
 	}
 }
 
@@ -363,10 +487,10 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		return
 	}
 
-	log.Printf("%s order %s: %s price=%s qty=%s pos=%s filled=%s/%s",
+	log.Printf("%s order %s: %s %s %s @ %s pos=%s filled=%s/%s",
 		st.symbol, update.Event, update.Order.Status,
-		update.Price, update.Qty, update.PositionQty,
-		update.Order.FilledQty, update.Order.Qty)
+		update.Order.Side, update.Order.Qty, update.Order.LimitPrice,
+		update.PositionQty, update.Order.FilledQty, update.Order.Qty)
 
 	// update order metadata
 	if update.Order.Side == ds.SideBuy {
@@ -416,21 +540,19 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		if reducing && !oldPos.IsZero() {
 			// closing (partially or fully): realize P&L
 			avgCost := st.costBasis.Div(oldPos) // per-share cost (signed correctly)
-			if absQty.Cmp(oldPos.Abs()) > 0 {
-				panic(fmt.Sprintf("logic error: fill quantity %s exceeds position size %s", absQty, oldPos))
-			}
+			closingQty := absQty.Min(oldPos.Abs())
 			if oldPos.IsPositive() {
 				// closing long: profit = (sell price - avg cost) * qty
-				fillPnL = fillPrice.Sub(avgCost).Mul(absQty)
+				fillPnL = fillPrice.Sub(avgCost).Mul(closingQty)
 			} else {
 				// covering short: profit = (sale price - buy price) * qty
 				// avgCost = costBasis / position = negative / negative = positive sale price
-				fillPnL = avgCost.Sub(fillPrice).Mul(absQty)
+				fillPnL = avgCost.Sub(fillPrice).Mul(closingQty)
 			}
 			st.realizedPnL = st.realizedPnL.Add(fillPnL)
 			gTotalPnL = gTotalPnL.Add(fillPnL)
 			// reduce cost basis proportionally
-			costReduction := avgCost.Mul(absQty)
+			costReduction := avgCost.Mul(closingQty)
 			if oldPos.IsNegative() {
 				costReduction = costReduction.Neg()
 			}
@@ -460,9 +582,26 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		gTotalShares = gTotalShares.Add(absQty)
 		gTotalFills++
 
-		log.Printf("%s filled %s @ %s | pos=%s | fill_pnl=%s | fee=%s | realized=%s | total_pnl=%s | total_fees=%s | fills=%d shares=%s",
+		log.Printf("%s filled %s @ %s | pos=%s | fill_pnl=%s | fee=%s | realized=%s | total_pnl=%s | total_fees=%s | fills=%d shares=%s | greed=%s/%s",
 			st.symbol, signedQty, fillPrice, st.position,
-			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills, gTotalShares)
+			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills, gTotalShares,
+			st.buyGreed, st.sellGreed)
+
+		// escalate greed: when fills keep hitting one side, widen that
+		// side's spread so the robot demands a better price each time
+		if update.Order.Side == ds.SideBuy {
+			if st.buyGreed.IsZero() {
+				st.buyGreed = decimal.Cent
+			} else {
+				st.buyGreed = st.buyGreed.MulInt(2)
+			}
+		} else {
+			if st.sellGreed.IsZero() {
+				st.sellGreed = decimal.Cent
+			} else {
+				st.sellGreed = st.sellGreed.MulInt(2)
+			}
+		}
 	}
 
 	switch update.Event {
@@ -471,10 +610,14 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 			st.buyOrderID = update.Order.ReplacedBy
 			delete(gOrders, st.buyClientOrderID)
 			st.buyClientOrderID = st.buyClientOrderID2
+			st.buyClientOrderID2 = ""
+			st.buyPrice = st.buyPrice2
 		} else {
 			st.sellOrderID = update.Order.ReplacedBy
 			delete(gOrders, st.sellClientOrderID)
 			st.sellClientOrderID = st.sellClientOrderID2
+			st.sellClientOrderID2 = ""
+			st.sellPrice = st.sellPrice2
 		}
 	case alpaca.OrderEventRejected:
 		st.cooldownUntil = clocky.Now().Add(*flagCooldown)
@@ -489,13 +632,13 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 }
 
 func Evaluate(st *State) {
+	if st.config.target.IsZero() {
+		return // not configured for trading
+	}
 	if st.halt {
 		return
 	}
 	if st.quote == nil {
-		return
-	}
-	if st.quote.Symbol != *flagSymbol {
 		return
 	}
 	if st.quote.Indicative() {
@@ -530,41 +673,39 @@ func Evaluate(st *State) {
 		}
 	}
 
-	qty := *flagQty
-	spread := *flagSpread
-	target := *flagTarget
+	cfg := &st.config
 	alreadyBuying := st.buyClientOrderID != ""
 	alreadySelling := st.sellClientOrderID != ""
 	mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 	var canBuy, canSell bool
 	var maximumPosition, minimumPosition decimal.Decimal
-	if target.IsPositive() {
+	if cfg.target.IsPositive() {
 		minimumPosition = decimal.Zero
-		maximumPosition = target.MulInt(2)
+		maximumPosition = cfg.target.MulInt(2)
 	} else {
-		minimumPosition = target.MulInt(2)
+		minimumPosition = cfg.target.MulInt(2)
 		maximumPosition = decimal.Zero
 	}
-	canBuy = st.position.Add(qty).Cmp(maximumPosition) <= 0 && !alreadyBuying
-	canSell = st.position.Sub(qty).Cmp(minimumPosition) >= 0 && !alreadySelling
-	buyPrice := mid.Sub(spread)
-	sellPrice := mid.Add(spread)
+	canBuy = st.position.Add(cfg.qty).Cmp(maximumPosition) <= 0 && !alreadyBuying
+	canSell = st.position.Sub(cfg.qty).Cmp(minimumPosition) >= 0 && !alreadySelling
+	buyPrice := QuantizeBuyPrice(mid.Sub(cfg.spread))   //.Sub(st.buyGreed))
+	sellPrice := QuantizeSellPrice(mid.Add(cfg.spread)) //.Add(st.sellGreed))
 
 	if canBuy {
 		st.buyPrice = buyPrice
-		LimitOrder(st, ds.SideBuy, qty, buyPrice, *flagExchange, session, "")
+		LimitOrder(st, ds.SideBuy, cfg.qty, buyPrice, cfg.venue, session, "")
 	} else if alreadyBuying && st.buyClientOrderID2 == "" {
-		if buyPrice.Sub(st.buyPrice).Abs().Cmp(*flagDrift) >= 0 {
-			ReplaceOrder(st, ds.SideBuy, qty, buyPrice)
+		if buyPrice.Sub(st.buyPrice).Abs().Cmp(cfg.drift) > 0 {
+			ReplaceOrder(st, ds.SideBuy, cfg.qty, buyPrice)
 		}
 	}
 
 	if canSell {
 		st.sellPrice = sellPrice
-		LimitOrder(st, ds.SideSell, qty, sellPrice, *flagExchange, session, "")
+		LimitOrder(st, ds.SideSell, cfg.qty, sellPrice, cfg.venue, session, "")
 	} else if alreadySelling && st.sellClientOrderID2 == "" {
-		if sellPrice.Sub(st.sellPrice).Abs().Cmp(*flagDrift) >= 0 {
-			ReplaceOrder(st, ds.SideSell, qty, sellPrice)
+		if sellPrice.Sub(st.sellPrice).Abs().Cmp(cfg.drift) > 0 {
+			ReplaceOrder(st, ds.SideSell, cfg.qty, sellPrice)
 		}
 	}
 }
@@ -621,14 +762,16 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 
 func ReplaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Decimal) {
 	quote := st.quote
-	oldBuyPrice := st.buyPrice
 	clientOrderID := generateClientOrderID()
 	var orderID string
+	var oldPrice decimal.Decimal
 	if side == ds.SideBuy {
+		oldPrice = st.buyPrice
 		st.buyPrice2 = price
 		st.buyClientOrderID2 = clientOrderID
 		orderID = st.buyOrderID
 	} else {
+		oldPrice = st.sellPrice
 		st.sellPrice2 = price
 		st.sellClientOrderID2 = clientOrderID
 		orderID = st.sellOrderID
@@ -639,7 +782,6 @@ func ReplaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.De
 	gOrders[clientOrderID] = st
 	go func() {
 		_, err := gBroker.ReplaceOrder(orderID, &alpaca.ReplaceOrderRequest{
-			Qty:           qty,
 			LimitPrice:    price,
 			ClientOrderID: clientOrderID,
 			NonBlocking:   true,
@@ -651,8 +793,8 @@ func ReplaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.De
 			gFailedReplaces <- clientOrderID
 			return
 		}
-		log.Printf("%s replacing buy order: %s -> %s (pos=%s spread=%s bid=%sx%d ask=%sx%d)",
-			st.symbol, oldBuyPrice, price,
+		log.Printf("%s replacing %s order: %s -> %s (pos=%s spread=%s bid=%sx%d ask=%sx%d)",
+			st.symbol, side, oldPrice, price,
 			st.position, quote.AskPrice.Sub(quote.BidPrice),
 			quote.BidPrice, quote.BidSize,
 			quote.AskPrice, quote.AskSize)
@@ -703,12 +845,12 @@ func logBalance() {
 	net := gTotalPnL.Sub(gTotalFees)
 	equity := net.Add(totalUnrealized)
 	liquidate := net.Add(liquidationPnL)
-	log.Printf("BALANCE long=$%s (%d) short=$%s (%d) expose=$%s | realize=%s fee=%s net=%s unrealized=%s equity=%s liquidate=%s | fills=%d pending=%d | ofails=%d/%d",
+	log.Printf("BALANCE long=$%s (%d) short=$%s (%d) expose=$%s | realize=%s fee=%s net=%s unrealized=%s equity=%s liquidate=%s | vol=%s fills=%d pending=%d | ofails=%d/%d",
 		longNotional.Format(0), longCount,
 		shortNotional.Format(0), shortCount,
 		longNotional.Sub(shortNotional).Format(0),
 		gTotalPnL, gTotalFees, net, totalUnrealized, equity, liquidate,
-		gTotalFills, pendingCount,
+		gTotalShares, gTotalFills, pendingCount,
 		gOrderFails, gOrderCount)
 }
 
@@ -755,12 +897,6 @@ func shutdown() {
 	os.Exit(0)
 }
 
-func cancelOrder(orderID string) {
-	if err := gBroker.CancelOrder(orderID); err != nil {
-		log.Printf("error canceling order: %v", err)
-	}
-}
-
 func QuantizeBuyPrice(price decimal.Decimal) decimal.Decimal {
 	return price.QuantizeTruncate(Tick(price)) // buy low
 }
@@ -775,10 +911,6 @@ func Tick(price decimal.Decimal) decimal.Decimal {
 	} else {
 		return decimal.Cent
 	}
-}
-
-func StockExists(sym symbol.Symbol) bool {
-	return GetAsset(sym) != nil
 }
 
 func GetAsset(sym symbol.Symbol) *alpaca.Asset {

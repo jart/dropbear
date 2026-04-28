@@ -142,8 +142,8 @@ type backtestOrder struct {
 }
 
 type backtestReplace struct {
-	orderID       string          // old order ID to find
-	clientOrderID string          // new client order ID
+	orderID       string // old order ID to find
+	clientOrderID string // new client order ID
 	qty           decimal.Decimal
 	price         decimal.Decimal
 }
@@ -254,8 +254,12 @@ func (b *Backtest) replacePending(r *backtestReplace) {
 
 		// update the order in place
 		order.clientOrderID = r.clientOrderID
-		order.qty = r.qty
-		order.price = r.price
+		if !r.qty.IsZero() {
+			order.qty = r.qty
+		}
+		if !r.price.IsZero() {
+			order.price = r.price
+		}
 		order.queueAhead = decimal.Zero
 
 		// recompute FIFO queue for NASDAQ

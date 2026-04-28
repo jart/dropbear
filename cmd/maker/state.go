@@ -8,11 +8,20 @@ import (
 	"dropbear/symbol"
 )
 
+type Config struct {
+	venue  alpaca.OrderDestination
+	target decimal.Decimal
+	qty    decimal.Decimal
+	spread decimal.Decimal
+	drift  decimal.Decimal
+}
+
 // State tracks all state for a single symbol.
 type State struct {
 	symbol        symbol.Symbol
 	asset         *alpaca.Asset
 	quote         *sip.Quote
+	config        Config
 	halt          bool
 	position      decimal.Decimal // negative if short
 	cooldownUntil clocky.Time
@@ -20,6 +29,8 @@ type State struct {
 	sellPrice     decimal.Decimal
 	buyPrice2     decimal.Decimal
 	sellPrice2    decimal.Decimal
+	buyGreed      decimal.Decimal // widens bid after consecutive buy fills
+	sellGreed     decimal.Decimal // widens ask after consecutive sell fills
 
 	// our pending orders
 	buyOrderID         string
