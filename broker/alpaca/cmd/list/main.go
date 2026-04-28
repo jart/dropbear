@@ -5,6 +5,7 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/broker/alpaca/sip"
 	"dropbear/decimal"
+	"dropbear/symbol"
 	"flag"
 	"fmt"
 	"os"
@@ -49,6 +50,10 @@ var (
 	sortPrice  = flag.Bool("price", false, "sort by previous day price (descending), prints symbol and price")
 	notional   = flag.Bool("notional", false, "with -volume, use notional volume (shares × price) instead of share count")
 	quoteFlag  = flag.Bool("quote", false, "show quote along with each symbol")
+	minPrice   = decimal.Flag("min-price", "0", "filter by minimum price")
+	maxPrice   = decimal.Flag("max-price", "0", "filter by maximum price")
+	minSpread  = decimal.Flag("min-spread", "0", "filter by minimum spread")
+	maxSpread  = decimal.Flag("max-spread", "0", "filter by maximum spread")
 
 	otc                 *tristate
 	nyse                *tristate
@@ -129,7 +134,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  -ptp-no-exception / -no-ptp-no-exception\n")
 		fmt.Fprintf(os.Stderr, "  -ptp-with-exception / -no-ptp-with-exception\n")
 		fmt.Fprintf(os.Stderr, "  -standard-margin-long / -no-standard-margin-long\n")
-		fmt.Fprintf(os.Stderr, "  -standard-margin-short / -no-standard-margin-short\n\n")
+		fmt.Fprintf(os.Stderr, "  -standard-margin-short / -no-standard-margin-short\n")
+		fmt.Fprintf(os.Stderr, "  -min-price / -no-min-price\n")
+		fmt.Fprintf(os.Stderr, "  -max-price / -no-max-price\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  list -healthy\n")
 		fmt.Fprintf(os.Stderr, "      equivalent to: -no-otc -class=equity -status=active -tradable -marginable\n")
@@ -296,6 +303,19 @@ func printWithQuotes(symbols []string, sortByPrice bool, sortByVolume bool, useN
 	})
 
 	for _, r := range results {
+		if !minPrice.IsZero() && r.quote.BidPrice.Cmp(*minPrice) < 0 {
+			continue
+		}
+		if !maxPrice.IsZero() && r.quote.AskPrice.Cmp(*maxPrice) > 0 {
+			continue
+		}
+		spread := r.quote.AskPrice.Sub(r.quote.BidPrice)
+		if !minSpread.IsZero() && spread.Cmp(*minSpread) < 0 {
+			continue
+		}
+		if !maxSpread.IsZero() && spread.Cmp(*maxSpread) > 0 {
+			continue
+		}
 		var volumeStr string
 		if useNotional {
 			volumeStr = "$" + r.volume.FormatThousand(6) + "k"
@@ -306,10 +326,10 @@ func printWithQuotes(symbols []string, sortByPrice bool, sortByVolume bool, useN
 		if *otc == 1 {
 			extra += " " + r.quote.Timestamp.String()
 		}
-		fmt.Printf("%-8s %8s bid %8s x %6d ask %8s x %6d vol %20s%s\n",
-			r.symbol, r.trade.Price, r.quote.BidPrice, r.quote.BidSize,
-			r.quote.AskPrice, r.quote.AskSize,
-			volumeStr, extra)
+		asset := alpaca.GetAsset(symbol.MustParse(r.symbol))
+		fmt.Printf("%-8s %-8s %8s bid %8s x %7d ask %8s x %7d spread %8s vol %20s%s\n",
+			r.symbol, asset.Exchange, r.trade.Price, r.quote.BidPrice, r.quote.BidSize,
+			r.quote.AskPrice, r.quote.AskSize, spread, volumeStr, extra)
 	}
 }
 
