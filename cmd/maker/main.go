@@ -19,7 +19,6 @@ import (
 	"slices"
 	"syscall"
 	"time"
-
 )
 
 var (
@@ -59,6 +58,102 @@ var (
 	gOrderSeq       int64
 )
 
+// defaultSymbols is the portfolio used for live trading.
+// Live 2026-04-28: net=$126, 477 fills, 39900 shares.
+var defaultSymbols = []SymbolEntry{
+	// NASDAQ longs (~$102k notional at max position)
+	{symbol.INTC, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("300"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+	{symbol.PYPL, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("200"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+	{symbol.CMCSA, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("300"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+	{symbol.SOFI, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("400"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+
+	// NASDAQ shorts (~$101k notional at max position)
+	{symbol.HOOD, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("-300"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+	{symbol.DKNG, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("-400"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+	{symbol.RIVN, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("-500"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+	{symbol.AAL, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("-700"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+
+	// ARCA (pro-rata)
+	{symbol.XLE, Config{
+		venue:  alpaca.OrderDestinationARCA,
+		target: decimal.Parse("300"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+	{symbol.FXI, Config{
+		venue:  alpaca.OrderDestinationARCA,
+		target: decimal.Parse("-500"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+
+	// NYSE (pro-rata)
+	{symbol.VZ, Config{
+		venue:  alpaca.OrderDestinationNYSE,
+		target: decimal.Parse("400"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+	{symbol.NKE, Config{
+		venue:  alpaca.OrderDestinationNYSE,
+		target: decimal.Parse("-400"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	}},
+}
+
 func main() {
 	loggy.Init()
 	flag.Parse()
@@ -76,124 +171,38 @@ func main() {
 		os.Exit(1)
 	}
 
+	result := Run(defaultSymbols)
+	fmt.Printf("total P&L: %s  fees: %s  net: %s  fills: %d  shares: %s\n",
+		result.PnL, result.Fees, result.Net, result.Fills, result.Shares)
+	os.Exit(0)
+}
+
+func Run(symbols []SymbolEntry) Result {
 	// initialize globals
 	gOrders = map[string]*State{}
 	gSymbols = map[symbol.Symbol]*State{}
 	gIgnoreSymbols = map[symbol.Symbol]bool{}
 	gFailedOrders = make(chan string, 32)
 	gFailedReplaces = make(chan string, 32)
+	gTotalPnL = decimal.Zero
+	gTotalFees = decimal.Zero
+	gTotalShares = decimal.Zero
+	gTotalFills = 0
+	gOrderCount = 0
+	gOrderFails = 0
+	gOrderSeq = 0
+	gNextBalance = 0
+	gBacktest = nil
+	gTapeMsg = nil
+	gTapeDone = nil
 	if *flagLive {
 		gAlpacaClient = alpaca.NewClient()
 		gBroker = gAlpacaClient
 	}
 
-	// long stocks (~$102k notional at max position)
-	// INTC: 600 × $84 = $50,400
-	addSymbol(symbol.INTC, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("300"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-	// PYPL: 400 × $50 = $20,000
-	addSymbol(symbol.PYPL, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("200"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-	// CMCSA: 600 × $28 = $16,800
-	addSymbol(symbol.CMCSA, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("300"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-	// SOFI: 800 × $19 = $15,200
-	addSymbol(symbol.SOFI, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("400"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-
-	// short stocks (~$101k notional at max position)
-	// HOOD: 600 × $83 = $49,800
-	addSymbol(symbol.HOOD, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-300"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-	// DKNG: 800 × $23 = $18,400
-	addSymbol(symbol.DKNG, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-400"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-	// RIVN: 1000 × $16 = $16,000
-	addSymbol(symbol.RIVN, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-500"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-	// AAL: 1400 × $12 = $16,800
-	addSymbol(symbol.AAL, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-700"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-
-	// long stocks on ARCA (pro-rata)
-	// XLE: 600 × $58 = $34,800
-	addSymbol(symbol.XLE, Config{
-		venue:  alpaca.OrderDestinationARCA,
-		target: decimal.Parse("300"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-
-	// short stocks on ARCA (pro-rata)
-	// FXI: 1000 × $36 = $36,000
-	addSymbol(symbol.FXI, Config{
-		venue:  alpaca.OrderDestinationARCA,
-		target: decimal.Parse("-500"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-
-	// long stocks on NYSE (pro-rata)
-	// VZ: 800 × $47 = $37,600
-	addSymbol(symbol.VZ, Config{
-		venue:  alpaca.OrderDestinationNYSE,
-		target: decimal.Parse("400"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-
-	// short stocks on NYSE (pro-rata)
-	// NKE: 800 × $45 = $36,000
-	addSymbol(symbol.NKE, Config{
-		venue:  alpaca.OrderDestinationNYSE,
-		target: decimal.Parse("-400"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
+	for _, e := range symbols {
+		addSymbol(e.Symbol, e.Config)
+	}
 
 	// log configuration
 	log.Printf("prepare to make markets")
@@ -327,8 +336,7 @@ func main() {
 		case <-heartbeatChan:
 			onHeartbeat()
 		case <-sigChan:
-			shutdown()
-			return
+			return shutdown()
 		}
 	}
 }
@@ -835,7 +843,7 @@ func logBalance() {
 		gOrderFails, gOrderCount)
 }
 
-func shutdown() {
+func shutdown() Result {
 	log.Printf("shutting down... canceling all orders")
 	if err := gBroker.CancelAllOrders(); err != nil {
 		log.Printf("error canceling orders: %v", err)
@@ -874,8 +882,13 @@ func shutdown() {
 	net := gTotalPnL.Sub(gTotalFees)
 	log.Printf("  TOTAL realized P&L: %s  fees: %s  net: %s", gTotalPnL, gTotalFees, net)
 	log.Printf("  total fills: %d  symbols tracked: %d", gTotalFills, len(gSymbols))
-	fmt.Printf("total P&L: %s  fees: %s  net: %s  fills: %d  shares: %s\n", gTotalPnL, gTotalFees, net, gTotalFills, gTotalShares)
-	os.Exit(0)
+	return Result{
+		PnL:    gTotalPnL,
+		Fees:   gTotalFees,
+		Net:    net,
+		Fills:  gTotalFills,
+		Shares: gTotalShares,
+	}
 }
 
 func QuantizeBuyPrice(price decimal.Decimal) decimal.Decimal {

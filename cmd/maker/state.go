@@ -16,6 +16,19 @@ type Config struct {
 	drift  decimal.Decimal
 }
 
+type SymbolEntry struct {
+	Symbol symbol.Symbol
+	Config Config
+}
+
+type Result struct {
+	PnL    decimal.Decimal
+	Fees   decimal.Decimal
+	Net    decimal.Decimal
+	Fills  int
+	Shares decimal.Decimal
+}
+
 // State tracks all state for a single symbol.
 type State struct {
 	symbol        symbol.Symbol
