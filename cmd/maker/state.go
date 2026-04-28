@@ -5,43 +5,29 @@ import (
 	"dropbear/broker/alpaca/sip"
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/indicators"
 	"dropbear/symbol"
 )
 
 // State tracks all state for a single symbol.
 type State struct {
-	symbol   symbol.Symbol
-	asset    *alpaca.Asset
-	quote    *sip.Quote
-	halt     bool
-	greed    decimal.Decimal
-	position decimal.Decimal // negative if short
-
-	// price moving average
-	pricema   *indicators.WWMA
-	nextprice clocky.Time
-
-	// volatility tracking
-	minTradePrice  *indicators.Min
-	maxTradePrice  *indicators.Max
-	lastTradePrice decimal.Decimal
-
-	// volume tracking
-	volma      *indicators.WWMA // smoothed minute bar volume
-	volsum     decimal.Decimal  // smoothed minute bar volume
-	highVolume bool             // in top percentile by volume
-
-	// iso flow tracking
-	isoNetFlow decimal.Decimal // net ISO shares: positive = buyer, negative = seller
+	symbol        symbol.Symbol
+	asset         *alpaca.Asset
+	quote         *sip.Quote
+	halt          bool
+	position      decimal.Decimal // negative if short
+	cooldownUntil clocky.Time
+	buyPrice      decimal.Decimal
+	sellPrice     decimal.Decimal
+	buyPrice2     decimal.Decimal
+	sellPrice2    decimal.Decimal
 
 	// our pending orders
-	buyOrderID        string
-	sellOrderID       string
-	buyClientOrderID  string
-	sellClientOrderID string
-	orderCreatedTime  clocky.Time // only cancelable if positive
-	cooldownUntil     clocky.Time // don't trade until this time
+	buyOrderID         string
+	sellOrderID        string
+	buyClientOrderID   string
+	sellClientOrderID  string
+	buyClientOrderID2  string
+	sellClientOrderID2 string
 
 	// P&L tracking
 	costBasis    decimal.Decimal // total cost of current position (signed)

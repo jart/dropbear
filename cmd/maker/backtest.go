@@ -17,6 +17,7 @@ type Broker interface {
 	GetPositions() ([]alpaca.Position, error)
 	GetQuotes([]string, alpaca.Feed) (map[string]*sip.Quote, error)
 	CreateOrder(*alpaca.CreateOrderRequest) (*alpaca.Order, error)
+	ReplaceOrder(string, *alpaca.ReplaceOrderRequest) (*alpaca.Order, error)
 	CancelOrder(string) error
 	CancelAllOrders() error
 	SyncAssets() error
@@ -30,6 +31,7 @@ type Backtest struct {
 	file         *sip.File
 	exit         chan os.Signal
 	submit       chan *backtestOrder
+	replace      chan *backtestReplace
 	cancel       chan string                       // clientOrderID, or "" for cancel all
 	pending      []*backtestOrder                  // only accessed by run goroutine
 	moc          []*backtestOrder                  // only accessed by run goroutine
@@ -52,6 +54,7 @@ func NewBacktest(path string, exit chan os.Signal) (*Backtest, error) {
 		OrderUpdates: make(chan *alpaca.OrderUpdate, 1000),
 		Heartbeat:    make(chan time.Time, 1000),
 		submit:       make(chan *backtestOrder, 1000),
+		replace:      make(chan *backtestReplace, 1000),
 		cancel:       make(chan string, 1000),
 		positions:    make(map[symbol.Symbol]decimal.Decimal),
 		lastTrade:    make(map[symbol.Symbol]decimal.Decimal),
@@ -92,6 +95,16 @@ func (b *Backtest) CreateOrder(body *alpaca.CreateOrderRequest) (*alpaca.Order, 
 	return nil, nil
 }
 
+func (b *Backtest) ReplaceOrder(orderID string, body *alpaca.ReplaceOrderRequest) (*alpaca.Order, error) {
+	b.replace <- &backtestReplace{
+		orderID:       orderID,
+		clientOrderID: body.ClientOrderID,
+		qty:           body.Qty,
+		price:         body.LimitPrice,
+	}
+	return nil, nil
+}
+
 func (b *Backtest) CancelAllOrders() error {
 	b.cancel <- ""
 	return nil
@@ -123,8 +136,16 @@ type backtestOrder struct {
 	filled        decimal.Decimal
 	price         decimal.Decimal
 	queueAhead    decimal.Decimal // shares ahead of us in FIFO queue
+	createdAt     clocky.Time     // when order was submitted
 	odd           bool
 	moc           bool
+}
+
+type backtestReplace struct {
+	orderID       string          // old order ID to find
+	clientOrderID string          // new client order ID
+	qty           decimal.Decimal
+	price         decimal.Decimal
 }
 
 func (b *Backtest) run() {
@@ -180,6 +201,7 @@ func (b *Backtest) drainSubmits() {
 			} else if b.isMarketable(order) {
 				b.fillMarketable(order)
 			} else {
+				order.createdAt = clocky.Now()
 				// snapshot queue depth ahead of us for FIFO exchanges
 				if order.exchange == sip.ExchangeNASDAQ {
 					if q := b.lastQuote[order.symbol]; q != nil {
@@ -212,11 +234,65 @@ func (b *Backtest) drainSubmits() {
 					Type:          alpaca.OrderTypeLimit,
 				},
 			}
+		case r := <-b.replace:
+			b.replacePending(r)
 		case id := <-b.cancel:
 			b.cancelPending(id)
 		default:
 			return
 		}
+	}
+}
+
+func (b *Backtest) replacePending(r *backtestReplace) {
+	now := clocky.Now()
+	for _, order := range b.pending {
+		if order.clientOrderID != r.orderID {
+			continue
+		}
+		oldClientOrderID := order.clientOrderID
+
+		// update the order in place
+		order.clientOrderID = r.clientOrderID
+		order.qty = r.qty
+		order.price = r.price
+		order.queueAhead = decimal.Zero
+
+		// recompute FIFO queue for NASDAQ
+		if order.exchange == sip.ExchangeNASDAQ {
+			if q := b.lastQuote[order.symbol]; q != nil {
+				switch order.side {
+				case ds.SideBuy:
+					if order.price.Cmp(q.BidPrice) == 0 {
+						order.queueAhead = decimal.FromInt(int(q.BidSize))
+					}
+				default:
+					if order.price.Cmp(q.AskPrice) == 0 {
+						order.queueAhead = decimal.FromInt(int(q.AskSize))
+					}
+				}
+			}
+		}
+
+		// send replaced event on old client order ID
+		// onOrderUpdate swaps to the new client order ID via ReplacedBy
+		b.OrderUpdates <- &alpaca.OrderUpdate{
+			Event:     alpaca.OrderEventReplaced,
+			Timestamp: now,
+			At:        now,
+			Order: &alpaca.Order{
+				ID:            oldClientOrderID,
+				ClientOrderID: oldClientOrderID,
+				ReplacedBy:    r.clientOrderID,
+				Symbol:        order.symbol.String(),
+				Side:          order.side,
+				Qty:           r.qty,
+				LimitPrice:    r.price,
+				Status:        alpaca.OrderStatusReplaced,
+				Type:          alpaca.OrderTypeLimit,
+			},
+		}
+		return
 	}
 }
 
@@ -342,6 +418,13 @@ func (b *Backtest) checkFills(trade *sip.Trade) {
 	n := 0
 	for _, order := range b.pending {
 		if order.symbol != trade.Symbol {
+			b.pending[n] = order
+			n++
+			continue
+		}
+
+		// don't fill orders on the same tick they were created
+		if order.createdAt == now {
 			b.pending[n] = order
 			n++
 			continue
