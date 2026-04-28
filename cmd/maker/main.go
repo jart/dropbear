@@ -37,8 +37,6 @@ const (
 	kBalanceInterval   = 5 * clocky.Second
 )
 
-var kGreedFloor = decimal.Parse("0.005")
-
 var (
 	gBroker         Broker
 	gOrders         map[string]*State
@@ -88,8 +86,8 @@ func main() {
 		gBroker = gAlpacaClient
 	}
 
-	// NASDAQ longs (~$99k max notional)
-	// INTC: 600 × $84 = $50,400 (depth: 700/400, vol: 179M)
+	// long stocks (~$102k notional at max position)
+	// INTC: 600 × $84 = $50,400
 	addSymbol(symbol.INTC, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
 		target: decimal.Parse("300"),
@@ -97,7 +95,7 @@ func main() {
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
 	})
-	// PYPL: 400 × $50 = $20,000 (depth: 400/900, vol: 8M)
+	// PYPL: 400 × $50 = $20,000
 	addSymbol(symbol.PYPL, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
 		target: decimal.Parse("200"),
@@ -105,7 +103,7 @@ func main() {
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
 	})
-	// CMCSA: 600 × $28 = $16,800 (depth: 6200/7300, vol: 32M)
+	// CMCSA: 600 × $28 = $16,800
 	addSymbol(symbol.CMCSA, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
 		target: decimal.Parse("300"),
@@ -113,51 +111,71 @@ func main() {
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
 	})
-	// KDP: 400 × $29 = $11,600 (depth: 5500/2600, vol: 21M)
-	addSymbol(symbol.KDP, Config{
+	// SOFI: 800 × $19 = $15,200
+	addSymbol(symbol.SOFI, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("200"),
+		target: decimal.Parse("400"),
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
 	})
 
-	// NASDAQ shorts (~$97k max notional)
-	// CSCO: 400 × $86 = $34,400 (depth: 200/800, vol: 14M)
-	addSymbol(symbol.CSCO, Config{
+	// short stocks (~$101k notional at max position)
+	// HOOD: 600 × $83 = $49,800
+	addSymbol(symbol.HOOD, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-200"),
+		target: decimal.Parse("-300"),
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
 	})
-	// MDLZ: 400 × $58 = $23,200 (depth: 500/1200, vol: 6.6M)
-	addSymbol(symbol.MDLZ, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-200"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-	// CTSH: 400 × $55 = $22,000 (depth: 500/600, vol: 6M)
-	addSymbol(symbol.CTSH, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-200"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-	// KHC: 800 × $22 = $17,600 (depth: 6100/2200, vol: 9M)
-	addSymbol(symbol.KHC, Config{
+	// DKNG: 800 × $23 = $18,400
+	addSymbol(symbol.DKNG, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
 		target: decimal.Parse("-400"),
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
 	})
+	// RIVN: 1000 × $16 = $16,000
+	addSymbol(symbol.RIVN, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("-500"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+	// AAL: 1400 × $12 = $16,800
+	addSymbol(symbol.AAL, Config{
+		venue:  alpaca.OrderDestinationNASDAQ,
+		target: decimal.Parse("-700"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
 
-	// NYSE longs (~$53k max notional, thin books + pro-rata)
-	// VZ: 800 × $47 = $37,600 (depth: 1700/1500, vol: 38M)
+	// long stocks on ARCA (pro-rata)
+	// XLE: 600 × $58 = $34,800
+	addSymbol(symbol.XLE, Config{
+		venue:  alpaca.OrderDestinationARCA,
+		target: decimal.Parse("300"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+
+	// short stocks on ARCA (pro-rata)
+	// FXI: 1000 × $36 = $36,000
+	addSymbol(symbol.FXI, Config{
+		venue:  alpaca.OrderDestinationARCA,
+		target: decimal.Parse("-500"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+	})
+
+	// long stocks on NYSE (pro-rata)
+	// VZ: 800 × $47 = $37,600
 	addSymbol(symbol.VZ, Config{
 		venue:  alpaca.OrderDestinationNYSE,
 		target: decimal.Parse("400"),
@@ -165,28 +183,12 @@ func main() {
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
 	})
-	// KO: 200 × $78 = $15,600 (depth: 600/400, vol: 16M)
-	addSymbol(symbol.KO, Config{
-		venue:  alpaca.OrderDestinationNYSE,
-		target: decimal.Parse("100"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
 
-	// NYSE shorts (~$53k max notional)
-	// DOW: 600 × $38 = $22,800 (depth: 200/800, vol: 11M)
-	addSymbol(symbol.DOW, Config{
+	// short stocks on NYSE (pro-rata)
+	// NKE: 800 × $45 = $36,000
+	addSymbol(symbol.NKE, Config{
 		venue:  alpaca.OrderDestinationNYSE,
-		target: decimal.Parse("-300"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	})
-	// BMY: 400 × $58 = $23,200 (depth: 900/700, vol: 11M)
-	addSymbol(symbol.BMY, Config{
-		venue:  alpaca.OrderDestinationNYSE,
-		target: decimal.Parse("-200"),
+		target: decimal.Parse("-400"),
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
@@ -332,21 +334,6 @@ func main() {
 
 func onHeartbeat() {
 	now := clocky.Now()
-	// decay greed by half every heartbeat (1 second)
-	for _, st := range gSymbols {
-		if !st.buyGreed.IsZero() {
-			st.buyGreed = st.buyGreed.Half()
-			if st.buyGreed.Cmp(kGreedFloor) < 0 {
-				st.buyGreed = decimal.Zero
-			}
-		}
-		if !st.sellGreed.IsZero() {
-			st.sellGreed = st.sellGreed.Half()
-			if st.sellGreed.Cmp(kGreedFloor) < 0 {
-				st.sellGreed = decimal.Zero
-			}
-		}
-	}
 	if now.After(gNextBalance) {
 		logBalance()
 		logSpread()
@@ -582,26 +569,9 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		gTotalShares = gTotalShares.Add(absQty)
 		gTotalFills++
 
-		log.Printf("%s filled %s @ %s | pos=%s | fill_pnl=%s | fee=%s | realized=%s | total_pnl=%s | total_fees=%s | fills=%d shares=%s | greed=%s/%s",
+		log.Printf("%s filled %s @ %s | pos=%s | fill_pnl=%s | fee=%s | realized=%s | total_pnl=%s | total_fees=%s | fills=%d shares=%s",
 			st.symbol, signedQty, fillPrice, st.position,
-			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills, gTotalShares,
-			st.buyGreed, st.sellGreed)
-
-		// escalate greed: when fills keep hitting one side, widen that
-		// side's spread so the robot demands a better price each time
-		if update.Order.Side == ds.SideBuy {
-			if st.buyGreed.IsZero() {
-				st.buyGreed = decimal.Cent
-			} else {
-				st.buyGreed = st.buyGreed.MulInt(2)
-			}
-		} else {
-			if st.sellGreed.IsZero() {
-				st.sellGreed = decimal.Cent
-			} else {
-				st.sellGreed = st.sellGreed.MulInt(2)
-			}
-		}
+			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills, gTotalShares)
 	}
 
 	switch update.Event {
@@ -688,8 +658,8 @@ func Evaluate(st *State) {
 	}
 	canBuy = st.position.Add(cfg.qty).Cmp(maximumPosition) <= 0 && !alreadyBuying
 	canSell = st.position.Sub(cfg.qty).Cmp(minimumPosition) >= 0 && !alreadySelling
-	buyPrice := QuantizeBuyPrice(mid.Sub(cfg.spread))   //.Sub(st.buyGreed))
-	sellPrice := QuantizeSellPrice(mid.Add(cfg.spread)) //.Add(st.sellGreed))
+	buyPrice := QuantizeBuyPrice(mid.Sub(cfg.spread))
+	sellPrice := QuantizeSellPrice(mid.Add(cfg.spread))
 
 	if canBuy {
 		st.buyPrice = buyPrice
@@ -845,12 +815,12 @@ func logBalance() {
 	net := gTotalPnL.Sub(gTotalFees)
 	equity := net.Add(totalUnrealized)
 	liquidate := net.Add(liquidationPnL)
-	log.Printf("BALANCE long=$%s (%d) short=$%s (%d) expose=$%s | realize=%s fee=%s net=%s unrealized=%s equity=%s liquidate=%s | vol=%s fills=%d pending=%d | ofails=%d/%d",
+	log.Printf("BALANCE long=$%s (%d) short=$%s (%d) expose=$%s | realize=%s fee=%s net=%s unrealized=%s equity=%s liquidate=%s | fills=%d pending=%d | ofails=%d/%d",
 		longNotional.Format(0), longCount,
 		shortNotional.Format(0), shortCount,
 		longNotional.Sub(shortNotional).Format(0),
 		gTotalPnL, gTotalFees, net, totalUnrealized, equity, liquidate,
-		gTotalShares, gTotalFills, pendingCount,
+		gTotalFills, pendingCount,
 		gOrderFails, gOrderCount)
 }
 
