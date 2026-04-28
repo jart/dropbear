@@ -20,7 +20,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 )
 
 var (
@@ -30,6 +29,7 @@ var (
 	flagExtended  = flag.Bool("extended", false, "enables extended hours trading")
 	flagOvernight = flag.Bool("overnight", false, "enables overnight hours trading")
 	flagData      = flag.String("data", "", "path of sip data file for backtest")
+	flagLatency   = clocky.DurationFlag("latency", "7ms", "simulated order latency for backtest")
 )
 
 const (
@@ -56,6 +56,7 @@ var (
 	gTapeDone       chan struct{}
 	gBacktest       *Backtest
 	gAlpacaClient   *alpaca.Client
+	gOrderSeq       int64
 )
 
 func main() {
@@ -694,7 +695,7 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 	} else {
 		st.sellClientOrderID = clientOrderID
 	}
-	go func() {
+	spawn(func() {
 		var advancedInstructions *alpaca.AdvancedInstructions
 		if dest != alpaca.OrderDestinationNone {
 			advancedInstructions = &alpaca.AdvancedInstructions{
@@ -727,7 +728,7 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 			quote.BidPrice, quote.BidSize,
 			quote.AskPrice, quote.AskSize,
 			explain)
-	}()
+	})
 }
 
 func ReplaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Decimal) {
@@ -750,7 +751,7 @@ func ReplaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.De
 		return
 	}
 	gOrders[clientOrderID] = st
-	go func() {
+	spawn(func() {
 		_, err := gBroker.ReplaceOrder(orderID, &alpaca.ReplaceOrderRequest{
 			LimitPrice:    price,
 			ClientOrderID: clientOrderID,
@@ -768,11 +769,21 @@ func ReplaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.De
 			st.position, quote.AskPrice.Sub(quote.BidPrice),
 			quote.BidPrice, quote.BidSize,
 			quote.AskPrice, quote.AskSize)
-	}()
+	})
+}
+
+// spawn runs f asynchronously in live mode, synchronously in backtest mode.
+func spawn(f func()) {
+	if *flagLive {
+		go f()
+	} else {
+		f()
+	}
 }
 
 func generateClientOrderID() string {
-	return uuid.New().String()
+	gOrderSeq++
+	return fmt.Sprintf("order-%d", gOrderSeq)
 }
 
 func logBalance() {

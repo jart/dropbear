@@ -38,6 +38,7 @@ type Backtest struct {
 	positions    map[symbol.Symbol]decimal.Decimal // only accessed by run goroutine
 	lastTrade    map[symbol.Symbol]decimal.Decimal // only accessed by run goroutine
 	lastQuote    map[symbol.Symbol]*sip.Quote      // only accessed by run goroutine
+	staged       []stagedAction                    // only accessed by run goroutine
 	nextBeat     clocky.Time                       // only accessed by run goroutine
 	closeTime    clocky.Time                       // only accessed by run goroutine
 }
@@ -50,9 +51,9 @@ func NewBacktest(path string, exit chan os.Signal) (*Backtest, error) {
 	b := &Backtest{
 		file:         file,
 		exit:         exit,
-		StockUpdates: make(chan *sip.Message, 1000),
-		OrderUpdates: make(chan *alpaca.OrderUpdate, 1000),
-		Heartbeat:    make(chan time.Time, 1000),
+		StockUpdates: make(chan *sip.Message),
+		OrderUpdates: make(chan *alpaca.OrderUpdate),
+		Heartbeat:    make(chan time.Time, 1),
 		submit:       make(chan *backtestOrder, 1000),
 		replace:      make(chan *backtestReplace, 1000),
 		cancel:       make(chan string, 1000),
@@ -148,6 +149,15 @@ type backtestReplace struct {
 	price         decimal.Decimal
 }
 
+// stagedAction is a submit/replace/cancel buffered until latency elapses.
+type stagedAction struct {
+	readyAt clocky.Time
+	order   *backtestOrder   // non-nil for submit
+	replace *backtestReplace // non-nil for replace
+	cancel  string           // non-empty for cancel ("" with nil order/replace means cancel all)
+	isCancel bool
+}
+
 func (b *Backtest) run() {
 	defer close(b.StockUpdates)
 	ts := clocky.Now()
@@ -177,7 +187,8 @@ func (b *Backtest) run() {
 			year, month, day := ts.Date()
 			b.closeTime = cboe.GetCloseTime(year, month, day)
 		}
-		b.drainSubmits()
+		b.stageSubmits()
+		b.processReady()
 		switch msg.Type {
 		case sip.MessageTypeTrade:
 			t := msg.Trade()
@@ -192,55 +203,81 @@ func (b *Backtest) run() {
 	b.exit <- os.Interrupt
 }
 
-func (b *Backtest) drainSubmits() {
+func (b *Backtest) stageSubmits() {
+	now := clocky.Now()
+	readyAt := now.Add(*flagLatency)
 	for {
 		select {
 		case order := <-b.submit:
-			if order.moc {
-				b.moc = append(b.moc, order)
-			} else if b.isMarketable(order) {
-				b.fillMarketable(order)
-			} else {
-				order.createdAt = clocky.Now()
-				// snapshot queue depth ahead of us for FIFO exchanges
-				if order.exchange == sip.ExchangeNASDAQ {
-					if q := b.lastQuote[order.symbol]; q != nil {
-						switch order.side {
-						case ds.SideBuy:
-							if order.price.Cmp(q.BidPrice) == 0 {
-								order.queueAhead = decimal.FromInt(int(q.BidSize))
-							}
-						default:
-							if order.price.Cmp(q.AskPrice) == 0 {
-								order.queueAhead = decimal.FromInt(int(q.AskSize))
-							}
-						}
-					}
-				}
-				b.pending = append(b.pending, order)
-			}
-			b.OrderUpdates <- &alpaca.OrderUpdate{
-				Event:     alpaca.OrderEventNew,
-				Timestamp: clocky.Now(),
-				At:        clocky.Now(),
-				Order: &alpaca.Order{
-					ID:            order.clientOrderID,
-					ClientOrderID: order.clientOrderID,
-					Symbol:        order.symbol.String(),
-					Side:          order.side,
-					Qty:           order.qty,
-					LimitPrice:    order.price,
-					Status:        alpaca.OrderStatusNew,
-					Type:          alpaca.OrderTypeLimit,
-				},
-			}
+			b.staged = append(b.staged, stagedAction{readyAt: readyAt, order: order})
 		case r := <-b.replace:
-			b.replacePending(r)
+			b.staged = append(b.staged, stagedAction{readyAt: readyAt, replace: r})
 		case id := <-b.cancel:
-			b.cancelPending(id)
+			b.staged = append(b.staged, stagedAction{readyAt: readyAt, cancel: id, isCancel: true})
 		default:
 			return
 		}
+	}
+}
+
+func (b *Backtest) processReady() {
+	now := clocky.Now()
+	n := 0
+	for _, a := range b.staged {
+		if now.Before(a.readyAt) {
+			b.staged[n] = a
+			n++
+			continue
+		}
+		if a.order != nil {
+			b.processOrder(a.order)
+		} else if a.replace != nil {
+			b.replacePending(a.replace)
+		} else if a.isCancel {
+			b.cancelPending(a.cancel)
+		}
+	}
+	b.staged = b.staged[:n]
+}
+
+func (b *Backtest) processOrder(order *backtestOrder) {
+	if order.moc {
+		b.moc = append(b.moc, order)
+	} else if b.isMarketable(order) {
+		b.fillMarketable(order)
+	} else {
+		order.createdAt = clocky.Now()
+		// snapshot queue depth ahead of us for FIFO exchanges
+		if order.exchange == sip.ExchangeNASDAQ {
+			if q := b.lastQuote[order.symbol]; q != nil {
+				switch order.side {
+				case ds.SideBuy:
+					if order.price.Cmp(q.BidPrice) == 0 {
+						order.queueAhead = decimal.FromInt(int(q.BidSize))
+					}
+				default:
+					if order.price.Cmp(q.AskPrice) == 0 {
+						order.queueAhead = decimal.FromInt(int(q.AskSize))
+					}
+				}
+			}
+		}
+		b.pending = append(b.pending, order)
+	}
+	b.OrderUpdates <- &alpaca.OrderUpdate{
+		Event:     alpaca.OrderEventNew,
+		Timestamp: clocky.Now(),
+		At:        clocky.Now(),
+		Order: &alpaca.Order{
+			ID:            order.clientOrderID,
+			ClientOrderID: order.clientOrderID,
+			Symbol:        order.symbol.String(),
+			Side:          order.side,
+			Qty:           order.qty,
+			LimitPrice:    order.price,
+			Status:        alpaca.OrderStatusNew,
+			Type:          alpaca.OrderTypeLimit,
+		},
 	}
 }
 
