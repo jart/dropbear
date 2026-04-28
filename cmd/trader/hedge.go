@@ -6,7 +6,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"log"
+	"fmt"
 )
 
 // manageHedge buy/sells index when portfolio shorts/longs are unbalanced.
@@ -45,11 +45,9 @@ func manageHedge() {
 	}
 	st := gSymbols[*flagHedge]
 	if st == nil {
-		log.Printf("hedge: %s not in gSymbols (no quote received yet)", *flagHedge)
 		return
 	}
 	if st.quote == nil {
-		log.Printf("hedge: %s has no quote", *flagHedge)
 		return
 	}
 	if st.buyClientOrderID != "" || st.sellClientOrderID != "" {
@@ -72,16 +70,13 @@ func reduceLongExposure(st *State, longExposure decimal.Decimal) {
 		price = st.quote.BidPrice.Sub(decimal.One) // take by day
 	case cboe.SessionOvernight, cboe.SessionExtended:
 		if st.quote.Indicative() {
-			log.Printf("hedge: can't sell %s, quote is indicative", st.symbol)
 			return
 		}
 		if st.quote.DangerousAsk() {
-			log.Printf("hedge: can't sell %s, dangerous ask %s", st.symbol, st.quote.AskPrice)
 			return
 		}
 		price = st.quote.AskPrice // make by night
 	default:
-		log.Printf("hedge: can't sell %s, market is closed (session=%d)", st.symbol, session)
 		return
 	}
 	qty := longExposure.Div(price).Truncate()
@@ -90,13 +85,12 @@ func reduceLongExposure(st *State, longExposure decimal.Decimal) {
 		qty = st.position
 	}
 	if !qty.IsPositive() {
-		log.Printf("hedge: sell qty is zero for %s (exposure=%s price=%s)", st.symbol, longExposure, price)
 		return
 	}
 	dest := alpaca.OrderDestinationNone
-	log.Printf("hedging long exposure of %s by selling %s shares of %s at %s",
+	explain := fmt.Sprintf("hedging long exposure of %s by selling %s shares of %s at %s",
 		longExposure, qty, st.symbol, price)
-	LimitOrder(st, ds.SideSell, qty, price, dest, session)
+	LimitOrder(st, ds.SideSell, qty, price, dest, session, explain)
 }
 
 func reduceShortExposure(st *State, shortExposure decimal.Decimal) {
@@ -108,16 +102,13 @@ func reduceShortExposure(st *State, shortExposure decimal.Decimal) {
 		price = st.quote.AskPrice.Add(decimal.One) // take by day
 	case cboe.SessionOvernight, cboe.SessionExtended:
 		if st.quote.Indicative() {
-			log.Printf("hedge: can't buy %s, quote is indicative", st.symbol)
 			return
 		}
 		if st.quote.DangerousBid() {
-			log.Printf("hedge: can't buy %s, dangerous bid %s", st.symbol, st.quote.BidPrice)
 			return
 		}
 		price = st.quote.BidPrice // make by night
 	default:
-		log.Printf("hedge: can't buy %s, market is closed (session=%d)", st.symbol, session)
 		return
 	}
 	qty := shortExposure.Div(price).Truncate()
@@ -126,13 +117,12 @@ func reduceShortExposure(st *State, shortExposure decimal.Decimal) {
 		qty = st.position.Neg()
 	}
 	if !qty.IsPositive() {
-		log.Printf("hedge: buy qty is zero for %s (exposure=%s price=%s)", st.symbol, shortExposure, price)
 		return
 	}
 	dest := alpaca.OrderDestinationNone
-	log.Printf("hedging short exposure of %s by buying %s shares of %s at %s",
+	explain := fmt.Sprintf("hedging short exposure of %s by buying %s shares of %s at %s",
 		shortExposure, qty, st.symbol, price)
-	LimitOrder(st, ds.SideBuy, qty, price, dest, session)
+	LimitOrder(st, ds.SideBuy, qty, price, dest, session, explain)
 }
 
 // getMarketExposure computes how much it'd cost to liquidate portfolio at market price.

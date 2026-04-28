@@ -5,20 +5,20 @@ import "fmt"
 type Exchange int
 
 const (
-	ExchangeUnknown Exchange = iota //
-	ExchangeNASDAQ                  // National Association of Securities Dealers Automated Quotations (everything good)
-	ExchangeNYSE                    // New York Stock Exchange (some old school stuff is listed here)
-	ExchangeAMEX                    // New York Curb Exchange (older school stuff is listed here)
-	ExchangeARCA                    // Archipelago Exchange (where most popular ETFs are listed)
-	ExchangeBATS                    // Better Alternative Trading System (some stuff here)
-	ExchangeCrypto                  // cryptography proofs
-	ExchangeOTC                     // many penny stocks
+	ExchangeNone   Exchange = iota //
+	ExchangeNASDAQ                 // National Association of Securities Dealers Automated Quotations (everything good)
+	ExchangeNYSE                   // New York Stock Exchange (some old school stuff is listed here)
+	ExchangeAMEX                   // New York Curb Exchange (older school stuff is listed here)
+	ExchangeARCA                   // Archipelago Exchange (where most popular ETFs are listed)
+	ExchangeBATS                   // Better Alternative Trading System (some stuff here)
+	ExchangeCrypto                 // cryptography proofs
+	ExchangeOTC                    // many penny stocks
 )
 
 func ParseExchange(s string) (Exchange, error) {
 	switch s {
-	case "", "UNKNOWN":
-		return ExchangeUnknown, nil
+	case "", "None":
+		return ExchangeNone, nil
 	case "NYSE":
 		return ExchangeNYSE, nil
 	case "NASDAQ":
@@ -40,8 +40,8 @@ func ParseExchange(s string) (Exchange, error) {
 
 func (ex Exchange) String() string {
 	switch ex {
-	case ExchangeUnknown:
-		return ""
+	case ExchangeNone:
+		return "None"
 	case ExchangeNYSE:
 		return "NYSE"
 	case ExchangeNASDAQ:
@@ -63,8 +63,8 @@ func (ex Exchange) String() string {
 
 func (ex Exchange) GoString() string {
 	switch ex {
-	case ExchangeUnknown:
-		return "ExchangeUnknown"
+	case ExchangeNone:
+		return "ExchangeNone"
 	case ExchangeNYSE:
 		return "ExchangeNYSE"
 	case ExchangeNASDAQ:

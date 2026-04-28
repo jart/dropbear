@@ -66,13 +66,28 @@ func (b *Backtest) CreateOrder(body *alpaca.CreateOrderRequest) (*alpaca.Order, 
 	if err != nil {
 		return nil, err
 	}
+	exchange := sip.ExchangeNone
+	lotSize := cboe.LotSize(body.LimitPrice)
+	isOddLotOrder := body.Qty.Cmp(body.Qty.QuantizeTruncate(lotSize)) != 0
+	if !isOddLotOrder && body.AdvancedInstructions != nil {
+		switch body.AdvancedInstructions.Destination {
+		case alpaca.OrderDestinationARCA:
+			exchange = sip.ExchangeARCA
+		case alpaca.OrderDestinationNASDAQ:
+			exchange = sip.ExchangeNASDAQ
+		case alpaca.OrderDestinationNYSE:
+			exchange = sip.ExchangeNYSE
+		}
+	}
 	b.submit <- &backtestOrder{
 		clientOrderID: body.ClientOrderID,
 		symbol:        sym,
+		exchange:      exchange,
 		side:          body.Side,
 		qty:           body.Qty,
 		price:         body.LimitPrice,
 		moc:           body.TimeInForce == alpaca.TimeInForceCLS,
+		odd:           isOddLotOrder,
 	}
 	return nil, nil
 }
@@ -101,11 +116,14 @@ func (b *Backtest) GetPositions() ([]alpaca.Position, error) {
 
 type backtestOrder struct {
 	clientOrderID string
+	exchange      sip.Exchange
 	symbol        symbol.Symbol
 	side          ds.Side
 	qty           decimal.Decimal
 	filled        decimal.Decimal
 	price         decimal.Decimal
+	queueAhead    decimal.Decimal // shares ahead of us in FIFO queue
+	odd           bool
 	moc           bool
 }
 
@@ -162,6 +180,21 @@ func (b *Backtest) drainSubmits() {
 			} else if b.isMarketable(order) {
 				b.fillMarketable(order)
 			} else {
+				// snapshot queue depth ahead of us for FIFO exchanges
+				if order.exchange == sip.ExchangeNASDAQ {
+					if q := b.lastQuote[order.symbol]; q != nil {
+						switch order.side {
+						case ds.SideBuy:
+							if order.price.Cmp(q.BidPrice) == 0 {
+								order.queueAhead = decimal.FromInt(int(q.BidSize))
+							}
+						default:
+							if order.price.Cmp(q.AskPrice) == 0 {
+								order.queueAhead = decimal.FromInt(int(q.AskSize))
+							}
+						}
+					}
+				}
 				b.pending = append(b.pending, order)
 			}
 			b.OrderUpdates <- &alpaca.OrderUpdate{
@@ -314,6 +347,13 @@ func (b *Backtest) checkFills(trade *sip.Trade) {
 			continue
 		}
 
+		// check if trade happened on exchange
+		if order.exchange != sip.ExchangeNone && order.exchange != trade.Exchange {
+			b.pending[n] = order
+			n++
+			continue
+		}
+
 		// check if trade crosses our limit price
 		var crossed bool
 		switch order.side {
@@ -328,11 +368,85 @@ func (b *Backtest) checkFills(trade *sip.Trade) {
 			continue
 		}
 
-		// fill for min(trade size, remaining order qty)
+		// get quote
+		q := b.lastQuote[order.symbol]
+		if q == nil {
+			b.pending[n] = order
+			n++
+			continue
+		}
+
+		// figure out fill quantity
+		tradeQty := decimal.FromInt64(trade.Size)
+		if b.isMarketable(order) {
+			tradeQty = order.qty.Sub(order.filled)
+		} else {
+			switch order.exchange {
+			case sip.ExchangeNone:
+				// pfof processors only fill your order when it's bad
+				// for you if they think you're an informed market
+				// participant. in practice this means they won't fill
+				// your order unless it's marketable.
+				b.pending[n] = order
+				n++
+				continue
+			case sip.ExchangeARCA, sip.ExchangeNYSE:
+				// estimate queue position pro-rata style based on
+				// bid/ask size when order isn't inside the spread and
+				// is competing for volume with other market makers.
+				// since this order was directly routed to the exchange,
+				// pro-rata is how arca and nyse work.
+				atLevel := false
+				var levelSize decimal.Decimal
+				if order.side == ds.SideBuy {
+					atLevel = order.price.Cmp(q.BidPrice) <= 0
+					levelSize = decimal.FromInt(int(q.BidSize))
+				} else {
+					atLevel = order.price.Cmp(q.AskPrice) >= 0
+					levelSize = decimal.FromInt(int(q.AskSize))
+				}
+				if atLevel && levelSize.IsPositive() {
+					// our share of the queue: tradeQty * orderQty / levelSize
+					remaining := order.qty.Sub(order.filled)
+					tradeQty = tradeQty.Mul(remaining).Div(levelSize).Min(tradeQty)
+					tradeQty = tradeQty.Truncate() // QuantizeTruncate(cboe.LotSize(order.price))
+				}
+			case sip.ExchangeNASDAQ:
+				// nasdaq has fifo order matching so we save the
+				// bid/ask size of the price level when our order
+				// is created. now we subtract from that with each
+				// trade that rolls through. once it all gets
+				// depleted, we can fill the order.
+				if order.queueAhead.IsPositive() {
+					order.queueAhead = order.queueAhead.Sub(tradeQty)
+					if order.queueAhead.IsPositive() {
+						b.pending[n] = order
+						n++
+						continue
+					}
+					// queue drained; fill with whatever spilled over
+					tradeQty = order.queueAhead.Neg()
+					order.queueAhead = decimal.Zero
+				}
+			default:
+				panic("unknown exchange")
+			}
+		}
+
+		// fill for min(pro-rata trade size, remaining order qty)
 		remaining := order.qty.Sub(order.filled)
-		fillQty := remaining.Min(decimal.FromInt64(trade.Size))
+		fillQty := remaining.Min(tradeQty)
 		order.filled = order.filled.Add(fillQty)
 		fillPrice := trade.Price
+
+		if fillQty.IsZero() {
+			b.pending[n] = order
+			n++
+			continue
+		}
+		if fillQty.Truncate().Cmp(fillQty) != 0 {
+			panic("non-integer fill quantity")
+		}
 
 		// update simulated position
 		pos := b.positions[order.symbol]

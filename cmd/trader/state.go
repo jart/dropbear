@@ -18,6 +18,15 @@ type State struct {
 	greed    decimal.Decimal
 	position decimal.Decimal // negative if short
 
+	// price moving average
+	pricema   *indicators.WWMA
+	nextprice clocky.Time
+
+	// volatility tracking
+	minTradePrice  *indicators.Min
+	maxTradePrice  *indicators.Max
+	lastTradePrice decimal.Decimal
+
 	// volume tracking
 	volma      *indicators.WWMA // smoothed minute bar volume
 	volsum     decimal.Decimal  // smoothed minute bar volume
