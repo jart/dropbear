@@ -6,9 +6,9 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/golden"
+	"dropbear/loggy"
 	"dropbear/netty"
 	"dropbear/symbol"
-	"io"
 	"log"
 	"os"
 	"testing"
@@ -105,6 +105,19 @@ var symbols20260428 = []SymbolEntry{
 
 func init() {
 	netty.SetOffline()
+	loggy.Init()
+}
+
+// testLogWriter captures log output and also writes to stderr.
+type testLogWriter struct {
+	buf bytes.Buffer
+}
+
+func (w *testLogWriter) Write(p []byte) (n int, err error) {
+	line := clocky.Now().String() + " " + string(p)
+	os.Stderr.WriteString(line)
+	w.buf.WriteString(line)
+	return len(p), nil
 }
 
 func runBacktest(t *testing.T, dataFile string, symbols []SymbolEntry) Result {
@@ -114,11 +127,12 @@ func runBacktest(t *testing.T, dataFile string, symbols []SymbolEntry) Result {
 	clocky.NewTicker = clocky.FakeNewTicker
 	*flagData = dataFile
 	*flagLive = false
-	var logBuf bytes.Buffer
-	log.SetOutput(io.MultiWriter(&logBuf, os.Stderr))
+	w := &testLogWriter{}
+	log.SetFlags(0)
+	log.SetOutput(w)
 	defer log.SetOutput(os.Stderr)
 	result := Run(symbols)
-	result.Log = logBuf.String()
+	result.Log = w.buf.String()
 	return result
 }
 
@@ -133,18 +147,18 @@ func TestBacktest20260428(t *testing.T) {
 	// Tolerances are wide because fill modeling is approximate.
 	// Tighten these as the backtest engine improves.
 	golden.Check(t, r.Log, `
-        ...VZ: pos=0[64]...realized=23[11]...unrealized=0[6]...fees=-2.38[3]...bought=1000[636]...sold=1000[700]
-        ...NKE: pos=-500[300]...realized=-1.2[3]...unrealized=-8.3[4]...fees=-0.81[1]...bought=200[100]...sold=700[400]
-        ...XLE: pos=400[99]...realized=2[4]...unrealized=2[3]...fees=-1.36[1]...bought=700[300]...sold=300[201]
-        ...AAL: pos=-100[0]...realized=0[0]...unrealized=1.5[0]...fees=-0.13[0]...bought=0[0]...sold=100[0]
-        ...INTC: pos=0[100]...realized=83.09[72]...unrealized=0[1]...fees=-15.68[4]...bought=10400[500]...sold=10400[600]
-        ...HOOD: pos=-300[300]...realized=-13.21[62]...unrealized=-9.5[13]...fees=-5.23[2]...bought=4100[500]...sold=4400[800]
-        ...DKNG: pos=-300[200]...realized=2[4]...unrealized=-7.5[11]...fees=-1.19[1]...bought=300[100]...sold=600[100]
-        ...SOFI: pos=700[0]...realized=-31.59[10]...unrealized=-110.91[28]...fees=-2.13[0]...bought=1000[0]...sold=300[0]
-        ...PYPL: pos=0[0]...realized=6.73[20]...unrealized=0[0]...fees=-2.1[1]...bought=900[100]...sold=900[100]
-        ...RIVN: pos=-600[400]...realized=-3.25[6]...unrealized=-6.75[12]...fees=-0.97[1]...bought=200[100]...sold=800[300]
-        ...CMCSA: pos=0[100]...realized=24.5[13]...unrealized=0[5]...fees=-1.84[2]...bought=800[200]...sold=800[300]
-        ...TOTAL realized P&L: 92.061234[143]  fees: -33.817354[7]  net: 125.878588[136]
-        ...total fills: 477[364]  symbols tracked: 12
+...VZ: pos=0[0]...realized=23[8]...unrealized=0[0]...fees=-2.38[3]...bought=1000[600]...sold=1000[600]
+...NKE: pos=-500[400]...realized=-1.2[3]...unrealized=-8.3[7]...fees=-0.81[1]...bought=200[0]...sold=700[400]
+...XLE: pos=400[1]...realized=2[8]...unrealized=2[798]...fees=-1.36[2]...bought=700[200]...sold=300[215]
+...AAL: pos=-100[0]...realized=0[0]...unrealized=1.5[0]...fees=-0.13[0]...bought=0[0]...sold=100[0]
+...INTC: pos=0[100]...realized=83.09[18]...unrealized=0[1]...fees=-15.68[22]...bought=10400[1100]...sold=10400[1200]
+...HOOD: pos=-300[0]...realized=-13.21[29]...unrealized=-9.5[7]...fees=-5.23[9]...bought=4100[0]...sold=4400[0]
+...DKNG: pos=-300[100]...realized=2[3]...unrealized=-7.5[7]...fees=-1.19[2]...bought=300[0]...sold=600[100]
+...SOFI: pos=700[0]...realized=-31.59[10]...unrealized=-110.91[28]...fees=-2.13[3]...bought=1000[0]...sold=300[0]
+...PYPL: pos=0[100]...realized=6.73[29]...unrealized=0[5]...fees=-2.1[3]...bought=900[300]...sold=900[200]
+...RIVN: pos=-600[400]...realized=-3.25[4]...unrealized=-6.75[8]...fees=-0.97[1]...bought=200[0]...sold=800[400]
+...CMCSA: pos=0[50]...realized=24.5[12]...unrealized=0[3]...fees=-1.84[2]...bought=800[250]...sold=800[300]
+...TOTAL realized P&L: 92.061234[62]  fees: -33.817354[44]  net: 125.878588[19]
+...total fills: 477[359]  symbols tracked: 12
 `)
 }

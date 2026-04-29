@@ -28,7 +28,6 @@ var (
 	flagExtended  = flag.Bool("extended", false, "enables extended hours trading")
 	flagOvernight = flag.Bool("overnight", false, "enables overnight hours trading")
 	flagData      = flag.String("data", "", "path of sip data file for backtest")
-	flagLatency   = clocky.DurationFlag("latency", "7ms", "simulated order latency for backtest")
 )
 
 const (

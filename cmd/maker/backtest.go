@@ -14,7 +14,9 @@ import (
 )
 
 var (
-	flagCapital = decimal.Flag("capital", "124_000", "amount of buying power for backtest simulation")
+	flagCapital     = decimal.Flag("capital", "124_000", "amount of buying power for backtest simulation")
+	flagLatency     = clocky.DurationFlag("latency", "7ms", "simulated order submission latency")
+	flagFillLatency = clocky.DurationFlag("fill-latency", "500us", "simulated fill notification latency")
 )
 
 type Broker interface {
@@ -43,6 +45,7 @@ type Backtest struct {
 	lastTrade    map[symbol.Symbol]decimal.Decimal // only accessed by run goroutine
 	lastQuote    map[symbol.Symbol]*sip.Quote      // only accessed by run goroutine
 	staged       []stagedAction                    // only accessed by run goroutine
+	stagedFills  []stagedFill                      // only accessed by run goroutine
 	nextBeat     clocky.Time                       // only accessed by run goroutine
 	closeTime    clocky.Time                       // only accessed by run goroutine
 }
@@ -176,6 +179,13 @@ type stagedAction struct {
 	isCancel bool
 }
 
+// stagedFill is a fill event buffered until latency elapses,
+// so the robot sees post-fill quotes instead of stale pre-fill ones.
+type stagedFill struct {
+	readyAt clocky.Time
+	update  *alpaca.OrderUpdate
+}
+
 func (b *Backtest) run() {
 	defer close(b.StockUpdates)
 	ts := clocky.Now()
@@ -207,6 +217,7 @@ func (b *Backtest) run() {
 		}
 		b.stageSubmits()
 		b.processReady()
+		b.deliverFills()
 		switch msg.Type {
 		case sip.MessageTypeTrade:
 			t := msg.Trade()
@@ -236,6 +247,29 @@ func (b *Backtest) stageSubmits() {
 			return
 		}
 	}
+}
+
+// stageFill buffers a fill event for delivery after latency elapses.
+func (b *Backtest) stageFill(update *alpaca.OrderUpdate) {
+	b.stagedFills = append(b.stagedFills, stagedFill{
+		readyAt: clocky.Now().Add(*flagFillLatency),
+		update:  update,
+	})
+}
+
+// deliverFills sends any staged fills whose latency has elapsed.
+func (b *Backtest) deliverFills() {
+	now := clocky.Now()
+	n := 0
+	for _, sf := range b.stagedFills {
+		if now.Before(sf.readyAt) {
+			b.stagedFills[n] = sf
+			n++
+			continue
+		}
+		b.OrderUpdates <- sf.update
+	}
+	b.stagedFills = b.stagedFills[:n]
 }
 
 func (b *Backtest) processReady() {
@@ -449,7 +483,7 @@ func (b *Backtest) fillMarketable(order *backtestOrder) {
 		pos = pos.Sub(order.qty)
 	}
 	b.positions[order.symbol] = pos
-	b.OrderUpdates <- &alpaca.OrderUpdate{
+	b.stageFill(&alpaca.OrderUpdate{
 		Event:       alpaca.OrderEventFill,
 		PositionQty: pos,
 		Price:       fillPrice,
@@ -468,7 +502,7 @@ func (b *Backtest) fillMarketable(order *backtestOrder) {
 			Status:         alpaca.OrderStatusFilled,
 			Type:           alpaca.OrderTypeLimit,
 		},
-	}
+	})
 }
 
 func (b *Backtest) fillMOC() {
@@ -486,7 +520,7 @@ func (b *Backtest) fillMOC() {
 		}
 		b.positions[order.symbol] = pos
 
-		b.OrderUpdates <- &alpaca.OrderUpdate{
+		b.stageFill(&alpaca.OrderUpdate{
 			Event:       alpaca.OrderEventFill,
 			PositionQty: pos,
 			Price:       fillPrice,
@@ -504,7 +538,7 @@ func (b *Backtest) fillMOC() {
 				Status:         alpaca.OrderStatusFilled,
 				Type:           alpaca.OrderTypeMarket,
 			},
-		}
+		})
 	}
 	b.moc = b.moc[:0]
 }
@@ -644,7 +678,7 @@ func (b *Backtest) checkFills(trade *sip.Trade) {
 			status = alpaca.OrderStatusFilled
 		}
 
-		b.OrderUpdates <- &alpaca.OrderUpdate{
+		b.stageFill(&alpaca.OrderUpdate{
 			Event:       event,
 			PositionQty: pos,
 			Price:       fillPrice,
@@ -663,7 +697,7 @@ func (b *Backtest) checkFills(trade *sip.Trade) {
 				Status:         status,
 				Type:           alpaca.OrderTypeLimit,
 			},
-		}
+		})
 
 		// keep order if only partially filled
 		if status != alpaca.OrderStatusFilled {
