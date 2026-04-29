@@ -30,6 +30,7 @@ var (
 	flagData      = flag.String("data", "", "path of sip data file for backtest")
 	flagSurvivor  = flag.Bool("survivor", false, "widen spread exponentially on consecutive fills")
 	flagBoring    = flag.Bool("boring", false, "use boring stock portfolio instead of default")
+	flagIntel     = flag.Bool("intel", false, "use only Intel stock instead of default")
 )
 
 const (
@@ -80,6 +81,8 @@ func main() {
 	syms := defaultSymbols
 	if *flagBoring {
 		syms = boringSymbols
+	} else if *flagIntel {
+		syms = justIntel
 	}
 	result := Run(syms)
 	fmt.Printf("total P&L: %s  fees: %s  net: %s  fills: %d  shares: %s\n",
