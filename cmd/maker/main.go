@@ -39,7 +39,7 @@ var (
 const (
 	kHeartbeatInterval = 1 * clocky.Second
 	kBalanceInterval   = 5 * clocky.Second
-	kDecayInterval     = 7 * clocky.Second
+	kDecayInterval     = 15 * clocky.Second
 )
 
 var (
@@ -131,7 +131,7 @@ func Run(symbols []SymbolEntry) Result {
 			symbol: e.Symbol,
 			config: e.Config,
 			asset:  asset,
-			ema:    indicators.NewWWMA(80),
+			ema:    indicators.NewWWMA(30),
 		}
 		gSymbols[e.Symbol] = st
 	}
@@ -302,17 +302,34 @@ func onHeartbeat() {
 
 func decayGreed() {
 	for _, st := range gSymbols {
-		if !st.buyGreed.IsZero() {
-			st.buyGreed = st.buyGreed.Half()
-			if st.buyGreed.Cmp(kGreedFloor) < 0 {
-				st.buyGreed = decimal.Zero
+		// decay momentum toward zero
+		if st.momentum.IsPositive() {
+			st.momentum = st.momentum.Sub(decimal.One)
+			if st.momentum.IsNegative() {
+				st.momentum = decimal.Zero
+			}
+		} else if st.momentum.IsNegative() {
+			st.momentum = st.momentum.Add(decimal.One)
+			if st.momentum.IsPositive() {
+				st.momentum = decimal.Zero
 			}
 		}
-		if !st.sellGreed.IsZero() {
-			st.sellGreed = st.sellGreed.Half()
-			if st.sellGreed.Cmp(kGreedFloor) < 0 {
-				st.sellGreed = decimal.Zero
-			}
+		// recompute greed from momentum
+		base := st.config.greed
+		abs := st.momentum.Abs().Truncate()
+		scaled := base
+		for i := decimal.Zero; i.Cmp(abs) < 0; i = i.Add(decimal.One) {
+			scaled = scaled.MulInt(2)
+		}
+		if st.momentum.IsPositive() {
+			st.buyGreed = scaled
+			st.sellGreed = base
+		} else if st.momentum.IsNegative() {
+			st.sellGreed = scaled
+			st.buyGreed = base
+		} else {
+			st.buyGreed = decimal.Zero
+			st.sellGreed = decimal.Zero
 		}
 	}
 }
@@ -550,21 +567,41 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills, gTotalShares,
 			st.buyGreed, st.sellGreed)
 
-		// escalate greed: when fills keep hitting one side, widen that
-		// side's spread so the robot demands a better price each time
+		// escalate greed based on flow imbalance.
+		// momentum tracks net fill direction: +1 per buy, -1 per sell.
+		// when flow is balanced (buying and selling equally), momentum
+		// stays near zero and greed stays at base. when we're getting
+		// mobbed in one direction, |momentum| grows and greed doubles
+		// for each step of imbalance.
 		if *flagSurvivor {
-			if update.Order.Side == ds.SideBuy {
-				if st.buyGreed.Cmp(st.config.greed) < 0 {
-					st.buyGreed = st.config.greed
+			base := st.config.greed
+			// only count momentum once per order, not per partial fill
+			if update.Order.Status.IsFinal() {
+				if update.Order.Side == ds.SideBuy {
+					st.momentum = st.momentum.Add(decimal.One)
 				} else {
-					st.buyGreed = st.buyGreed.MulInt(2)
+					st.momentum = st.momentum.Sub(decimal.One)
 				}
+			}
+			// greed = base * 2^|momentum| on the imbalanced side
+			// the other side stays at base
+			abs := st.momentum.Abs().Truncate()
+			scaled := base
+			for i := decimal.Zero; i.Cmp(abs) < 0; i = i.Add(decimal.One) {
+				scaled = scaled.MulInt(2)
+			}
+			if st.momentum.IsPositive() {
+				// more buys than sells — widen buy side
+				st.buyGreed = scaled
+				st.sellGreed = base
+			} else if st.momentum.IsNegative() {
+				// more sells than buys — widen sell side
+				st.sellGreed = scaled
+				st.buyGreed = base
 			} else {
-				if st.sellGreed.Cmp(st.config.greed) < 0 {
-					st.sellGreed = st.config.greed
-				} else {
-					st.sellGreed = st.sellGreed.MulInt(2)
-				}
+				// balanced — both at base
+				st.buyGreed = base
+				st.sellGreed = base
 			}
 		}
 	}
@@ -659,6 +696,31 @@ func Evaluate(st *State) {
 	canSell = st.position.Sub(cfg.qty).Cmp(minimumPosition) >= 0 && !alreadySelling
 	buyPrice := QuantizeBuyPrice(mid.Sub(cfg.spread).Sub(st.buyGreed))
 	sellPrice := QuantizeSellPrice(mid.Add(cfg.spread).Add(st.sellGreed))
+
+	// clamp to avoid crossing the NBBO spread
+	if buyPrice.Cmp(st.quote.BidPrice) > 0 {
+		buyPrice = st.quote.BidPrice
+	}
+	if st.quote.AskPrice.IsPositive() && sellPrice.Cmp(st.quote.AskPrice) < 0 {
+		sellPrice = st.quote.AskPrice
+	}
+
+	// clamp to avoid self-trading: buy must stay below both our
+	// resting sell and any pending sell replace (and vice versa)
+	sellFloor := st.sellPrice
+	if st.sellPrice2.IsPositive() && (sellFloor.IsZero() || st.sellPrice2.Cmp(sellFloor) < 0) {
+		sellFloor = st.sellPrice2
+	}
+	buyCeil := st.buyPrice
+	if st.buyPrice2.IsPositive() && st.buyPrice2.Cmp(buyCeil) > 0 {
+		buyCeil = st.buyPrice2
+	}
+	if sellFloor.IsPositive() && buyPrice.Cmp(sellFloor) >= 0 {
+		buyPrice = QuantizeBuyPrice(sellFloor.Sub(Tick(sellFloor)))
+	}
+	if buyCeil.IsPositive() && sellPrice.Cmp(buyCeil) <= 0 {
+		sellPrice = QuantizeSellPrice(buyCeil.Add(Tick(buyCeil)))
+	}
 
 	if canBuy {
 		st.buyPrice = buyPrice

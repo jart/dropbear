@@ -47,8 +47,9 @@ type State struct {
 	buyPrice2     decimal.Decimal
 	sellPrice2    decimal.Decimal
 	ema           *indicators.WWMA // exponential moving average of midpoint
-	buyGreed      decimal.Decimal  // widens bid after consecutive buy fills
-	sellGreed     decimal.Decimal  // widens ask after consecutive sell fills
+	buyGreed      decimal.Decimal  // widens bid based on flow imbalance
+	sellGreed     decimal.Decimal  // widens ask based on flow imbalance
+	momentum      decimal.Decimal  // net fill direction: +1 per buy, -1 per sell
 
 	// our pending orders
 	buyOrderID         string
