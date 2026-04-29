@@ -8,6 +8,7 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
+	"dropbear/indicators"
 	"dropbear/loggy"
 	"dropbear/netty"
 	"dropbear/symbol"
@@ -19,6 +20,8 @@ import (
 	"slices"
 	"syscall"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -29,13 +32,14 @@ var (
 	flagOvernight = flag.Bool("overnight", false, "enables overnight hours trading")
 	flagData      = flag.String("data", "", "path of sip data file for backtest")
 	flagSurvivor  = flag.Bool("survivor", false, "widen spread exponentially on consecutive fills")
-	flagBoring    = flag.Bool("boring", false, "use boring stock portfolio instead of default")
-	flagIntel     = flag.Bool("intel", false, "use only Intel stock instead of default")
+	flagBoring    = flag.Bool("boring", false, "use boring stocks")
+	flagPicks3    = flag.Bool("picks3", false, "use picks3 stocks")
 )
 
 const (
-	kHeartbeatInterval = 2 * clocky.Second
+	kHeartbeatInterval = 1 * clocky.Second
 	kBalanceInterval   = 5 * clocky.Second
+	kDecayInterval     = 7 * clocky.Second
 )
 
 var (
@@ -46,6 +50,7 @@ var (
 	gFailedReplaces chan string
 	gNextBalance    clocky.Time
 	gNextVolume     clocky.Time
+	gNextDecay      clocky.Time
 	gTotalPnL       decimal.Decimal
 	gTotalFees      decimal.Decimal
 	gTotalShares    decimal.Decimal
@@ -59,7 +64,9 @@ var (
 	gOrderSeq       int64
 )
 
-var kGreedFloor = decimal.Parse("0.005")
+var (
+	kGreedFloor = decimal.Parse("0.005")
+)
 
 func main() {
 	loggy.Init()
@@ -81,8 +88,8 @@ func main() {
 	syms := defaultSymbols
 	if *flagBoring {
 		syms = boringSymbols
-	} else if *flagIntel {
-		syms = justIntel
+	} else if *flagPicks3 {
+		syms = kPicks3
 	}
 	result := Run(syms)
 	fmt.Printf("total P&L: %s  fees: %s  net: %s  fills: %d  shares: %s\n",
@@ -104,6 +111,8 @@ func Run(symbols []SymbolEntry) Result {
 	gOrderFails = 0
 	gOrderSeq = 0
 	gNextBalance = 0
+	gNextVolume = 0
+	gNextDecay = 0
 	gBacktest = nil
 	gTapeMsg = nil
 	gTapeDone = nil
@@ -122,6 +131,7 @@ func Run(symbols []SymbolEntry) Result {
 			symbol: e.Symbol,
 			config: e.Config,
 			asset:  asset,
+			ema:    indicators.NewWWMA(80),
 		}
 		gSymbols[e.Symbol] = st
 	}
@@ -279,27 +289,31 @@ func Run(symbols []SymbolEntry) Result {
 
 func onHeartbeat() {
 	now := clocky.Now()
-	// decay greed by half every heartbeat
-	if *flagSurvivor {
-		for _, st := range gSymbols {
-			if !st.buyGreed.IsZero() {
-				st.buyGreed = st.buyGreed.Half()
-				if st.buyGreed.Cmp(kGreedFloor) < 0 {
-					st.buyGreed = decimal.Zero
-				}
-			}
-			if !st.sellGreed.IsZero() {
-				st.sellGreed = st.sellGreed.Half()
-				if st.sellGreed.Cmp(kGreedFloor) < 0 {
-					st.sellGreed = decimal.Zero
-				}
-			}
-		}
-	}
 	if now.After(gNextBalance) {
 		logBalance()
 		logSpread()
 		gNextBalance = now.Add(kBalanceInterval)
+	}
+	if *flagSurvivor && now.After(gNextDecay) {
+		decayGreed()
+		gNextDecay = now.Add(kDecayInterval)
+	}
+}
+
+func decayGreed() {
+	for _, st := range gSymbols {
+		if !st.buyGreed.IsZero() {
+			st.buyGreed = st.buyGreed.Half()
+			if st.buyGreed.Cmp(kGreedFloor) < 0 {
+				st.buyGreed = decimal.Zero
+			}
+		}
+		if !st.sellGreed.IsZero() {
+			st.sellGreed = st.sellGreed.Half()
+			if st.sellGreed.Cmp(kGreedFloor) < 0 {
+				st.sellGreed = decimal.Zero
+			}
+		}
 	}
 }
 
@@ -318,12 +332,13 @@ func logSpread() {
 			unrealized = mid.Mul(st.position).Sub(st.costBasis)
 		}
 		net := st.realizedPnL.Sub(st.totalFees)
-		log.Printf("SPREAD %s %s  [%s]  %sx%d | %sx%d  [%s]  pos=%s  realized=%s fees=%s net=%s unrealized=%s",
+		log.Printf("SPREAD %s %s  [%s]  %sx%d | %sx%d  [%s]  ema=%s  pos=%s  realized=%s fees=%s net=%s unrealized=%s",
 			st.symbol, st.config.venue,
 			st.buyPrice,
 			q.BidPrice, q.BidSize,
 			q.AskPrice, q.AskSize,
 			st.sellPrice,
+			st.ema.Value,
 			st.position,
 			st.realizedPnL, st.totalFees, net, unrealized)
 	}
@@ -402,6 +417,9 @@ func onQuote(q *sip.Quote) {
 		return
 	}
 	st.quote = q
+	if q.BidPrice.IsPositive() && q.AskPrice.IsPositive() {
+		st.ema.Add(q.BidPrice.Add(q.AskPrice).Half())
+	}
 	Evaluate(st)
 }
 
@@ -536,14 +554,14 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		// side's spread so the robot demands a better price each time
 		if *flagSurvivor {
 			if update.Order.Side == ds.SideBuy {
-				if st.buyGreed.IsZero() {
-					st.buyGreed = decimal.Parse("0.02")
+				if st.buyGreed.Cmp(st.config.greed) < 0 {
+					st.buyGreed = st.config.greed
 				} else {
 					st.buyGreed = st.buyGreed.MulInt(2)
 				}
 			} else {
-				if st.sellGreed.IsZero() {
-					st.sellGreed = decimal.Parse("0.02")
+				if st.sellGreed.Cmp(st.config.greed) < 0 {
+					st.sellGreed = st.config.greed
 				} else {
 					st.sellGreed = st.sellGreed.MulInt(2)
 				}
@@ -620,10 +638,14 @@ func Evaluate(st *State) {
 		}
 	}
 
+	if !st.ema.IsReady() {
+		return // wait for EMA to warm up
+	}
+
 	cfg := &st.config
 	alreadyBuying := st.buyClientOrderID != ""
 	alreadySelling := st.sellClientOrderID != ""
-	mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
+	mid := st.ema.Value
 	var canBuy, canSell bool
 	var maximumPosition, minimumPosition decimal.Decimal
 	if cfg.target.IsPositive() {
@@ -724,6 +746,13 @@ func ReplaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.De
 		orderID = st.sellOrderID
 	}
 	if orderID == "" {
+		// order ID not yet known (haven't received 'new' event);
+		// clean up so we can try again on the next tick
+		if side == ds.SideBuy {
+			st.buyClientOrderID2 = ""
+		} else {
+			st.sellClientOrderID2 = ""
+		}
 		return
 	}
 	gOrders[clientOrderID] = st
@@ -758,6 +787,9 @@ func spawn(f func()) {
 }
 
 func generateClientOrderID() string {
+	if *flagLive {
+		return uuid.New().String()
+	}
 	gOrderSeq++
 	return fmt.Sprintf("order-%d", gOrderSeq)
 }

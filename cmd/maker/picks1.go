@@ -16,6 +16,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	{symbol.PYPL, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
@@ -23,6 +24,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	{symbol.CMCSA, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
@@ -30,6 +32,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	{symbol.SOFI, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
@@ -37,6 +40,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 
 	// NASDAQ shorts (~$101k notional at max position)
@@ -46,6 +50,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	{symbol.DKNG, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
@@ -53,6 +58,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	{symbol.RIVN, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
@@ -60,6 +66,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	{symbol.AAL, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
@@ -67,6 +74,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 
 	// ARCA (pro-rata)
@@ -76,6 +84,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	{symbol.FXI, Config{
 		venue:  alpaca.OrderDestinationARCA,
@@ -83,6 +92,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 
 	// NYSE (pro-rata)
@@ -92,6 +102,7 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	{symbol.NKE, Config{
 		venue:  alpaca.OrderDestinationNYSE,
@@ -99,5 +110,6 @@ var defaultSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 }

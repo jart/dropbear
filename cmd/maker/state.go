@@ -5,6 +5,7 @@ import (
 	"dropbear/broker/alpaca/sip"
 	"dropbear/clocky"
 	"dropbear/decimal"
+	"dropbear/indicators"
 	"dropbear/symbol"
 )
 
@@ -14,6 +15,7 @@ type Config struct {
 	qty    decimal.Decimal
 	spread decimal.Decimal
 	drift  decimal.Decimal
+	greed  decimal.Decimal
 }
 
 type SymbolEntry struct {
@@ -44,8 +46,9 @@ type State struct {
 	sellPrice     decimal.Decimal
 	buyPrice2     decimal.Decimal
 	sellPrice2    decimal.Decimal
-	buyGreed      decimal.Decimal // widens bid after consecutive buy fills
-	sellGreed     decimal.Decimal // widens ask after consecutive sell fills
+	ema           *indicators.WWMA // exponential moving average of midpoint
+	buyGreed      decimal.Decimal  // widens bid after consecutive buy fills
+	sellGreed     decimal.Decimal  // widens ask after consecutive sell fills
 
 	// our pending orders
 	buyOrderID         string

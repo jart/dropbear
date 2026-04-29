@@ -21,6 +21,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	// PayPal (~$49/share)
 	{symbol.PYPL, Config{
@@ -29,6 +30,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	// Comcast (~$28/share)
 	{symbol.CMCSA, Config{
@@ -37,6 +39,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	// Keurig Dr Pepper (~$29/share)
 	{symbol.KDP, Config{
@@ -45,6 +48,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 
 	//
@@ -58,6 +62,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	// MONDELEZ INTERNATIONAL INC (~$59/share)
 	{symbol.MDLZ, Config{
@@ -66,6 +71,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	// Cognizant Technology Solutions Corp (~$55/share)
 	{symbol.CTSH, Config{
@@ -74,6 +80,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	// Kraft Heinz Co (~$22/share)
 	{symbol.KHC, Config{
@@ -82,6 +89,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 
 	//
@@ -95,6 +103,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	// Coca-Cola Co (~$78/share)
 	{symbol.KO, Config{
@@ -103,6 +112,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 
 	//
@@ -116,6 +126,7 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 	// Bristol-Myers Squibb Co (~$58/share)
 	{symbol.BMY, Config{
@@ -124,5 +135,6 @@ var boringSymbols = []SymbolEntry{
 		qty:    decimal.Parse("100"),
 		spread: decimal.Parse("0.02"),
 		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.02"),
 	}},
 }
