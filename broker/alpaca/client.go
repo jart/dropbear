@@ -32,8 +32,8 @@ type Client struct {
 // NewClient creates a new Alpaca API Client.
 func NewClient() *Client {
 	return &Client{
-		APITokenBucket:  netty.NewTokenBucketPerMinute(1000),
-		DataTokenBucket: netty.NewTokenBucketPerMinute(1000),
+		APITokenBucket:  netty.NewTokenBucketPerMinute(400),
+		DataTokenBucket: netty.NewTokenBucketPerMinute(400),
 	}
 }
 
@@ -123,7 +123,7 @@ func (c *Client) RequestJSON(client *http.Client, method, url string, logging bo
 			flog.Write([]byte(sb.String()))
 		}
 		switch resp.StatusCode {
-		case http.StatusOK, http.StatusCreated:
+		case http.StatusOK, http.StatusCreated, http.StatusMultiStatus:
 			if responseBody == nil {
 				panic("usage error: nil responseBody for 200 OK")
 			}

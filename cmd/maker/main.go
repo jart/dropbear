@@ -33,7 +33,7 @@ var (
 )
 
 const (
-	kHeartbeatInterval = clocky.Second
+	kHeartbeatInterval = 2 * clocky.Second
 	kBalanceInterval   = 5 * clocky.Second
 )
 
@@ -41,7 +41,6 @@ var (
 	gBroker         Broker
 	gOrders         map[string]*State
 	gSymbols        map[symbol.Symbol]*State
-	gIgnoreSymbols  map[symbol.Symbol]bool
 	gFailedOrders   chan string
 	gFailedReplaces chan string
 	gNextBalance    clocky.Time
@@ -92,7 +91,6 @@ func Run(symbols []SymbolEntry) Result {
 	// initialize globals
 	gOrders = map[string]*State{}
 	gSymbols = map[symbol.Symbol]*State{}
-	gIgnoreSymbols = map[symbol.Symbol]bool{}
 	gFailedOrders = make(chan string, 32)
 	gFailedReplaces = make(chan string, 32)
 	gTotalPnL = decimal.Zero
@@ -111,13 +109,23 @@ func Run(symbols []SymbolEntry) Result {
 		gBroker = gAlpacaClient
 	}
 
+	// add stocks
 	for _, e := range symbols {
-		addSymbol(e.Symbol, e.Config)
+		asset := alpaca.GetAsset(e.Symbol)
+		if asset == nil {
+			panic("alpaca asset not found: " + e.Symbol.String())
+		}
+		st := &State{
+			symbol: e.Symbol,
+			config: e.Config,
+			asset:  asset,
+		}
+		gSymbols[e.Symbol] = st
 	}
 
 	// log configuration
 	log.Printf("prepare to make markets")
-	for _, st := range gSymbols {
+	for _, st := range sortedSymbols() {
 		log.Printf("  %s: target=%s qty=%s spread=%s drift=%s venue=%s",
 			st.symbol, st.config.target, st.config.qty, st.config.spread, st.config.drift, st.config.venue)
 	}
@@ -130,7 +138,7 @@ func Run(symbols []SymbolEntry) Result {
 	// cancel lingering orders
 	if *flagLive {
 		log.Printf("canceling lingering orders...")
-		if err := gBroker.CancelAllOrders(); err != nil {
+		if _, err := gBroker.CancelAllOrders(); err != nil {
 			log.Printf("warning: error canceling orders: %v", err)
 		}
 	}
@@ -149,7 +157,10 @@ func Run(symbols []SymbolEntry) Result {
 				continue
 			}
 			symbols = append(symbols, pos.Symbol)
-			st := getOrCreateSymbol(sym)
+			st := gSymbols[sym]
+			if st == nil {
+				continue
+			}
 			st.position = pos.Qty
 			st.costBasis = pos.CostBasis
 			log.Printf("loaded position for %s: %s shares @ avg %s (cost basis %s)",
@@ -216,6 +227,11 @@ func Run(symbols []SymbolEntry) Result {
 			Statuses:   names,
 			Imbalances: names,
 			LULDs:      names,
+			// Quotes:     []string{"*"},
+			// Trades:     []string{"*"},
+			// Statuses:   []string{"*"},
+			// Imbalances: []string{"*"},
+			// LULDs:      []string{"*"},
 		})
 		log.Printf("subscribing to boats stock updates for %d symbols...", len(names))
 		boatsUpdates = alpaca.MustStockUpdates(alpaca.BOATSWSURL, &alpaca.StockUpdatesRequest{
@@ -223,6 +239,9 @@ func Run(symbols []SymbolEntry) Result {
 			Quotes:   names,
 			Trades:   names,
 			Statuses: names,
+			// Quotes:   []string{"*"},
+			// Trades:   []string{"*"},
+			// Statuses: []string{"*"},
 		})
 		// start tape recorder to gcs
 		gTapeMsg = make(chan *sip.Message, 65536)
@@ -257,7 +276,7 @@ func Run(symbols []SymbolEntry) Result {
 
 func onHeartbeat() {
 	now := clocky.Now()
-	// decay greed by half every heartbeat (1 second)
+	// decay greed by half every heartbeat
 	if *flagSurvivor {
 		for _, st := range gSymbols {
 			if !st.buyGreed.IsZero() {
@@ -282,7 +301,7 @@ func onHeartbeat() {
 }
 
 func logSpread() {
-	for _, st := range gSymbols {
+	for _, st := range sortedSymbols() {
 		if st.config.target.IsZero() || st.quote == nil {
 			continue
 		}
@@ -317,35 +336,31 @@ func synchronizeAssetsForever() {
 	}
 }
 
-func addSymbol(sym symbol.Symbol, cfg Config) *State {
-	st := getOrCreateSymbol(sym)
-	if st != nil {
-		st.config = cfg
-	}
-	return st
-}
-
-func getOrCreateSymbol(sym symbol.Symbol) *State {
-	st := gSymbols[sym]
-	if st == nil {
-		asset := GetAsset(sym)
-		if asset != nil {
-			st = &State{
-				symbol: sym,
-				asset:  asset,
-			}
-			gSymbols[sym] = st
-		}
-	}
-	return st
-}
-
 func symbolNames() []string {
 	names := make([]string, 0, len(gSymbols))
 	for sym := range gSymbols {
 		names = append(names, sym.String())
 	}
 	return names
+}
+
+func sortedSymbols() []*State {
+	states := make([]*State, 0, len(gSymbols))
+	for _, st := range gSymbols {
+		states = append(states, st)
+	}
+	slices.SortFunc(states, compareStateBySymbol)
+	return states
+}
+
+func compareStateBySymbol(a, b *State) int {
+	if a.symbol < b.symbol {
+		return -1
+	} else if a.symbol > b.symbol {
+		return 1
+	} else {
+		return 0
+	}
 }
 
 func removeOrder(st *State, clientOrderID string) {
@@ -379,7 +394,7 @@ func onMessage(msg *sip.Message) {
 }
 
 func onQuote(q *sip.Quote) {
-	st := getOrCreateSymbol(q.Symbol)
+	st := gSymbols[q.Symbol]
 	if st == nil {
 		return
 	}
@@ -501,7 +516,7 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		marketable := update.Order.Type == alpaca.OrderTypeMarket ||
 			(update.Order.Side == ds.SideBuy && st.quote != nil && fillPrice.Cmp(st.quote.AskPrice) >= 0) ||
 			(update.Order.Side == ds.SideSell && st.quote != nil && fillPrice.Cmp(st.quote.BidPrice) <= 0)
-		fee := EstimateFee(update.Order.Side, absQty, fillPrice, firstFill, marketable)
+		fee := alpaca.EstimateFee(update.Order.Side, absQty, fillPrice, firstFill, marketable)
 		st.totalFees = st.totalFees.Add(fee)
 		gTotalFees = gTotalFees.Add(fee)
 
@@ -519,13 +534,13 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		if *flagSurvivor {
 			if update.Order.Side == ds.SideBuy {
 				if st.buyGreed.IsZero() {
-					st.buyGreed = decimal.Cent
+					st.buyGreed = decimal.Parse("0.02")
 				} else {
 					st.buyGreed = st.buyGreed.MulInt(2)
 				}
 			} else {
 				if st.sellGreed.IsZero() {
-					st.sellGreed = decimal.Cent
+					st.sellGreed = decimal.Parse("0.02")
 				} else {
 					st.sellGreed = st.sellGreed.MulInt(2)
 				}
@@ -752,7 +767,7 @@ func logBalance() {
 	pendingCount := 0
 	totalUnrealized := decimal.Zero
 	liquidationPnL := decimal.Zero
-	for _, st := range gSymbols {
+	for _, st := range sortedSymbols() {
 		if st.quote == nil {
 			continue
 		}
@@ -795,7 +810,7 @@ func logBalance() {
 
 func shutdown() Result {
 	log.Printf("shutting down... canceling all orders")
-	if err := gBroker.CancelAllOrders(); err != nil {
+	if _, err := gBroker.CancelAllOrders(); err != nil {
 		log.Printf("error canceling orders: %v", err)
 	}
 	if gTapeMsg != nil {
@@ -805,19 +820,7 @@ func shutdown() Result {
 	}
 	log.Printf("=== P&L SUMMARY ===")
 	totalUnrealized := decimal.Zero
-	symbols := make([]*State, 0, len(gSymbols))
-	for _, st := range gSymbols {
-		symbols = append(symbols, st)
-	}
-	slices.SortFunc(symbols, func(a, b *State) int {
-		if a.symbol < b.symbol {
-			return -1
-		} else if a.symbol > b.symbol {
-			return 1
-		}
-		return 0
-	})
-	for _, st := range symbols {
+	for _, st := range sortedSymbols() {
 		if st.totalBought.IsZero() && st.totalSold.IsZero() || st.quote == nil {
 			continue
 		}
@@ -862,24 +865,4 @@ func Tick(price decimal.Decimal) decimal.Decimal {
 	} else {
 		return decimal.Cent
 	}
-}
-
-func GetAsset(sym symbol.Symbol) *alpaca.Asset {
-	if gIgnoreSymbols[sym] {
-		return nil
-	}
-	asset := alpaca.GetAsset(sym)
-	if asset == nil {
-		gIgnoreSymbols[sym] = true
-		return nil
-	}
-	if asset.Exchange == alpaca.ExchangeOTC ||
-		asset.Class != alpaca.AssetClassUSEquity ||
-		asset.Status.Load() != alpaca.AssetStatusActive ||
-		asset.PTPNoException.Load() ||
-		asset.PTPWithException.Load() {
-		gIgnoreSymbols[sym] = true
-		return nil
-	}
-	return asset
 }

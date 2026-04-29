@@ -7,6 +7,7 @@ import (
 )
 
 // Bar represents an aggregated bar from the SIP feed.
+// This can lose one decimal of precision on literal penny stocks.
 type Bar struct {
 	Type      MessageType     `json:"T"`  // MessageTypeBar, MessageTypeDailyBar, or MessageTypeUpdatedBar
 	NumTrades uint32          `json:"n"`  // number of trades

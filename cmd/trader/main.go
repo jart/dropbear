@@ -185,7 +185,7 @@ func main() {
 	// cancel lingering orders
 	if *flagLive {
 		log.Printf("canceling lingering orders...")
-		if err := gBroker.CancelAllOrders(); err != nil {
+		if _, err := gBroker.CancelAllOrders(); err != nil {
 			log.Printf("warning: error canceling orders: %v", err)
 		}
 	}
@@ -351,7 +351,7 @@ func onHeartbeat() {
 			} else {
 				gPhase = PhaseCanceling
 				log.Printf("we shall cancel all orders so we can flatten")
-				if err := gBroker.CancelAllOrders(); err != nil {
+				if _, err := gBroker.CancelAllOrders(); err != nil {
 					log.Printf("warning: error canceling orders: %v", err)
 				}
 			}
@@ -705,7 +705,7 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		marketable := update.Order.Type == alpaca.OrderTypeMarket ||
 			(update.Order.Side == ds.SideBuy && st.quote != nil && fillPrice.Cmp(st.quote.AskPrice) >= 0) ||
 			(update.Order.Side == ds.SideSell && st.quote != nil && fillPrice.Cmp(st.quote.BidPrice) <= 0)
-		fee := EstimateFee(update.Order.Side, absQty, fillPrice, firstFill, marketable)
+		fee := alpaca.EstimateFee(update.Order.Side, absQty, fillPrice, firstFill, marketable)
 		st.totalFees = st.totalFees.Add(fee)
 		gTotalFees = gTotalFees.Add(fee)
 
@@ -1097,7 +1097,7 @@ func logBalance() {
 
 func shutdown() {
 	log.Printf("shutting down... canceling all orders")
-	if err := gBroker.CancelAllOrders(); err != nil {
+	if _, err := gBroker.CancelAllOrders(); err != nil {
 		log.Printf("error canceling orders: %v", err)
 	}
 	if gTapeMsg != nil {

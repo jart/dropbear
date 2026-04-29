@@ -1428,7 +1428,7 @@ func cancelOrder(args map[string]any) ToolCallResult {
 
 func cancelAllOrders() ToolCallResult {
 	client := alpaca.NewClient()
-	err := client.CancelAllOrders()
+	_, err := client.CancelAllOrders()
 	if err != nil {
 		return ToolCallResult{
 			Content: []Content{{Type: "text", Text: fmt.Sprintf("error: %v", err)}},

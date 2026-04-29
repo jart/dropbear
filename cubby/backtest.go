@@ -166,7 +166,6 @@ func (m *backtest) printSummary() {
 		log.Printf("summary:")
 		log.Printf("  start:    $%s", m.startCash.FormatThousand(2))
 		log.Printf("  end:      $%s", endValue.FormatThousand(2))
-		log.Printf("  fees:     $%s", gFeeCalculator.TotalFees.FormatThousand(2))
 		log.Printf("  interest: $%s", gInterestCalculator.TotalCharged.FormatThousand(2))
 		log.Printf("  max dd:   %s%%", m.maxDrawdown.MulInt(100).Format(2))
 		log.Printf("  return:   %s%% (%.2f%% annualized)", totalReturn.MulInt(100).Format(2), annualReturn)

@@ -32,7 +32,8 @@ func newLiveTrader() *liveTrader {
 }
 
 func (lt *liveTrader) Close() error {
-	return Client.CancelAllOrders()
+	Client.CancelAllOrders()
+	return nil
 }
 
 func (lt *liveTrader) Run() {

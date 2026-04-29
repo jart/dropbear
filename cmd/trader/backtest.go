@@ -17,8 +17,8 @@ type Broker interface {
 	GetPositions() ([]alpaca.Position, error)
 	GetQuotes([]string, alpaca.Feed) (map[string]*sip.Quote, error)
 	CreateOrder(*alpaca.CreateOrderRequest) (*alpaca.Order, error)
+	CancelAllOrders() ([]alpaca.CancelOrderStatus, error)
 	CancelOrder(string) error
-	CancelAllOrders() error
 	SyncAssets() error
 }
 
@@ -92,9 +92,9 @@ func (b *Backtest) CreateOrder(body *alpaca.CreateOrderRequest) (*alpaca.Order, 
 	return nil, nil
 }
 
-func (b *Backtest) CancelAllOrders() error {
+func (b *Backtest) CancelAllOrders() ([]alpaca.CancelOrderStatus, error) {
 	b.cancel <- ""
-	return nil
+	return nil, nil
 }
 
 func (b *Backtest) CancelOrder(id string) error {

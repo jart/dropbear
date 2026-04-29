@@ -7,9 +7,9 @@ import "math"
 type Short int32
 
 const (
-	ShortScale = 10_000
-	ShortMax   = Short(math.MaxInt32) // +214'748.3647
-	ShortMin   = Short(math.MinInt32) // -214'748.3648
+	ShortScale = 1_000
+	ShortMax   = Short(math.MaxInt32) // +2'147'483.647
+	ShortMin   = Short(math.MinInt32) // -2'147'483.648
 	shortRatio = Scale / ShortScale
 )
 

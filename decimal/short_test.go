@@ -8,13 +8,13 @@ func TestShortDecimal(t *testing.T) {
 		want  Decimal
 	}{
 		{0, 0},
-		{1, 100},                     // 0.0001 → 0.000100
-		{-1, -100},                   // -0.0001 → -0.000100
-		{10000, 1_000_000},           // 1.0000 → 1.000000
-		{12345, 1_234_500},           // 1.2345 → 1.234500
-		{-12345, -1_234_500},         // -1.2345 → -1.234500
-		{ShortMax, 214_748_364_700},  // max
-		{ShortMin, -214_748_364_800}, // min
+		{1, Decimal(shortRatio)},
+		{-1, -Decimal(shortRatio)},
+		{10000, 10000 * Decimal(shortRatio)},
+		{12345, 12345 * Decimal(shortRatio)},
+		{-12345, -12345 * Decimal(shortRatio)},
+		{ShortMax, Decimal(ShortMax) * shortRatio},
+		{ShortMin, Decimal(ShortMin) * shortRatio},
 	}
 	for _, tt := range tests {
 		got := tt.short.Decimal()
@@ -30,11 +30,11 @@ func TestDecimalShort(t *testing.T) {
 		want Short
 	}{
 		{0, 0},
-		{100, 1},             // 0.000100 → 0.0001
-		{-100, -1},           // -0.000100 → -0.0001
-		{1_000_000, 10000},   // 1.000000 → 1.0000
-		{1_234_500, 12345},   // 1.234500 → 1.2345
-		{-1_234_500, -12345}, // -1.234500 → -1.2345
+		{Decimal(shortRatio), 1},
+		{-Decimal(shortRatio), -1},
+		{10000 * Decimal(shortRatio), 10000},
+		{12345 * Decimal(shortRatio), 12345},
+		{-12345 * Decimal(shortRatio), -12345},
 	}
 	for _, tt := range tests {
 		got := tt.dec.Short()
@@ -45,37 +45,34 @@ func TestDecimalShort(t *testing.T) {
 }
 
 func TestDecimalShortRounding(t *testing.T) {
-	// Decimal has 6 places, Short has 4. The bottom 2 digits are rounded
-	// using banker's rounding (round half to even).
 	tests := []struct {
 		name string
 		dec  Decimal
 		want Short
 	}{
-		{"round up", 1_234_567, 12346},            // 1.234567 → 1.2346 (67 > 50)
-		{"round down", 1_234_523, 12345},          // 1.234523 → 1.2345 (23 < 50)
-		{"round up neg", -1_234_567, -12346},      // -1.234567 → -1.2346
-		{"round down neg", -1_234_523, -12345},    // -1.234523 → -1.2345
-		{"half to even down", 1_234_550, 12346},   // 1.234550 → 1.2346 (5 is odd, round up)
-		{"half to even up", 1_234_650, 12346},     // 1.234650 → 1.2346 (6 is even, keep)
-		{"half to even neg", -1_234_550, -12346},  // -1.234550 → -1.2346
-		{"half to even neg2", -1_234_650, -12346}, // -1.234650 → -1.2346
-		{"round up 99", 1_234_599, 12346},         // 1.234599 → 1.2346
-		{"round down 01", 1_234_501, 12345},       // 1.234501 → 1.2345
-		{"exact", 1_234_500, 12345},               // 1.234500 → 1.2345 (no loss)
+		{"round up", Decimal(1234)*shortRatio + (shortRatio*3/4), 1235},
+		{"round down", Decimal(1234)*shortRatio + (shortRatio*1/4), 1234},
+		{"round up neg", -(Decimal(1234)*shortRatio + (shortRatio*3/4)), -1235},
+		{"round down neg", -(Decimal(1234)*shortRatio + (shortRatio*1/4)), -1234},
+		{"half to even (even)", Decimal(1234)*shortRatio + shortRatio/2, 1234},
+		{"half to even (odd)", Decimal(1235)*shortRatio + shortRatio/2, 1236},
+		{"half to even neg (even)", -(Decimal(1234)*shortRatio + shortRatio/2), -1234},
+		{"half to even neg (odd)", -(Decimal(1235)*shortRatio + shortRatio/2), -1236},
+		{"round up max", Decimal(1234)*shortRatio + shortRatio - 1, 1235},
+		{"round down min", Decimal(1234)*shortRatio + 1, 1234},
+		{"exact", Decimal(12345) * shortRatio, 12345},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := tt.dec.Short()
 			if got != tt.want {
-				t.Errorf("Decimal(%d).Short() = %d, want %d", tt.dec, got, tt.want)
+				t.Errorf("Decimal(%d).Short() = %d, want %d (ratio %d)", tt.dec, got, tt.want, shortRatio)
 			}
 		})
 	}
 }
 
 func TestDecimalShortRoundtrip(t *testing.T) {
-	// Short → Decimal → Short should always be lossless.
 	for _, s := range []Short{0, 1, -1, 12345, -12345, ShortMax, ShortMin} {
 		got := s.Decimal().Short()
 		if got != s {
@@ -89,10 +86,10 @@ func TestDecimalShortOverflow(t *testing.T) {
 		name string
 		dec  Decimal
 	}{
-		{"positive overflow", Decimal(ShortMax)*100 + 100},
-		{"negative overflow", Decimal(ShortMin)*100 - 100},
-		{"large positive", 1_000_000_000_000},
-		{"large negative", -1_000_000_000_000},
+		{"positive overflow", Decimal(ShortMax)*shortRatio + shortRatio},
+		{"negative overflow", Decimal(ShortMin)*shortRatio - shortRatio},
+		{"large positive", Max},
+		{"large negative", Min},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

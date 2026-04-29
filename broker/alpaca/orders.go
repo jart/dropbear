@@ -176,14 +176,20 @@ func (c *Client) CancelOrder(orderID string) error {
 	return nil
 }
 
+type CancelOrderStatus struct {
+	ID     string `json:"id"`     // order id
+	Status int    `json:"status"` // http status code
+}
+
 // CancelAllOrders cancels all open orders.
-func (c *Client) CancelAllOrders() error {
+func (c *Client) CancelAllOrders() ([]CancelOrderStatus, error) {
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.FastHTTPClient, "DELETE", "/v2/orders", false, nil, nil)
+	var result []CancelOrderStatus
+	err := c.RequestJSON(netty.FastHTTPClient, "DELETE", "/v2/orders", false, nil, &result)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return result, nil
 }
 
 // GetOrder retrieves a single order by ID.

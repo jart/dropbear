@@ -28,7 +28,6 @@ type Order struct {
 	LimitPrice     decimal.Decimal // always positive
 	FilledPrice    decimal.Decimal // average fill price, or zero if unfilled
 	FilledQuantity decimal.Decimal // positive, or zero if unfilled
-	TotalFees      decimal.Decimal // positive, or zero if unfilled
 	MarginHeld     decimal.Decimal // margin reserved for this order
 	OrderedAt      clocky.Time     // local creation time
 	TimeInForce    alpaca.TimeInForce
@@ -145,21 +144,17 @@ func (o *Order) simulateFill(now clocky.Time, bar *ds.Bar) {
 	o.FilledQuantity = o.FilledQuantity.Add(fillQuantity)
 	o.FilledPrice = oldValue.Add(newValue).Div(o.FilledQuantity)
 
-	// calculate and add fees (limit orders are maker orders)
-	fee := gFeeCalculator.GetFee(clocky.Now(), fillQuantity, false)
-	o.TotalFees = o.TotalFees.Add(fee)
-
 	// update cash and position
 	notional := fillPrice.Mul(fillQuantity)
 	if o.Side == ds.SideBuy {
-		Cash = Cash.Sub(notional).Sub(fee)
+		Cash = Cash.Sub(notional)
 		// update average entry price (weighted average)
 		oldValue := o.Equity.EntryPrice.Mul(o.Equity.Quantity)
 		newValue := fillPrice.Mul(fillQuantity)
 		o.Equity.Quantity = o.Equity.Quantity.Add(fillQuantity)
 		o.Equity.EntryPrice = oldValue.Add(newValue).Div(o.Equity.Quantity)
 	} else {
-		Cash = Cash.Add(notional).Sub(fee)
+		Cash = Cash.Add(notional)
 		o.Equity.Quantity = o.Equity.Quantity.Sub(fillQuantity)
 		// reset entry price when position is fully closed
 		if o.Equity.Quantity.IsZero() {
@@ -215,7 +210,7 @@ func (o *Order) setStatus(newStatus alpaca.OrderStatus) {
 		delete(o.Equity.Orders, o.OrderID)
 		gMarginHold = gMarginHold.Sub(o.MarginHeld)
 		if Verbose || o.FilledQuantity.IsPositive() {
-			log.Printf("%s %s %s %s out of %s %s at %s notional %s fee %s id %s", o.Status, o.TimeInForce, o.Side, o.FilledQuantity, o.Quantity, o.Equity.Symbol, o.FilledPrice, o.FilledPrice.Mul(o.FilledQuantity), o.TotalFees, o.OrderID)
+			log.Printf("%s %s %s %s out of %s %s at %s notional %s id %s", o.Status, o.TimeInForce, o.Side, o.FilledQuantity, o.Quantity, o.Equity.Symbol, o.FilledPrice, o.FilledPrice.Mul(o.FilledQuantity), o.OrderID)
 		}
 	}
 }

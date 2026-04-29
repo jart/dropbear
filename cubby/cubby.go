@@ -48,7 +48,6 @@ var (
 	gMarginHold            decimal.Decimal // margin reserved for pending orders
 	gDayTradingBuyingPower decimal.Decimal // buying power for day trades
 	gIsPatternDayTrader    bool            // user has been exposed as a pattern day trader
-	gFeeCalculator         *alpaca.FeeCalculator
 	gInterestCalculator    *alpaca.InterestCalculator
 )
 
@@ -93,7 +92,6 @@ func Run() {
 	}
 	Running = true
 	defer func() { Running = false }()
-	gFeeCalculator = alpaca.NewFeeCalculator()
 	gInterestCalculator = alpaca.NewInterestCalculator(decimal.Parse("0.01"))
 	if Live {
 		liveTrader := newLiveTrader()
