@@ -41,6 +41,13 @@ type Asset struct {
 
 var stardardMarginRate = decimal.Parse("0.3")
 
+func (a *Asset) IsDecent() bool {
+	return a.Exchange != ExchangeOTC &&
+		a.Class == AssetClassUSEquity &&
+		a.Status == AssetStatusActive &&
+		a.Tradable.Load()
+}
+
 func (a *Asset) IsHealthy() bool {
 	return a.Exchange != ExchangeOTC &&
 		a.Class == AssetClassUSEquity &&
