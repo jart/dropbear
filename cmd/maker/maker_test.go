@@ -104,8 +104,8 @@ var symbols20260428 = []SymbolEntry{
 }
 
 func init() {
-	netty.SetOffline()
 	loggy.Init()
+	netty.SetOffline()
 }
 
 // testLogWriter captures log output and also writes to stderr.
@@ -158,7 +158,11 @@ func TestBacktest20260428(t *testing.T) {
 ...PYPL: pos=0[100]...realized=6.73[29]...unrealized=0[5]...fees=-2.1[3]...bought=900[300]...sold=900[200]
 ...RIVN: pos=-600[400]...realized=-3.25[4]...unrealized=-6.75[8]...fees=-0.97[1]...bought=200[0]...sold=800[400]
 ...CMCSA: pos=0[50]...realized=24.5[12]...unrealized=0[3]...fees=-1.84[2]...bought=800[250]...sold=800[300]
-...TOTAL realized P&L: 92.061234[62]  fees: -33.817354[44]  net: 125.878588[19]
+...TOTAL equity: 125.878588[900]  realized: 92.061234[62]  unrealized: 0[900]  fees: -33.817354[44]  net: 125.878588[19]
 ...total fills: 477[359]  symbols tracked: 12
 `)
+}
+
+func TestSurvivor(t *testing.T) {
+	t.Skip("TODO: make -survivor deterministic by fixing map iteration possibly")
 }

@@ -68,10 +68,11 @@ func Match(actual, template string) error {
 			if anchor == "" {
 				return fmt.Errorf("'...' at template offset %d must be followed by literal text", ti-3)
 			}
-			idx := strings.Index(actual[ai:], anchor)
+			cleanAnchor := stripTimestamps(anchor)
+			idx := findSkippingTimestamps(actual[ai:], cleanAnchor)
 			if idx < 0 {
 				return fmt.Errorf("anchor not found: %q\n%s",
-					anchor, highlightPos(actual, ai))
+					cleanAnchor, highlightPos(actual, ai))
 			}
 			ai += idx
 			continue
@@ -94,21 +95,9 @@ func Match(actual, template string) error {
 			continue
 		}
 
-		// bare number: match like fuzzy with tolerance 0, but give helpful error
-		if tmplNum, tn := scanNumber(template[ti:]); tn > 0 {
-			actNum, an := scanNumber(actual[ai:])
-			if an == 0 {
-				return fmt.Errorf("expected number %s:\n%s", tmplNum, highlightPos(actual, ai))
-			}
-			if tmplNum != actNum {
-				return fmt.Errorf("number mismatch (add [N] for tolerance):\n%s\n  want %s exactly (got %s, diff=%s)",
-					highlightNumber(actual, ai, an), tmplNum, actNum,
-					decimal.Parse(actNum).Sub(decimal.Parse(tmplNum)).Abs())
-			}
-			ti += tn
-			ai += an
-			continue
-		}
+		// skip log timestamps in both template and actual text
+		ai = skipTimestamp(actual, ai)
+		ti = skipTimestamp(template, ti)
 
 		// literal match
 		if ai >= len(actual) {
@@ -168,9 +157,9 @@ func Suggest(actual, template string) string {
 				out.WriteString(template[ti:])
 				break
 			}
-			idx := strings.Index(actual[ai:], anchor)
+			cleanAnchor := stripTimestamps(anchor)
+			idx := findSkippingTimestamps(actual[ai:], cleanAnchor)
 			if idx < 0 {
-				// can't find anchor — output rest unchanged
 				out.WriteString(template[ti:])
 				break
 			}
@@ -204,24 +193,12 @@ func Suggest(actual, template string) string {
 			continue
 		}
 
-		// bare number: suggest adding [tolerance]
-		if tmplNum, tn := scanNumber(template[ti:]); tn > 0 {
-			actNum, an := scanNumber(actual[ai:])
-			if an > 0 {
-				want := decimal.Parse(tmplNum)
-				got := decimal.Parse(actNum)
-				diff := got.Sub(want).Abs()
-				newTol := ceilDecimal(diff)
-				tolStr := newTol.String()
-				if diff.IsZero() {
-					out.WriteString(tmplNum)
-				} else {
-					out.WriteString(fmt.Sprintf("%s[%s%s%s]", tmplNum, red, tolStr, reset))
-				}
-				ti += tn
-				ai += an
-				continue
-			}
+		// skip log timestamps in both template and actual text
+		ai = skipTimestamp(actual, ai)
+		oldTi := ti
+		ti = skipTimestamp(template, ti)
+		if ti > oldTi {
+			continue // re-evaluate after skipping
 		}
 
 		// literal
@@ -240,11 +217,52 @@ func ceilDecimal(d decimal.Decimal) decimal.Decimal {
 	return d.QuantizeAway(decimal.One)
 }
 
+// stripTimestamps removes log timestamp prefixes from a string.
+func stripTimestamps(s string) string {
+	var b strings.Builder
+	i := 0
+	for i < len(s) {
+		j := skipTimestamp(s, i)
+		if j > i {
+			i = j
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}
+
+// findSkippingTimestamps searches for needle in haystack, skipping
+// timestamps at the start of lines in haystack.
+func findSkippingTimestamps(haystack, needle string) int {
+	if needle == "" {
+		return 0
+	}
+	for i := 0; i < len(haystack); i++ {
+		// try matching needle at this position, skipping timestamps
+		hi := i
+		ni := 0
+		for ni < len(needle) && hi < len(haystack) {
+			hi = skipTimestamp(haystack, hi)
+			if hi >= len(haystack) {
+				break
+			}
+			if haystack[hi] != needle[ni] {
+				break
+			}
+			hi++
+			ni++
+		}
+		if ni == len(needle) {
+			return i
+		}
+	}
+	return -1
+}
+
 // nextAnchor returns the next run of literal text in a template,
-// stopping at '...', a fuzzy number pattern, or a bare number.
-// Bare numbers are excluded so they get matched positionally rather
-// than becoming part of the search string (which would fail if the
-// actual number differs).
+// stopping at '...' or a fuzzy number pattern.
 func nextAnchor(tmpl string) string {
 	var b strings.Builder
 	i := 0
@@ -253,13 +271,6 @@ func nextAnchor(tmpl string) string {
 			break
 		}
 		if _, _, _, ok := parseFuzzy(tmpl[i:]); ok {
-			break
-		}
-		// stop before bare numbers (digit or minus-then-digit)
-		if isDigit(tmpl[i]) {
-			break
-		}
-		if tmpl[i] == '-' && i+1 < len(tmpl) && isDigit(tmpl[i+1]) {
 			break
 		}
 		b.WriteByte(tmpl[i])
@@ -335,6 +346,39 @@ func scanNumber(s string) (string, int) {
 
 func isDigit(b byte) bool {
 	return b >= '0' && b <= '9'
+}
+
+// skipTimestamp advances past a log timestamp at the start of a line.
+// Matches: "YYYY-MM-DDTHH:MM:SS.NNNNNNNNN " (30 chars).
+func skipTimestamp(s string, pos int) int {
+	// must be at start of string or after a newline
+	if pos > 0 && s[pos-1] != '\n' {
+		return pos
+	}
+	// need at least "YYYY-MM-DDTHH:MM:SS.N " = 22 chars
+	if pos+22 > len(s) {
+		return pos
+	}
+	i := pos
+	// YYYY-
+	for j := 0; j < 4 && i < len(s); j++ {
+		if !isDigit(s[i]) {
+			return pos
+		}
+		i++
+	}
+	if i >= len(s) || s[i] != '-' {
+		return pos
+	}
+	i++
+	// skip rest of timestamp until space
+	for i < len(s) && s[i] != ' ' && s[i] != '\n' {
+		i++
+	}
+	if i < len(s) && s[i] == ' ' {
+		return i + 1 // skip the trailing space
+	}
+	return pos
 }
 
 func isOnlyWhitespace(s string) bool {

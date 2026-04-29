@@ -25,6 +25,7 @@ type Result struct {
 	PnL    decimal.Decimal
 	Fees   decimal.Decimal
 	Net    decimal.Decimal
+	Equity decimal.Decimal
 	Fills  int
 	Shares decimal.Decimal
 	Log    string
@@ -43,6 +44,8 @@ type State struct {
 	sellPrice     decimal.Decimal
 	buyPrice2     decimal.Decimal
 	sellPrice2    decimal.Decimal
+	buyGreed      decimal.Decimal // widens bid after consecutive buy fills
+	sellGreed     decimal.Decimal // widens ask after consecutive sell fills
 
 	// our pending orders
 	buyOrderID         string

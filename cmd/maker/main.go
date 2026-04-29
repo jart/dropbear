@@ -28,6 +28,8 @@ var (
 	flagExtended  = flag.Bool("extended", false, "enables extended hours trading")
 	flagOvernight = flag.Bool("overnight", false, "enables overnight hours trading")
 	flagData      = flag.String("data", "", "path of sip data file for backtest")
+	flagSurvivor  = flag.Bool("survivor", false, "widen spread exponentially on consecutive fills")
+	flagBoring    = flag.Bool("boring", false, "use boring stock portfolio instead of default")
 )
 
 const (
@@ -57,101 +59,7 @@ var (
 	gOrderSeq       int64
 )
 
-// defaultSymbols is the portfolio used for live trading.
-// Live 2026-04-28: net=$126, 477 fills, 39900 shares.
-var defaultSymbols = []SymbolEntry{
-	// NASDAQ longs (~$102k notional at max position)
-	{symbol.INTC, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("300"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-	{symbol.PYPL, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("200"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-	{symbol.CMCSA, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("300"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-	{symbol.SOFI, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("400"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-
-	// NASDAQ shorts (~$101k notional at max position)
-	{symbol.HOOD, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-300"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-	{symbol.DKNG, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-400"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-	{symbol.RIVN, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-500"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-	{symbol.AAL, Config{
-		venue:  alpaca.OrderDestinationNASDAQ,
-		target: decimal.Parse("-700"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-
-	// ARCA (pro-rata)
-	{symbol.XLE, Config{
-		venue:  alpaca.OrderDestinationARCA,
-		target: decimal.Parse("300"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-	{symbol.FXI, Config{
-		venue:  alpaca.OrderDestinationARCA,
-		target: decimal.Parse("-500"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-
-	// NYSE (pro-rata)
-	{symbol.VZ, Config{
-		venue:  alpaca.OrderDestinationNYSE,
-		target: decimal.Parse("400"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-	{symbol.NKE, Config{
-		venue:  alpaca.OrderDestinationNYSE,
-		target: decimal.Parse("-400"),
-		qty:    decimal.Parse("100"),
-		spread: decimal.Parse("0.02"),
-		drift:  decimal.Parse("0.02"),
-	}},
-}
+var kGreedFloor = decimal.Parse("0.005")
 
 func main() {
 	loggy.Init()
@@ -170,7 +78,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	result := Run(defaultSymbols)
+	syms := defaultSymbols
+	if *flagBoring {
+		syms = boringSymbols
+	}
+	result := Run(syms)
 	fmt.Printf("total P&L: %s  fees: %s  net: %s  fills: %d  shares: %s\n",
 		result.PnL, result.Fees, result.Net, result.Fills, result.Shares)
 	os.Exit(0)
@@ -345,6 +257,23 @@ func Run(symbols []SymbolEntry) Result {
 
 func onHeartbeat() {
 	now := clocky.Now()
+	// decay greed by half every heartbeat (1 second)
+	if *flagSurvivor {
+		for _, st := range gSymbols {
+			if !st.buyGreed.IsZero() {
+				st.buyGreed = st.buyGreed.Half()
+				if st.buyGreed.Cmp(kGreedFloor) < 0 {
+					st.buyGreed = decimal.Zero
+				}
+			}
+			if !st.sellGreed.IsZero() {
+				st.sellGreed = st.sellGreed.Half()
+				if st.sellGreed.Cmp(kGreedFloor) < 0 {
+					st.sellGreed = decimal.Zero
+				}
+			}
+		}
+	}
 	if now.After(gNextBalance) {
 		logBalance()
 		logSpread()
@@ -580,9 +509,28 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		gTotalShares = gTotalShares.Add(absQty)
 		gTotalFills++
 
-		log.Printf("%s filled %s @ %s | pos=%s | fill_pnl=%s | fee=%s | realized=%s | total_pnl=%s | total_fees=%s | fills=%d shares=%s",
+		log.Printf("%s filled %s @ %s | pos=%s | fill_pnl=%s | fee=%s | realized=%s | total_pnl=%s | total_fees=%s | fills=%d shares=%s | greed=%s/%s",
 			st.symbol, signedQty, fillPrice, st.position,
-			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills, gTotalShares)
+			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills, gTotalShares,
+			st.buyGreed, st.sellGreed)
+
+		// escalate greed: when fills keep hitting one side, widen that
+		// side's spread so the robot demands a better price each time
+		if *flagSurvivor {
+			if update.Order.Side == ds.SideBuy {
+				if st.buyGreed.IsZero() {
+					st.buyGreed = decimal.Cent
+				} else {
+					st.buyGreed = st.buyGreed.MulInt(2)
+				}
+			} else {
+				if st.sellGreed.IsZero() {
+					st.sellGreed = decimal.Cent
+				} else {
+					st.sellGreed = st.sellGreed.MulInt(2)
+				}
+			}
+		}
 	}
 
 	switch update.Event {
@@ -669,8 +617,8 @@ func Evaluate(st *State) {
 	}
 	canBuy = st.position.Add(cfg.qty).Cmp(maximumPosition) <= 0 && !alreadyBuying
 	canSell = st.position.Sub(cfg.qty).Cmp(minimumPosition) >= 0 && !alreadySelling
-	buyPrice := QuantizeBuyPrice(mid.Sub(cfg.spread))
-	sellPrice := QuantizeSellPrice(mid.Add(cfg.spread))
+	buyPrice := QuantizeBuyPrice(mid.Sub(cfg.spread).Sub(st.buyGreed))
+	sellPrice := QuantizeSellPrice(mid.Add(cfg.spread).Add(st.sellGreed))
 
 	if canBuy {
 		st.buyPrice = buyPrice
@@ -856,6 +804,7 @@ func shutdown() Result {
 		<-gTapeDone
 	}
 	log.Printf("=== P&L SUMMARY ===")
+	totalUnrealized := decimal.Zero
 	symbols := make([]*State, 0, len(gSymbols))
 	for _, st := range gSymbols {
 		symbols = append(symbols, st)
@@ -877,12 +826,17 @@ func shutdown() Result {
 			mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
 			unrealizedPnL = mid.Mul(st.position).Sub(st.costBasis)
 		}
-		log.Printf("  %8s: pos=%-8s realized=%-8s unrealized=%-8s fees=%-10s bought=%-8s sold=%-8s",
-			st.symbol, st.position, st.realizedPnL.Format(2), unrealizedPnL.Format(2),
+		equity := st.realizedPnL.Sub(st.totalFees).Add(unrealizedPnL)
+		totalUnrealized = totalUnrealized.Add(unrealizedPnL)
+		log.Printf("  %8s: pos=%-8s equity=%-10s realized=%-8s unrealized=%-8s fees=%-10s bought=%-8s sold=%-8s",
+			st.symbol, st.position, equity.Format(2),
+			st.realizedPnL.Format(2), unrealizedPnL.Format(2),
 			st.totalFees.Format(2), st.totalBought, st.totalSold)
 	}
 	net := gTotalPnL.Sub(gTotalFees)
-	log.Printf("  TOTAL realized P&L: %s  fees: %s  net: %s", gTotalPnL, gTotalFees, net)
+	totalEquity := net.Add(totalUnrealized)
+	log.Printf("  TOTAL equity: %s  realized: %s  unrealized: %s  fees: %s  net: %s",
+		totalEquity, gTotalPnL, totalUnrealized, gTotalFees, net)
 	log.Printf("  total fills: %d  symbols tracked: %d", gTotalFills, len(gSymbols))
 	return Result{
 		PnL:    gTotalPnL,
@@ -890,6 +844,7 @@ func shutdown() Result {
 		Net:    net,
 		Fills:  gTotalFills,
 		Shares: gTotalShares,
+		Equity: totalEquity,
 	}
 }
 

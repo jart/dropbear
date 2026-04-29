@@ -6,6 +6,7 @@ import (
 	"dropbear/ds"
 	"dropbear/netty"
 	"fmt"
+	"strings"
 )
 
 // Order represents an Alpaca order.
@@ -211,9 +212,10 @@ type GetOrdersRequest struct {
 // Pass nil for default behavior (open orders only).
 // https://docs.alpaca.markets/reference/getallorders
 func (c *Client) GetOrders(req *GetOrdersRequest) ([]Order, error) {
-	path := "/v2/orders"
+	var path strings.Builder
+	path.WriteString("/v2/orders")
 	if req == nil {
-		path += "?status=open"
+		path.WriteString("?status=open")
 	} else {
 		q := make([]string, 0, 8)
 		if req.Status != "" {
@@ -237,28 +239,28 @@ func (c *Client) GetOrders(req *GetOrdersRequest) ([]Order, error) {
 			q = append(q, "nested=true")
 		}
 		if len(req.Symbols) > 0 {
-			var syms string
+			var syms strings.Builder
 			for i, s := range req.Symbols {
 				if i > 0 {
-					syms += ","
+					syms.WriteString(",")
 				}
-				syms += s
+				syms.WriteString(s)
 			}
-			q = append(q, "symbols="+syms)
+			q = append(q, "symbols="+syms.String())
 		}
 		if len(q) > 0 {
-			path += "?"
+			path.WriteString("?")
 			for i, p := range q {
 				if i > 0 {
-					path += "&"
+					path.WriteString("&")
 				}
-				path += p
+				path.WriteString(p)
 			}
 		}
 	}
 	var result []Order
 	c.APITokenBucket.Get()
-	err := c.RequestJSON(netty.BulkHttpClient, "GET", path, false, nil, &result)
+	err := c.RequestJSON(netty.BulkHttpClient, "GET", path.String(), false, nil, &result)
 	if err != nil {
 		return nil, err
 	}
