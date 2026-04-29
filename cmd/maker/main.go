@@ -603,6 +603,7 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 				st.buyGreed = base
 				st.sellGreed = base
 			}
+
 		}
 	}
 
@@ -694,8 +695,28 @@ func Evaluate(st *State) {
 	}
 	canBuy = st.position.Add(cfg.qty).Cmp(maximumPosition) <= 0 && !alreadyBuying
 	canSell = st.position.Sub(cfg.qty).Cmp(minimumPosition) >= 0 && !alreadySelling
-	buyPrice := QuantizeBuyPrice(mid.Sub(cfg.spread).Sub(st.buyGreed))
-	sellPrice := QuantizeSellPrice(mid.Add(cfg.spread).Add(st.sellGreed))
+	// inventory skew: widen the side that moves us away from target,
+	// narrow the side that brings us back. this is independent of
+	// survival greed (which protects against being mobbed).
+	inventoryBuyGreed := decimal.Zero
+	inventorySellGreed := decimal.Zero
+	if !cfg.qty.IsZero() && !cfg.greed.IsZero() {
+		deviation := st.position.Sub(cfg.target)
+		steps := deviation.Div(cfg.qty).Truncate()
+		if steps.IsPositive() {
+			// overweight long — buying moves us further away
+			for i := decimal.Zero; i.Cmp(steps) < 0; i = i.Add(decimal.One) {
+				inventoryBuyGreed = inventoryBuyGreed.Add(cfg.greed)
+			}
+		} else if steps.IsNegative() {
+			// overweight short — selling moves us further away
+			for i := decimal.Zero; i.Cmp(steps.Abs()) < 0; i = i.Add(decimal.One) {
+				inventorySellGreed = inventorySellGreed.Add(cfg.greed)
+			}
+		}
+	}
+	buyPrice := QuantizeBuyPrice(mid.Sub(cfg.spread).Sub(st.buyGreed).Sub(inventoryBuyGreed))
+	sellPrice := QuantizeSellPrice(mid.Add(cfg.spread).Add(st.sellGreed).Add(inventorySellGreed))
 
 	// clamp to avoid crossing the NBBO spread
 	if buyPrice.Cmp(st.quote.BidPrice) > 0 {

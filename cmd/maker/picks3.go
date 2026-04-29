@@ -15,6 +15,14 @@ var kPicks3 = []SymbolEntry{
 		drift:  decimal.Parse("0.03"),
 		greed:  decimal.Parse("0.05"),
 	}},
+	{symbol.CSCO, Config{
+		venue:  alpaca.OrderDestinationNone,
+		target: decimal.Parse("-300"),
+		qty:    decimal.Parse("100"),
+		spread: decimal.Parse("0.02"),
+		drift:  decimal.Parse("0.02"),
+		greed:  decimal.Parse("0.05"),
+	}},
 	{symbol.IREN, Config{
 		venue:  alpaca.OrderDestinationNASDAQ,
 		target: decimal.Parse("-400"),
