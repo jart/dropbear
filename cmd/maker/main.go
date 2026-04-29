@@ -28,6 +28,7 @@ var (
 	flagExtended  = flag.Bool("extended", false, "enables extended hours trading")
 	flagOvernight = flag.Bool("overnight", false, "enables overnight hours trading")
 	flagData      = flag.String("data", "", "path of sip data file for backtest")
+	flagGetChain  = flag.Bool("chain", false, "downloads the front-expiry option chain from SIP data")
 )
 
 const (

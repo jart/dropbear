@@ -3,12 +3,14 @@ package main
 import (
 	"dropbear/broker/alpaca"
 	"dropbear/broker/alpaca/sip"
+	"dropbear/broker/databento"
 	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
 	"dropbear/symbol"
 	"errors"
+	"log"
 	"os"
 	"time"
 )
@@ -50,10 +52,13 @@ type Backtest struct {
 	closeTime    clocky.Time                       // only accessed by run goroutine
 }
 
-func NewBacktest(path string, exit chan os.Signal) (*Backtest, error) {
+func NewBacktest(path string, downloadChain bool, exit chan os.Signal) (*Backtest, error) {
 	file, err := sip.OpenFile(path)
 	if err != nil {
 		return nil, err
+	}
+	if downloadChain {
+
 	}
 	b := &Backtest{
 		file:         file,
@@ -184,6 +189,55 @@ type stagedAction struct {
 type stagedFill struct {
 	readyAt clocky.Time
 	update  *alpaca.OrderUpdate
+}
+
+func (b *Backtest) downloadChain() error {
+	var (
+		startMsg = b.file.Get(0)
+		finalMsg = b.file.Get(b.file.Count() - 1)
+	)
+
+	if startMsg == nil || finalMsg == nil {
+		return errors.New("SIP feed start/end message is nil")
+	}
+
+	var (
+		startTime = startMsg.Timestamp
+		finalTime = finalMsg.Timestamp
+	)
+
+	symbolChains := make(map[symbol.Symbol]symbol.Symbol, 0)
+	today := startTime.DateInt()
+	client := databento.NewHistoricalClient("TODO")
+
+	// Discover all symbols in the SIP feed and get the front
+	// expiry option chain for all of the symbols in our feed
+	for i := 0; i < b.file.Count(); i++ {
+		var (
+			msg = b.file.Get(i)
+			now = msg.Timestamp
+			sym = msg.Symbol
+		)
+
+		if _, ok := symbolChains[sym]; !ok {
+			y, m, d := cboe.GetNextOptionChain(sym, now.Year(), now.Month(), now.Day())
+			schemaDefResp, err := client.GetRange(databento.GetRangeParams{
+				Dataset: "OPRA.PILLAR",
+				Schema:  databento.SchemaDefinition,
+				STypeIn: databento.STypeRawSymbol,
+				Symbols: []string{rawSym},
+				Start:   start,
+				End:     end,
+			})
+			if err != nil {
+				log.Printf("get OPRA failed for symbol(%s): date=%d", sym.String(), now.DateInt())
+				continue
+			}
+
+			defer schemaDefResp.Close()
+			schemaDef := schemaDefResp.Read()
+		}
+	}
 }
 
 func (b *Backtest) run() {
