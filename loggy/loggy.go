@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	flagLog = flag.String("log", "log", "path to log file (used in live trading mode)")
+	FlagLog = flag.String("log", "log", "path to log file (used in live trading mode)")
 )
 
 // Init initializes logging.
@@ -30,9 +30,9 @@ func Fatalf(format string, args ...any) {
 // AlsoLogToFile enables logging to -log FILE in addition to stderr.
 // The teddy framework calls this when initialized in live trading mode.
 func AlsoLogToFile() {
-	if *flagLog != "" {
+	if *FlagLog != "" {
 		var err error
-		gLogWriter.file, err = os.OpenFile(*flagLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		gLogWriter.file, err = os.OpenFile(*FlagLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			log.Fatalf("opening log file: %v", err)
 		}

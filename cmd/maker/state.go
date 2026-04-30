@@ -28,8 +28,8 @@ type Result struct {
 	Fees   decimal.Decimal
 	Net    decimal.Decimal
 	Equity decimal.Decimal
-	Fills  int
 	Shares decimal.Decimal
+	Fills  int
 	Log    string
 }
 
@@ -40,6 +40,7 @@ type State struct {
 	quote         *sip.Quote
 	config        Config
 	halt          bool
+	disabled      bool
 	position      decimal.Decimal // negative if short
 	cooldownUntil clocky.Time
 	buyPrice      decimal.Decimal

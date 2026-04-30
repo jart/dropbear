@@ -34,6 +34,7 @@ var (
 	flagSurvivor  = flag.Bool("survivor", false, "widen spread exponentially on consecutive fills")
 	flagBoring    = flag.Bool("boring", false, "use boring stocks")
 	flagPicks3    = flag.Bool("picks3", false, "use picks3 stocks")
+	flagTUI       = flag.Bool("tui", false, "enable terminal user interface")
 )
 
 const (
@@ -59,6 +60,8 @@ var (
 	gOrderFails     int64
 	gTapeMsg        chan *sip.Message
 	gTapeDone       chan struct{}
+	gLogMsg         chan string
+	gLogDone        chan struct{}
 	gBacktest       *Backtest
 	gAlpacaClient   *alpaca.Client
 	gOrderSeq       int64
@@ -69,10 +72,18 @@ var (
 )
 
 func main() {
-	loggy.Init()
+	log.SetFlags(0)
+	log.SetOutput(&gLogWriter)
 	flag.Parse()
+	if *loggy.FlagLog != "" {
+		f, err := os.OpenFile(*loggy.FlagLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			log.Fatalf("opening log file: %v", err)
+		}
+		gLogWriter.file = f
+	}
 	if *flagLive {
-		loggy.AlsoLogToFile()
+
 	} else {
 		netty.SetOffline()
 		clocky.Now = clocky.FakeNow
@@ -252,9 +263,22 @@ func Run(symbols []SymbolEntry) Result {
 			Statuses: []string{"*"},
 		})
 		// start tape recorder to gcs
+		now := clocky.Now()
 		gTapeMsg = make(chan *sip.Message, 65536)
 		gTapeDone = make(chan struct{})
-		go recordTape(gTapeMsg, gTapeDone)
+		go recordTape(now, gTapeMsg, gTapeDone)
+		gLogMsg = make(chan string, 65536)
+		gLogDone = make(chan struct{})
+		go recordLog(now, gLogMsg, gLogDone)
+	}
+
+	// start tui
+	var tuiChan <-chan TUICommand
+	if *flagTUI {
+		ch := make(chan TUICommand, 32)
+		tui := startTUI(ch, sigChan)
+		defer tui.stop()
+		tuiChan = ch
 	}
 
 	// consume events
@@ -276,6 +300,8 @@ func Run(symbols []SymbolEntry) Result {
 			undoReplaceOrder(gOrders[clientOrderID], clientOrderID)
 		case <-heartbeatChan:
 			onHeartbeat()
+		case cmd := <-tuiChan:
+			processTUICommand(cmd)
 		case <-sigChan:
 			return shutdown()
 		}
@@ -644,6 +670,9 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 }
 
 func Evaluate(st *State) {
+	if st.disabled {
+		return
+	}
 	if st.config.target.IsZero() {
 		return // not configured for trading
 	}
@@ -940,11 +969,6 @@ func shutdown() Result {
 	if _, err := gBroker.CancelAllOrders(); err != nil {
 		log.Printf("error canceling orders: %v", err)
 	}
-	if gTapeMsg != nil {
-		log.Printf("flushing tape...")
-		close(gTapeMsg)
-		<-gTapeDone
-	}
 	log.Printf("=== P&L SUMMARY ===")
 	totalUnrealized := decimal.Zero
 	for _, st := range sortedSymbols() {
@@ -968,6 +992,16 @@ func shutdown() Result {
 	log.Printf("  TOTAL equity: %s  realized: %s  unrealized: %s  fees: %s  net: %s",
 		totalEquity, gTotalPnL, totalUnrealized, gTotalFees, net)
 	log.Printf("  total fills: %d  symbols tracked: %d", gTotalFills, len(gSymbols))
+	if gTapeMsg != nil {
+		close(gTapeMsg)
+		<-gTapeDone
+		gTapeMsg = nil
+	}
+	if gLogMsg != nil {
+		close(gLogMsg)
+		<-gLogDone
+		gLogMsg = nil
+	}
 	return Result{
 		PnL:    gTotalPnL,
 		Fees:   gTotalFees,
@@ -975,6 +1009,59 @@ func shutdown() Result {
 		Fills:  gTotalFills,
 		Shares: gTotalShares,
 		Equity: totalEquity,
+	}
+}
+
+func processTUICommand(cmd TUICommand) {
+	st := gSymbols[cmd.symbol]
+	if st == nil {
+		return
+	}
+	switch cmd.kind {
+	case tuiCmdToggle:
+		st.disabled = !st.disabled
+		if st.disabled {
+			if st.buyOrderID != "" {
+				id := st.buyOrderID
+				spawn(func() { gBroker.CancelOrder(id) })
+			}
+			if st.sellOrderID != "" {
+				id := st.sellOrderID
+				spawn(func() { gBroker.CancelOrder(id) })
+			}
+			log.Printf("%s DISABLED", st.symbol)
+		} else {
+			log.Printf("%s ENABLED", st.symbol)
+			Evaluate(st)
+		}
+	case tuiCmdAdjust:
+		switch cmd.field {
+		case fieldTarget:
+			st.config.target = st.config.target.Add(cmd.delta)
+		case fieldQty:
+			st.config.qty = st.config.qty.Add(cmd.delta)
+			if st.config.qty.IsNegative() {
+				st.config.qty = decimal.Zero
+			}
+		case fieldSpread:
+			st.config.spread = st.config.spread.Add(cmd.delta)
+			if st.config.spread.IsNegative() {
+				st.config.spread = decimal.Zero
+			}
+		case fieldDrift:
+			st.config.drift = st.config.drift.Add(cmd.delta)
+			if st.config.drift.IsNegative() {
+				st.config.drift = decimal.Zero
+			}
+		case fieldGreed:
+			st.config.greed = st.config.greed.Add(cmd.delta)
+			if st.config.greed.IsNegative() {
+				st.config.greed = decimal.Zero
+			}
+		}
+		log.Printf("%s config: target=%s qty=%s spread=%s drift=%s greed=%s",
+			st.symbol, st.config.target, st.config.qty,
+			st.config.spread, st.config.drift, st.config.greed)
 	}
 }
 
