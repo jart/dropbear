@@ -403,6 +403,17 @@ func (b *Backtest) replacePending(r *backtestReplace) {
 			}
 		}
 
+		// update any staged fills that still reference the old client order ID,
+		// otherwise they'll be silently dropped when the main loop can't find
+		// the old ID in gOrders after processing the replace event.
+		for i := range b.stagedFills {
+			sf := &b.stagedFills[i]
+			if sf.update.Order.ClientOrderID == oldClientOrderID {
+				sf.update.Order.ClientOrderID = r.clientOrderID
+				sf.update.Order.ID = r.clientOrderID
+			}
+		}
+
 		// send replaced event on old client order ID
 		// onOrderUpdate swaps to the new client order ID via ReplacedBy
 		b.OrderUpdates <- &alpaca.OrderUpdate{
