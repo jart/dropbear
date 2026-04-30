@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"dropbear/broker/alpaca"
+	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/symbol"
@@ -21,6 +22,8 @@ const tuiMaxLogLines = 1000
 const (
 	tuiCmdToggle = iota
 	tuiCmdAdjust
+	tuiCmdVenue
+	tuiCmdCancel
 )
 
 // TUICommand is sent from the TUI goroutine to the main event loop.
@@ -31,27 +34,13 @@ type TUICommand struct {
 	delta  decimal.Decimal
 }
 
-// Editable field indices.
 const (
 	fieldTarget = iota
-	fieldQty
 	fieldSpread
-	fieldDrift
 	fieldGreed
-	fieldCount
 )
 
-var fieldSteps = [fieldCount]decimal.Decimal{
-	decimal.Parse("100"),   // target: ±100 shares
-	decimal.Parse("50"),    // qty: ±50 shares
-	decimal.Parse("0.005"), // spread
-	decimal.Parse("0.005"), // drift
-	decimal.Parse("0.005"), // greed
-}
-
-var fieldLabels = [fieldCount]string{
-	"TARGET", "QTY", "SPREAD", "DRIFT", "GREED",
-}
+var kSpreadStep = decimal.Parse("0.01")
 
 // Column positions for stock table.
 const (
@@ -73,17 +62,21 @@ const (
 	cpUnrl = 128
 	cpEq   = 138
 	cpFees = 148
+	cpBvol = 157
+	cpSvol = 164
 )
 
 // TUI manages the terminal interface for the maker.
 type TUI struct {
-	commands chan<- TUICommand
-	sigChan  chan<- os.Signal
-	oldState *term.State
-	row      int // selected stock row
-	col      int // selected editable field
-	mu       sync.Mutex
-	logLines []string
+	commands    chan<- TUICommand
+	sigChan     chan<- os.Signal
+	oldState    *term.State
+	row         int // selected stock row
+	mu          sync.Mutex
+	logLines    []string
+	flashSymbol symbol.Symbol
+	flashCol    int       // column position of flashed cell
+	flashUntil  time.Time // real wall-clock time
 }
 
 func startTUI(commands chan TUICommand, sigChan chan os.Signal) *TUI {
@@ -137,12 +130,6 @@ func (t *TUI) inputLoop() {
 					t.moveRow(-1)
 				case 'B':
 					t.moveRow(1)
-				case 'C':
-					t.moveCol(1)
-				case 'D':
-					t.moveCol(-1)
-				case 'Z': // shift-tab
-					t.moveCol(-1)
 				}
 				i += 3
 				continue
@@ -152,18 +139,24 @@ func (t *TUI) inputLoop() {
 				t.moveRow(-1)
 			case 'j':
 				t.moveRow(1)
-			case 'h':
-				t.moveCol(-1)
-			case 'l':
-				t.moveCol(1)
-			case '\t':
-				t.moveCol(1)
 			case ' ':
 				t.toggle()
-			case '+', '=':
-				t.adjust(1)
-			case '-':
-				t.adjust(-1)
+			case 't':
+				t.adjustField(fieldTarget, 1)
+			case 'T':
+				t.adjustField(fieldTarget, -1)
+			case 's':
+				t.adjustField(fieldSpread, 1)
+			case 'S':
+				t.adjustField(fieldSpread, -1)
+			case 'g':
+				t.adjustField(fieldGreed, 1)
+			case 'G':
+				t.adjustField(fieldGreed, -1)
+			case 'c':
+				t.cancelOrders()
+			case 'v':
+				t.cycleVenue()
 			case 'q', 3: // q or ctrl-c
 				select {
 				case t.sigChan <- syscall.SIGTERM:
@@ -189,15 +182,6 @@ func (t *TUI) moveRow(d int) {
 	}
 }
 
-func (t *TUI) moveCol(d int) {
-	t.col += d
-	if t.col < 0 {
-		t.col = 0
-	} else if t.col >= fieldCount {
-		t.col = fieldCount - 1
-	}
-}
-
 func (t *TUI) toggle() {
 	states := sortedSymbols()
 	if t.row < len(states) {
@@ -205,21 +189,56 @@ func (t *TUI) toggle() {
 	}
 }
 
-func (t *TUI) adjust(sign int) {
+func (t *TUI) cancelOrders() {
+	states := sortedSymbols()
+	if t.row < len(states) {
+		t.commands <- TUICommand{kind: tuiCmdCancel, symbol: states[t.row].symbol}
+	}
+}
+
+func (t *TUI) cycleVenue() {
+	states := sortedSymbols()
+	if t.row < len(states) {
+		t.flash(states[t.row].symbol, cpVnue)
+		t.commands <- TUICommand{kind: tuiCmdVenue, symbol: states[t.row].symbol}
+	}
+}
+
+func (t *TUI) adjustField(field, sign int) {
 	states := sortedSymbols()
 	if t.row >= len(states) {
 		return
 	}
-	d := fieldSteps[t.col]
-	if sign < 0 {
-		d = d.Neg()
+	st := states[t.row]
+	var delta decimal.Decimal
+	var col int
+	switch field {
+	case fieldTarget:
+		delta = cboe.LotSize(st.ema.Value)
+		col = cpTarg
+	case fieldSpread:
+		delta = kSpreadStep
+		col = cpSpr
+	case fieldGreed:
+		delta = kSpreadStep
+		col = cpGrd
 	}
+	if sign < 0 {
+		delta = delta.Neg()
+	}
+	t.flash(st.symbol, col)
 	t.commands <- TUICommand{
 		kind:   tuiCmdAdjust,
-		symbol: states[t.row].symbol,
-		field:  t.col,
-		delta:  d,
+		symbol: st.symbol,
+		field:  field,
+		delta:  delta,
 	}
+}
+
+func (t *TUI) flash(sym symbol.Symbol, col int) {
+	t.flashSymbol = sym
+	t.flashCol = col
+	t.flashUntil = time.Now().Add(400 * time.Millisecond)
 }
 
 // renderLoop redraws the screen on a real wall-clock timer
@@ -286,15 +305,22 @@ func (t *TUI) render() {
 	tuiAt(&b, cpUnrl, fmt.Sprintf("%9s", "UNREAL"))
 	tuiAt(&b, cpEq, fmt.Sprintf("%9s", "EQUITY"))
 	tuiAt(&b, cpFees, fmt.Sprintf("%8s", "FEES"))
+	tuiAt(&b, cpBvol, fmt.Sprintf("%6s", "BVOL"))
+	tuiAt(&b, cpSvol, fmt.Sprintf("%6s", "SVOL"))
 	b.WriteString("\033[0m\033[K\r\n")
 	row++
 
 	// stock rows
+	flashing := time.Now().Before(t.flashUntil)
 	for i, st := range states {
 		if row >= h-2 {
 			break
 		}
-		t.writeStock(&b, i, st)
+		flashCol := -1
+		if flashing && st.symbol == t.flashSymbol {
+			flashCol = t.flashCol
+		}
+		t.writeStock(&b, i, st, flashCol)
 		row++
 	}
 
@@ -330,13 +356,13 @@ func (t *TUI) render() {
 	}
 
 	// help bar
-	help := fmt.Sprintf(" j/k:row  h/l:field  space:on/off  +/-:adjust(%s)  q:quit", fieldLabels[t.col])
+	help := " j/k:select  space:on/off  t/T:target  s/S:spread  g/G:greed  v:venue  c:cancel  q:quit"
 	fmt.Fprintf(&b, "\033[%d;1H\033[7m%-*s\033[0m", h, w, help)
 
 	os.Stdout.Write(b.Bytes())
 }
 
-func (t *TUI) writeStock(b *bytes.Buffer, idx int, st *State) {
+func (t *TUI) writeStock(b *bytes.Buffer, idx int, st *State, flashCol int) {
 	sel := idx == t.row
 	cfg := st.config
 
@@ -371,32 +397,24 @@ func (t *TUI) writeStock(b *bytes.Buffer, idx int, st *State) {
 		venue = "NYSE"
 	case alpaca.OrderDestinationARCA:
 		venue = "ARCA"
+	case alpaca.OrderDestinationNone:
+		venue = "SMRT"
 	case alpaca.OrderDestinationAuto:
 		venue = "AUTO"
 	default:
 		venue = fmt.Sprintf("%-4s", cfg.venue)
 	}
-	tuiAt(b, cpVnue, venue)
+	tuiAt(b, cpVnue, tuiFlash(venue, cpVnue, flashCol))
 
 	// position
 	tuiAt(b, cpPos, fmt.Sprintf("%6s", st.position))
 
-	// editable fields
-	editVals := [fieldCount]string{
-		fmt.Sprintf("%6s", cfg.target),
-		fmt.Sprintf("%5s", cfg.qty),
-		fmt.Sprintf("%6s", cfg.spread),
-		fmt.Sprintf("%6s", cfg.drift),
-		fmt.Sprintf("%6s", cfg.greed),
-	}
-	editPos := [fieldCount]int{cpTarg, cpQty, cpSpr, cpDft, cpGrd}
-	for i := range fieldCount {
-		s := editVals[i]
-		if sel && i == t.col {
-			s = "\033[1;4m" + s + "\033[22;24m"
-		}
-		tuiAt(b, editPos[i], s)
-	}
+	// config fields
+	tuiAt(b, cpTarg, tuiFlash(fmt.Sprintf("%6s", cfg.target), cpTarg, flashCol))
+	tuiAt(b, cpQty, fmt.Sprintf("%5s", cfg.qty))
+	tuiAt(b, cpSpr, tuiFlash(fmt.Sprintf("%6s", cfg.spread), cpSpr, flashCol))
+	tuiAt(b, cpDft, fmt.Sprintf("%6s", cfg.drift))
+	tuiAt(b, cpGrd, tuiFlash(fmt.Sprintf("%6s", cfg.greed), cpGrd, flashCol))
 
 	// buy/sell prices
 	if st.buyPrice.IsPositive() {
@@ -444,8 +462,18 @@ func (t *TUI) writeStock(b *bytes.Buffer, idx int, st *State) {
 	tuiAt(b, cpUnrl, tuiColorW(unrealized, 9))
 	tuiAt(b, cpEq, tuiColorW(eq, 9))
 	tuiAt(b, cpFees, tuiColorFeeW(st.totalFees, 8))
+	tuiAt(b, cpBvol, fmt.Sprintf("%6s", st.totalBought))
+	tuiAt(b, cpSvol, fmt.Sprintf("%6s", st.totalSold))
 
 	b.WriteString("\033[K\r\n")
+}
+
+// tuiFlash wraps s with reverse video if col matches flashCol.
+func tuiFlash(s string, col, flashCol int) string {
+	if col == flashCol {
+		return "\033[7m" + s + "\033[27m"
+	}
+	return s
 }
 
 // tuiAt positions cursor at column col and writes s.

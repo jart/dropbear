@@ -1038,20 +1038,10 @@ func processTUICommand(cmd TUICommand) {
 		switch cmd.field {
 		case fieldTarget:
 			st.config.target = st.config.target.Add(cmd.delta)
-		case fieldQty:
-			st.config.qty = st.config.qty.Add(cmd.delta)
-			if st.config.qty.IsNegative() {
-				st.config.qty = decimal.Zero
-			}
 		case fieldSpread:
 			st.config.spread = st.config.spread.Add(cmd.delta)
 			if st.config.spread.IsNegative() {
 				st.config.spread = decimal.Zero
-			}
-		case fieldDrift:
-			st.config.drift = st.config.drift.Add(cmd.delta)
-			if st.config.drift.IsNegative() {
-				st.config.drift = decimal.Zero
 			}
 		case fieldGreed:
 			st.config.greed = st.config.greed.Add(cmd.delta)
@@ -1062,6 +1052,28 @@ func processTUICommand(cmd TUICommand) {
 		log.Printf("%s config: target=%s qty=%s spread=%s drift=%s greed=%s",
 			st.symbol, st.config.target, st.config.qty,
 			st.config.spread, st.config.drift, st.config.greed)
+	case tuiCmdCancel:
+		if st.buyOrderID != "" {
+			id := st.buyOrderID
+			spawn(func() { gBroker.CancelOrder(id) })
+		}
+		if st.sellOrderID != "" {
+			id := st.sellOrderID
+			spawn(func() { gBroker.CancelOrder(id) })
+		}
+		log.Printf("%s CANCEL orders", st.symbol)
+	case tuiCmdVenue:
+		switch st.config.venue {
+		case alpaca.OrderDestinationNASDAQ:
+			st.config.venue = alpaca.OrderDestinationARCA
+		case alpaca.OrderDestinationARCA:
+			st.config.venue = alpaca.OrderDestinationNYSE
+		case alpaca.OrderDestinationNYSE:
+			st.config.venue = alpaca.OrderDestinationNone
+		default:
+			st.config.venue = alpaca.OrderDestinationNASDAQ
+		}
+		log.Printf("%s venue: %s", st.symbol, st.config.venue)
 	}
 }
 
