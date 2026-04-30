@@ -7,15 +7,20 @@ import "math"
 type Short int32
 
 const (
-	ShortScale = 1_000
-	ShortMax   = Short(math.MaxInt32) // +2'147'483.647
-	ShortMin   = Short(math.MinInt32) // -2'147'483.648
+	ShortScale = 10_000
+	ShortMax   = Short(math.MaxInt32) // +214'748.3647
+	ShortMin   = Short(math.MinInt32) // -214'748.3648
 	shortRatio = Scale / ShortScale
 )
 
 // Decimal converts a 32-bit Short to a 64-bit Decimal.
 func (s Short) Decimal() Decimal {
 	return Decimal(s) * shortRatio
+}
+
+// String returns the decimal representation of s.
+func (s Short) String() string {
+	return s.Decimal().String()
 }
 
 // Short converts a 64-bit Decimal to a 32-bit Short.
@@ -44,4 +49,17 @@ func (d Decimal) Short() Short {
 
 	// apply sign
 	return Short(int32((quo ^ uint64(xm)) - uint64(xm)))
+}
+
+// CanShort returns true if d can be converted to Short without overflow.
+func (d Decimal) CanShort() bool {
+	x := int64(d)
+	xm := x >> 63
+	ux := uint64((x ^ xm) - xm)
+	quo := ux / shortRatio
+	rem := ux % shortRatio
+	if (rem<<1)+(quo&1) > shortRatio {
+		quo++
+	}
+	return quo <= uint64(ShortMax)+(uint64(xm)&1)
 }

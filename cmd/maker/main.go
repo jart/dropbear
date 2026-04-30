@@ -234,27 +234,22 @@ func Run(symbols []SymbolEntry) Result {
 		names := symbolNames()
 		log.Printf("subscribing to sip stock updates for %d symbols...", len(names))
 		stockUpdates = alpaca.MustStockUpdates(alpaca.SIPWSURL, &alpaca.StockUpdatesRequest{
-			Action:     "subscribe",
-			Quotes:     names,
-			Trades:     names,
-			Statuses:   names,
-			Imbalances: names,
-			LULDs:      names,
-			// Quotes:     []string{"*"},
-			// Trades:     []string{"*"},
-			// Statuses:   []string{"*"},
-			// Imbalances: []string{"*"},
-			// LULDs:      []string{"*"},
+			Action:      "subscribe",
+			Quotes:      []string{"*"},
+			Trades:      []string{"*"},
+			Statuses:    []string{"*"},
+			Imbalances:  []string{"*"},
+			LULDs:       []string{"*"},
+			Bars:        []string{"*"},
+			DailyBars:   []string{"*"},
+			UpdatedBars: []string{"*"},
 		})
 		log.Printf("subscribing to boats stock updates for %d symbols...", len(names))
 		boatsUpdates = alpaca.MustStockUpdates(alpaca.BOATSWSURL, &alpaca.StockUpdatesRequest{
 			Action:   "subscribe",
-			Quotes:   names,
-			Trades:   names,
-			Statuses: names,
-			// Quotes:   []string{"*"},
-			// Trades:   []string{"*"},
-			// Statuses: []string{"*"},
+			Quotes:   []string{"*"},
+			Trades:   []string{"*"},
+			Statuses: []string{"*"},
 		})
 		// start tape recorder to gcs
 		gTapeMsg = make(chan *sip.Message, 65536)
@@ -278,7 +273,7 @@ func Run(symbols []SymbolEntry) Result {
 			removeOrder(gOrders[clientOrderID], clientOrderID)
 			gOrderFails++
 		case clientOrderID := <-gFailedReplaces:
-			delete(gOrders, clientOrderID)
+			undoReplaceOrder(gOrders[clientOrderID], clientOrderID)
 		case <-heartbeatChan:
 			onHeartbeat()
 		case <-sigChan:
@@ -405,12 +400,26 @@ func removeOrder(st *State, clientOrderID string) {
 		st.buyClientOrderID2 = ""
 		st.buyOrderID = ""
 		st.buyPrice = decimal.Zero
+		st.buyPrice2 = decimal.Zero
 	}
 	if st.sellClientOrderID == clientOrderID {
 		st.sellClientOrderID = ""
 		st.sellClientOrderID2 = ""
 		st.sellOrderID = ""
 		st.sellPrice = decimal.Zero
+		st.sellPrice2 = decimal.Zero
+	}
+}
+
+func undoReplaceOrder(st *State, clientOrderID string) {
+	delete(gOrders, clientOrderID)
+	if st.buyClientOrderID2 == clientOrderID {
+		st.buyClientOrderID2 = ""
+		st.buyPrice2 = decimal.Zero
+	}
+	if st.sellClientOrderID2 == clientOrderID {
+		st.sellClientOrderID2 = ""
+		st.sellPrice2 = decimal.Zero
 	}
 }
 

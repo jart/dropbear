@@ -75,6 +75,8 @@ var (
 	ptpWithException    *tristate
 	standardMarginLong  *tristate
 	standardMarginShort *tristate
+	goodMarginLong      *tristate
+	goodMarginShort     *tristate
 )
 
 func init() {
@@ -98,6 +100,8 @@ func init() {
 	ptpWithException = boolFlag("ptp-with-exception", "PTP currently exempt from withholding")
 	standardMarginLong = boolFlag("standard-margin-long", "has standard 30% long margin requirement")
 	standardMarginShort = boolFlag("standard-margin-short", "has standard 30% short margin requirement")
+	goodMarginLong = boolFlag("good-margin-long", "has good 50% long margin requirement")
+	goodMarginShort = boolFlag("good-margin-short", "has good 50% short margin requirement")
 }
 
 func main() {
@@ -135,6 +139,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  -ptp-with-exception / -no-ptp-with-exception\n")
 		fmt.Fprintf(os.Stderr, "  -standard-margin-long / -no-standard-margin-long\n")
 		fmt.Fprintf(os.Stderr, "  -standard-margin-short / -no-standard-margin-short\n")
+		fmt.Fprintf(os.Stderr, "  -good-margin-long / -no-good-margin-long\n")
+		fmt.Fprintf(os.Stderr, "  -good-margin-short / -no-good-margin-short\n")
 		fmt.Fprintf(os.Stderr, "  -min-price / -no-min-price\n")
 		fmt.Fprintf(os.Stderr, "  -max-price / -no-max-price\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
@@ -167,6 +173,7 @@ func main() {
 		*ptpWithException = -1
 	}
 
+	goodMargin := decimal.Parse("0.5")
 	standardMargin := decimal.Parse("0.3")
 
 	if *quoteFlag || *sortVolume || *sortPrice {
@@ -241,6 +248,12 @@ func main() {
 			continue
 		}
 		if !standardMarginShort.require(a.MarginRequirementShort.Load().Cmp(standardMargin) == 0) {
+			continue
+		}
+		if !goodMarginLong.require(a.MarginRequirementLong.Load().Cmp(goodMargin) < 0) {
+			continue
+		}
+		if !goodMarginShort.require(a.MarginRequirementShort.Load().Cmp(goodMargin) < 0) {
 			continue
 		}
 		results = append(results, a.Symbol.String())

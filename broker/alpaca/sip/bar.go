@@ -4,10 +4,12 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/symbol"
+	"errors"
 )
 
+var ErrShortOverflow = errors.New("bar price overflow: value cannot fit in decimal.Short")
+
 // Bar represents an aggregated bar from the SIP feed.
-// This can lose one decimal of precision on literal penny stocks.
 type Bar struct {
 	Type      MessageType     `json:"T"`  // MessageTypeBar, MessageTypeDailyBar, or MessageTypeUpdatedBar
 	NumTrades uint32          `json:"n"`  // number of trades
@@ -36,7 +38,7 @@ func (b *Bar) Parse(data []byte) (int, error) {
 		gotVWAP
 		gotNumTrades
 	)
-	var err error
+	var err, punt error
 	var tmp decimal.Decimal
 	g := 0
 	i := 1
@@ -60,7 +62,7 @@ func (b *Bar) Parse(data []byte) (int, error) {
 				gotNumTrades {
 				return 0, ErrMissingField
 			}
-			return i, nil
+			return i, punt
 		case ',':
 			// do nothing
 		case '"':
@@ -129,7 +131,11 @@ func (b *Bar) Parse(data []byte) (int, error) {
 				if err != nil {
 					return 0, err
 				}
-				b.Open = tmp.Short()
+				if tmp.CanShort() {
+					b.Open = tmp.Short()
+				} else {
+					punt = ErrShortOverflow
+				}
 				g |= gotOpen
 			case 'h': // "h":152.00
 				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
@@ -140,7 +146,11 @@ func (b *Bar) Parse(data []byte) (int, error) {
 				if err != nil {
 					return 0, err
 				}
-				b.High = tmp.Short()
+				if tmp.CanShort() {
+					b.High = tmp.Short()
+				} else {
+					punt = ErrShortOverflow
+				}
 				g |= gotHigh
 			case 'l': // "l":149.50
 				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
@@ -151,7 +161,11 @@ func (b *Bar) Parse(data []byte) (int, error) {
 				if err != nil {
 					return 0, err
 				}
-				b.Low = tmp.Short()
+				if tmp.CanShort() {
+					b.Low = tmp.Short()
+				} else {
+					punt = ErrShortOverflow
+				}
 				g |= gotLow
 			case 'c': // "c":151.00
 				if i+2 > n || data[i] != '"' || data[i+1] != ':' {
@@ -162,7 +176,11 @@ func (b *Bar) Parse(data []byte) (int, error) {
 				if err != nil {
 					return 0, err
 				}
-				b.Close = tmp.Short()
+				if tmp.CanShort() {
+					b.Close = tmp.Short()
+				} else {
+					punt = ErrShortOverflow
+				}
 				g |= gotClose
 			case 'n': // "n":1234
 				if i+2 > n || data[i] != '"' || data[i+1] != ':' {

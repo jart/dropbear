@@ -50,10 +50,10 @@ func TestDecimalShortRounding(t *testing.T) {
 		dec  Decimal
 		want Short
 	}{
-		{"round up", Decimal(1234)*shortRatio + (shortRatio*3/4), 1235},
-		{"round down", Decimal(1234)*shortRatio + (shortRatio*1/4), 1234},
-		{"round up neg", -(Decimal(1234)*shortRatio + (shortRatio*3/4)), -1235},
-		{"round down neg", -(Decimal(1234)*shortRatio + (shortRatio*1/4)), -1234},
+		{"round up", Decimal(1234)*shortRatio + (shortRatio * 3 / 4), 1235},
+		{"round down", Decimal(1234)*shortRatio + (shortRatio * 1 / 4), 1234},
+		{"round up neg", -(Decimal(1234)*shortRatio + (shortRatio * 3 / 4)), -1235},
+		{"round down neg", -(Decimal(1234)*shortRatio + (shortRatio * 1 / 4)), -1234},
 		{"half to even (even)", Decimal(1234)*shortRatio + shortRatio/2, 1234},
 		{"half to even (odd)", Decimal(1235)*shortRatio + shortRatio/2, 1236},
 		{"half to even neg (even)", -(Decimal(1234)*shortRatio + shortRatio/2), -1234},
@@ -100,5 +100,47 @@ func TestDecimalShortOverflow(t *testing.T) {
 			}()
 			tt.dec.Short()
 		})
+	}
+}
+
+func TestDecimalCanShort(t *testing.T) {
+	tests := []struct {
+		dec  Decimal
+		want bool
+	}{
+		{0, true},
+		{Decimal(shortRatio), true},
+		{-Decimal(shortRatio), true},
+		{10000 * Decimal(shortRatio), true},
+		{12345 * Decimal(shortRatio), true},
+		{-12345 * Decimal(shortRatio), true},
+		{Decimal(ShortMax) * shortRatio, true},
+		{Decimal(ShortMin) * shortRatio, true},
+		{Decimal(ShortMax)*shortRatio + shortRatio, false},
+		{Decimal(ShortMin)*shortRatio - shortRatio, false},
+	}
+	for _, tt := range tests {
+		got := tt.dec.CanShort()
+		if got != tt.want {
+			t.Errorf("Decimal(%d).CanShort() = %t, want %t", tt.dec, got, tt.want)
+		}
+	}
+}
+
+func TestShortString(t *testing.T) {
+	tests := []struct {
+		short Short
+		want  string
+	}{
+		{0, "0"},
+		{1 * ShortScale, "1"},
+		{123 * ShortScale / 100, "1.23"},
+		{-123 * ShortScale / 100, "-1.23"},
+	}
+	for _, tt := range tests {
+		got := tt.short.String()
+		if got != tt.want {
+			t.Errorf("Short(%d).String() = %s, want %s", tt.short, got, tt.want)
+		}
 	}
 }

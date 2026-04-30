@@ -14,11 +14,22 @@ var (
 	// Real messages from sipdata-2026-01-07.jsonl (same data used for msgpack benchmark)
 	realTradeJSON = []byte(`{"T":"t","S":"CPRT","i":7832,"x":"D","p":38.22,"s":9,"c":["@","I"],"z":"C","t":"2026-01-07T16:22:17.677968258Z"}`)
 	realQuoteJSON = []byte(`{"T":"q","S":"OKLL","bx":"Q","bp":30.68,"bs":400,"ax":"Q","ap":30.79,"as":700,"c":["R"],"z":"C","t":"2026-01-07T16:22:17.67572372Z"}`)
+
+	realBarJSON = []byte(`{"T":"b","S":"BIPC","o":44.315,"h":44.315,"l":44.315,"c":44.315,"v":183,"t":"2026-01-07T16:22:00Z","n":6,"vw":44.315}`)
 )
 
 func BenchmarkGetMessageType(b *testing.B) {
 	for b.Loop() {
 		_ = GetMessageType(tradeJSON)
+	}
+}
+
+func BenchmarkParseBar(b *testing.B) {
+	for b.Loop() {
+		var b Bar
+		if _, err := b.Parse(realBarJSON); err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -187,6 +198,34 @@ func TestParseQuote(t *testing.T) {
 	}
 	if quote.Conditions != QuoteCondR {
 		t.Errorf("Conditions = %v, want %v", quote.Conditions, QuoteCondR)
+	}
+}
+
+func TestParseBar(t *testing.T) {
+	var b Bar
+	if _, err := b.Parse(realBarJSON); err != nil {
+		t.Fatal(err)
+	}
+	if b.Symbol != symbol.MustParse("BIPC") {
+		t.Errorf("Symbol = %s, want BIPC", b.Symbol)
+	}
+	if b.Open.Decimal().String() != "44.315" {
+		t.Errorf("Open = %s, want 44.315", b.Open)
+	}
+	if b.High.Decimal().String() != "44.315" {
+		t.Errorf("High = %s, want 44.315", b.High)
+	}
+	if b.Low.Decimal().String() != "44.315" {
+		t.Errorf("Low = %s, want 44.315", b.Low)
+	}
+	if b.Close.Decimal().String() != "44.315" {
+		t.Errorf("Close = %s, want 44.315", b.Close)
+	}
+	if b.Volume != 183 {
+		t.Errorf("Volume = %d, want 183", b.Volume)
+	}
+	if b.VWAP.String() != "44.315" {
+		t.Errorf("VWAP = %s, want 44.315", b.VWAP)
 	}
 }
 

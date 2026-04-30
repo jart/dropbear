@@ -167,8 +167,10 @@ func (d *stockUpdatesDaemon) impl() error {
 			msg := new(sip.Message)
 			j, err := msg.Parse(bytes[i:])
 			if err != nil {
-				log.Printf("%v: %s", err, string(bytes))
-				break
+				logf("%v: %s", err, string(bytes))
+				if err != sip.ErrShortOverflow {
+					break
+				}
 			}
 			i += j
 			d.c <- msg
@@ -177,7 +179,7 @@ func (d *stockUpdatesDaemon) impl() error {
 			} else if i < n && bytes[i] == ']' {
 				break
 			} else {
-				log.Printf("broken message: %s", string(bytes))
+				logf("broken message: %s", string(bytes))
 				break
 			}
 		}

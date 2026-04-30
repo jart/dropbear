@@ -68,7 +68,3 @@ type State struct {
 	totalCostOut decimal.Decimal // total dollars received selling
 	totalFees    decimal.Decimal // cumulative fees (negative = net rebate)
 }
-
-func (st *State) Active() bool {
-	return !st.position.IsZero() || st.buyClientOrderID != "" || st.sellClientOrderID != ""
-}
