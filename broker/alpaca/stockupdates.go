@@ -169,18 +169,23 @@ func (d *stockUpdatesDaemon) impl() error {
 		n := len(bytes)
 		t := clocky.Now()
 		for i < n {
+			skip := false
 			msg := new(sip.Message)
 			j, err := msg.Parse(bytes[i:])
 			if err != nil {
-				if err != sip.ErrShortOverflow {
+				if err == sip.ErrShortOverflow {
+					skip = true
+				} else {
 					logf("%v: %s\n", err, string(bytes))
 					break
 				}
 			}
 			i += j
-			d.c <- StockUpdate{
-				ReceivedAt: t,
-				Message:    msg,
+			if !skip {
+				d.c <- StockUpdate{
+					ReceivedAt: t,
+					Message:    msg,
+				}
 			}
 			if i < n && bytes[i] == ',' {
 				i++

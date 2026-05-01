@@ -30,7 +30,7 @@ func (s *Status) Halt() bool {
 		}
 	case TapeC, TapeO:
 		switch s.Code {
-		case StatusCodeTradingHaltUTP:
+		case StatusCodeTradingHaltUTP, StatusCodeVolatilityPause:
 			return true
 		default:
 			return false

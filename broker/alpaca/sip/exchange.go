@@ -11,7 +11,7 @@ const (
 	ExchangeAMEX   Exchange = 'A' // New York Curb Exchange (NYSE American)
 	ExchangeBSE    Exchange = 'B' // Boston Stock Exchange (NASDAQ OMX BX)
 	ExchangeNSE    Exchange = 'C' // National Stock Exchange
-	ExchangeADF    Exchange = 'D' // FINRA ADF
+	ExchangeADF    Exchange = 'D' // FINRA ADF (used to report off-exchange trades)
 	ExchangeIndy   Exchange = 'E' // Market Independent
 	ExchangeGMX    Exchange = 'F' // Nasdaq Global/Select Market (?)
 	ExchangePearl  Exchange = 'G' // MIAX Pearl (?)

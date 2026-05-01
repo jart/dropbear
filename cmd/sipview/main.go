@@ -5,6 +5,7 @@ import (
 	"dropbear/broker/alpaca"
 	"dropbear/broker/alpaca/sip"
 	"dropbear/clocky"
+	"dropbear/decimal"
 	"dropbear/symbol"
 	"fmt"
 	"os"
@@ -58,10 +59,10 @@ func (v *viewer) hasFilter() bool {
 }
 
 func (v *viewer) matchesIdx(i int) bool {
-	if !v.hasFilter() {
-		return true
-	}
 	msg, _ := v.file.Get(i)
+	if shouldIgnore(msg) {
+		return false
+	}
 	if v.symFilter != 0 && msg.Symbol != v.symFilter {
 		return false
 	}
@@ -69,6 +70,28 @@ func (v *viewer) matchesIdx(i int) bool {
 		return false
 	}
 	return true
+}
+
+// ignore spammy messages we don't understand yet
+func shouldIgnore(msg *sip.Message) bool {
+	switch msg.Type {
+	case sip.MessageTypeStatus:
+		switch msg.Tape {
+		case sip.TapeN:
+			switch msg.Status().Code {
+			case 'c': // TODO: what is status code 'c'? no imbalance?
+				return true
+			}
+			hour := msg.Timestamp.Hour()
+			if hour > 4 && hour < 20 {
+				// ignore blue ocean during regular hours. alpaca's beta
+				// boats feed sends so much of this it drowns everything
+				// else out. no idea why.
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (v *viewer) nextMatch(start int) int {
@@ -93,10 +116,7 @@ func (v *viewer) prevMatch(start int) int {
 func (v *viewer) collectVisible(start, count int) []int {
 	v.visBuf = v.visBuf[:0]
 	if !v.hasFilter() {
-		end := start + count
-		if end > v.file.Count() {
-			end = v.file.Count()
-		}
+		end := min(start+count, v.file.Count())
 		for i := start; i < end; i++ {
 			v.visBuf = append(v.visBuf, i)
 		}
@@ -329,7 +349,7 @@ func (v *viewer) renderList(b *bytes.Buffer, w, h int) {
 
 	// Data rows.
 	var prevTime clocky.Time
-	for i := 0; i < vis; i++ {
+	for i := range vis {
 		b.WriteString("\033[2K")
 		if i >= len(visible) {
 			b.WriteString("\r\n")
@@ -415,18 +435,166 @@ func (v *viewer) renderListColumns(b *bytes.Buffer, msg *sip.Message, fileIdx in
 	}
 }
 
-func (v *viewer) imbDelta(sym symbol.Symbol, imb *sip.Imbalance, fileIdx int) string {
-	end := fileIdx - 100000
-	if end < 0 {
-		end = 0
+type exchQuote struct {
+	exchange sip.Exchange
+	bid      sip.Quote
+	ask      sip.Quote
+	bidAge   clocky.Duration
+	askAge   clocky.Duration
+}
+
+// recentQuotesByExchange scans backward from fileIdx to find the most recent
+// bid and ask from each exchange for the given symbol.
+func (v *viewer) recentQuotesByExchange(sym symbol.Symbol, asOf clocky.Time, fileIdx int) []exchQuote {
+	type side struct {
+		q    sip.Quote
+		seen bool
 	}
+	var bids, asks [256]side // indexed by Exchange byte
+	seen := 0
+	target := 20 * 2 // ~20 exchanges × 2 sides
+	end := max(fileIdx-500000, 0)
+	for i := fileIdx - 1; i >= end && seen < target; i-- {
+		msg, _ := v.file.Get(i)
+		if msg.Type != sip.MessageTypeQuote || msg.Symbol != sym {
+			continue
+		}
+		q := msg.Quote()
+		be := byte(q.BidExchange)
+		ae := byte(q.AskExchange)
+		if !bids[be].seen && q.BidPrice.IsPositive() {
+			bids[be].q = *q
+			bids[be].seen = true
+			seen++
+		}
+		if !asks[ae].seen && q.AskPrice.IsPositive() {
+			asks[ae].q = *q
+			asks[ae].seen = true
+			seen++
+		}
+	}
+	// Collect unique exchanges that have at least a bid or ask.
+	var result []exchQuote
+	for i := range 256 {
+		if !bids[i].seen && !asks[i].seen {
+			continue
+		}
+		eq := exchQuote{exchange: sip.Exchange(i)}
+		if bids[i].seen {
+			eq.bid = bids[i].q
+			eq.bidAge = asOf.Sub(bids[i].q.Timestamp)
+		}
+		if asks[i].seen {
+			eq.ask = asks[i].q
+			eq.askAge = asOf.Sub(asks[i].q.Timestamp)
+		}
+		result = append(result, eq)
+	}
+	return result
+}
+
+func formatAge(d clocky.Duration) string {
+	us := d.Microseconds()
+	if us < 1000 {
+		return fmt.Sprintf("%dμs", us)
+	}
+	ms := d.Milliseconds()
+	if ms < 1000 {
+		return fmt.Sprintf("%dms", ms)
+	}
+	s := d.Seconds()
+	if s < 60 {
+		return fmt.Sprintf("%ds", s)
+	}
+	return fmt.Sprintf("%dm%ds", s/60, s%60)
+}
+
+type exchTrades struct {
+	exchange sip.Exchange
+	trades   int
+	volume   int64
+	pct      int // percent of total trades
+	vwap     decimal.Decimal
+	last     decimal.Decimal
+	lastAge  clocky.Duration
+}
+
+// recentTradesByExchange scans backward from fileIdx collecting trade
+// activity per exchange for the given symbol over the last 10K trades.
+func (v *viewer) recentTradesByExchange(sym symbol.Symbol, fileIdx int) []exchTrades {
+	type accum struct {
+		trades int
+		volume int64
+		value  decimal.Decimal // sum of price*size for VWAP
+		last   decimal.Decimal
+		lastTS clocky.Time
+	}
+	var byExch [256]accum
+	totalTrades := 0
+	target := 10000
+	asOfMsg, _ := v.file.Get(fileIdx)
+	asOf := asOfMsg.Timestamp
+	for i := fileIdx - 1; i >= 0 && totalTrades < target; i-- {
+		msg, _ := v.file.Get(i)
+		if msg.Type != sip.MessageTypeTrade || msg.Symbol != sym {
+			continue
+		}
+		t := msg.Trade()
+		e := byte(t.Exchange)
+		a := &byExch[e]
+		a.trades++
+		a.volume += t.Size
+		a.value = a.value.Add(t.Price.MulInt64(t.Size))
+		if a.last.IsZero() {
+			a.last = t.Price
+			a.lastTS = msg.Timestamp
+		}
+		totalTrades++
+	}
+	if totalTrades == 0 {
+		return nil
+	}
+	var result []exchTrades
+	for i := range 256 {
+		a := &byExch[i]
+		if a.trades == 0 {
+			continue
+		}
+		et := exchTrades{
+			exchange: sip.Exchange(i),
+			trades:   a.trades,
+			volume:   a.volume,
+			pct:      a.trades * 100 / totalTrades,
+			last:     a.last,
+			lastAge:  asOf.Sub(a.lastTS),
+		}
+		if a.volume > 0 {
+			et.vwap = a.value.DivInt64(a.volume)
+		}
+		result = append(result, et)
+	}
+	// Sort by trade count descending.
+	for i := 1; i < len(result); i++ {
+		for j := i; j > 0 && result[j].trades > result[j-1].trades; j-- {
+			result[j], result[j-1] = result[j-1], result[j]
+		}
+	}
+	return result
+}
+
+func (v *viewer) imbDelta(sym symbol.Symbol, imb *sip.Imbalance, fileIdx int) string {
+	end := max(fileIdx-100000, 0)
 	for i := fileIdx - 1; i >= end; i-- {
 		msg, _ := v.file.Get(i)
 		if msg.Type == sip.MessageTypeTrade && msg.Symbol == sym {
 			tp := msg.Trade().Price
 			if tp.IsPositive() {
-				pct := float64(imb.Price.Sub(tp).Int64()) * 100.0 / float64(tp.Int64())
-				return fmt.Sprintf("%+.2f%%", pct)
+				pct := imb.Price.Sub(tp).MulInt(100).Div(tp)
+				s := pct.Format(2)
+				if pct.IsPositive() {
+					s = "+" + s
+				}
+				return s + "%"
 			}
 		}
 	}
@@ -472,10 +640,7 @@ func (v *viewer) renderDetail(b *bytes.Buffer, w, h int) {
 	n := v.file.Count()
 	maxRow := h - 1
 	row := 0
-	mid := w/2 + 1
-	if mid < 50 {
-		mid = 50
-	}
+	mid := max(w/2+1, 50)
 
 	wr := func(left, right string) {
 		if row >= maxRow {
@@ -571,6 +736,23 @@ func (v *viewer) renderDetail(b *bytes.Buffer, w, h int) {
 			wr(fmt.Sprintf(" %-14s %v", "Ext Hours:", t.IsExtendedHours()), rline(ri))
 			ri++
 
+			// Recent trade activity by exchange.
+			stats := v.recentTradesByExchange(msg.Symbol, idx)
+			if len(stats) > 0 {
+				wr("", rline(ri))
+				ri++
+				wr(fmt.Sprintf(" \033[1m%-6s %6s %5s %10s %10s %10s %9s\033[0m",
+					"EXCH", "TRADES", "SHARE", "VOLUME", "VWAP", "LAST", "AGE"), rline(ri))
+				ri++
+				for _, s := range stats {
+					wr(fmt.Sprintf(" %-6s %6d %4d%% %10s %10s %10s %9s",
+						s.exchange, s.trades, s.pct,
+						commaInt(int(s.volume)), s.vwap, s.last,
+						formatAge(s.lastAge)), rline(ri))
+					ri++
+				}
+			}
+
 		case sip.MessageTypeQuote:
 			q := msg.Quote()
 			wr(fmt.Sprintf(" %-14s %s", "Bid Price:", q.BidPrice), rline(ri))
@@ -601,6 +783,33 @@ func (v *viewer) renderDetail(b *bytes.Buffer, w, h int) {
 			ri++
 			wr(fmt.Sprintf(" %-14s %v", "Danger Ask:", q.DangerousAsk()), rline(ri))
 			ri++
+
+			// Recent quotes by exchange.
+			eqs := v.recentQuotesByExchange(msg.Symbol, msg.Timestamp, idx)
+			if len(eqs) > 0 {
+				wr("", rline(ri))
+				ri++
+				wr(fmt.Sprintf(" \033[1m%-6s %10s %5s %6s  %10s %5s %6s\033[0m",
+					"EXCH", "BID", "SIZE", "AGE", "ASK", "SIZE", "AGE"), rline(ri))
+				ri++
+				for _, eq := range eqs {
+					bid, bsz, bage := "", "", ""
+					ask, asz, aage := "", "", ""
+					if eq.bid.BidPrice.IsPositive() {
+						bid = eq.bid.BidPrice.String()
+						bsz = fmt.Sprintf("%d", eq.bid.BidSize)
+						bage = formatAge(eq.bidAge)
+					}
+					if eq.ask.AskPrice.IsPositive() {
+						ask = eq.ask.AskPrice.String()
+						asz = fmt.Sprintf("%d", eq.ask.AskSize)
+						aage = formatAge(eq.askAge)
+					}
+					wr(fmt.Sprintf(" %-6s %10s %5s %6s  %10s %5s %6s",
+						eq.exchange, bid, bsz, bage, ask, asz, aage), rline(ri))
+					ri++
+				}
+			}
 
 		case sip.MessageTypeBar, sip.MessageTypeDailyBar, sip.MessageTypeUpdatedBar:
 			bar := msg.Bar()
@@ -831,9 +1040,9 @@ func (v *viewer) detailInput(buf []byte) {
 			v.moveDown(1)
 		case 'k':
 			v.moveUp(1)
-		case 13:
+		case 13, 'q':
 			v.detail = false
-		case 'q', 3:
+		case 3:
 			v.quit = true
 			return
 		}
@@ -980,7 +1189,7 @@ func describeStatusCode(code sip.StatusCode, tape sip.Tape) string {
 		case sip.StatusCodeLimitUpLimitDown:
 			return "Limit Up-Limit Down"
 		}
-	case sip.TapeC, sip.TapeO:
+	case sip.TapeC, sip.TapeO, sip.TapeN:
 		switch code {
 		case sip.StatusCodeTradingHaltUTP:
 			return "Trading Halt"
