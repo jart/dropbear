@@ -5,7 +5,6 @@ import (
 	"dropbear/broker/alpaca/sip"
 	"dropbear/clocky"
 	"dropbear/decimal"
-	"dropbear/indicators"
 	"dropbear/symbol"
 )
 
@@ -16,11 +15,6 @@ type Config struct {
 	spread decimal.Decimal
 	drift  decimal.Decimal
 	greed  decimal.Decimal
-}
-
-type SymbolEntry struct {
-	Symbol symbol.Symbol
-	Config Config
 }
 
 type Result struct {
@@ -47,10 +41,6 @@ type State struct {
 	sellPrice     decimal.Decimal
 	buyPrice2     decimal.Decimal
 	sellPrice2    decimal.Decimal
-	ema           *indicators.WWMA // exponential moving average of midpoint
-	buyGreed      decimal.Decimal  // widens bid based on flow imbalance
-	sellGreed     decimal.Decimal  // widens ask based on flow imbalance
-	momentum      decimal.Decimal  // net fill direction: +1 per buy, -1 per sell
 
 	// our pending orders
 	buyOrderID         string
@@ -68,4 +58,8 @@ type State struct {
 	totalCostIn  decimal.Decimal // total dollars spent buying
 	totalCostOut decimal.Decimal // total dollars received selling
 	totalFees    decimal.Decimal // cumulative fees (negative = net rebate)
+}
+
+func (st *State) HasBeenTraded() bool {
+	return st.buyOrderID != "" || st.sellOrderID != "" || st.position.Sign() != 0 || st.realizedPnL.Sign() != 0
 }

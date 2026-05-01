@@ -66,7 +66,7 @@ const (
 	cpSvol = 164
 )
 
-// TUI manages the terminal interface for the maker.
+// TUI manages the terminal interface for scoop.
 type TUI struct {
 	commands    chan<- TUICommand
 	sigChan     chan<- os.Signal
@@ -183,21 +183,21 @@ func (t *TUI) moveRow(d int) {
 }
 
 func (t *TUI) toggle() {
-	states := sortedSymbols()
+	states := getSymbolsThatMatter()
 	if t.row < len(states) {
 		t.commands <- TUICommand{kind: tuiCmdToggle, symbol: states[t.row].symbol}
 	}
 }
 
 func (t *TUI) cancelOrders() {
-	states := sortedSymbols()
+	states := getSymbolsThatMatter()
 	if t.row < len(states) {
 		t.commands <- TUICommand{kind: tuiCmdCancel, symbol: states[t.row].symbol}
 	}
 }
 
 func (t *TUI) cycleVenue() {
-	states := sortedSymbols()
+	states := getSymbolsThatMatter()
 	if t.row < len(states) {
 		t.flash(states[t.row].symbol, cpVnue)
 		t.commands <- TUICommand{kind: tuiCmdVenue, symbol: states[t.row].symbol}
@@ -205,7 +205,7 @@ func (t *TUI) cycleVenue() {
 }
 
 func (t *TUI) adjustField(field, sign int) {
-	states := sortedSymbols()
+	states := getSymbolsThatMatter()
 	if t.row >= len(states) {
 		return
 	}
@@ -214,7 +214,10 @@ func (t *TUI) adjustField(field, sign int) {
 	var col int
 	switch field {
 	case fieldTarget:
-		delta = cboe.LotSize(st.ema.Value)
+		if st.quote == nil {
+			return
+		}
+		delta = cboe.LotSize(st.quote.AskPrice)
 		col = cpTarg
 	case fieldSpread:
 		delta = kSpreadStep
@@ -257,7 +260,7 @@ func (t *TUI) render() {
 		return
 	}
 
-	states := sortedSymbols()
+	states := getSymbolsThatMatter()
 	var b bytes.Buffer
 	b.Grow(w * h * 2)
 	b.WriteString("\033[H") // cursor home
@@ -276,7 +279,7 @@ func (t *TUI) render() {
 	row := 0
 
 	// header
-	tuiWriteLn(&b, " \033[1mMAKER\033[0m  equity %s  realized %s  unrealized %s  fees %s  net %s  fills \033[1m%d\033[0m  shares %s",
+	tuiWriteLn(&b, " \033[1mSCOOP\033[0m  equity %s  realized %s  unrealized %s  fees %s  net %s  fills \033[1m%d\033[0m  shares %s",
 		tuiColorPnL(equity), tuiColorPnL(gTotalPnL), tuiColorPnL(totalUnrealized),
 		tuiColorFee(gTotalFees), tuiColorPnL(net), gTotalFills, gTotalShares)
 	row++
@@ -442,13 +445,6 @@ func (t *TUI) writeStock(b *bytes.Buffer, idx int, st *State, flashCol int) {
 		tuiAt(b, cpSell, fmt.Sprintf("%-8s", st.sellPrice))
 	} else {
 		tuiAt(b, cpSell, "   -    ")
-	}
-
-	// EMA
-	if st.ema.IsReady() {
-		tuiAt(b, cpEma, fmt.Sprintf("%8s", st.ema.Value.Format(3)))
-	} else {
-		tuiAt(b, cpEma, "    -   ")
 	}
 
 	// P&L

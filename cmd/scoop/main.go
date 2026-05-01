@@ -8,7 +8,6 @@ import (
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/ds"
-	"dropbear/indicators"
 	"dropbear/loggy"
 	"dropbear/netty"
 	"dropbear/symbol"
@@ -31,9 +30,6 @@ var (
 	flagExtended  = flag.Bool("extended", false, "enables extended hours trading")
 	flagOvernight = flag.Bool("overnight", false, "enables overnight hours trading")
 	flagData      = flag.String("data", "", "path of sip data file for backtest")
-	flagSurvivor  = flag.Bool("survivor", false, "widen spread exponentially on consecutive fills")
-	flagBoring    = flag.Bool("boring", false, "use boring stocks")
-	flagPicks3    = flag.Bool("picks3", false, "use picks3 stocks")
 	flagTUI       = flag.Bool("tui", false, "enable terminal user interface")
 )
 
@@ -47,6 +43,7 @@ var (
 	gBroker         Broker
 	gOrders         map[string]*State
 	gSymbols        map[symbol.Symbol]*State
+	gIgnoreSymbols  map[symbol.Symbol]bool
 	gFailedOrders   chan string
 	gFailedReplaces chan string
 	gNextBalance    clocky.Time
@@ -96,22 +93,64 @@ func main() {
 		os.Exit(1)
 	}
 
-	syms := defaultSymbols
-	if *flagBoring {
-		syms = boringSymbols
-	} else if *flagPicks3 {
-		syms = kPicks3
-	}
-	result := Run(syms)
+	result := Run()
 	fmt.Printf("total P&L: %s  fees: %s  net: %s  fills: %d  shares: %s\n",
 		result.PnL, result.Fees, result.Net, result.Fills, result.Shares)
 	os.Exit(0)
 }
 
-func Run(symbols []SymbolEntry) Result {
-	// initialize globals
+func Evaluate(st *State) {
+	if st.disabled {
+		return
+	}
+	if st.config.target.IsZero() {
+		return // not configured for trading
+	}
+	if st.halt {
+		return
+	}
+	if st.quote == nil {
+		return
+	}
+	if st.quote.Indicative() {
+		return
+	}
+	if !st.asset.Tradable.Load() {
+		return
+	}
+	if st.cooldownUntil != 0 && clocky.Now().Before(st.cooldownUntil) {
+		return // got rejected recently, wait before trying again
+	}
+
+	// check if market is open
+	now := clocky.Now()
+	session := cboe.GetSession(now)
+	switch session {
+	case cboe.SessionClosed:
+		return
+	case cboe.SessionExtended:
+		if !*flagExtended {
+			return
+		}
+	case cboe.SessionOvernight:
+		if !*flagOvernight {
+			return
+		}
+		if st.asset.OvernightHalted.Load() {
+			return
+		}
+		if !st.asset.OvernightTradable.Load() {
+			return
+		}
+	}
+
+	// TODO: implement algorithm
+}
+
+func Run() Result {
 	gOrders = map[string]*State{}
 	gSymbols = map[symbol.Symbol]*State{}
+	gIgnoreSymbols = map[symbol.Symbol]bool{}
 	gFailedOrders = make(chan string, 32)
 	gFailedReplaces = make(chan string, 32)
 	gTotalPnL = decimal.Zero
@@ -132,27 +171,8 @@ func Run(symbols []SymbolEntry) Result {
 		gBroker = gAlpacaClient
 	}
 
-	// add stocks
-	for _, e := range symbols {
-		asset := alpaca.GetAsset(e.Symbol)
-		if asset == nil {
-			panic("alpaca asset not found: " + e.Symbol.String())
-		}
-		st := &State{
-			symbol: e.Symbol,
-			config: e.Config,
-			asset:  asset,
-			ema:    indicators.NewWWMA(30),
-		}
-		gSymbols[e.Symbol] = st
-	}
-
 	// log configuration
-	log.Printf("prepare to make markets")
-	for _, st := range sortedSymbols() {
-		log.Printf("  %s: target=%s qty=%s spread=%s drift=%s venue=%s",
-			st.symbol, st.config.target, st.config.qty, st.config.spread, st.config.drift, st.config.venue)
-	}
+	log.Printf("prepare to scoop")
 
 	// periodically fetch information about supported equities from alpaca
 	if *flagLive {
@@ -181,7 +201,7 @@ func Run(symbols []SymbolEntry) Result {
 				continue
 			}
 			symbols = append(symbols, pos.Symbol)
-			st := gSymbols[sym]
+			st := GetState(sym)
 			if st == nil {
 				continue
 			}
@@ -202,7 +222,7 @@ func Run(symbols []SymbolEntry) Result {
 				log.Printf("warning: error fetching quotes: %v", err)
 			} else {
 				for name, q := range quotes {
-					st := gSymbols[symbol.MustParse(name)]
+					st := GetState(symbol.MustParse(name))
 					if st == nil || q.BidPrice.IsZero() || q.AskPrice.IsZero() {
 						continue
 					}
@@ -242,8 +262,7 @@ func Run(symbols []SymbolEntry) Result {
 	} else {
 		log.Printf("subscribing to order updates...")
 		orderUpdates = alpaca.OrderUpdates()
-		names := symbolNames()
-		log.Printf("subscribing to sip stock updates for %d symbols...", len(names))
+		log.Printf("subscribing to sip stock updates...")
 		stockUpdates = alpaca.MustStockUpdates(alpaca.SIPWSURL, &alpaca.StockUpdatesRequest{
 			Action:      "subscribe",
 			Quotes:      []string{"*"},
@@ -255,7 +274,7 @@ func Run(symbols []SymbolEntry) Result {
 			DailyBars:   []string{"*"},
 			UpdatedBars: []string{"*"},
 		})
-		log.Printf("subscribing to boats stock updates for %d symbols...", len(names))
+		log.Printf("subscribing to boats stock updates...")
 		boatsUpdates = alpaca.MustStockUpdates(alpaca.BOATSWSURL, &alpaca.StockUpdatesRequest{
 			Action:   "subscribe",
 			Quotes:   []string{"*"},
@@ -312,73 +331,7 @@ func onHeartbeat() {
 	now := clocky.Now()
 	if now.After(gNextBalance) {
 		logBalance()
-		logSpread()
 		gNextBalance = now.Add(kBalanceInterval)
-	}
-	if *flagSurvivor && now.After(gNextDecay) {
-		decayGreed()
-		gNextDecay = now.Add(kDecayInterval)
-	}
-}
-
-func decayGreed() {
-	for _, st := range gSymbols {
-		// decay momentum toward zero
-		if st.momentum.IsPositive() {
-			st.momentum = st.momentum.Sub(decimal.One)
-			if st.momentum.IsNegative() {
-				st.momentum = decimal.Zero
-			}
-		} else if st.momentum.IsNegative() {
-			st.momentum = st.momentum.Add(decimal.One)
-			if st.momentum.IsPositive() {
-				st.momentum = decimal.Zero
-			}
-		}
-		// recompute greed from momentum
-		base := st.config.greed
-		abs := st.momentum.Abs().Truncate()
-		scaled := base
-		for i := decimal.Zero; i.Cmp(abs) < 0; i = i.Add(decimal.One) {
-			scaled = scaled.MulInt(2)
-		}
-		if st.momentum.IsPositive() {
-			st.buyGreed = scaled
-			st.sellGreed = base
-		} else if st.momentum.IsNegative() {
-			st.sellGreed = scaled
-			st.buyGreed = base
-		} else {
-			st.buyGreed = decimal.Zero
-			st.sellGreed = decimal.Zero
-		}
-	}
-}
-
-func logSpread() {
-	for _, st := range sortedSymbols() {
-		if st.config.target.IsZero() || st.quote == nil {
-			continue
-		}
-		q := st.quote
-		if q.BidPrice.IsZero() || q.AskPrice.IsZero() {
-			continue
-		}
-		unrealized := decimal.Zero
-		if !st.position.IsZero() && !st.costBasis.IsZero() {
-			mid := q.BidPrice.Add(q.AskPrice).Half()
-			unrealized = mid.Mul(st.position).Sub(st.costBasis)
-		}
-		net := st.realizedPnL.Sub(st.totalFees)
-		log.Printf("SPREAD %s %s  [%s]  %sx%d | %sx%d  [%s]  ema=%s  pos=%s  realized=%s fees=%s net=%s unrealized=%s",
-			st.symbol, st.config.venue,
-			st.buyPrice,
-			q.BidPrice, q.BidSize,
-			q.AskPrice, q.AskSize,
-			st.sellPrice,
-			st.ema.Value,
-			st.position,
-			st.realizedPnL, st.totalFees, net, unrealized)
 	}
 }
 
@@ -392,18 +345,12 @@ func synchronizeAssetsForever() {
 	}
 }
 
-func symbolNames() []string {
-	names := make([]string, 0, len(gSymbols))
-	for sym := range gSymbols {
-		names = append(names, sym.String())
-	}
-	return names
-}
-
-func sortedSymbols() []*State {
+func getSymbolsThatMatter() []*State {
 	states := make([]*State, 0, len(gSymbols))
 	for _, st := range gSymbols {
-		states = append(states, st)
+		if st.HasBeenTraded() {
+			states = append(states, st)
+		}
 	}
 	slices.SortFunc(states, compareStateBySymbol)
 	return states
@@ -460,7 +407,22 @@ func onStockUpdate(stockUpdate alpaca.StockUpdate) {
 		onTrade(stockUpdate.Message.Trade())
 	case sip.MessageTypeStatus:
 		onStatus(stockUpdate.Message.Status())
+	case sip.MessageTypeLULD:
+		onLULD(stockUpdate.Message.LULD())
+	case sip.MessageTypeImbalance:
+		onImbalance(stockUpdate.Message.Imbalance())
+	case sip.MessageTypeBar, sip.MessageTypeDailyBar, sip.MessageTypeUpdatedBar:
+		onBar(stockUpdate.Message.Bar())
 	}
+}
+
+func onBar(bar *sip.Bar) {
+}
+
+func onLULD(luld *sip.LULD) {
+}
+
+func onImbalance(imbalance *sip.Imbalance) {
 }
 
 func onQuote(q *sip.Quote) {
@@ -469,9 +431,6 @@ func onQuote(q *sip.Quote) {
 		return
 	}
 	st.quote = q
-	if q.BidPrice.IsPositive() && q.AskPrice.IsPositive() {
-		st.ema.Add(q.BidPrice.Add(q.AskPrice).Half())
-	}
 	Evaluate(st)
 }
 
@@ -597,49 +556,9 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 		gTotalShares = gTotalShares.Add(absQty)
 		gTotalFills++
 
-		log.Printf("%s filled %s @ %s | pos=%s | fill_pnl=%s | fee=%s | realized=%s | total_pnl=%s | total_fees=%s | fills=%d shares=%s | greed=%s/%s",
+		log.Printf("%s filled %s @ %s | pos=%s | fill_pnl=%s | fee=%s | realized=%s | total_pnl=%s | total_fees=%s | fills=%d shares=%s",
 			st.symbol, signedQty, fillPrice, st.position,
-			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills, gTotalShares,
-			st.buyGreed, st.sellGreed)
-
-		// escalate greed based on flow imbalance.
-		// momentum tracks net fill direction: +1 per buy, -1 per sell.
-		// when flow is balanced (buying and selling equally), momentum
-		// stays near zero and greed stays at base. when we're getting
-		// mobbed in one direction, |momentum| grows and greed doubles
-		// for each step of imbalance.
-		if *flagSurvivor {
-			base := st.config.greed
-			// only count momentum once per order, not per partial fill
-			if update.Order.Status.IsFinal() {
-				if update.Order.Side == ds.SideBuy {
-					st.momentum = st.momentum.Add(decimal.One)
-				} else {
-					st.momentum = st.momentum.Sub(decimal.One)
-				}
-			}
-			// greed = base * 2^|momentum| on the imbalanced side
-			// the other side stays at base
-			abs := st.momentum.Abs().Truncate()
-			scaled := base
-			for i := decimal.Zero; i.Cmp(abs) < 0; i = i.Add(decimal.One) {
-				scaled = scaled.MulInt(2)
-			}
-			if st.momentum.IsPositive() {
-				// more buys than sells — widen buy side
-				st.buyGreed = scaled
-				st.sellGreed = base
-			} else if st.momentum.IsNegative() {
-				// more sells than buys — widen sell side
-				st.sellGreed = scaled
-				st.buyGreed = base
-			} else {
-				// balanced — both at base
-				st.buyGreed = base
-				st.sellGreed = base
-			}
-
-		}
+			fillPnL, fee, st.realizedPnL, gTotalPnL, gTotalFees, gTotalFills, gTotalShares)
 	}
 
 	switch update.Event {
@@ -666,137 +585,6 @@ func onOrderUpdate(update *alpaca.OrderUpdate) {
 	if update.Order.Status.IsFinal() {
 		removeOrder(st, update.Order.ClientOrderID)
 		Evaluate(st)
-	}
-}
-
-func Evaluate(st *State) {
-	if st.disabled {
-		return
-	}
-	if st.config.target.IsZero() {
-		return // not configured for trading
-	}
-	if st.halt {
-		return
-	}
-	if st.quote == nil {
-		return
-	}
-	if st.quote.Indicative() {
-		return
-	}
-	if !st.asset.Tradable.Load() {
-		return
-	}
-	if st.cooldownUntil != 0 && clocky.Now().Before(st.cooldownUntil) {
-		return // got rejected recently, wait before trying again
-	}
-
-	// check if market is open
-	now := clocky.Now()
-	session := cboe.GetSession(now)
-	switch session {
-	case cboe.SessionClosed:
-		return
-	case cboe.SessionExtended:
-		if !*flagExtended {
-			return
-		}
-	case cboe.SessionOvernight:
-		if !*flagOvernight {
-			return
-		}
-		if st.asset.OvernightHalted.Load() {
-			return
-		}
-		if !st.asset.OvernightTradable.Load() {
-			return
-		}
-	}
-
-	if !st.ema.IsReady() {
-		return // wait for EMA to warm up
-	}
-
-	cfg := &st.config
-	alreadyBuying := st.buyClientOrderID != ""
-	alreadySelling := st.sellClientOrderID != ""
-	mid := st.ema.Value
-	var canBuy, canSell bool
-	var maximumPosition, minimumPosition decimal.Decimal
-	if cfg.target.IsPositive() {
-		minimumPosition = decimal.Zero
-		maximumPosition = cfg.target.MulInt(2)
-	} else {
-		minimumPosition = cfg.target.MulInt(2)
-		maximumPosition = decimal.Zero
-	}
-	canBuy = st.position.Add(cfg.qty).Cmp(maximumPosition) <= 0 && !alreadyBuying
-	canSell = st.position.Sub(cfg.qty).Cmp(minimumPosition) >= 0 && !alreadySelling
-	// inventory skew: widen the side that moves us away from target,
-	// narrow the side that brings us back. this is independent of
-	// survival greed (which protects against being mobbed).
-	inventoryBuyGreed := decimal.Zero
-	inventorySellGreed := decimal.Zero
-	if !cfg.qty.IsZero() && !cfg.greed.IsZero() {
-		deviation := st.position.Sub(cfg.target)
-		steps := deviation.Div(cfg.qty).Truncate()
-		if steps.IsPositive() {
-			// overweight long — buying moves us further away
-			for i := decimal.Zero; i.Cmp(steps) < 0; i = i.Add(decimal.One) {
-				inventoryBuyGreed = inventoryBuyGreed.Add(cfg.greed)
-			}
-		} else if steps.IsNegative() {
-			// overweight short — selling moves us further away
-			for i := decimal.Zero; i.Cmp(steps.Abs()) < 0; i = i.Add(decimal.One) {
-				inventorySellGreed = inventorySellGreed.Add(cfg.greed)
-			}
-		}
-	}
-	buyPrice := QuantizeBuyPrice(mid.Sub(cfg.spread).Sub(st.buyGreed).Sub(inventoryBuyGreed))
-	sellPrice := QuantizeSellPrice(mid.Add(cfg.spread).Add(st.sellGreed).Add(inventorySellGreed))
-
-	// clamp to avoid crossing the NBBO spread
-	if buyPrice.Cmp(st.quote.BidPrice) > 0 {
-		buyPrice = st.quote.BidPrice
-	}
-	if st.quote.AskPrice.IsPositive() && sellPrice.Cmp(st.quote.AskPrice) < 0 {
-		sellPrice = st.quote.AskPrice
-	}
-
-	// clamp to avoid self-trading: buy must stay below both our
-	// resting sell and any pending sell replace (and vice versa)
-	sellFloor := st.sellPrice
-	if st.sellPrice2.IsPositive() && (sellFloor.IsZero() || st.sellPrice2.Cmp(sellFloor) < 0) {
-		sellFloor = st.sellPrice2
-	}
-	buyCeil := st.buyPrice
-	if st.buyPrice2.IsPositive() && st.buyPrice2.Cmp(buyCeil) > 0 {
-		buyCeil = st.buyPrice2
-	}
-	if sellFloor.IsPositive() && buyPrice.Cmp(sellFloor) >= 0 {
-		buyPrice = QuantizeBuyPrice(sellFloor.Sub(Tick(sellFloor)))
-	}
-	if buyCeil.IsPositive() && sellPrice.Cmp(buyCeil) <= 0 {
-		sellPrice = QuantizeSellPrice(buyCeil.Add(Tick(buyCeil)))
-	}
-
-	if canBuy {
-		st.buyPrice = buyPrice
-		LimitOrder(st, ds.SideBuy, cfg.qty, buyPrice, cfg.venue, session, "")
-	} else if alreadyBuying && st.buyClientOrderID2 == "" {
-		if buyPrice.Sub(st.buyPrice).Abs().Cmp(cfg.drift) > 0 {
-			ReplaceOrder(st, ds.SideBuy, cfg.qty, buyPrice)
-		}
-	}
-
-	if canSell {
-		st.sellPrice = sellPrice
-		LimitOrder(st, ds.SideSell, cfg.qty, sellPrice, cfg.venue, session, "")
-	} else if alreadySelling && st.sellClientOrderID2 == "" {
-		if sellPrice.Sub(st.sellPrice).Abs().Cmp(cfg.drift) > 0 {
-			ReplaceOrder(st, ds.SideSell, cfg.qty, sellPrice)
-		}
 	}
 }
 
@@ -923,7 +711,7 @@ func logBalance() {
 	pendingCount := 0
 	totalUnrealized := decimal.Zero
 	liquidationPnL := decimal.Zero
-	for _, st := range sortedSymbols() {
+	for _, st := range getSymbolsThatMatter() {
 		if st.quote == nil {
 			continue
 		}
@@ -971,7 +759,7 @@ func shutdown() Result {
 	}
 	log.Printf("=== P&L SUMMARY ===")
 	totalUnrealized := decimal.Zero
-	for _, st := range sortedSymbols() {
+	for _, st := range getSymbolsThatMatter() {
 		if st.totalBought.IsZero() && st.totalSold.IsZero() || st.quote == nil {
 			continue
 		}
@@ -1091,4 +879,39 @@ func Tick(price decimal.Decimal) decimal.Decimal {
 	} else {
 		return decimal.Cent
 	}
+}
+
+func GetAsset(sym symbol.Symbol) *alpaca.Asset {
+	if gIgnoreSymbols[sym] {
+		return nil
+	}
+	asset := alpaca.GetAsset(sym)
+	if asset == nil {
+		gIgnoreSymbols[sym] = true
+		return nil
+	}
+	if asset.Exchange == alpaca.ExchangeOTC ||
+		asset.Class != alpaca.AssetClassUSEquity ||
+		asset.Status.Load() != alpaca.AssetStatusActive ||
+		asset.PTPNoException.Load() ||
+		asset.PTPWithException.Load() {
+		gIgnoreSymbols[sym] = true
+		return nil
+	}
+	return asset
+}
+
+func GetState(sym symbol.Symbol) *State {
+	st := gSymbols[sym]
+	if st == nil {
+		asset := GetAsset(sym)
+		if asset != nil {
+			st = &State{
+				symbol: sym,
+				asset:  asset,
+			}
+			gSymbols[sym] = st
+		}
+	}
+	return st
 }
