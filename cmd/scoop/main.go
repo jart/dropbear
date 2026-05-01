@@ -29,8 +29,9 @@ var (
 	flagLive      = flag.Bool("live", false, "enables live trading and network access")
 	flagData      = flag.String("data", "", "path of sip data file for backtest")
 	flagTUI       = flag.Bool("tui", false, "enable terminal user interface")
-	flagScoopMax  = flag.String("scoop-max", "10000", "max notional value per scoop entry")
-	flagScoopExit = flag.String("scoop-exit", "0.03", "target profit as fraction of entry price (e.g. 0.03 = 3%)")
+	flagScoopMax      = flag.String("scoop-max", "10000", "max notional value per scoop entry")
+	flagScoopExit     = flag.String("scoop-exit", "0.03", "target profit as fraction of entry price (e.g. 0.03 = 3%)")
+	flagShortBailout  = clocky.DurationFlag("short-bailout", "30s", "close short if not profitable within this duration")
 )
 
 const (
@@ -62,6 +63,7 @@ var (
 	gBacktest       *Backtest
 	gAlpacaClient   *alpaca.Client
 	gOrderSeq       int64
+	gSystemOn       bool // kill switch: when false, no new positions opened
 )
 
 var (
@@ -129,56 +131,96 @@ func Evaluate(st *State) {
 		return
 	}
 
-	// === EXIT: sell our position for profit ===
-	if st.position.IsPositive() && st.sellClientOrderID == "" {
-		if st.halt {
-			return // can't sell during halt, wait for reopening
+	// === EXIT: close long position ===
+	if st.position.IsPositive() && !st.scoopShort {
+		if st.sellClientOrderID != "" || st.halt {
+			return
 		}
 		if st.quote.BidPrice.IsPositive() && st.scoopTarget.IsPositive() {
 			if st.quote.BidPrice.Cmp(st.scoopTarget) >= 0 {
-				// bid is at or above our target, sell
-				log.Printf("scoop exit %s: bid %s >= target %s",
+				log.Printf("scoop exit long %s: bid %s >= target %s",
 					st.symbol, st.quote.BidPrice, st.scoopTarget)
 				LimitOrder(st, ds.SideSell, st.position, st.quote.BidPrice,
 					alpaca.OrderDestinationNone, session,
-					fmt.Sprintf("scoop exit at %s (target %s)", st.quote.BidPrice, st.scoopTarget))
+					fmt.Sprintf("scoop exit long at %s (target %s)", st.quote.BidPrice, st.scoopTarget))
 			}
 		}
 		return
 	}
 
-	// === ENTRY: buy at the LULD lower band ===
-	if st.halt {
-		return // don't enter during halt
+	// === EXIT: cover short position ===
+	if st.position.IsNegative() && st.scoopShort {
+		if st.buyClientOrderID != "" || st.halt {
+			return
+		}
+		absPos := st.position.Abs()
+		if st.quote.AskPrice.IsPositive() && st.scoopTarget.IsPositive() {
+			bailout := st.scoopEntryAt != 0 && now.Sub(st.scoopEntryAt) > *flagShortBailout
+			if st.quote.AskPrice.Cmp(st.scoopTarget) <= 0 {
+				log.Printf("scoop exit short %s: ask %s <= target %s",
+					st.symbol, st.quote.AskPrice, st.scoopTarget)
+				LimitOrder(st, ds.SideBuy, absPos, st.quote.AskPrice,
+					alpaca.OrderDestinationNone, session,
+					fmt.Sprintf("scoop cover at %s (target %s)", st.quote.AskPrice, st.scoopTarget))
+			} else if bailout {
+				log.Printf("scoop BAILOUT short %s: ask %s, target was %s, held %s",
+					st.symbol, st.quote.AskPrice, st.scoopTarget, now.Sub(st.scoopEntryAt))
+				LimitOrder(st, ds.SideBuy, absPos, st.quote.AskPrice,
+					alpaca.OrderDestinationNone, session,
+					fmt.Sprintf("scoop bailout cover at %s after %s", st.quote.AskPrice, now.Sub(st.scoopEntryAt)))
+			}
+		}
+		return
 	}
-	if st.position.IsPositive() {
+
+	// === ENTRY: no new positions if system is off ===
+	if !gSystemOn {
+		return
+	}
+	if st.halt {
+		return
+	}
+	if st.position.Sign() != 0 {
 		return // already have a position
 	}
-	if st.buyClientOrderID != "" {
-		return // already have a pending buy
-	}
-	if st.luldLower.IsZero() {
-		return // no LULD band known
+	if st.buyClientOrderID != "" || st.sellClientOrderID != "" {
+		return // already have a pending order
 	}
 	if st.quote.Indicative() {
 		return
 	}
-	if !st.quote.AskPrice.IsPositive() {
+
+	// Determine if we have an entry signal and which direction.
+	var side ds.Side
+	var price decimal.Decimal
+	var bandPrice decimal.Decimal
+	var quoteExchange sip.Exchange
+	var quoteSize int32
+
+	if st.luldLower.IsPositive() && st.quote.AskPrice.IsPositive() &&
+		st.quote.AskPrice.Cmp(st.luldLower) == 0 {
+		// LIMIT DOWN: ask pinned at lower band → buy the dip
+		side = ds.SideBuy
+		price = st.luldLower
+		bandPrice = st.luldLower
+		quoteExchange = st.quote.AskExchange
+		quoteSize = st.quote.AskSize
+	} else if st.luldUpper.IsPositive() && st.quote.BidPrice.IsPositive() &&
+		st.quote.BidPrice.Cmp(st.luldUpper) == 0 &&
+		st.asset.Shortable.Load() && st.asset.EasyToBorrow.Load() {
+		// LIMIT UP: bid pinned at upper band → short the top
+		side = ds.SideSell
+		price = st.luldUpper
+		bandPrice = st.luldUpper
+		quoteExchange = st.quote.BidExchange
+		quoteSize = st.quote.BidSize
+	} else {
 		return
 	}
 
-	// The signal: the ask price equals the LULD lower band.
-	// This means sellers are pinned at the legally enforced floor.
-	// Either the band holds (we bought the bottom) or it breaks
-	// (halt fires, auction reopens above last trade).
-	if st.quote.AskPrice.Cmp(st.luldLower) != 0 {
-		return
-	}
-
-	// Only DMA to exchanges we can route to. The backtest engine
-	// can't model smart routing so we skip other venues.
+	// Only DMA to exchanges we can route to.
 	var dest alpaca.OrderDestination
-	switch st.quote.AskExchange {
+	switch quoteExchange {
 	case sip.ExchangeNASDAQ:
 		dest = alpaca.OrderDestinationNASDAQ
 	case sip.ExchangeARCA:
@@ -189,33 +231,32 @@ func Evaluate(st *State) {
 		return
 	}
 
-	// Take all available liquidity at the floor, capped by notional limit.
-	// Round down to 100-share lots (odd lots only when closing positions).
-	price := st.luldLower
+	// Size: take all available liquidity, capped by notional limit.
+	// Round down to 100-share lots.
 	maxNotional := decimal.Parse(*flagScoopMax)
-	remaining := maxNotional.Sub(st.position.Mul(price)) // account for existing position
-	if !remaining.IsPositive() {
-		return
-	}
 	roundLot := decimal.FromInt(100)
-	maxShares := remaining.Div(price).QuantizeTruncate(roundLot)
-	available := decimal.FromInt(int(st.quote.AskSize)).QuantizeTruncate(roundLot)
+	maxShares := maxNotional.Div(price).QuantizeTruncate(roundLot)
+	available := decimal.FromInt(int(quoteSize)).QuantizeTruncate(roundLot)
 	qty := available.Min(maxShares)
 	if qty.IsZero() {
 		return
 	}
 
-	// Set exit target: entry price + exit percentage
+	// Set exit target.
 	exitPct := decimal.Parse(*flagScoopExit)
-	st.scoopTarget = price.Add(price.Mul(exitPct))
-	st.scoopBuyAt = now
+	if side == ds.SideBuy {
+		st.scoopTarget = price.Add(price.Mul(exitPct))
+		st.scoopShort = false
+	} else {
+		st.scoopTarget = price.Sub(price.Mul(exitPct))
+		st.scoopShort = true
+	}
+	st.scoopEntryAt = now
 
-	log.Printf("scoop entry %s: %s shares @ %s on %s (ask=%sx%d, LULD lower=%s, target=%s)",
-		st.symbol, qty, price, st.quote.AskExchange,
-		st.quote.AskPrice, st.quote.AskSize, st.luldLower, st.scoopTarget)
-	LimitOrder(st, ds.SideBuy, qty, price,
-		dest, session,
-		fmt.Sprintf("scoop %s shares @ %s DMA %s", qty, price, dest))
+	log.Printf("scoop entry %s %s: %s shares @ %s on %s (LULD band=%s, target=%s)",
+		side, st.symbol, qty, price, quoteExchange, bandPrice, st.scoopTarget)
+	LimitOrder(st, side, qty, price, dest, session,
+		fmt.Sprintf("scoop %s %s @ %s DMA %s", side, qty, price, dest))
 }
 
 func Run() Result {
@@ -227,6 +268,7 @@ func Run() Result {
 	gTotalPnL = decimal.Zero
 	gTotalFees = decimal.Zero
 	gTotalShares = decimal.Zero
+	gSystemOn = true
 	gTotalFills = 0
 	gOrderCount = 0
 	gOrderFails = 0

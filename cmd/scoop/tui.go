@@ -127,6 +127,8 @@ func (t *TUI) inputLoop() {
 				t.moveRow(1)
 			case ' ':
 				t.toggle()
+			case 'o':
+				gSystemOn = !gSystemOn
 			case 'c':
 				t.cancelOrders()
 			case 'v':
@@ -220,8 +222,12 @@ func (t *TUI) render() {
 	row := 0
 
 	// header
-	tuiWriteLn(&b, " \033[1mSCOOP\033[0m  equity %s  realized %s  unrealized %s  fees %s  net %s  fills \033[1m%d\033[0m  shares %s",
-		tuiColorPnL(equity), tuiColorPnL(gTotalPnL), tuiColorPnL(totalUnrealized),
+	onOff := "\033[41;1m OFF \033[0m"
+	if gSystemOn {
+		onOff = "\033[42;1m  ON \033[0m"
+	}
+	tuiWriteLn(&b, " \033[1mSCOOP\033[0m %s  equity %s  realized %s  unrealized %s  fees %s  net %s  fills \033[1m%d\033[0m  shares %s",
+		onOff, tuiColorPnL(equity), tuiColorPnL(gTotalPnL), tuiColorPnL(totalUnrealized),
 		tuiColorFee(gTotalFees), tuiColorPnL(net), gTotalFills, gTotalShares)
 	row++
 
@@ -295,7 +301,7 @@ func (t *TUI) render() {
 	}
 
 	// help bar
-	help := " j/k:select  space:on/off  v:venue  c:cancel  q:quit"
+	help := " o:on/off  j/k:select  space:disable  v:venue  c:cancel  q:quit"
 	fmt.Fprintf(&b, "\033[%d;1H\033[7m%-*s\033[0m", h, w, help)
 
 	os.Stdout.Write(b.Bytes())

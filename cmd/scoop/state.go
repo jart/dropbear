@@ -57,8 +57,9 @@ type State struct {
 	lastTrade    decimal.Decimal // most recent trade price
 	lastTradeAt  clocky.Time    // when the most recent trade happened
 	imbPrice     decimal.Decimal // most recent imbalance price during halt
-	scoopBuyAt   clocky.Time    // when we submitted our scoop buy
+	scoopEntryAt clocky.Time    // when we entered the position
 	scoopTarget  decimal.Decimal // price we want to exit at
+	scoopShort   bool            // true if this is a short position (limit up)
 
 	// P&L tracking
 	costBasis    decimal.Decimal // total cost of current position (signed)
