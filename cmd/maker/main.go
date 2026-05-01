@@ -994,13 +994,13 @@ func shutdown() Result {
 	log.Printf("  total fills: %d  symbols tracked: %d", gTotalFills, len(gSymbols))
 	if gTapeMsg != nil {
 		close(gTapeMsg)
-		<-gTapeDone
 		gTapeMsg = nil
+		<-gTapeDone
 	}
 	if gLogMsg != nil {
 		close(gLogMsg)
-		<-gLogDone
 		gLogMsg = nil
+		<-gLogDone
 	}
 	return Result{
 		PnL:    gTotalPnL,

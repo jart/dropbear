@@ -6,6 +6,7 @@ import (
 	"dropbear/gcs"
 	"fmt"
 	"log"
+	"os"
 	"unsafe"
 
 	"github.com/klauspost/compress/zstd"
@@ -60,15 +61,15 @@ func recordLog(now clocky.Time, ch <-chan string, done chan struct{}) {
 	name := fmt.Sprintf("%s.log.zst", now)
 	obj, err := gcs.NewWriter(*flagBucket, name)
 	if err != nil {
-		panic(fmt.Sprintf("tape: error creating gcs writer: %v", err))
+		panic(fmt.Sprintf("log: error creating gcs writer: %v", err))
 	}
-	log.Printf("tape: recording to gs://%s/%s", *flagBucket, name)
+	log.Printf("log: recording to gs://%s/%s", *flagBucket, name)
 	defer obj.Close()
 
 	// compress file
 	zw, err := zstd.NewWriter(obj)
 	if err != nil {
-		panic(fmt.Sprintf("tape: error creating zstd writer: %v", err))
+		panic(fmt.Sprintf("log: error creating zstd writer: %v", err))
 	}
 	defer zw.Close()
 
@@ -77,7 +78,7 @@ func recordLog(now clocky.Time, ch <-chan string, done chan struct{}) {
 	for msg := range ch {
 		b := []byte(msg)
 		if _, err := zw.Write(b); err != nil {
-			log.Printf("tape: write error: %v", err)
+			fmt.Fprintf(os.Stderr, "log: write error: %v\n", err)
 			break
 		}
 		n++
@@ -85,10 +86,9 @@ func recordLog(now clocky.Time, ch <-chan string, done chan struct{}) {
 
 	// close output
 	if err := zw.Close(); err != nil {
-		log.Printf("tape: zstd close error: %v", err)
+		fmt.Fprintf(os.Stderr, "log: zstd close error: %v\n", err)
 	}
 	if err := obj.Close(); err != nil {
-		log.Printf("tape: gcs close error: %v", err)
+		fmt.Fprintf(os.Stderr, "log: gcs close error: %v\n", err)
 	}
-	log.Printf("tape: recorded %d messages to gs://%s/%s", n, *flagBucket, name)
 }
