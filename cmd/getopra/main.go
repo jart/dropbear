@@ -8,7 +8,6 @@ import (
 	"dropbear/clocky"
 	"dropbear/loggy"
 	"dropbear/symbol"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -28,52 +27,40 @@ func main() {
 		os.Exit(1)
 	}
 
-	err := downloadChains(flagData)
+	err := downloadChains(*flagData)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "downloadChain: %v", err)
+		fmt.Fprintf(os.Stderr, "%s: %v", *flagData, err)
 		os.Exit(1)
 	}
 }
 
-func downloadChains(sipFile *string) error {
-	s, err := sip.OpenFile(*sipFile)
+func downloadChains(sipFile string) error {
+	s, err := sip.OpenFile(sipFile)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
-	var (
-		startMsg = s.Get(0)
-		finalMsg = s.Get(s.Count() - 1)
-	)
+	startMsg, _ := s.Get(0)
+	finalMsg, _ := s.Get(s.Count() - 1)
 
-	if startMsg == nil || finalMsg == nil {
-		return errors.New("SIP feed start/end message is nil")
-	}
-
-	var (
-		start = startMsg.Timestamp
-		end   = finalMsg.Timestamp
-	)
+	start := startMsg.Timestamp
+	end := finalMsg.Timestamp
 
 	log.Printf("SIP file session range: %s - %s", start.String(), end.String())
 	symbolChains := make(map[symbol.Symbol]clocky.Time, 0)
 
-	var (
-		nowYear  = start.Year()
-		nowMonth = start.Month()
-		nowDay   = start.Day()
-	)
+	nowYear, nowMonth, nowDay := start.Date()
 
 	// Discover all symbols in the SIP feed and get the front
 	// expiry option chain for all of the symbols in our feed
-	for msg := s.Read(); msg != nil; msg = s.Read() {
+	for msg, _ := s.Read(); msg != nil; msg, _ = s.Read() {
 		sym := msg.Symbol
 
 		if _, ok := symbolChains[sym]; !ok {
 			log.Printf("load front option chain: %s", sym.String())
 			y, m, d := cboe.GetNextOptionChain(sym, nowYear, nowMonth, nowDay)
-			symbolChains[sym] = clocky.Date(y, m, d, 9, 30, 0, 0, clocky.NYC)
+			symbolChains[sym] = cboe.GetOpenTime(y, m, d)
 		}
 	}
 
