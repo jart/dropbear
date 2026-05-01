@@ -1,9 +1,11 @@
 package main
 
 import (
+	"dropbear/broker/alpaca"
 	"dropbear/broker/alpaca/sip"
 	"dropbear/clocky"
 	"dropbear/gcs"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"unsafe"
@@ -13,11 +15,11 @@ import (
 
 const messageSize = int(unsafe.Sizeof(sip.Message{}))
 
-func recordTape(ch <-chan *sip.Message, done chan struct{}) {
+func recordTape(now clocky.Time, ch <-chan alpaca.StockUpdate, done chan struct{}) {
 	defer close(done)
 
 	// stream to gcs
-	name := fmt.Sprintf("%s.sip.zst", clocky.Now())
+	name := fmt.Sprintf("%s.sip.zst", now)
 	obj, err := gcs.NewWriter(*flagBucket, name)
 	if err != nil {
 		panic(fmt.Sprintf("tape: error creating gcs writer: %v", err))
@@ -32,11 +34,24 @@ func recordTape(ch <-chan *sip.Message, done chan struct{}) {
 	}
 	defer zw.Close()
 
+	// write magic
+	magicBuffer := [4]byte{128 + 2, 'S', 'I', 'P'} // SIP v2 file format
+	if _, err := zw.Write(magicBuffer[:]); err != nil {
+		panic(fmt.Sprintf("tape: write error: %v", err))
+	}
+
 	// write messages as raw 56-byte structs
 	var n int64
-	for msg := range ch {
-		b := (*[messageSize]byte)(unsafe.Pointer(msg))
-		if _, err := zw.Write(b[:]); err != nil {
+	var tsBuffer [8]byte
+	for stockUpdate := range ch {
+		// write stockUpdate.ReceivedAt as little endian 64-bit word
+		binary.LittleEndian.PutUint64(tsBuffer[:], uint64(stockUpdate.ReceivedAt))
+		if _, err := zw.Write(tsBuffer[:]); err != nil {
+			log.Printf("tape: write error: %v", err)
+			break
+		}
+		msgBuffer := (*[messageSize]byte)(unsafe.Pointer(&stockUpdate.Message))
+		if _, err := zw.Write(msgBuffer[:]); err != nil {
 			log.Printf("tape: write error: %v", err)
 			break
 		}

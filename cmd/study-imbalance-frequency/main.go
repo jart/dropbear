@@ -91,8 +91,10 @@ func study(path string) {
 	}
 
 	count := f.Count()
-	gFirst = f.Get(0).Timestamp
-	gLast = f.Get(count - 1).Timestamp
+	mFirst, _ := f.Get(0)
+	gFirst = mFirst.Timestamp
+	mLast, _ := f.Get(count - 1)
+	gLast = mLast.Timestamp
 
 	pctStep := count / 100
 	if pctStep == 0 {
@@ -103,7 +105,7 @@ func study(path string) {
 		if i%pctStep == 0 {
 			fmt.Fprintf(os.Stderr, "\r%d%%", i*100/count)
 		}
-		msg := f.Get(i)
+		msg, _ := f.Get(i)
 		if msg.Type != sip.MessageTypeQuote {
 			continue
 		}

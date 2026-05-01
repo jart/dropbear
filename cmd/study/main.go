@@ -198,8 +198,10 @@ func study(path string) {
 	gSimTimeouts = 0
 
 	count := f.Count()
-	gFirstTime = f.Get(0).Timestamp
-	gLastTime = f.Get(count - 1).Timestamp
+	mFirst, _ := f.Get(0)
+	gFirstTime = mFirst.Timestamp
+	mLast, _ := f.Get(count - 1)
+	gLastTime = mLast.Timestamp
 
 	pctStep := count / 100
 	if pctStep == 0 {
@@ -210,7 +212,7 @@ func study(path string) {
 		if i%pctStep == 0 {
 			fmt.Fprintf(os.Stderr, "\r%d%%", i*100/count)
 		}
-		msg := f.Get(i)
+		msg, _ := f.Get(i)
 		sym := msg.Symbol
 		switch msg.Type {
 		case sip.MessageTypeQuote:

@@ -24,7 +24,7 @@ type Broker interface {
 
 // Backtest replays a recorded sip file for offline testing.
 type Backtest struct {
-	StockUpdates chan *sip.Message
+	StockUpdates chan alpaca.StockUpdate
 	OrderUpdates chan *alpaca.OrderUpdate
 	Heartbeat    chan time.Time
 	file         *sip.File
@@ -48,7 +48,7 @@ func NewBacktest(path string, exit chan os.Signal) (*Backtest, error) {
 	b := &Backtest{
 		file:         file,
 		exit:         exit,
-		StockUpdates: make(chan *sip.Message, 1000),
+		StockUpdates: make(chan alpaca.StockUpdate, 1000),
 		OrderUpdates: make(chan *alpaca.OrderUpdate, 1000),
 		Heartbeat:    make(chan time.Time, 1000),
 		submit:       make(chan *backtestOrder, 1000),
@@ -131,13 +131,16 @@ func (b *Backtest) run() {
 	defer close(b.StockUpdates)
 	ts := clocky.Now()
 	for {
-		msg := b.file.Read()
+		msg, received := b.file.Read()
 		if msg == nil {
 			break
 		}
-		if msg.Timestamp.After(ts) {
-			clocky.SetNow(msg.Timestamp)
-			ts = msg.Timestamp
+		if received == 0 {
+			received = msg.Timestamp // old v1 .sip file format
+		}
+		if received.After(ts) {
+			clocky.SetNow(received)
+			ts = received
 		}
 		if ts >= b.nextBeat {
 			b.nextBeat = ts.Add(kHeartbeatInterval)
@@ -166,7 +169,10 @@ func (b *Backtest) run() {
 			q := msg.Quote()
 			b.lastQuote[q.Symbol] = q
 		}
-		b.StockUpdates <- msg
+		b.StockUpdates <- alpaca.StockUpdate{
+			ReceivedAt: received,
+			Message:    msg,
+		}
 	}
 	b.exit <- os.Interrupt
 }

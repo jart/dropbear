@@ -20,6 +20,11 @@ const (
 	CryptoWSURL     = "wss://stream.data.alpaca.markets/v1beta3/crypto/us"
 )
 
+type StockUpdate struct {
+	ReceivedAt clocky.Time
+	Message    *sip.Message
+}
+
 type StockUpdatesRequest struct {
 	Action      string   `json:"action"` // set to "subscribe"
 	Trades      []string `json:"trades,omitempty"`
@@ -33,7 +38,7 @@ type StockUpdatesRequest struct {
 }
 
 // MustStockUpdates connects to Alpaca's real-time stock market data websocket or dies.
-func MustStockUpdates(wsurl string, req *StockUpdatesRequest) <-chan *sip.Message {
+func MustStockUpdates(wsurl string, req *StockUpdatesRequest) <-chan StockUpdate {
 	c, err := StockUpdates(wsurl, req)
 	if err != nil {
 		panic(fmt.Sprintf("error subscribing to stock updates: %v", err))
@@ -42,8 +47,8 @@ func MustStockUpdates(wsurl string, req *StockUpdatesRequest) <-chan *sip.Messag
 }
 
 // StockUpdates connects to Alpaca's real-time stock market data websocket.
-func StockUpdates(wsurl string, req *StockUpdatesRequest) (<-chan *sip.Message, error) {
-	c := make(chan *sip.Message, 64)
+func StockUpdates(wsurl string, req *StockUpdatesRequest) (<-chan StockUpdate, error) {
+	c := make(chan StockUpdate, 64)
 	d := &stockUpdatesDaemon{c: c, req: req, wsurl: wsurl}
 	err := d.connect()
 	if err != nil {
@@ -54,7 +59,7 @@ func StockUpdates(wsurl string, req *StockUpdatesRequest) (<-chan *sip.Message, 
 }
 
 type stockUpdatesDaemon struct {
-	c     chan<- *sip.Message
+	c     chan<- StockUpdate
 	req   *StockUpdatesRequest
 	conn  *netty.FastWSConn
 	wsurl string
@@ -162,6 +167,7 @@ func (d *stockUpdatesDaemon) impl() error {
 		}
 		i := 1
 		n := len(bytes)
+		t := clocky.Now()
 		for i < n {
 			msg := new(sip.Message)
 			j, err := msg.Parse(bytes[i:])
@@ -172,7 +178,10 @@ func (d *stockUpdatesDaemon) impl() error {
 				}
 			}
 			i += j
-			d.c <- msg
+			d.c <- StockUpdate{
+				ReceivedAt: t,
+				Message:    msg,
+			}
 			if i < n && bytes[i] == ',' {
 				i++
 			} else if i < n && bytes[i] == ']' {

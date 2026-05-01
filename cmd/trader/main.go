@@ -85,7 +85,7 @@ var (
 	gOrderCount       int64
 	gOrderFails       int64
 	gPhase            Phase
-	gTapeMsg          chan *sip.Message
+	gTapeMsg          chan alpaca.StockUpdate
 	gTapeDone         chan struct{}
 	gBacktest         *Backtest
 	gAlpacaClient     *alpaca.Client
@@ -248,8 +248,8 @@ func main() {
 		heartbeatChan = heartbeat.C
 	}
 
-	var stockUpdates <-chan *sip.Message
-	var boatsUpdates <-chan *sip.Message
+	var stockUpdates <-chan alpaca.StockUpdate
+	var boatsUpdates <-chan alpaca.StockUpdate
 	var orderUpdates <-chan *alpaca.OrderUpdate
 	if !*flagLive {
 		var err error
@@ -260,7 +260,7 @@ func main() {
 		}
 		orderUpdates = gBacktest.OrderUpdates
 		stockUpdates = gBacktest.StockUpdates
-		boatsUpdates = make(chan *sip.Message)
+		boatsUpdates = make(chan alpaca.StockUpdate)
 		heartbeatChan = gBacktest.Heartbeat
 		gBroker = gBacktest
 	} else {
@@ -283,18 +283,19 @@ func main() {
 			Statuses: []string{"*"},
 		})
 		// start tape recorder to gcs
-		gTapeMsg = make(chan *sip.Message, 65536)
+		now := clocky.Now()
+		gTapeMsg = make(chan alpaca.StockUpdate, 65536)
 		gTapeDone = make(chan struct{})
-		go recordTape(gTapeMsg, gTapeDone)
+		go recordTape(now, gTapeMsg, gTapeDone)
 	}
 
 	// consume events
 	for {
 		select {
-		case msg := <-stockUpdates:
-			onMessage(msg)
-		case msg := <-boatsUpdates:
-			onMessage(msg)
+		case stockUpdate := <-stockUpdates:
+			onStockUpdate(stockUpdate)
+		case boatsUpdate := <-boatsUpdates:
+			onStockUpdate(boatsUpdate)
 		case update := <-orderUpdates:
 			onOrderUpdate(update)
 		case clientOrderID := <-gFailedOrders:
@@ -505,17 +506,17 @@ func CloseQuantity(price, qty decimal.Decimal) decimal.Decimal {
 	}
 }
 
-func onMessage(msg *sip.Message) {
+func onStockUpdate(stockUpdate alpaca.StockUpdate) {
 	if gTapeMsg != nil {
-		gTapeMsg <- msg
+		gTapeMsg <- stockUpdate
 	}
-	switch msg.Type {
+	switch stockUpdate.Message.Type {
 	case sip.MessageTypeQuote:
-		onQuote(msg.Quote())
+		onQuote(stockUpdate.Message.Quote())
 	case sip.MessageTypeTrade:
-		onTrade(msg.Trade())
+		onTrade(stockUpdate.Message.Trade())
 	case sip.MessageTypeStatus:
-		onStatus(msg.Status())
+		onStatus(stockUpdate.Message.Status())
 	}
 }
 

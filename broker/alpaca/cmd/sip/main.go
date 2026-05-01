@@ -86,13 +86,14 @@ func main() {
 	if *flagImbalances {
 		req.Imbalances = symbols
 	}
-	messages, err := alpaca.StockUpdates(url, req)
+	stockUpdates, err := alpaca.StockUpdates(url, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error connecting to websocket: %v\n", err)
 		os.Exit(1)
 	}
 
-	for msg := range messages {
+	for stockUpdate := range stockUpdates {
+		msg := stockUpdate.Message
 		switch msg.Type {
 		case sip.MessageTypeQuote:
 			quote := msg.Quote()

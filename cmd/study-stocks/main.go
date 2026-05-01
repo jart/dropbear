@@ -42,7 +42,7 @@ func study(path string) {
 	}
 	defer f.Close()
 	for {
-		msg := f.Read()
+		msg, _ := f.Read()
 		if msg == nil {
 			break
 		}

@@ -189,8 +189,10 @@ func TestSipFileExists(t *testing.T) {
 	}
 	defer f.Close()
 	t.Logf("sip file has %d messages", f.Count())
+	mFirst, _ := f.Get(0)
 	t.Logf("first: type=%c symbol=%s time=%s",
-		f.Get(0).Type, f.Get(0).Symbol, f.Get(0).Timestamp)
+		mFirst.Type, mFirst.Symbol, mFirst.Timestamp)
+	mLast, _ := f.Get(f.Count() - 1)
 	t.Logf("last:  type=%c symbol=%s time=%s",
-		f.Get(f.Count()-1).Type, f.Get(f.Count()-1).Symbol, f.Get(f.Count()-1).Timestamp)
+		mLast.Type, mLast.Symbol, mLast.Timestamp)
 }
