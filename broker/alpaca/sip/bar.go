@@ -10,6 +10,7 @@ import (
 var ErrShortOverflow = errors.New("bar price overflow: value cannot fit in decimal.Short")
 
 // Bar represents an aggregated bar from the SIP feed.
+// Berkshire Hathaway Class A shares aren't supported.
 type Bar struct {
 	Type      MessageType     `json:"T"`  // MessageTypeBar, MessageTypeDailyBar, or MessageTypeUpdatedBar
 	NumTrades uint32          `json:"n"`  // number of trades

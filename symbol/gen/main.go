@@ -21,7 +21,15 @@ func main() {
 	}
 
 	// extra symbols not in Alpaca's equity assets (indices, options underlyings)
-	extras := []string{"NDX", "SPXW", "SPEQX", "RUTW", "VIX", "VIXW", "XSP"}
+	extras := []string{
+		"NDX",
+		"SPXW",
+		"SPEQX",
+		"RUTW",
+		"VIX",
+		"VIXW",
+		"XSP",
+	}
 
 	// collect decent symbols
 	type entry struct {
@@ -38,10 +46,10 @@ func main() {
 		if len(name) > 5 {
 			continue // skip long symbols
 		}
-		if strings.ContainsAny(name, "./-") {
-			continue // skip symbols with invalid Go identifier chars
-		}
-		entries = append(entries, entry{name: name})
+		entries = append(entries, entry{
+			name:   strings.ReplaceAll(name, ".", "_"),
+			symbol: name,
+		})
 	}
 	alpaca.Lock.RUnlock()
 
@@ -52,13 +60,16 @@ func main() {
 	}
 	for _, name := range extras {
 		if !seen[name] {
-			entries = append(entries, entry{name: name})
+			entries = append(entries, entry{
+				name:   name,
+				symbol: name,
+			})
 		}
 	}
 
 	// sort alphabetically
 	slices.SortFunc(entries, func(a, b entry) int {
-		return strings.Compare(a.name, b.name)
+		return strings.Compare(a.symbol, b.symbol)
 	})
 
 	// compute alignment
@@ -77,7 +88,7 @@ func main() {
 	for _, e := range entries {
 		padding := strings.Repeat(" ", maxLen-len(e.name))
 		parts := make([]string, len(e.name))
-		for i, c := range e.name {
+		for i, c := range e.symbol {
 			if i == 0 {
 				parts[i] = fmt.Sprintf("'%c'", c)
 			} else {

@@ -6,7 +6,6 @@ import (
 	"dropbear/netty"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -158,7 +157,7 @@ func (d *stockUpdatesDaemon) impl() error {
 			return err
 		}
 		if len(bytes) < 2 || bytes[0] != '[' {
-			log.Printf("unexpected message: %s", string(bytes))
+			logf("unexpected message: %s\n", string(bytes))
 			continue
 		}
 		i := 1
@@ -167,8 +166,8 @@ func (d *stockUpdatesDaemon) impl() error {
 			msg := new(sip.Message)
 			j, err := msg.Parse(bytes[i:])
 			if err != nil {
-				logf("%v: %s", err, string(bytes))
 				if err != sip.ErrShortOverflow {
+					logf("%v: %s\n", err, string(bytes))
 					break
 				}
 			}
@@ -179,7 +178,7 @@ func (d *stockUpdatesDaemon) impl() error {
 			} else if i < n && bytes[i] == ']' {
 				break
 			} else {
-				logf("broken message: %s", string(bytes))
+				logf("broken message: %s\n", string(bytes))
 				break
 			}
 		}
