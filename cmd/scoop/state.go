@@ -51,15 +51,17 @@ type State struct {
 	sellClientOrderID2 string
 
 	// LULD state
-	luldLower    decimal.Decimal // current lower price band (zero if no band)
-	luldUpper    decimal.Decimal // current upper price band (zero if no band)
-	luldAt       clocky.Time    // when the band was last published
-	lastTrade    decimal.Decimal // most recent trade price
-	lastTradeAt  clocky.Time    // when the most recent trade happened
-	imbPrice     decimal.Decimal // most recent imbalance price during halt
-	scoopEntryAt clocky.Time    // when we entered the position
-	scoopTarget  decimal.Decimal // price we want to exit at
-	scoopShort   bool            // true if this is a short position (limit up)
+	luldLower     decimal.Decimal // current lower price band (zero if no band)
+	luldUpper     decimal.Decimal // current upper price band (zero if no band)
+	luldAt        clocky.Time     // when the band was last published
+	lastTrade     decimal.Decimal // most recent trade price
+	lastTradeAt   clocky.Time     // when the most recent trade happened
+	tradeCount    int             // number of trades seen today
+	imbPrice      decimal.Decimal // most recent imbalance price during halt
+	scoopEntryAt  clocky.Time     // when we entered the position
+	scoopTarget   decimal.Decimal // price we want to exit at
+	scoopShort    bool            // true if this is a short position (limit up)
+	lastReplaceAt clocky.Time     // when we last replaced an exit order
 
 	// P&L tracking
 	costBasis    decimal.Decimal // total cost of current position (signed)

@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"sync"
 	"syscall"
 	"time"
 
@@ -26,12 +27,16 @@ import (
 var (
 	flagCooldown  = clocky.DurationFlag("cooldown", "30m", "cooldown period after order rejection")
 	flagBucket    = flag.String("bucket", "dropbear-sip", "google cloud storage bucket for recording market data")
+	flagBudget    = decimal.Flag("budget", "30_000", "max notional exposure per stock")
 	flagLive      = flag.Bool("live", false, "enables live trading and network access")
 	flagData      = flag.String("data", "", "path of sip data file for backtest")
 	flagTUI       = flag.Bool("tui", false, "enable terminal user interface")
-	flagScoopMax      = flag.String("scoop-max", "10000", "max notional value per scoop entry")
-	flagScoopExit     = flag.String("scoop-exit", "0.03", "target profit as fraction of entry price (e.g. 0.03 = 3%)")
-	flagShortBailout  = clocky.DurationFlag("short-bailout", "30s", "close short if not profitable within this duration")
+	flagExit      = decimal.FlagPercent("exit", "5", "target profit as percent of entry price")
+	flagBailLong  = clocky.DurationFlag("bail-long", "0", "close long if not profitable within this duration (0=disabled)")
+	flagBailShort = clocky.DurationFlag("bail-short", "0", "close short if not profitable within this duration (0=disabled)")
+	flagMinPrice  = decimal.Flag("min-price", "1", "minimum stock price to scoop")
+	flagMaxSpread = decimal.FlagPercent("max-spread", "5", "maximum bid-ask spread as percent of midpoint")
+	flagMinTrades = flag.Int("min-trades", 10, "minimum trades seen before scooping a stock")
 )
 
 const (
@@ -64,54 +69,38 @@ var (
 	gAlpacaClient   *alpaca.Client
 	gOrderSeq       int64
 	gSystemOn       bool // kill switch: when false, no new positions opened
-)
-
-var (
-	kGreedFloor = decimal.Parse("0.005")
+	gMu             sync.Mutex
 )
 
 func main() {
 	log.SetFlags(0)
 	log.SetOutput(&gLogWriter)
 	flag.Parse()
-	if *loggy.FlagLog != "" {
-		f, err := os.OpenFile(*loggy.FlagLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			log.Fatalf("opening log file: %v", err)
-		}
-		gLogWriter.file = f
-	}
 	if *flagLive {
-
+		if *loggy.FlagLog != "" {
+			f, err := os.OpenFile(*loggy.FlagLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			if err != nil {
+				log.Fatalf("opening log file: %v", err)
+			}
+			gLogWriter.file = f
+		}
 	} else {
 		netty.SetOffline()
 		clocky.Now = clocky.FakeNow
 		clocky.Sleep = clocky.FakeSleep
 		clocky.NewTicker = clocky.FakeNewTicker
 	}
-
 	if !*flagLive && *flagData == "" {
 		fmt.Fprintf(os.Stderr, "-data must be specified for backtest mode\n")
 		os.Exit(1)
 	}
-
 	result := Run()
 	fmt.Printf("total P&L: %s  fees: %s  net: %s  fills: %d  shares: %s\n",
 		result.PnL, result.Fees, result.Net, result.Fills, result.Shares)
 	os.Exit(0)
 }
 
-var scoopExitPct decimal.Decimal
-
-func init() {
-	// parsed later in Evaluate on first use
-	scoopExitPct = decimal.Parse(*flagScoopExit)
-}
-
 func Evaluate(st *State) {
-	if st.disabled {
-		return
-	}
 	if st.quote == nil {
 		return
 	}
@@ -122,58 +111,24 @@ func Evaluate(st *State) {
 		return
 	}
 
+	// check time
 	now := clocky.Now()
 	session := cboe.GetSession(now)
 	switch session {
-	case cboe.SessionClosed:
-		return
-	case cboe.SessionOvernight:
+	case cboe.SessionClosed, cboe.SessionOvernight:
 		return
 	}
 
-	// === EXIT: close long position ===
-	if st.position.IsPositive() && !st.scoopShort {
-		if st.sellClientOrderID != "" || st.halt {
-			return
-		}
-		if st.quote.BidPrice.IsPositive() && st.scoopTarget.IsPositive() {
-			if st.quote.BidPrice.Cmp(st.scoopTarget) >= 0 {
-				log.Printf("scoop exit long %s: bid %s >= target %s",
-					st.symbol, st.quote.BidPrice, st.scoopTarget)
-				LimitOrder(st, ds.SideSell, st.position, st.quote.BidPrice,
-					alpaca.OrderDestinationNone, session,
-					fmt.Sprintf("scoop exit long at %s (target %s)", st.quote.BidPrice, st.scoopTarget))
-			}
-		}
+	// === EXIT ===
+	if st.position.Sign() != 0 {
+		exitScoop(st, now, session)
 		return
 	}
 
-	// === EXIT: cover short position ===
-	if st.position.IsNegative() && st.scoopShort {
-		if st.buyClientOrderID != "" || st.halt {
-			return
-		}
-		absPos := st.position.Abs()
-		if st.quote.AskPrice.IsPositive() && st.scoopTarget.IsPositive() {
-			bailout := st.scoopEntryAt != 0 && now.Sub(st.scoopEntryAt) > *flagShortBailout
-			if st.quote.AskPrice.Cmp(st.scoopTarget) <= 0 {
-				log.Printf("scoop exit short %s: ask %s <= target %s",
-					st.symbol, st.quote.AskPrice, st.scoopTarget)
-				LimitOrder(st, ds.SideBuy, absPos, st.quote.AskPrice,
-					alpaca.OrderDestinationNone, session,
-					fmt.Sprintf("scoop cover at %s (target %s)", st.quote.AskPrice, st.scoopTarget))
-			} else if bailout {
-				log.Printf("scoop BAILOUT short %s: ask %s, target was %s, held %s",
-					st.symbol, st.quote.AskPrice, st.scoopTarget, now.Sub(st.scoopEntryAt))
-				LimitOrder(st, ds.SideBuy, absPos, st.quote.AskPrice,
-					alpaca.OrderDestinationNone, session,
-					fmt.Sprintf("scoop bailout cover at %s after %s", st.quote.AskPrice, now.Sub(st.scoopEntryAt)))
-			}
-		}
+	// === ENTRY: no new positions if disabled or system off ===
+	if st.disabled {
 		return
 	}
-
-	// === ENTRY: no new positions if system is off ===
 	if !gSystemOn {
 		return
 	}
@@ -188,6 +143,22 @@ func Evaluate(st *State) {
 	}
 	if st.quote.Indicative() {
 		return
+	}
+
+	// Safety filters: skip zombie SPACs, illiquid trash, and wide-spread garbage.
+	if st.quote.BidPrice.IsPositive() && st.quote.AskPrice.IsPositive() {
+		mid := st.quote.Midpoint()
+		if mid.Cmp(*flagMinPrice) < 0 {
+			return // too cheap
+		}
+		spread := st.quote.Spread()
+		maxSpread := mid.Mul(*flagMaxSpread)
+		if spread.Cmp(maxSpread) > 0 {
+			return // spread too wide
+		}
+	}
+	if st.tradeCount < *flagMinTrades {
+		return // not enough trading activity yet
 	}
 
 	// Determine if we have an entry signal and which direction.
@@ -233,9 +204,8 @@ func Evaluate(st *State) {
 
 	// Size: take all available liquidity, capped by notional limit.
 	// Round down to 100-share lots.
-	maxNotional := decimal.Parse(*flagScoopMax)
-	roundLot := decimal.FromInt(100)
-	maxShares := maxNotional.Div(price).QuantizeTruncate(roundLot)
+	roundLot := cboe.LotSize(price)
+	maxShares := flagBudget.Div(price).QuantizeTruncate(roundLot)
 	available := decimal.FromInt(int(quoteSize)).QuantizeTruncate(roundLot)
 	qty := available.Min(maxShares)
 	if qty.IsZero() {
@@ -243,12 +213,11 @@ func Evaluate(st *State) {
 	}
 
 	// Set exit target.
-	exitPct := decimal.Parse(*flagScoopExit)
 	if side == ds.SideBuy {
-		st.scoopTarget = price.Add(price.Mul(exitPct))
+		st.scoopTarget = price.Add(price.Mul(*flagExit))
 		st.scoopShort = false
 	} else {
-		st.scoopTarget = price.Sub(price.Mul(exitPct))
+		st.scoopTarget = price.Sub(price.Mul(*flagExit))
 		st.scoopShort = true
 	}
 	st.scoopEntryAt = now
@@ -257,6 +226,69 @@ func Evaluate(st *State) {
 		side, st.symbol, qty, price, quoteExchange, bandPrice, st.scoopTarget)
 	LimitOrder(st, side, qty, price, dest, session,
 		fmt.Sprintf("scoop %s %s @ %s DMA %s", side, qty, price, dest))
+}
+
+func exitScoop(st *State, now clocky.Time, session cboe.Session) {
+	if st.halt {
+		return
+	}
+
+	isLong := st.position.IsPositive() && !st.scoopShort
+	isShort := st.position.IsNegative() && st.scoopShort
+
+	// Determine if we should be exiting.
+	shouldExit := st.disabled // TUI disabled → liquidate
+	if isLong && st.scoopTarget.IsPositive() && st.quote.BidPrice.IsPositive() {
+		if st.quote.BidPrice.Cmp(st.scoopTarget) >= 0 {
+			shouldExit = true
+		}
+		if *flagBailLong > 0 && st.scoopEntryAt != 0 && now.Sub(st.scoopEntryAt) > *flagBailLong {
+			shouldExit = true
+		}
+	}
+	if isShort && st.scoopTarget.IsPositive() && st.quote.AskPrice.IsPositive() {
+		if st.quote.AskPrice.Cmp(st.scoopTarget) <= 0 {
+			shouldExit = true
+		}
+		if *flagBailShort > 0 && st.scoopEntryAt != 0 && now.Sub(st.scoopEntryAt) > *flagBailShort {
+			shouldExit = true
+		}
+	}
+	if !shouldExit {
+		return
+	}
+
+	// Cross the spread to get out. Smart router handles venue.
+	// If we already have a pending exit, chase the market if price moved.
+	if isLong {
+		price := st.quote.BidPrice
+		if st.sellClientOrderID == "" {
+			log.Printf("scoop exit long %s: %s shares @ %s (target=%s)",
+				st.symbol, st.position, price, st.scoopTarget)
+			LimitOrder(st, ds.SideSell, st.position, price,
+				alpaca.OrderDestinationNone, session,
+				fmt.Sprintf("scoop exit %s @ %s", st.position, price))
+		} else if price.Cmp(st.sellPrice) < 0 &&
+			(st.lastReplaceAt == 0 || now.Sub(st.lastReplaceAt) > 1*clocky.Minute) {
+			st.lastReplaceAt = now
+			ReplaceOrder(st, ds.SideSell, st.position, price)
+		}
+	}
+	if isShort {
+		price := st.quote.AskPrice
+		qty := st.position.Abs()
+		if st.buyClientOrderID == "" {
+			log.Printf("scoop exit short %s: %s shares @ %s (target=%s)",
+				st.symbol, qty, price, st.scoopTarget)
+			LimitOrder(st, ds.SideBuy, qty, price,
+				alpaca.OrderDestinationNone, session,
+				fmt.Sprintf("scoop cover %s @ %s", qty, price))
+		} else if price.Cmp(st.buyPrice) > 0 &&
+			(st.lastReplaceAt == 0 || now.Sub(st.lastReplaceAt) > 1*clocky.Minute) {
+			st.lastReplaceAt = now
+			ReplaceOrder(st, ds.SideBuy, qty, price)
+		}
+	}
 }
 
 func Run() Result {
@@ -459,12 +491,14 @@ func synchronizeAssetsForever() {
 }
 
 func getSymbolsThatMatter() []*State {
+	gMu.Lock()
 	states := make([]*State, 0, len(gSymbols))
 	for _, st := range gSymbols {
 		if st.HasBeenTraded() {
 			states = append(states, st)
 		}
 	}
+	gMu.Unlock()
 	slices.SortFunc(states, compareStateBySymbol)
 	return states
 }
@@ -513,34 +547,34 @@ func onStockUpdate(stockUpdate alpaca.StockUpdate) {
 	if gTapeMsg != nil {
 		gTapeMsg <- stockUpdate
 	}
-	switch stockUpdate.Message.Type {
-	case sip.MessageTypeQuote:
-		onQuote(stockUpdate.Message.Quote())
-	case sip.MessageTypeTrade:
-		onTrade(stockUpdate.Message.Trade())
-	case sip.MessageTypeStatus:
-		onStatus(stockUpdate.Message.Status())
-	case sip.MessageTypeLULD:
-		onLULD(stockUpdate.Message.LULD())
-	case sip.MessageTypeImbalance:
-		onImbalance(stockUpdate.Message.Imbalance())
-	case sip.MessageTypeBar, sip.MessageTypeDailyBar, sip.MessageTypeUpdatedBar:
-		onBar(stockUpdate.Message.Bar())
-	}
-}
-
-func onBar(bar *sip.Bar) {
-}
-
-func onLULD(luld *sip.LULD) {
-	st := GetState(luld.Symbol)
+	st := GetState(stockUpdate.Message.Symbol)
 	if st == nil {
 		return
 	}
-	if luld.Indicator.IsPriceBand() {
-		st.luldLower = luld.LowerLimit
-		st.luldUpper = luld.UpperLimit
-		st.luldAt = luld.Timestamp
+	switch stockUpdate.Message.Type {
+	case sip.MessageTypeQuote:
+		onQuote(st, stockUpdate.Message.Quote())
+	case sip.MessageTypeTrade:
+		onTrade(st, stockUpdate.Message.Trade())
+	case sip.MessageTypeStatus:
+		onStatus(st, stockUpdate.Message.Status())
+	case sip.MessageTypeLULD:
+		onLULD(st, stockUpdate.Message.LULD())
+	case sip.MessageTypeImbalance:
+		onImbalance(st, stockUpdate.Message.Imbalance())
+	case sip.MessageTypeBar, sip.MessageTypeDailyBar, sip.MessageTypeUpdatedBar:
+		onBar(st, stockUpdate.Message.Bar())
+	}
+}
+
+func onBar(st *State, b *sip.Bar) {
+}
+
+func onLULD(st *State, l *sip.LULD) {
+	if l.Indicator.IsPriceBand() {
+		st.luldLower = l.LowerLimit
+		st.luldUpper = l.UpperLimit
+		st.luldAt = l.Timestamp
 	} else {
 		// Limit state indicator (C-J): bands are zeroed.
 		st.luldLower = decimal.Zero
@@ -549,40 +583,25 @@ func onLULD(luld *sip.LULD) {
 	Evaluate(st)
 }
 
-func onImbalance(imbalance *sip.Imbalance) {
-	st := GetState(imbalance.Symbol)
-	if st == nil {
-		return
-	}
-	st.imbPrice = imbalance.Price
+func onImbalance(st *State, b *sip.Imbalance) {
+	st.imbPrice = b.Price
 }
 
-func onQuote(q *sip.Quote) {
-	st := gSymbols[q.Symbol]
-	if st == nil {
-		return
-	}
+func onQuote(st *State, q *sip.Quote) {
 	st.quote = q
 	Evaluate(st)
 }
 
-func onTrade(t *sip.Trade) {
-	st := gSymbols[t.Symbol]
-	if st == nil {
-		return
-	}
+func onTrade(st *State, t *sip.Trade) {
 	if t.Price.IsPositive() {
 		st.lastTrade = t.Price
 		st.lastTradeAt = t.Timestamp
+		st.tradeCount++
 	}
 	Evaluate(st)
 }
 
-func onStatus(s *sip.Status) {
-	st := gSymbols[s.Symbol]
-	if st == nil {
-		return
-	}
+func onStatus(st *State, s *sip.Status) {
 	if s.Halt() {
 		st.halt = true
 		log.Printf("trading of %s has halted: %s", st.symbol, s)
@@ -746,6 +765,7 @@ func LimitOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.Deci
 			advancedInstructions = &alpaca.AdvancedInstructions{
 				Algorithm:   alpaca.OrderAlgorithmDMA,
 				Destination: dest,
+				DisplayQty:  cboe.LotSize(price),
 			}
 		}
 		_, err := gBroker.CreateOrder(&alpaca.CreateOrderRequest{
@@ -822,23 +842,6 @@ func ReplaceOrder(st *State, side ds.Side, qty decimal.Decimal, price decimal.De
 			quote.BidPrice, quote.BidSize,
 			quote.AskPrice, quote.AskSize)
 	})
-}
-
-// spawn runs f asynchronously in live mode, synchronously in backtest mode.
-func spawn(f func()) {
-	if *flagLive {
-		go f()
-	} else {
-		f()
-	}
-}
-
-func generateClientOrderID() string {
-	if *flagLive {
-		return uuid.New().String()
-	}
-	gOrderSeq++
-	return fmt.Sprintf("order-%d", gOrderSeq)
 }
 
 func logBalance() {
@@ -1032,8 +1035,26 @@ func GetState(sym symbol.Symbol) *State {
 				symbol: sym,
 				asset:  asset,
 			}
+			gMu.Lock()
 			gSymbols[sym] = st
+			gMu.Unlock()
 		}
 	}
 	return st
+}
+
+func generateClientOrderID() string {
+	if *flagLive {
+		return uuid.New().String()
+	}
+	gOrderSeq++
+	return fmt.Sprintf("order-%d", gOrderSeq)
+}
+
+func spawn(f func()) {
+	if *flagLive {
+		go f()
+	} else {
+		f()
+	}
 }

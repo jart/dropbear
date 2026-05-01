@@ -180,7 +180,6 @@ func (t *TUI) cycleVenue() {
 	}
 }
 
-
 func (t *TUI) flash(sym symbol.Symbol, col int) {
 	t.flashSymbol = sym
 	t.flashCol = col
