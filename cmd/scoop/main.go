@@ -604,11 +604,9 @@ func onTrade(st *State, t *sip.Trade) {
 func onStatus(st *State, s *sip.Status) {
 	if s.Halt() {
 		st.halt = true
-		log.Printf("trading of %s has halted: %s", st.symbol, s)
 	} else if s.Resume() {
 		st.halt = false
-		log.Printf("trading of %s has resumed: %s", st.symbol, s)
-		Evaluate(st) // try to exit on resumption
+		Evaluate(st)
 	}
 }
 
