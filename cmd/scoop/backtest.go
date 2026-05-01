@@ -1,0 +1,726 @@
+package main
+
+import (
+	"dropbear/broker/alpaca"
+	"dropbear/broker/alpaca/sip"
+	"dropbear/cboe"
+	"dropbear/clocky"
+	"dropbear/decimal"
+	"dropbear/ds"
+	"dropbear/symbol"
+	"errors"
+	"os"
+	"time"
+)
+
+var (
+	flagCapital     = decimal.Flag("capital", "124_000", "amount of buying power for backtest simulation")
+	flagLatency     = clocky.DurationFlag("latency", "7ms", "simulated order submission latency")
+	flagFillLatency = clocky.DurationFlag("fill-latency", "500us", "simulated fill notification latency")
+)
+
+type Broker interface {
+	GetPositions() ([]alpaca.Position, error)
+	GetQuotes([]string, alpaca.Feed) (map[string]*sip.Quote, error)
+	CreateOrder(*alpaca.CreateOrderRequest) (*alpaca.Order, error)
+	ReplaceOrder(string, *alpaca.ReplaceOrderRequest) (*alpaca.Order, error)
+	CancelAllOrders() ([]alpaca.CancelOrderStatus, error)
+	CancelOrder(string) error
+	SyncAssets() error
+}
+
+// Backtest replays a recorded sip file for offline testing.
+type Backtest struct {
+	StockUpdates chan alpaca.StockUpdate
+	OrderUpdates chan *alpaca.OrderUpdate
+	Heartbeat    chan time.Time
+	file         *sip.File
+	exit         chan os.Signal
+	submit       chan *backtestOrder
+	replace      chan *backtestReplace
+	cancel       chan string                       // clientOrderID, or "" for cancel all
+	pending      []*backtestOrder                  // only accessed by run goroutine
+	moc          []*backtestOrder                  // only accessed by run goroutine
+	positions    map[symbol.Symbol]decimal.Decimal // only accessed by run goroutine
+	lastTrade    map[symbol.Symbol]decimal.Decimal // only accessed by run goroutine
+	lastQuote    map[symbol.Symbol]*sip.Quote      // only accessed by run goroutine
+	staged       []stagedAction                    // only accessed by run goroutine
+	stagedFills  []stagedFill                      // only accessed by run goroutine
+	nextBeat     clocky.Time                       // only accessed by run goroutine
+	closeTime    clocky.Time                       // only accessed by run goroutine
+}
+
+func NewBacktest(path string, exit chan os.Signal) (*Backtest, error) {
+	file, err := sip.OpenFile(path)
+	if err != nil {
+		return nil, err
+	}
+	b := &Backtest{
+		file:         file,
+		exit:         exit,
+		StockUpdates: make(chan alpaca.StockUpdate),
+		OrderUpdates: make(chan *alpaca.OrderUpdate),
+		Heartbeat:    make(chan time.Time, 1),
+		submit:       make(chan *backtestOrder, 1000),
+		replace:      make(chan *backtestReplace, 1000),
+		cancel:       make(chan string, 1000),
+		positions:    make(map[symbol.Symbol]decimal.Decimal),
+		lastTrade:    make(map[symbol.Symbol]decimal.Decimal),
+		lastQuote:    make(map[symbol.Symbol]*sip.Quote),
+	}
+	go b.run()
+	return b, nil
+}
+
+func (b *Backtest) CreateOrder(body *alpaca.CreateOrderRequest) (*alpaca.Order, error) {
+	sym, err := symbol.Parse(body.Symbol)
+	if err != nil {
+		return nil, err
+	}
+	exchange := sip.ExchangeNone
+	lotSize := cboe.LotSize(body.LimitPrice)
+	isOddLotOrder := body.Qty.Cmp(body.Qty.QuantizeTruncate(lotSize)) != 0
+	if !isOddLotOrder && body.AdvancedInstructions != nil {
+		switch body.AdvancedInstructions.Destination {
+		case alpaca.OrderDestinationARCA:
+			exchange = sip.ExchangeARCA
+		case alpaca.OrderDestinationNASDAQ:
+			exchange = sip.ExchangeNASDAQ
+		case alpaca.OrderDestinationNYSE:
+			exchange = sip.ExchangeNYSE
+		}
+	}
+	b.submit <- &backtestOrder{
+		clientOrderID: body.ClientOrderID,
+		symbol:        sym,
+		exchange:      exchange,
+		side:          body.Side,
+		qty:           body.Qty,
+		price:         body.LimitPrice,
+		moc:           body.TimeInForce == alpaca.TimeInForceCLS,
+		odd:           isOddLotOrder,
+	}
+	return nil, nil
+}
+
+// estimatePrice returns the best available price for a symbol.
+func (b *Backtest) estimatePrice(sym symbol.Symbol) decimal.Decimal {
+	if q := b.lastQuote[sym]; q != nil {
+		mid := q.BidPrice.Add(q.AskPrice).Half()
+		if mid.IsPositive() {
+			return mid
+		}
+	}
+	if p := b.lastTrade[sym]; p.IsPositive() {
+		return p
+	}
+	return decimal.Zero
+}
+
+func (b *Backtest) ReplaceOrder(orderID string, body *alpaca.ReplaceOrderRequest) (*alpaca.Order, error) {
+	b.replace <- &backtestReplace{
+		orderID:       orderID,
+		clientOrderID: body.ClientOrderID,
+		qty:           body.Qty,
+		price:         body.LimitPrice,
+	}
+	return nil, nil
+}
+
+func (b *Backtest) CancelAllOrders() ([]alpaca.CancelOrderStatus, error) {
+	b.cancel <- ""
+	return nil, nil
+}
+
+func (b *Backtest) CancelOrder(id string) error {
+	b.cancel <- id
+	return nil
+}
+
+func (b *Backtest) SyncAssets() error {
+	return nil
+}
+
+func (b *Backtest) GetQuotes(symbols []string, feed alpaca.Feed) (map[string]*sip.Quote, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (b *Backtest) GetPositions() ([]alpaca.Position, error) {
+	return nil, errors.New("not implemented")
+}
+
+type backtestOrder struct {
+	clientOrderID string
+	exchange      sip.Exchange
+	symbol        symbol.Symbol
+	side          ds.Side
+	qty           decimal.Decimal
+	filled        decimal.Decimal
+	price         decimal.Decimal
+	queueAhead    decimal.Decimal // shares ahead of us in FIFO queue
+	createdAt     clocky.Time     // when order was submitted
+	odd           bool
+	moc           bool
+}
+
+type backtestReplace struct {
+	orderID       string // old order ID to find
+	clientOrderID string // new client order ID
+	qty           decimal.Decimal
+	price         decimal.Decimal
+}
+
+// stagedAction is a submit/replace/cancel buffered until latency elapses.
+type stagedAction struct {
+	readyAt  clocky.Time
+	order    *backtestOrder   // non-nil for submit
+	replace  *backtestReplace // non-nil for replace
+	cancel   string           // non-empty for cancel ("" with nil order/replace means cancel all)
+	isCancel bool
+}
+
+// stagedFill is a fill event buffered until latency elapses,
+// so the robot sees post-fill quotes instead of stale pre-fill ones.
+type stagedFill struct {
+	readyAt clocky.Time
+	update  *alpaca.OrderUpdate
+}
+
+func (b *Backtest) run() {
+	defer close(b.StockUpdates)
+	ts := clocky.Now()
+	for {
+		msg, received := b.file.Read()
+		if msg == nil {
+			break
+		}
+		if received == 0 {
+			received = msg.Timestamp // old v1 .sip file format
+		}
+		if received.After(ts) {
+			clocky.SetNow(received)
+			ts = received
+		}
+		if ts >= b.nextBeat {
+			b.nextBeat = ts.Add(kHeartbeatInterval)
+			select {
+			case b.Heartbeat <- time.Time{}:
+			default:
+			}
+		}
+		// fill MOC orders at market close
+		if b.closeTime != 0 && ts >= b.closeTime {
+			b.fillMOC()
+			b.closeTime = 0
+		}
+		// compute close time when we enter a new day
+		if b.closeTime == 0 && cboe.GetSession(ts) == cboe.SessionDay {
+			year, month, day := ts.Date()
+			b.closeTime = cboe.GetCloseTime(year, month, day)
+		}
+		b.stageSubmits()
+		b.processReady()
+		b.deliverFills()
+		switch msg.Type {
+		case sip.MessageTypeTrade:
+			t := msg.Trade()
+			b.lastTrade[t.Symbol] = t.Price
+			b.checkFills(t)
+		case sip.MessageTypeQuote:
+			q := msg.Quote()
+			b.lastQuote[q.Symbol] = q
+		}
+		b.StockUpdates <- alpaca.StockUpdate{
+			ReceivedAt: clocky.Now(),
+			Message:    msg,
+		}
+	}
+	b.exit <- os.Interrupt
+}
+
+func (b *Backtest) stageSubmits() {
+	now := clocky.Now()
+	readyAt := now.Add(*flagLatency)
+	for {
+		select {
+		case order := <-b.submit:
+			b.staged = append(b.staged, stagedAction{readyAt: readyAt, order: order})
+		case r := <-b.replace:
+			b.staged = append(b.staged, stagedAction{readyAt: readyAt, replace: r})
+		case id := <-b.cancel:
+			b.staged = append(b.staged, stagedAction{readyAt: readyAt, cancel: id, isCancel: true})
+		default:
+			return
+		}
+	}
+}
+
+// stageFill buffers a fill event for delivery after latency elapses.
+func (b *Backtest) stageFill(update *alpaca.OrderUpdate) {
+	b.stagedFills = append(b.stagedFills, stagedFill{
+		readyAt: clocky.Now().Add(*flagFillLatency),
+		update:  update,
+	})
+}
+
+// deliverFills sends any staged fills whose latency has elapsed.
+func (b *Backtest) deliverFills() {
+	now := clocky.Now()
+	n := 0
+	for _, sf := range b.stagedFills {
+		if now.Before(sf.readyAt) {
+			b.stagedFills[n] = sf
+			n++
+			continue
+		}
+		b.OrderUpdates <- sf.update
+	}
+	b.stagedFills = b.stagedFills[:n]
+}
+
+func (b *Backtest) processReady() {
+	now := clocky.Now()
+	n := 0
+	for _, a := range b.staged {
+		if now.Before(a.readyAt) {
+			b.staged[n] = a
+			n++
+			continue
+		}
+		if a.order != nil {
+			b.processOrder(a.order)
+		} else if a.replace != nil {
+			b.replacePending(a.replace)
+		} else if a.isCancel {
+			b.cancelPending(a.cancel)
+		}
+	}
+	b.staged = b.staged[:n]
+}
+
+func (b *Backtest) processOrder(order *backtestOrder) {
+	// check buying power: reject if total notional would exceed capital
+	if !flagCapital.IsZero() && !order.moc {
+		newPos := b.positions[order.symbol]
+		if order.side == ds.SideBuy {
+			newPos = newPos.Add(order.qty)
+		} else {
+			newPos = newPos.Sub(order.qty)
+		}
+		gross := decimal.Zero
+		for s, pos := range b.positions {
+			if s == order.symbol {
+				continue
+			}
+			gross = gross.Add(pos.Abs().Mul(b.estimatePrice(s)))
+		}
+		gross = gross.Add(newPos.Abs().Mul(order.price))
+		if gross.Cmp(*flagCapital) > 0 {
+			// send as canceled (not rejected) to avoid triggering cooldown
+			b.OrderUpdates <- &alpaca.OrderUpdate{
+				Event:     alpaca.OrderEventCanceled,
+				Timestamp: clocky.Now(),
+				At:        clocky.Now(),
+				Order: &alpaca.Order{
+					ID:            order.clientOrderID,
+					ClientOrderID: order.clientOrderID,
+					Symbol:        order.symbol.String(),
+					Side:          order.side,
+					Qty:           order.qty,
+					LimitPrice:    order.price,
+					Status:        alpaca.OrderStatusCanceled,
+					Type:          alpaca.OrderTypeLimit,
+				},
+			}
+			return
+		}
+	}
+	if order.moc {
+		b.moc = append(b.moc, order)
+	} else if b.isMarketable(order) {
+		b.fillMarketable(order)
+	} else {
+		order.createdAt = clocky.Now()
+		// snapshot queue depth ahead of us for FIFO exchanges
+		if order.exchange == sip.ExchangeNASDAQ {
+			if q := b.lastQuote[order.symbol]; q != nil {
+				switch order.side {
+				case ds.SideBuy:
+					if order.price.Cmp(q.BidPrice) == 0 {
+						order.queueAhead = decimal.FromInt(int(q.BidSize))
+					}
+				default:
+					if order.price.Cmp(q.AskPrice) == 0 {
+						order.queueAhead = decimal.FromInt(int(q.AskSize))
+					}
+				}
+			}
+		}
+		b.pending = append(b.pending, order)
+	}
+	b.OrderUpdates <- &alpaca.OrderUpdate{
+		Event:     alpaca.OrderEventNew,
+		Timestamp: clocky.Now(),
+		At:        clocky.Now(),
+		Order: &alpaca.Order{
+			ID:            order.clientOrderID,
+			ClientOrderID: order.clientOrderID,
+			Symbol:        order.symbol.String(),
+			Side:          order.side,
+			Qty:           order.qty,
+			LimitPrice:    order.price,
+			Status:        alpaca.OrderStatusNew,
+			Type:          alpaca.OrderTypeLimit,
+		},
+	}
+}
+
+func (b *Backtest) replacePending(r *backtestReplace) {
+	now := clocky.Now()
+	for _, order := range b.pending {
+		if order.clientOrderID != r.orderID {
+			continue
+		}
+		oldClientOrderID := order.clientOrderID
+
+		// update the order in place
+		order.clientOrderID = r.clientOrderID
+		if !r.qty.IsZero() {
+			order.qty = r.qty
+		}
+		if !r.price.IsZero() {
+			order.price = r.price
+		}
+		order.queueAhead = decimal.Zero
+
+		// recompute FIFO queue for NASDAQ
+		if order.exchange == sip.ExchangeNASDAQ {
+			if q := b.lastQuote[order.symbol]; q != nil {
+				switch order.side {
+				case ds.SideBuy:
+					if order.price.Cmp(q.BidPrice) == 0 {
+						order.queueAhead = decimal.FromInt(int(q.BidSize))
+					}
+				default:
+					if order.price.Cmp(q.AskPrice) == 0 {
+						order.queueAhead = decimal.FromInt(int(q.AskSize))
+					}
+				}
+			}
+		}
+
+		// update any staged fills that still reference the old client order ID,
+		// otherwise they'll be silently dropped when the main loop can't find
+		// the old ID in gOrders after processing the replace event.
+		for i := range b.stagedFills {
+			sf := &b.stagedFills[i]
+			if sf.update.Order.ClientOrderID == oldClientOrderID {
+				sf.update.Order.ClientOrderID = r.clientOrderID
+				sf.update.Order.ID = r.clientOrderID
+			}
+		}
+
+		// send replaced event on old client order ID
+		// onOrderUpdate swaps to the new client order ID via ReplacedBy
+		b.OrderUpdates <- &alpaca.OrderUpdate{
+			Event:     alpaca.OrderEventReplaced,
+			Timestamp: now,
+			At:        now,
+			Order: &alpaca.Order{
+				ID:            oldClientOrderID,
+				ClientOrderID: oldClientOrderID,
+				ReplacedBy:    r.clientOrderID,
+				Symbol:        order.symbol.String(),
+				Side:          order.side,
+				Qty:           r.qty,
+				LimitPrice:    r.price,
+				Status:        alpaca.OrderStatusReplaced,
+				Type:          alpaca.OrderTypeLimit,
+			},
+		}
+		return
+	}
+}
+
+func (b *Backtest) cancelPending(id string) {
+	now := clocky.Now()
+	n := 0
+	for _, order := range b.pending {
+		if id != "" && order.clientOrderID != id {
+			b.pending[n] = order
+			n++
+			continue
+		}
+		b.OrderUpdates <- &alpaca.OrderUpdate{
+			Event:     alpaca.OrderEventCanceled,
+			Timestamp: now,
+			At:        now,
+			Order: &alpaca.Order{
+				ID:            order.clientOrderID,
+				ClientOrderID: order.clientOrderID,
+				Symbol:        order.symbol.String(),
+				Side:          order.side,
+				Qty:           order.qty,
+				FilledQty:     order.filled,
+				LimitPrice:    order.price,
+				Status:        alpaca.OrderStatusCanceled,
+				Type:          alpaca.OrderTypeLimit,
+			},
+		}
+	}
+	b.pending = b.pending[:n]
+}
+
+func (b *Backtest) isMarketable(order *backtestOrder) bool {
+	q := b.lastQuote[order.symbol]
+	if q == nil {
+		return false
+	}
+	switch order.side {
+	case ds.SideBuy:
+		return order.price.Cmp(q.AskPrice) >= 0 && q.AskPrice.IsPositive()
+	default:
+		return order.price.Cmp(q.BidPrice) <= 0 && q.BidPrice.IsPositive()
+	}
+}
+
+func (b *Backtest) fillMarketable(order *backtestOrder) {
+	now := clocky.Now()
+	q := b.lastQuote[order.symbol]
+	var fillPrice decimal.Decimal
+	if order.side == ds.SideBuy {
+		fillPrice = q.AskPrice
+	} else {
+		fillPrice = q.BidPrice
+	}
+	pos := b.positions[order.symbol]
+	if order.side == ds.SideBuy {
+		pos = pos.Add(order.qty)
+	} else {
+		pos = pos.Sub(order.qty)
+	}
+	b.positions[order.symbol] = pos
+	b.stageFill(&alpaca.OrderUpdate{
+		Event:       alpaca.OrderEventFill,
+		PositionQty: pos,
+		Price:       fillPrice,
+		Qty:         order.qty,
+		Timestamp:   now,
+		At:          now,
+		Order: &alpaca.Order{
+			ID:             order.clientOrderID,
+			ClientOrderID:  order.clientOrderID,
+			Symbol:         order.symbol.String(),
+			Side:           order.side,
+			Qty:            order.qty,
+			FilledQty:      order.qty,
+			FilledAvgPrice: fillPrice,
+			LimitPrice:     order.price,
+			Status:         alpaca.OrderStatusFilled,
+			Type:           alpaca.OrderTypeLimit,
+		},
+	})
+}
+
+func (b *Backtest) fillMOC() {
+	now := clocky.Now()
+	for _, order := range b.moc {
+		fillPrice := b.lastTrade[order.symbol]
+		if fillPrice.IsZero() {
+			continue // no trade data for this symbol
+		}
+		pos := b.positions[order.symbol]
+		if order.side == ds.SideBuy {
+			pos = pos.Add(order.qty)
+		} else {
+			pos = pos.Sub(order.qty)
+		}
+		b.positions[order.symbol] = pos
+
+		b.stageFill(&alpaca.OrderUpdate{
+			Event:       alpaca.OrderEventFill,
+			PositionQty: pos,
+			Price:       fillPrice,
+			Qty:         order.qty,
+			Timestamp:   now,
+			At:          now,
+			Order: &alpaca.Order{
+				ID:             order.clientOrderID,
+				ClientOrderID:  order.clientOrderID,
+				Symbol:         order.symbol.String(),
+				Side:           order.side,
+				Qty:            order.qty,
+				FilledQty:      order.qty,
+				FilledAvgPrice: fillPrice,
+				Status:         alpaca.OrderStatusFilled,
+				Type:           alpaca.OrderTypeMarket,
+			},
+		})
+	}
+	b.moc = b.moc[:0]
+}
+
+func (b *Backtest) checkFills(trade *sip.Trade) {
+	now := clocky.Now()
+	n := 0
+	for _, order := range b.pending {
+		if order.symbol != trade.Symbol {
+			b.pending[n] = order
+			n++
+			continue
+		}
+
+		// don't fill orders on the same tick they were created
+		if order.createdAt == now {
+			b.pending[n] = order
+			n++
+			continue
+		}
+
+		// check if trade happened on exchange
+		if order.exchange != sip.ExchangeNone && order.exchange != trade.Exchange {
+			b.pending[n] = order
+			n++
+			continue
+		}
+
+		// check if trade crosses our limit price
+		var crossed bool
+		switch order.side {
+		case ds.SideBuy:
+			crossed = trade.Price.Cmp(order.price) <= 0
+		default:
+			crossed = trade.Price.Cmp(order.price) >= 0
+		}
+		if !crossed {
+			b.pending[n] = order
+			n++
+			continue
+		}
+
+		// get quote
+		q := b.lastQuote[order.symbol]
+		if q == nil {
+			b.pending[n] = order
+			n++
+			continue
+		}
+
+		// figure out fill quantity
+		tradeQty := decimal.FromInt64(trade.Size)
+		if b.isMarketable(order) {
+			tradeQty = order.qty.Sub(order.filled)
+		} else {
+			switch order.exchange {
+			case sip.ExchangeNone:
+				// pfof processors only fill your order when it's bad
+				// for you if they think you're an informed market
+				// participant. in practice this means they won't fill
+				// your order unless it's marketable.
+				b.pending[n] = order
+				n++
+				continue
+			case sip.ExchangeARCA, sip.ExchangeNYSE:
+				// estimate queue position pro-rata style based on
+				// bid/ask size when order isn't inside the spread and
+				// is competing for volume with other market makers.
+				// since this order was directly routed to the exchange,
+				// pro-rata is how arca and nyse work.
+				atLevel := false
+				var levelSize decimal.Decimal
+				if order.side == ds.SideBuy {
+					atLevel = order.price.Cmp(q.BidPrice) <= 0
+					levelSize = decimal.FromInt(int(q.BidSize))
+				} else {
+					atLevel = order.price.Cmp(q.AskPrice) >= 0
+					levelSize = decimal.FromInt(int(q.AskSize))
+				}
+				if atLevel && levelSize.IsPositive() {
+					// our share of the queue: tradeQty * orderQty / levelSize
+					remaining := order.qty.Sub(order.filled)
+					tradeQty = tradeQty.Mul(remaining).Div(levelSize).Min(tradeQty)
+					tradeQty = tradeQty.Truncate() // QuantizeTruncate(cboe.LotSize(order.price))
+				}
+			case sip.ExchangeNASDAQ:
+				// nasdaq has fifo order matching so we save the
+				// bid/ask size of the price level when our order
+				// is created. now we subtract from that with each
+				// trade that rolls through. once it all gets
+				// depleted, we can fill the order.
+				if order.queueAhead.IsPositive() {
+					order.queueAhead = order.queueAhead.Sub(tradeQty)
+					if order.queueAhead.IsPositive() {
+						b.pending[n] = order
+						n++
+						continue
+					}
+					// queue drained; fill with whatever spilled over
+					tradeQty = order.queueAhead.Neg()
+					order.queueAhead = decimal.Zero
+				}
+			default:
+				panic("unknown exchange")
+			}
+		}
+
+		// fill for min(pro-rata trade size, remaining order qty)
+		remaining := order.qty.Sub(order.filled)
+		fillQty := remaining.Min(tradeQty)
+		order.filled = order.filled.Add(fillQty)
+		fillPrice := trade.Price
+
+		if fillQty.IsZero() {
+			b.pending[n] = order
+			n++
+			continue
+		}
+		if fillQty.Truncate().Cmp(fillQty) != 0 {
+			panic("non-integer fill quantity")
+		}
+
+		// update simulated position
+		pos := b.positions[order.symbol]
+		if order.side == ds.SideBuy {
+			pos = pos.Add(fillQty)
+		} else {
+			pos = pos.Sub(fillQty)
+		}
+		b.positions[order.symbol] = pos
+
+		// determine fill vs partial fill
+		event := alpaca.OrderEventPartialFill
+		status := alpaca.OrderStatusPartiallyFilled
+		if order.filled.Cmp(order.qty) >= 0 {
+			event = alpaca.OrderEventFill
+			status = alpaca.OrderStatusFilled
+		}
+
+		b.stageFill(&alpaca.OrderUpdate{
+			Event:       event,
+			PositionQty: pos,
+			Price:       fillPrice,
+			Qty:         fillQty,
+			Timestamp:   now,
+			At:          now,
+			Order: &alpaca.Order{
+				ID:             order.clientOrderID,
+				ClientOrderID:  order.clientOrderID,
+				Symbol:         order.symbol.String(),
+				Side:           order.side,
+				Qty:            order.qty,
+				FilledQty:      order.filled,
+				FilledAvgPrice: fillPrice,
+				LimitPrice:     order.price,
+				Status:         status,
+				Type:           alpaca.OrderTypeLimit,
+			},
+		})
+
+		// keep order if only partially filled
+		if status != alpaca.OrderStatusFilled {
+			b.pending[n] = order
+			n++
+		}
+	}
+	b.pending = b.pending[:n]
+}
