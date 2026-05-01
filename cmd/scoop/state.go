@@ -50,6 +50,16 @@ type State struct {
 	buyClientOrderID2  string
 	sellClientOrderID2 string
 
+	// LULD state
+	luldLower    decimal.Decimal // current lower price band (zero if no band)
+	luldUpper    decimal.Decimal // current upper price band (zero if no band)
+	luldAt       clocky.Time    // when the band was last published
+	lastTrade    decimal.Decimal // most recent trade price
+	lastTradeAt  clocky.Time    // when the most recent trade happened
+	imbPrice     decimal.Decimal // most recent imbalance price during halt
+	scoopBuyAt   clocky.Time    // when we submitted our scoop buy
+	scoopTarget  decimal.Decimal // price we want to exit at
+
 	// P&L tracking
 	costBasis    decimal.Decimal // total cost of current position (signed)
 	realizedPnL  decimal.Decimal // cumulative realized P&L

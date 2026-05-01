@@ -27,10 +27,10 @@ var (
 	flagCooldown  = clocky.DurationFlag("cooldown", "30m", "cooldown period after order rejection")
 	flagBucket    = flag.String("bucket", "dropbear-sip", "google cloud storage bucket for recording market data")
 	flagLive      = flag.Bool("live", false, "enables live trading and network access")
-	flagExtended  = flag.Bool("extended", false, "enables extended hours trading")
-	flagOvernight = flag.Bool("overnight", false, "enables overnight hours trading")
 	flagData      = flag.String("data", "", "path of sip data file for backtest")
 	flagTUI       = flag.Bool("tui", false, "enable terminal user interface")
+	flagScoopMax  = flag.String("scoop-max", "10000", "max notional value per scoop entry")
+	flagScoopExit = flag.String("scoop-exit", "0.03", "target profit as fraction of entry price (e.g. 0.03 = 3%)")
 )
 
 const (
@@ -99,52 +99,123 @@ func main() {
 	os.Exit(0)
 }
 
+var scoopExitPct decimal.Decimal
+
+func init() {
+	// parsed later in Evaluate on first use
+	scoopExitPct = decimal.Parse(*flagScoopExit)
+}
+
 func Evaluate(st *State) {
 	if st.disabled {
 		return
 	}
-	if st.config.target.IsZero() {
-		return // not configured for trading
-	}
-	if st.halt {
-		return
-	}
 	if st.quote == nil {
-		return
-	}
-	if st.quote.Indicative() {
 		return
 	}
 	if !st.asset.Tradable.Load() {
 		return
 	}
 	if st.cooldownUntil != 0 && clocky.Now().Before(st.cooldownUntil) {
-		return // got rejected recently, wait before trying again
+		return
 	}
 
-	// check if market is open
 	now := clocky.Now()
 	session := cboe.GetSession(now)
 	switch session {
 	case cboe.SessionClosed:
 		return
-	case cboe.SessionExtended:
-		if !*flagExtended {
-			return
-		}
 	case cboe.SessionOvernight:
-		if !*flagOvernight {
-			return
-		}
-		if st.asset.OvernightHalted.Load() {
-			return
-		}
-		if !st.asset.OvernightTradable.Load() {
-			return
-		}
+		return
 	}
 
-	// TODO: implement algorithm
+	// === EXIT: sell our position for profit ===
+	if st.position.IsPositive() && st.sellClientOrderID == "" {
+		if st.halt {
+			return // can't sell during halt, wait for reopening
+		}
+		if st.quote.BidPrice.IsPositive() && st.scoopTarget.IsPositive() {
+			if st.quote.BidPrice.Cmp(st.scoopTarget) >= 0 {
+				// bid is at or above our target, sell
+				log.Printf("scoop exit %s: bid %s >= target %s",
+					st.symbol, st.quote.BidPrice, st.scoopTarget)
+				LimitOrder(st, ds.SideSell, st.position, st.quote.BidPrice,
+					alpaca.OrderDestinationNone, session,
+					fmt.Sprintf("scoop exit at %s (target %s)", st.quote.BidPrice, st.scoopTarget))
+			}
+		}
+		return
+	}
+
+	// === ENTRY: buy at the LULD lower band ===
+	if st.halt {
+		return // don't enter during halt
+	}
+	if st.position.IsPositive() {
+		return // already have a position
+	}
+	if st.buyClientOrderID != "" {
+		return // already have a pending buy
+	}
+	if st.luldLower.IsZero() {
+		return // no LULD band known
+	}
+	if st.quote.Indicative() {
+		return
+	}
+	if !st.quote.AskPrice.IsPositive() {
+		return
+	}
+
+	// The signal: the ask price equals the LULD lower band.
+	// This means sellers are pinned at the legally enforced floor.
+	// Either the band holds (we bought the bottom) or it breaks
+	// (halt fires, auction reopens above last trade).
+	if st.quote.AskPrice.Cmp(st.luldLower) != 0 {
+		return
+	}
+
+	// Only DMA to exchanges we can route to. The backtest engine
+	// can't model smart routing so we skip other venues.
+	var dest alpaca.OrderDestination
+	switch st.quote.AskExchange {
+	case sip.ExchangeNASDAQ:
+		dest = alpaca.OrderDestinationNASDAQ
+	case sip.ExchangeARCA:
+		dest = alpaca.OrderDestinationARCA
+	case sip.ExchangeNYSE:
+		dest = alpaca.OrderDestinationNYSE
+	default:
+		return
+	}
+
+	// Take all available liquidity at the floor, capped by notional limit.
+	// Round down to 100-share lots (odd lots only when closing positions).
+	price := st.luldLower
+	maxNotional := decimal.Parse(*flagScoopMax)
+	remaining := maxNotional.Sub(st.position.Mul(price)) // account for existing position
+	if !remaining.IsPositive() {
+		return
+	}
+	roundLot := decimal.FromInt(100)
+	maxShares := remaining.Div(price).QuantizeTruncate(roundLot)
+	available := decimal.FromInt(int(st.quote.AskSize)).QuantizeTruncate(roundLot)
+	qty := available.Min(maxShares)
+	if qty.IsZero() {
+		return
+	}
+
+	// Set exit target: entry price + exit percentage
+	exitPct := decimal.Parse(*flagScoopExit)
+	st.scoopTarget = price.Add(price.Mul(exitPct))
+	st.scoopBuyAt = now
+
+	log.Printf("scoop entry %s: %s shares @ %s on %s (ask=%sx%d, LULD lower=%s, target=%s)",
+		st.symbol, qty, price, st.quote.AskExchange,
+		st.quote.AskPrice, st.quote.AskSize, st.luldLower, st.scoopTarget)
+	LimitOrder(st, ds.SideBuy, qty, price,
+		dest, session,
+		fmt.Sprintf("scoop %s shares @ %s DMA %s", qty, price, dest))
 }
 
 func Run() Result {
@@ -420,9 +491,28 @@ func onBar(bar *sip.Bar) {
 }
 
 func onLULD(luld *sip.LULD) {
+	st := GetState(luld.Symbol)
+	if st == nil {
+		return
+	}
+	if luld.Indicator.IsPriceBand() {
+		st.luldLower = luld.LowerLimit
+		st.luldUpper = luld.UpperLimit
+		st.luldAt = luld.Timestamp
+	} else {
+		// Limit state indicator (C-J): bands are zeroed.
+		st.luldLower = decimal.Zero
+		st.luldUpper = decimal.Zero
+	}
+	Evaluate(st)
 }
 
 func onImbalance(imbalance *sip.Imbalance) {
+	st := GetState(imbalance.Symbol)
+	if st == nil {
+		return
+	}
+	st.imbPrice = imbalance.Price
 }
 
 func onQuote(q *sip.Quote) {
@@ -439,6 +529,11 @@ func onTrade(t *sip.Trade) {
 	if st == nil {
 		return
 	}
+	if t.Price.IsPositive() {
+		st.lastTrade = t.Price
+		st.lastTradeAt = t.Timestamp
+	}
+	Evaluate(st)
 }
 
 func onStatus(s *sip.Status) {
@@ -452,6 +547,7 @@ func onStatus(s *sip.Status) {
 	} else if s.Resume() {
 		st.halt = false
 		log.Printf("trading of %s has resumed: %s", st.symbol, s)
+		Evaluate(st) // try to exit on resumption
 	}
 }
 
@@ -823,23 +919,7 @@ func processTUICommand(cmd TUICommand) {
 			Evaluate(st)
 		}
 	case tuiCmdAdjust:
-		switch cmd.field {
-		case fieldTarget:
-			st.config.target = st.config.target.Add(cmd.delta)
-		case fieldSpread:
-			st.config.spread = st.config.spread.Add(cmd.delta)
-			if st.config.spread.IsNegative() {
-				st.config.spread = decimal.Zero
-			}
-		case fieldGreed:
-			st.config.greed = st.config.greed.Add(cmd.delta)
-			if st.config.greed.IsNegative() {
-				st.config.greed = decimal.Zero
-			}
-		}
-		log.Printf("%s config: target=%s qty=%s spread=%s drift=%s greed=%s",
-			st.symbol, st.config.target, st.config.qty,
-			st.config.spread, st.config.drift, st.config.greed)
+		// no adjustable fields in scoop mode
 	case tuiCmdCancel:
 		if st.buyOrderID != "" {
 			id := st.buyOrderID

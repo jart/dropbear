@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"dropbear/broker/alpaca"
-	"dropbear/cboe"
 	"dropbear/clocky"
 	"dropbear/decimal"
 	"dropbear/symbol"
@@ -34,36 +33,23 @@ type TUICommand struct {
 	delta  decimal.Decimal
 }
 
-const (
-	fieldTarget = iota
-	fieldSpread
-	fieldGreed
-)
-
-var kSpreadStep = decimal.Parse("0.01")
-
 // Column positions for stock table.
 const (
 	cpSym  = 2
 	cpSt   = 9
 	cpVnue = 13
 	cpPos  = 18
-	cpTarg = 25
-	cpQty  = 32
-	cpSpr  = 38
-	cpDft  = 45
-	cpGrd  = 52
-	cpBuy  = 60
-	cpBid  = 70
-	cpAsk  = 84
-	cpSell = 98
-	cpEma  = 108
-	cpReal = 118
-	cpUnrl = 128
-	cpEq   = 138
-	cpFees = 148
-	cpBvol = 157
-	cpSvol = 164
+	cpBuy  = 25
+	cpBid  = 35
+	cpAsk  = 49
+	cpSell = 63
+	cpNotl = 73
+	cpReal = 83
+	cpUnrl = 93
+	cpEq   = 103
+	cpFees = 113
+	cpBvol = 122
+	cpSvol = 129
 )
 
 // TUI manages the terminal interface for scoop.
@@ -141,18 +127,6 @@ func (t *TUI) inputLoop() {
 				t.moveRow(1)
 			case ' ':
 				t.toggle()
-			case 't':
-				t.adjustField(fieldTarget, 1)
-			case 'T':
-				t.adjustField(fieldTarget, -1)
-			case 's':
-				t.adjustField(fieldSpread, 1)
-			case 'S':
-				t.adjustField(fieldSpread, -1)
-			case 'g':
-				t.adjustField(fieldGreed, 1)
-			case 'G':
-				t.adjustField(fieldGreed, -1)
 			case 'c':
 				t.cancelOrders()
 			case 'v':
@@ -204,39 +178,6 @@ func (t *TUI) cycleVenue() {
 	}
 }
 
-func (t *TUI) adjustField(field, sign int) {
-	states := getSymbolsThatMatter()
-	if t.row >= len(states) {
-		return
-	}
-	st := states[t.row]
-	var delta decimal.Decimal
-	var col int
-	switch field {
-	case fieldTarget:
-		if st.quote == nil {
-			return
-		}
-		delta = cboe.LotSize(st.quote.AskPrice)
-		col = cpTarg
-	case fieldSpread:
-		delta = kSpreadStep
-		col = cpSpr
-	case fieldGreed:
-		delta = kSpreadStep
-		col = cpGrd
-	}
-	if sign < 0 {
-		delta = delta.Neg()
-	}
-	t.flash(st.symbol, col)
-	t.commands <- TUICommand{
-		kind:   tuiCmdAdjust,
-		symbol: st.symbol,
-		field:  field,
-		delta:  delta,
-	}
-}
 
 func (t *TUI) flash(sym symbol.Symbol, col int) {
 	t.flashSymbol = sym
@@ -289,21 +230,16 @@ func (t *TUI) render() {
 	row++
 
 	// column headers
-	b.WriteString("\033[90m")
+	b.WriteString("\033[2K\033[90m")
 	tuiAt(&b, cpSym, "SYMBOL")
 	tuiAt(&b, cpSt, "ST")
 	tuiAt(&b, cpVnue, "VNUE")
 	tuiAt(&b, cpPos, fmt.Sprintf("%6s", "POS"))
-	tuiAt(&b, cpTarg, fmt.Sprintf("%6s", "TARGET"))
-	tuiAt(&b, cpQty, fmt.Sprintf("%5s", "QTY"))
-	tuiAt(&b, cpSpr, fmt.Sprintf("%6s", "SPREAD"))
-	tuiAt(&b, cpDft, fmt.Sprintf("%6s", "DRIFT"))
-	tuiAt(&b, cpGrd, fmt.Sprintf("%6s", "GREED"))
 	tuiAt(&b, cpBuy, "BUY@")
 	tuiAt(&b, cpBid, "BID")
 	tuiAt(&b, cpAsk, "ASK")
 	tuiAt(&b, cpSell, "SELL@")
-	tuiAt(&b, cpEma, fmt.Sprintf("%8s", "EMA"))
+	tuiAt(&b, cpNotl, fmt.Sprintf("%9s", "NOTIONAL"))
 	tuiAt(&b, cpReal, fmt.Sprintf("%9s", "REALIZED"))
 	tuiAt(&b, cpUnrl, fmt.Sprintf("%9s", "UNREAL"))
 	tuiAt(&b, cpEq, fmt.Sprintf("%9s", "EQUITY"))
@@ -359,7 +295,7 @@ func (t *TUI) render() {
 	}
 
 	// help bar
-	help := " j/k:select  space:on/off  t/T:target  s/S:spread  g/G:greed  v:venue  c:cancel  q:quit"
+	help := " j/k:select  space:on/off  v:venue  c:cancel  q:quit"
 	fmt.Fprintf(&b, "\033[%d;1H\033[7m%-*s\033[0m", h, w, help)
 
 	os.Stdout.Write(b.Bytes())
@@ -369,6 +305,7 @@ func (t *TUI) writeStock(b *bytes.Buffer, idx int, st *State, flashCol int) {
 	sel := idx == t.row
 	cfg := st.config
 
+	b.WriteString("\033[2K")
 	// prefix
 	if sel {
 		b.WriteByte('>')
@@ -412,13 +349,6 @@ func (t *TUI) writeStock(b *bytes.Buffer, idx int, st *State, flashCol int) {
 	// position
 	tuiAt(b, cpPos, fmt.Sprintf("%6s", st.position))
 
-	// config fields
-	tuiAt(b, cpTarg, tuiFlash(fmt.Sprintf("%6s", cfg.target), cpTarg, flashCol))
-	tuiAt(b, cpQty, fmt.Sprintf("%5s", cfg.qty))
-	tuiAt(b, cpSpr, tuiFlash(fmt.Sprintf("%6s", cfg.spread), cpSpr, flashCol))
-	tuiAt(b, cpDft, fmt.Sprintf("%6s", cfg.drift))
-	tuiAt(b, cpGrd, tuiFlash(fmt.Sprintf("%6s", cfg.greed), cpGrd, flashCol))
-
 	// buy/sell prices
 	if st.buyPrice.IsPositive() {
 		tuiAt(b, cpBuy, fmt.Sprintf("%-8s", st.buyPrice))
@@ -445,6 +375,18 @@ func (t *TUI) writeStock(b *bytes.Buffer, idx int, st *State, flashCol int) {
 		tuiAt(b, cpSell, fmt.Sprintf("%-8s", st.sellPrice))
 	} else {
 		tuiAt(b, cpSell, "   -    ")
+	}
+
+	// notional exposure
+	notional := decimal.Zero
+	if st.quote != nil && !st.position.IsZero() {
+		mid := st.quote.BidPrice.Add(st.quote.AskPrice).Half()
+		notional = mid.Mul(st.position.Abs())
+	}
+	if notional.IsPositive() {
+		tuiAt(b, cpNotl, fmt.Sprintf("%9s", notional.Format(2)))
+	} else {
+		tuiAt(b, cpNotl, fmt.Sprintf("%9s", "-"))
 	}
 
 	// P&L
