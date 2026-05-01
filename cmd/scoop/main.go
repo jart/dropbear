@@ -258,28 +258,45 @@ func exitScoop(st *State, now clocky.Time, session cboe.Session) {
 		return
 	}
 
-	// Cross the spread to get out. Smart router handles venue.
+	// Cross the spread to get out. Cap to quoted size so we don't
+	// overwhelm the book and push the price back to the limit.
 	// If we already have a pending exit, chase the market if price moved.
 	if isLong {
 		price := st.quote.BidPrice
+		qty := st.position.Min(decimal.FromInt(int(st.quote.BidSize)))
+		if qty.IsZero() {
+			return
+		}
 		if st.sellClientOrderID == "" {
-			log.Printf("scoop exit long %s: %s shares @ %s (target=%s)",
-				st.symbol, st.position, price, st.scoopTarget)
-			LimitOrder(st, ds.SideSell, st.position, price,
+			if st.lastExitAt != 0 && now.Sub(st.lastExitAt) < 10*clocky.Second {
+				return
+			}
+			st.lastExitAt = now
+			log.Printf("scoop exit long %s: %s shares @ %s (target=%s, pos=%s)",
+				st.symbol, qty, price, st.scoopTarget, st.position)
+			LimitOrder(st, ds.SideSell, qty, price,
 				alpaca.OrderDestinationNone, session,
-				fmt.Sprintf("scoop exit %s @ %s", st.position, price))
+				fmt.Sprintf("scoop exit %s @ %s", qty, price))
 		} else if price.Cmp(st.sellPrice) < 0 &&
 			(st.lastReplaceAt == 0 || now.Sub(st.lastReplaceAt) > 1*clocky.Minute) {
 			st.lastReplaceAt = now
-			ReplaceOrder(st, ds.SideSell, st.position, price)
+			ReplaceOrder(st, ds.SideSell, qty, price)
 		}
 	}
 	if isShort {
 		price := st.quote.AskPrice
-		qty := st.position.Abs()
+		absPos := st.position.Abs()
+		qty := absPos.Min(decimal.FromInt(int(st.quote.AskSize)))
+		if qty.IsZero() {
+			return
+		}
 		if st.buyClientOrderID == "" {
-			log.Printf("scoop exit short %s: %s shares @ %s (target=%s)",
-				st.symbol, qty, price, st.scoopTarget)
+			if st.lastExitAt != 0 && now.Sub(st.lastExitAt) < 10*clocky.Second {
+				return
+			}
+			st.lastExitAt = now
+			log.Printf("scoop exit short %s: %s shares @ %s (target=%s, pos=%s)",
+				st.symbol, qty, price, st.scoopTarget, st.position)
 			LimitOrder(st, ds.SideBuy, qty, price,
 				alpaca.OrderDestinationNone, session,
 				fmt.Sprintf("scoop cover %s @ %s", qty, price))

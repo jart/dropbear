@@ -62,6 +62,7 @@ type State struct {
 	scoopTarget   decimal.Decimal // price we want to exit at
 	scoopShort    bool            // true if this is a short position (limit up)
 	lastReplaceAt clocky.Time     // when we last replaced an exit order
+	lastExitAt    clocky.Time     // when we last submitted an exit order
 
 	// P&L tracking
 	costBasis    decimal.Decimal // total cost of current position (signed)
