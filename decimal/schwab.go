@@ -57,7 +57,7 @@ func extractJSONStringField(data []byte, field string) ([]byte, bool) {
 		}
 		// check field name
 		match := true
-		for j := 0; j < flen; j++ {
+		for j := range flen {
 			if data[i+1+j] != field[j] {
 				match = false
 				break

@@ -50,7 +50,7 @@ func recordTape(now clocky.Time, ch <-chan alpaca.StockUpdate, done chan struct{
 			log.Printf("tape: write error: %v", err)
 			break
 		}
-		msgBuffer := (*[messageSize]byte)(unsafe.Pointer(&stockUpdate.Message))
+		msgBuffer := (*[messageSize]byte)(unsafe.Pointer(stockUpdate.Message))
 		if _, err := zw.Write(msgBuffer[:]); err != nil {
 			log.Printf("tape: write error: %v", err)
 			break
