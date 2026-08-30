@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // OrderUpdates returns a channel that receives order update events via the Schwab streamer WebSocket.
@@ -30,21 +29,7 @@ type orderUpdatesDaemon struct {
 }
 
 func (d *orderUpdatesDaemon) run() {
-	try := 0
-	for {
-		ts1 := time.Now()
-		err := d.impl()
-		ts2 := time.Now()
-		if err != nil {
-			logf("error reading message: %v\n", err)
-		}
-		if ts2.Sub(ts1) > 30*time.Second {
-			try = 0 // connection was healthy so reset backoff
-		}
-		wait := time.Duration(15<<min(try, 11)) * time.Millisecond
-		time.Sleep(wait)
-		try++
-	}
+	netty.Reconnect("schwab order updates", d.impl, logf)
 }
 
 func (d *orderUpdatesDaemon) impl() error {

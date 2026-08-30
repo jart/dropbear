@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type OrderUpdate struct {
@@ -40,22 +39,7 @@ type orderUpdatesDaemon struct {
 }
 
 func (d *orderUpdatesDaemon) run() {
-	try := 0
-	for {
-		ts1 := time.Now()
-		err := d.impl()
-		ts2 := time.Now()
-		if err != nil {
-			logf("error reading message: %v\n", err)
-		}
-		elapsed := ts2.Sub(ts1)
-		if elapsed > 30*time.Second {
-			try = 0 // connection was healthy so reset backoff
-		}
-		wait := time.Duration(15<<min(try, 11)) * time.Millisecond
-		time.Sleep(wait) // waits for 30 seconds max
-		try++
-	}
+	netty.Reconnect("alpaca order updates", d.impl, logf)
 }
 
 func (d *orderUpdatesDaemon) impl() error {
